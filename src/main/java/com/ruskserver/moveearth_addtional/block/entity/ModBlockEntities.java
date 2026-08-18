@@ -12,4 +12,7 @@ public class ModBlockEntities {
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PlayerDetectorBlockEntity>> PLAYER_DETECTOR = BLOCK_ENTITIES.register("player_detector",
             () -> BlockEntityType.Builder.of(PlayerDetectorBlockEntity::new, ModBlocks.PLAYER_DETECTOR.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TerritoryCoreBlockEntity>> TERRITORY_CORE = BLOCK_ENTITIES.register("territory_core",
+            () -> BlockEntityType.Builder.of(TerritoryCoreBlockEntity::new, ModBlocks.TERRITORY_CORE.get()).build(null));
 }

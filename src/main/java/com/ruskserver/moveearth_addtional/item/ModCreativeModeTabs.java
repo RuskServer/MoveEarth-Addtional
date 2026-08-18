@@ -18,6 +18,7 @@ public class ModCreativeModeTabs {
                     .icon(() -> new ItemStack(ModItems.PLAYER_DETECTOR.get()))
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.PLAYER_DETECTOR.get());
+                        output.accept(ModItems.TERRITORY_CORE.get());
                     })
                     .build());
 }

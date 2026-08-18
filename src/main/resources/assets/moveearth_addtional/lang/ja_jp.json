@@ -13,5 +13,9 @@
   "screen.moveearth_addtional.stats.distance": "移動距離",
   "screen.moveearth_addtional.stats.details": "与ダメージ: %s   被ダメージ: %s   ジャンプ: %s",
   "entity.moveearth_addtional.airship_raider": "飛行船襲撃兵"
-  ,"item.moveearth_addtional.weapon_crate": "武器箱"
+  ,"item.moveearth_addtional.weapon_crate": "武器箱",
+  "block.moveearth_addtional.territory_core": "領土保護ブロック",
+  "message.moveearth_addtional.territory_core.claimed": "この領土保護ブロックの所有者になりました。",
+  "message.moveearth_addtional.territory_core.member": "%sの領土メンバーです。",
+  "message.moveearth_addtional.territory_core.owner": "この領土は%sが所有しています。"
 }
