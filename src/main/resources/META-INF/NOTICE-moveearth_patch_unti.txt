@@ -1,0 +1,21 @@
+Stonecutter compatibility patch provenance
+===========================================
+
+This implementation was adapted from the standalone artifact:
+  moveearth_patch_unti-1.0-SNAPSHOT.jar
+
+Original mod ID:
+  moveearth_patch_unti
+
+Original implementation class:
+  net.example.me_patch.moveearth_patch_unti.mixin.MixinStonecutterMenu
+
+Original artifact SHA-256:
+  AC4E5E7BBFA74311D1F7C08E6CF5319D2918D86B59426E4A080A431407F19963
+
+The original artifact declared the MIT license, but its authors metadata was
+empty and no author name was present in its manifest or compiled classes.
+
+The MoveEarth-Addtional integration preserves the original crash-workaround
+intent while replacing the recipe list with a mutable empty list. This also
+prevents stale stonecutter recipes from remaining when the input is removed.

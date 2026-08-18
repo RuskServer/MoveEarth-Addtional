@@ -1,0 +1,17 @@
+{
+  "itemGroup.moveearth_addtional": "MoveEarth Additional Content",
+  "block.moveearth_addtional.example_block": "Example Block",
+  "block.moveearth_addtional.player_detector": "Player Detector",
+  "item.moveearth_addtional.example_item": "Example Item",
+  "screen.moveearth_addtional.stats.title": "Player Stats",
+  "screen.moveearth_addtional.stats.heading": "PLAYER PROFILE",
+  "screen.moveearth_addtional.stats.play_time": "Play Time",
+  "screen.moveearth_addtional.stats.player_kills": "Player Kills",
+  "screen.moveearth_addtional.stats.mob_kills": "Mob Kills",
+  "screen.moveearth_addtional.stats.deaths": "Deaths",
+  "screen.moveearth_addtional.stats.kd": "K/D Ratio",
+  "screen.moveearth_addtional.stats.distance": "Distance",
+  "screen.moveearth_addtional.stats.details": "Damage Dealt: %s   Taken: %s   Jumps: %s",
+  "entity.moveearth_addtional.airship_raider": "Airship Raider"
+  ,"item.moveearth_addtional.weapon_crate": "Weapon Crate"
+}

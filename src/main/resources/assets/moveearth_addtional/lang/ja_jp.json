@@ -1,0 +1,17 @@
+{
+  "itemGroup.moveearth_addtional": "MoveEarth 追加要素",
+  "block.moveearth_addtional.player_detector": "プレイヤー検知ブロック",
+  "block.moveearth_addtional.example_block": "サンプルブロック",
+  "item.moveearth_addtional.example_item": "サンプルアイテム",
+  "screen.moveearth_addtional.stats.title": "プレイヤーステータス",
+  "screen.moveearth_addtional.stats.heading": "PLAYER PROFILE",
+  "screen.moveearth_addtional.stats.play_time": "プレイ時間",
+  "screen.moveearth_addtional.stats.player_kills": "プレイヤーキル",
+  "screen.moveearth_addtional.stats.mob_kills": "Mobキル",
+  "screen.moveearth_addtional.stats.deaths": "死亡回数",
+  "screen.moveearth_addtional.stats.kd": "K/D比",
+  "screen.moveearth_addtional.stats.distance": "移動距離",
+  "screen.moveearth_addtional.stats.details": "与ダメージ: %s   被ダメージ: %s   ジャンプ: %s",
+  "entity.moveearth_addtional.airship_raider": "飛行船襲撃兵"
+  ,"item.moveearth_addtional.weapon_crate": "武器箱"
+}

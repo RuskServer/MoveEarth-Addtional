@@ -1,0 +1,8 @@
+{
+  "server_notice": {
+    "category": "master",
+    "sounds": [
+      "moveearth_addtional:notice"
+    ]
+  }
+}

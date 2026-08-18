@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "key": {
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "R": {
+      "item": "minecraft:redstone"
+    },
+    "T": {
+      "item": "minecraft:redstone_torch"
+    },
+    "C": {
+      "item": "minecraft:cobblestone"
+    }
+  },
+  "pattern": [
+    " T ",
+    "IRI",
+    "CCC"
+  ],
+  "result": {
+    "count": 1,
+    "id": "moveearth_addtional:player_detector"
+  }
+}

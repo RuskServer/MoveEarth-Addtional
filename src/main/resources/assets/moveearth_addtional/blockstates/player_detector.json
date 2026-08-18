@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "moveearth_addtional:block/player_detector"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+out/
+bin/
+
+# Local game/runtime data
+run/
+logs/
+crash-reports/
+
+# IDE settings
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Java and diagnostic output
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+# Locally supplied dependencies
+lib/
+
+# Packaged artifacts created in the project root
+/*.jar
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db

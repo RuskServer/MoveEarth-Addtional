@@ -1,0 +1,173 @@
+# v1.8
+
+## Player Detector
+
+- Fixed bank account names displaying an account-retrieval error on dedicated multiplayer servers. Account names are now resolved on the server and synchronized with their bank references.
+- Continued to validate bank-account access and payment configuration on the server. Invalid or stale account references are excluded from the selection list.
+- Prevented the detector's invisible dummy shulker from being moved by transport, pushing, mounting, gravity, or other mod mechanics.
+- The dummy is now returned to the detector position at the end of every server tick, and common entity-interaction attempts are cancelled.
+- Added ownership position and dimension data to detector dummies. Captured, duplicated, displaced, or cross-dimensional stale dummies are discarded when loaded.
+- Fixed cleanup potentially removing a dummy belonging to another nearby detector.
+
+## Voting Rewards
+
+- Added the server-side `/moveearthvotereward <player>` command for permission-level-2 command sources.
+- Added six equally likely rewards: 2 Gold Coins, 3 Gold Coins, 8 End Stone, 8 Gunpowder, an Efficiency V Diamond Pickaxe, or a Mending Diamond Pickaxe.
+- Rewards that do not fit in the target player's inventory are dropped at their position.
+- Added a server-wide broadcast announcing the voting player and the reward received.
+- Added server logging for successful vote-reward grants.
+
+## Compatibility and Fixes
+
+- Fixed existing players being mistaken for first-time players and receiving an unintended first-login random teleport after random-spawn tracking was introduced.
+- Added integration with LocalizedChat NeoForge 5.2.1 to record the list of players who received each localized chat message in the server log.
+- Integrated the stonecutter crash fix from `moveearth_patch_unti-1.0-SNAPSHOT`. Stale stonecutter recipes are cleared when the input is removed, preventing the server-environment crash.
+- Preserved attribution for the original stonecutter patch author and implementation in `META-INF/NOTICE-moveearth_patch_unti.txt`.
+- Updated the network protocol to `1.8-pvp3`. The server and clients must use the same v1.8 JAR.
+
+# v1.7
+
+## KOTH PvP Event
+
+- Added a custom interface available through `/pvp` and a queue system that does not require a physical lobby.
+- Players can continue playing normally while queued. Inventories are stored, match equipment is issued, and players are transferred to the dedicated dimension only when an administrator starts the match.
+- Added a dedicated PvP dimension, RED and BLUE spawn points, and configurable KOTH capture-zone boundaries.
+- Added event hosting and match controls through `/pvp admin open`, `close`, `start`, and `stop`.
+- Added a custom HUD displaying team scores, the score target, remaining time, and capture status.
+- Player name tags are hidden during PvP matches, while allies are highlighted using their team color.
+- Defeated players enter Spectator mode and receive a four-second killcam that highlights their killer.
+- Added kill notifications and a respawn delay. PvP deaths now use the dedicated respawn flow without entering PlayerRevive's downed state.
+- Match results remain visible for five seconds before players are restored to their pre-match state.
+
+## Equipment and Match Rules
+
+- Fixed iron armor being removed and re-equipped every tick, which repeatedly played armor equip sounds during PvP matches.
+- PvP guns now have an automatically replenished dummy-ammo reserve, providing unlimited ammunition while preserving magazine reloads.
+- Limited brought-in equipment to one TaCZ gun selected from the player's hotbar through the participation interface.
+- Players receive a full set of iron armor with Protection IV, a filled magazine, and supplied dummy ammunition.
+- Health, hunger, air supply, and fire state are reset when the match starts and after each respawn.
+- Hunger is kept full throughout the match.
+- Disabled friendly fire.
+- Disabled block breaking and placement, container access, item dropping and pickup, and offhand swapping during matches.
+- Prevented explosions and TaCZ projectiles from damaging arena terrain.
+- TaCZ block-hit events are no longer cancelled. Damaged blocks are restored instead, preserving normal projectile disposal and explosion behavior.
+- Blocked combat between PvP participants and outsiders. Non-participants entering the arena are returned to the Overworld.
+- Disabled natural mob spawning in the arena and periodically remove mobs already present there.
+
+## Inventory Protection and Recovery
+
+- Stored each player's inventory, position, dimension, game mode, health, hunger, experience, potion effects, selected slot, and scoreboard team before entering a match.
+- Persisted PvP session snapshots in world SavedData.
+- If a match is interrupted by a server crash or restart, the player's pre-match state is restored automatically on their next login.
+- Prevented item duplication through dropping, moving, or extracting temporary match equipment.
+- Fixed PvP HUD, ally lists, killcam data, and glowing states remaining on the client after disconnecting.
+
+## Tasks and Rewards
+
+- Added a dedicated task screen available through `/pvp tasks` or the Tasks button in the participation interface.
+- Added Daily and Event tabs, progress bars, pagination, reward icons, and manual claim buttons.
+- Added the following tasks:
+  - 5 kills: 25 Weapon Points and 16 Iron Ingots
+  - 3 kills within 8 blocks: 35 Weapon Points and 16 Gunpowder
+  - Control the zone for a total of 120 seconds: 30 Weapon Points and 24 Nether Quartz
+  - Complete 3 reward-eligible matches: 50 Weapon Points and 8 Gold Ingots
+  - Win 2 reward-eligible matches: 100 Weapon Points and 1 Netherite Ingot
+  - Win 5 reward-eligible matches: 250 Weapon Points and 1 Nether Star
+- Daily tasks reset every day at 19:00 JST. Event tasks reset when a new PvP hosting period begins.
+- Existing Weapon Points and unfinished kill, close-range kill, and zone-control progress are migrated from the previous fixed task format.
+- Task completion and claim status are validated server-side to prevent duplicate claims and forged packet requests.
+- If the complete material reward cannot fit in the player's inventory, neither the materials nor the Weapon Points are awarded.
+- Task rewards, weapon-crate exchanges, and weapon-crate opening are disabled during matches.
+- Reward-eligible matches require at least two active players on each team. Repeated kills against the same opponent have a 60-second reward cooldown.
+
+## Weapon Crates
+
+- Added weapon crates that can be exchanged for 100 Weapon Points.
+- Each crate awards one TaCZ gun and attempts to install up to two compatible attachments.
+- Rewards are selected from the guns and attachments actually loaded by TaCZ instead of a hard-coded list.
+- Prevented invalid rewards caused by missing gun-pack IDs or incompatible attachments.
+- Initial ammunition now uses the selected gun's actual magazine capacity.
+
+## Standard Random Respawning
+
+- Redesigned random respawning after ordinary deaths when the player has no bed or respawn anchor set.
+- Removed the behavior that selected another online player as the spawn center. Players are now distributed within a 750-to-4,000-block annulus around the world's shared spawn.
+- Spawn candidates at least 384 blocks from other players and 768 blocks from the player's previous random spawn are preferred.
+- Up to 96 locations are checked. If no candidate meets the strict distance requirements, the safest and most distant valid candidate is selected.
+- Candidate validation checks the floor, headroom, fluids, powder snow, cacti, campfires, other hazardous blocks, and the world border.
+- Players receive ten seconds of Damage Resistance and Fire Resistance after a random respawn.
+- The same safety and distribution rules are applied to first-login random spawning.
+
+## Fixes and Compatibility
+
+- Explicitly assigned permission level 0 to player-facing `/pvp` commands and permission level 2 to `/pvp admin` hosting and arena-management commands.
+- Fixed random respawn surface detection for unloaded chunks; heightmaps are now queried after explicitly loading the target chunk.
+- Random-spawn searching now stops at the first fully valid candidate to avoid generating dozens of chunks during one respawn.
+- Fixed random respawn teleports being rejected while the respawn event still referenced a removed player entity.
+- Random respawn teleports are now deferred until respawn finalization, resolve the current player by UUID, and only record success after verifying the destination.
+- Fixed PvP fatal-hit detection to use damage after armor, enchantment, and other reductions.
+- Fixed match results disappearing immediately after the match ended.
+- Added validation for the RED spawn, BLUE spawn, and capture-zone settings before a match can start.
+- Fixed the weapon-crate item model.
+- Updated the PvP network protocol to `1.7-pvp3`. Both the server and clients must use the same v1.7 JAR.
+
+# v1.4
+
+## Changes
+
+- Fixed PlayerRevive downed-state detection.
+- Disabled TACZ shooting, melee attacks, and gun item interaction while downed.
+- Replaced the standard death screen with a VHS-style visual effect.
+- Added several randomized messages shown on death.
+- Added automatic respawn after approximately five seconds.
+- Press `Esc` to skip the waiting time and respawn immediately.
+- Added calm menu music that plays only while the death screen is shown.
+- Added server-side bank account access validation when configuring payments.
+- Fixed dummy shulker cleanup so normal shulkers are not removed.
+- Added whitelist name validation, entry limits, and online-player verification.
+
+## v1.5
+
+- Set the maximum health of all players to 40.
+- Enhanced the death screen with stronger VHS tracking distortion and glitch effects.
+- Added typewriter-style text reveal and message fade-in animation.
+
+## v1.6
+
+### Player statistics
+
+- Added the `/stats` command and a custom statistics screen.
+- Added a 3D player preview and card-based statistics for play time, player kills, deaths, damage, and movement.
+- Removed the vanilla screen blur that was incorrectly drawn over the statistics interface.
+- Explicitly set `/stats` to permission level 0 so non-operator players can use it on server software that requires a declared level.
+
+### Airship raids
+
+- Added Sable-powered hostile airship raids with manual start, stop, status, and automatic-raid controls.
+- Automatic raids are disabled by default and can be enabled with `/airshipraid auto on`.
+- Automatic raids check every 30 minutes with a 10% chance and apply a 12-hour cooldown per targeted player.
+- Added normal, elite, and large raid difficulties.
+- Added raid announcements, warning sounds, a ten-minute combat limit, and chunk-unload-safe raid tracking.
+- Added armed NPC raiders using customized TaCZ firearms, enchanted iron or diamond armor, and guaranteed equipment drops.
+- Added rifleman, flanker, and heavy roles with squad memory, cover selection, leading shots, reloading, retreat behavior, strafing, and separation.
+- Improved NPC gun accuracy, descent speed, persistence, and raid completion tracking.
+
+### Airship destruction and salvage
+
+- Enlarged the raid airship to approximately 29 x 13 x 16 blocks.
+- Added Create Aeronautics envelopes, levitite cores, propellers, a gyroscopic bearing, a burner, and mounted weapon blocks to the airship.
+- Added TaCZ projectile damage for the airship hull and levitite cores before troop deployment.
+- Destroying four levitite cores or depleting the hull integrity now cancels deployment and sends the airship into a Sable physics crash.
+- Added crash survivors that guard the wreck based on raid difficulty.
+- Added a fifteen-minute salvage phase, a two-minute cleanup warning, and delayed cleanup while players remain near the wreck.
+- Added salvage barrels containing materials and Create Aeronautics components.
+- Added levitite recovery: guaranteed with Silk Touch or a 25% chance without it; explosion destruction does not drop it.
+
+### Compatibility and fixes
+
+- Added required compatibility metadata for Sable 2.0.3+, Create Aeronautics 1.3.0+, and TaCZ 1.1.8+.
+- Fixed cargo generation writing into non-barrel machine inventories.
+- Fixed raid NPCs naturally despawning and leaving raids permanently incomplete.
+- Preserved raid NPC tracking across chunk unloads while correctly removing killed or discarded NPCs.
+- Changed raider guns and armor from guaranteed drops to fixed difficulty-based drop chances.
+- Added a 60-80% chance for raiders to drop TaCZ 5.56x45 ammunition, with larger stacks on higher difficulties.
