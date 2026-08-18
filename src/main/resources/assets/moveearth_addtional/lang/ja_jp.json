@@ -49,5 +49,12 @@
   "jade.moveearth_addtional.territory_core.controlled": "このコアの所有者が支配中",
   "jade.moveearth_addtional.territory_core.foreign_control": "他領土が支配中",
   "jade.moveearth_addtional.territory_core.no_control": "支配領土なし",
-  "jade.moveearth_addtional.territory_core.protection": "保護段階: %s / 4"
+  "jade.moveearth_addtional.territory_core.protection": "保護段階: %s / 4",
+  "config.jade.plugin_moveearth_addtional.territory_influence": "注視地点の領土影響",
+  "jade.moveearth_addtional.territory_influence.none": "領土: 影響なし",
+  "jade.moveearth_addtional.territory_influence.friendly": "領土: %s（味方）",
+  "jade.moveearth_addtional.territory_influence.foreign": "領土: %s（他領土）",
+  "jade.moveearth_addtional.territory_influence.contested": "領土: %sが先行（競合）",
+  "jade.moveearth_addtional.territory_influence.uncontrolled": "領土: %sが先行（支配未確定）",
+  "jade.moveearth_addtional.territory_influence.details": "影響 %s / 次点 %s · 保護 %s / 4"
 }

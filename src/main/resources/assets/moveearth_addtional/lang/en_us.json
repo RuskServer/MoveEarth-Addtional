@@ -49,5 +49,12 @@
   "jade.moveearth_addtional.territory_core.controlled": "Controlled by this core's owner",
   "jade.moveearth_addtional.territory_core.foreign_control": "Controlled by another territory",
   "jade.moveearth_addtional.territory_core.no_control": "No controlling territory",
-  "jade.moveearth_addtional.territory_core.protection": "Protection tier: %s / 4"
+  "jade.moveearth_addtional.territory_core.protection": "Protection tier: %s / 4",
+  "config.jade.plugin_moveearth_addtional.territory_influence": "Territory influence at target",
+  "jade.moveearth_addtional.territory_influence.none": "Territory: no influence",
+  "jade.moveearth_addtional.territory_influence.friendly": "Territory: %s (friendly)",
+  "jade.moveearth_addtional.territory_influence.foreign": "Territory: %s (foreign)",
+  "jade.moveearth_addtional.territory_influence.contested": "Territory: %s leads (contested)",
+  "jade.moveearth_addtional.territory_influence.uncontrolled": "Territory: %s leads (uncontrolled)",
+  "jade.moveearth_addtional.territory_influence.details": "Influence %s / runner-up %s · protection %s / 4"
 }
