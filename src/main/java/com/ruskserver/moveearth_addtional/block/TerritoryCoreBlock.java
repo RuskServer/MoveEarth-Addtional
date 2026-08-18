@@ -2,17 +2,21 @@ package com.ruskserver.moveearth_addtional.block;
 
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.block.entity.ModBlockEntities;
+import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.territory.data.TerritoryCoreSavedData;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryOwnerId;
 import com.ruskserver.moveearth_addtional.territory.service.TerritoryMembershipService;
 import com.simibubi.create.content.kinetics.base.KineticBlock;
 import com.simibubi.create.foundation.block.IBE;
+import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -25,9 +29,10 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
-public final class TerritoryCoreBlock extends KineticBlock implements IBE<TerritoryCoreBlockEntity> {
+public final class TerritoryCoreBlock extends KineticBlock implements IBE<TerritoryCoreBlockEntity>, BlockSubLevelAssemblyListener {
     public static final EnumProperty<Direction.Axis> AXIS = BlockStateProperties.AXIS;
 
     public TerritoryCoreBlock(Properties properties) {
@@ -51,8 +56,35 @@ public final class TerritoryCoreBlock extends KineticBlock implements IBE<Territ
     }
 
     @Override
+    @Nullable
     public BlockState getStateForPlacement(BlockPlaceContext context) {
+        if (Sable.HELPER.getContaining(context.getLevel(), context.getClickedPos()) != null) {
+            if (!context.getLevel().isClientSide() && context.getPlayer() instanceof ServerPlayer player) {
+                player.displayClientMessage(Component.translatable(
+                        "message.moveearth_addtional.territory_core.sable_forbidden"), true);
+            }
+            return null;
+        }
         return defaultBlockState().setValue(AXIS, context.getClickedFace().getAxis());
+    }
+
+    @Override
+    public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState newState,
+                          BlockPos oldPos, BlockPos newPos) {
+        if (Sable.HELPER.getContaining(resultingLevel, newPos) == null) {
+            return;
+        }
+
+        Vec3 refundPos = Sable.HELPER.projectOutOfSubLevel(originLevel, Vec3.atCenterOf(oldPos));
+        resultingLevel.removeBlock(newPos, false);
+
+        ItemEntity refund = new ItemEntity(
+                originLevel,
+                refundPos.x(), refundPos.y(), refundPos.z(),
+                new ItemStack(ModItems.TERRITORY_CORE.get())
+        );
+        refund.setDefaultPickUpDelay();
+        originLevel.addFreshEntity(refund);
     }
 
     @Override

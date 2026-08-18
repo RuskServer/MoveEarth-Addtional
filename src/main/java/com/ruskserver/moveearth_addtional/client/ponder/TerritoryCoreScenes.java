@@ -94,6 +94,13 @@ public final class TerritoryCoreScenes {
                 .attachKeyFrame()
                 .text("直接接続とは別に、コア周辺128ブロックの稼働中工場も評価されます。同じ応力は二重計上されません");
         scene.idle(110);
+
+        scene.overlay().showText(100)
+                .attachKeyFrame()
+                .colored(PonderPalette.RED)
+                .text("領土コアは固定拠点専用です。Sable船上への直接設置や、コアを含む船体の組み立てはできません")
+                .pointAt(util.vector().centerOf(corePos));
+        scene.idle(90);
         scene.markAsFinished();
     }
 }
