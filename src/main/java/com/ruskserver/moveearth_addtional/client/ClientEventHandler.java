@@ -1,6 +1,8 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.client.ponder.MoveEarthPonderPlugin;
+import net.createmod.ponder.foundation.PonderIndex;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -25,7 +27,10 @@ public class ClientEventHandler {
     public static class ModBusEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            event.enqueueWork(DiscordRPCManager::init);
+            event.enqueueWork(() -> {
+                DiscordRPCManager.init();
+                PonderIndex.addPlugin(new MoveEarthPonderPlugin());
+            });
         }
     }
 }
