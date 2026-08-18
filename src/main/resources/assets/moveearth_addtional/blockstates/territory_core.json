@@ -1,6 +1,12 @@
 {
   "variants": {
-    "": {
+    "axis=x": {
+      "model": "moveearth_addtional:block/territory_core"
+    },
+    "axis=y": {
+      "model": "moveearth_addtional:block/territory_core"
+    },
+    "axis=z": {
       "model": "moveearth_addtional:block/territory_core"
     }
   }

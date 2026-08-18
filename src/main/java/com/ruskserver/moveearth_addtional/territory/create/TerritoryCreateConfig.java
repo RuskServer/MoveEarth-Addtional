@@ -17,6 +17,9 @@ public final class TerritoryCreateConfig {
     public static final ModConfigSpec.DoubleValue SCORE_SCALE = BUILDER
             .comment("Multiplier in score = multiplier * sqrt(used SU).")
             .defineInRange("scoreScale", CreateStressBalance.SCORE_SCALE, 0.0D, 100.0D);
+    public static final ModConfigSpec.DoubleValue DIRECT_CORE_STRESS_IMPACT = BUILDER
+            .comment("Territory core stress impact at 1 RPM. Actual direct input is this value times RPM.")
+            .defineInRange("directCoreStressImpact", 32.0D, 0.0D, 16_384.0D);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 

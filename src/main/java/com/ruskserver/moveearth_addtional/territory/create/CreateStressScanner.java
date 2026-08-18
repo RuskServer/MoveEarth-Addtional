@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.territory.create;
 
+import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.territory.data.TerritoryCoreSavedData;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryCore;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryOwnerId;
@@ -59,6 +60,9 @@ public final class CreateStressScanner {
                                   Map<TerritoryOwnerId, MutableSnapshot> totals, int scanRadius) {
         Set<Long> chunksToScan = chunksAround(cores, scanRadius);
         Map<KineticNetwork, List<OwnedSource>> sourcesByNetwork = new IdentityHashMap<>();
+        Map<KineticNetwork, NetworkMetrics> metricsByNetwork = new IdentityHashMap<>();
+
+        collectDirectCoreStress(level, cores, totals, metricsByNetwork);
 
         for (long packedChunk : chunksToScan) {
             int chunkX = ChunkPos.getX(packedChunk);
@@ -96,25 +100,59 @@ public final class CreateStressScanner {
 
         for (Map.Entry<KineticNetwork, List<OwnedSource>> entry : sourcesByNetwork.entrySet()) {
             KineticNetwork network = entry.getKey();
-            double capacity = network.sources.keySet().stream()
-                    .filter(CreateStressScanner::isStillLoaded)
-                    .mapToDouble(network::getActualCapacityOf)
-                    .sum();
-            double stress = network.members.keySet().stream()
+            NetworkMetrics metrics = metricsByNetwork.computeIfAbsent(network, NetworkMetrics::read);
+            double coreStress = network.members.keySet().stream()
+                    .filter(TerritoryCoreBlockEntity.class::isInstance)
                     .filter(CreateStressScanner::isStillLoaded)
                     .mapToDouble(network::getActualStressOf)
                     .sum();
-            double utilization = CreateStressBalance.utilization(stress, capacity);
-            Set<TerritoryOwnerId> ownersInNetwork = new HashSet<>();
+            double factoryStress = Math.max(0.0D, metrics.stress() - coreStress);
+            double utilization = metrics.overloaded()
+                    ? 0.0D
+                    : CreateStressBalance.utilization(factoryStress, metrics.capacity());
 
             for (OwnedSource source : entry.getValue()) {
                 MutableSnapshot total = totals.computeIfAbsent(source.ownerId(), ignored -> new MutableSnapshot());
                 total.generatedCapacity += source.capacity();
                 total.usedStress += source.capacity() * utilization;
                 total.sourceCount++;
-                ownersInNetwork.add(source.ownerId());
+                total.networks.add(network);
             }
-            ownersInNetwork.forEach(ownerId -> totals.get(ownerId).networkCount++);
+        }
+    }
+
+    private static void collectDirectCoreStress(ServerLevel level, List<TerritoryCore> cores,
+                                                Map<TerritoryOwnerId, MutableSnapshot> totals,
+                                                Map<KineticNetwork, NetworkMetrics> metricsByNetwork) {
+        for (TerritoryCore core : cores) {
+            BlockPos pos = BlockPos.containing(core.position().x(), core.position().y(), core.position().z());
+            LevelChunk chunk = level.getChunkSource().getChunkNow(pos.getX() >> 4, pos.getZ() >> 4);
+            if (chunk == null
+                    || !(chunk.getBlockEntity(pos) instanceof TerritoryCoreBlockEntity blockEntity)
+                    || !blockEntity.isActive()
+                    || blockEntity.getOwnerUUID() == null
+                    || !blockEntity.getOwnerUUID().equals(core.ownerId().value())
+                    || !blockEntity.hasNetwork()) {
+                continue;
+            }
+
+            KineticNetwork network = blockEntity.getOrCreateNetwork();
+            if (!network.members.containsKey(blockEntity)) {
+                continue;
+            }
+            NetworkMetrics metrics = metricsByNetwork.computeIfAbsent(network, NetworkMetrics::read);
+            if (metrics.overloaded()) {
+                continue;
+            }
+            double directStress = network.getActualStressOf(blockEntity) * metrics.countableCapacityRatio();
+            if (!Double.isFinite(directStress) || directStress <= 0.0D) {
+                continue;
+            }
+
+            MutableSnapshot total = totals.computeIfAbsent(core.ownerId(), ignored -> new MutableSnapshot());
+            total.usedStress += directStress;
+            total.directCoreStress += directStress;
+            total.networks.add(network);
         }
     }
 
@@ -168,22 +206,55 @@ public final class CreateStressScanner {
     private record OwnedSource(TerritoryOwnerId ownerId, double capacity) {
     }
 
+    private record NetworkMetrics(double capacity, double countableCapacity, double stress) {
+        private static NetworkMetrics read(KineticNetwork network) {
+            double capacity = network.sources.keySet().stream()
+                    .filter(CreateStressScanner::isStillLoaded)
+                    .mapToDouble(network::getActualCapacityOf)
+                    .sum();
+            double countableCapacity = network.sources.keySet().stream()
+                    .filter(CreateStressScanner::isStillLoaded)
+                    .filter(source -> !isCreativeMotor(source))
+                    .mapToDouble(network::getActualCapacityOf)
+                    .sum();
+            double stress = network.members.keySet().stream()
+                    .filter(CreateStressScanner::isStillLoaded)
+                    .mapToDouble(network::getActualStressOf)
+                    .sum();
+            return new NetworkMetrics(capacity, countableCapacity, stress);
+        }
+
+        private boolean overloaded() {
+            return !Double.isFinite(capacity) || !Double.isFinite(stress)
+                    || capacity <= 0.0D || stress > capacity;
+        }
+
+        private double countableCapacityRatio() {
+            if (capacity <= 0.0D || countableCapacity <= 0.0D) {
+                return 0.0D;
+            }
+            return Math.min(1.0D, countableCapacity / capacity);
+        }
+    }
+
     private static final class MutableSnapshot {
         private double generatedCapacity;
         private double usedStress;
+        private double directCoreStress;
         private int sourceCount;
-        private int networkCount;
+        private final Set<KineticNetwork> networks = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
 
         private CreateStressSnapshot freeze(long gameTime) {
             return new CreateStressSnapshot(
                     generatedCapacity,
                     usedStress,
+                    directCoreStress,
                     CreateStressBalance.industrialScore(
                             usedStress,
                             TerritoryCreateConfig.MAX_COUNTED_STRESS.get(),
                             TerritoryCreateConfig.SCORE_SCALE.get()),
                     sourceCount,
-                    networkCount,
+                    networks.size(),
                     gameTime
             );
         }

@@ -1,10 +1,14 @@
 package com.ruskserver.moveearth_addtional.block;
 
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
+import com.ruskserver.moveearth_addtional.block.entity.ModBlockEntities;
 import com.ruskserver.moveearth_addtional.territory.data.TerritoryCoreSavedData;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryOwnerId;
 import com.ruskserver.moveearth_addtional.territory.service.TerritoryMembershipService;
+import com.simibubi.create.content.kinetics.base.KineticBlock;
+import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -12,23 +16,63 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.EntityBlock;
-import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import org.jetbrains.annotations.Nullable;
 
-public final class TerritoryCoreBlock extends Block implements EntityBlock {
+public final class TerritoryCoreBlock extends KineticBlock implements IBE<TerritoryCoreBlockEntity> {
+    public static final EnumProperty<Direction.Axis> AXIS = BlockStateProperties.AXIS;
+
     public TerritoryCoreBlock(Properties properties) {
         super(properties);
+        registerDefaultState(defaultBlockState().setValue(AXIS, Direction.Axis.Y));
     }
 
-    @Nullable
     @Override
-    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new TerritoryCoreBlockEntity(pos, state);
+    public Class<TerritoryCoreBlockEntity> getBlockEntityClass() {
+        return TerritoryCoreBlockEntity.class;
+    }
+
+    @Override
+    public BlockEntityType<? extends TerritoryCoreBlockEntity> getBlockEntityType() {
+        return ModBlockEntities.TERRITORY_CORE.get();
+    }
+
+    @Override
+    public Direction.Axis getRotationAxis(BlockState state) {
+        return state.getValue(AXIS);
+    }
+
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        return defaultBlockState().setValue(AXIS, context.getClickedFace().getAxis());
+    }
+
+    @Override
+    public BlockState rotate(BlockState state, Rotation rotation) {
+        Direction.Axis axis = state.getValue(AXIS);
+        if (rotation == Rotation.CLOCKWISE_90 || rotation == Rotation.COUNTERCLOCKWISE_90) {
+            if (axis == Direction.Axis.X) {
+                return state.setValue(AXIS, Direction.Axis.Z);
+            }
+            if (axis == Direction.Axis.Z) {
+                return state.setValue(AXIS, Direction.Axis.X);
+            }
+        }
+        return state;
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
+        builder.add(AXIS);
     }
 
     @Override
@@ -74,7 +118,7 @@ public final class TerritoryCoreBlock extends Block implements EntityBlock {
     }
 
     @Override
-    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock()) && level instanceof ServerLevel serverLevel) {
             if (level.getBlockEntity(pos) instanceof TerritoryCoreBlockEntity core) {
                 TerritoryCoreSavedData.get(serverLevel.getServer()).unregister(core.getCoreId());
