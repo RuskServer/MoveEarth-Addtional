@@ -25,5 +25,16 @@
   "moveearth_addtional.ponder.territory_core.text_3": "A Create rotational network can be connected directly along the Core's axis",
   "moveearth_addtional.ponder.territory_core.text_4": "While running normally, stress consumed by the Core becomes industrial power. At the default setting, 16 RPM supplies 512 SU",
   "moveearth_addtional.ponder.territory_core.text_5": "No rotation, overstressed networks, and creative power do not provide valid stress to the Core",
-  "moveearth_addtional.ponder.territory_core.text_6": "Active factories within 128 blocks are evaluated separately. The same stress is never counted twice"
+  "moveearth_addtional.ponder.territory_core.text_6": "Active factories within 128 blocks are evaluated separately. The same stress is never counted twice",
+  "key.categories.moveearth_addtional": "MoveEarth Additional",
+  "key.moveearth_addtional.territory_overlay": "Toggle Territory Influence Overlay",
+  "message.moveearth_addtional.territory_overlay.enabled": "Territory influence overlay: ON",
+  "message.moveearth_addtional.territory_overlay.disabled": "Territory influence overlay: OFF",
+  "overlay.moveearth_addtional.territory.title": "Territory Influence [F7]",
+  "overlay.moveearth_addtional.territory.loading": "Requesting data from server...",
+  "overlay.moveearth_addtional.territory.friendly": "Friendly territory",
+  "overlay.moveearth_addtional.territory.hostile": "Foreign territory",
+  "overlay.moveearth_addtional.territory.contested": "Contested territory",
+  "overlay.moveearth_addtional.territory.none": "No territory influence",
+  "overlay.moveearth_addtional.territory.details": "Influence %.1f / protection tier %s"
 }

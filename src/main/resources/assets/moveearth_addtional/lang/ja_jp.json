@@ -25,5 +25,16 @@
   "moveearth_addtional.ponder.territory_core.text_3": "コアの軸方向へ、Createの回転ネットワークを直接接続できます",
   "moveearth_addtional.ponder.territory_core.text_4": "正常稼働中はコア自身が消費した応力を工業力へ変換します。既定値では16 RPMで512 SUです",
   "moveearth_addtional.ponder.territory_core.text_5": "無回転・過負荷停止・クリエイティブ動力は、コアへの有効な応力供給になりません",
-  "moveearth_addtional.ponder.territory_core.text_6": "直接接続とは別に、コア周辺128ブロックの稼働中工場も評価されます。同じ応力は二重計上されません"
+  "moveearth_addtional.ponder.territory_core.text_6": "直接接続とは別に、コア周辺128ブロックの稼働中工場も評価されます。同じ応力は二重計上されません",
+  "key.categories.moveearth_addtional": "MoveEarth 追加要素",
+  "key.moveearth_addtional.territory_overlay": "領土影響オーバーレイ切替",
+  "message.moveearth_addtional.territory_overlay.enabled": "領土影響オーバーレイ: ON",
+  "message.moveearth_addtional.territory_overlay.disabled": "領土影響オーバーレイ: OFF",
+  "overlay.moveearth_addtional.territory.title": "領土影響 [F7]",
+  "overlay.moveearth_addtional.territory.loading": "サーバーから取得中...",
+  "overlay.moveearth_addtional.territory.friendly": "味方領土",
+  "overlay.moveearth_addtional.territory.hostile": "他領土",
+  "overlay.moveearth_addtional.territory.contested": "競合領域",
+  "overlay.moveearth_addtional.territory.none": "領土影響なし",
+  "overlay.moveearth_addtional.territory.details": "影響 %.1f / 保護段階 %s"
 }

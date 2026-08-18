@@ -4,6 +4,11 @@ import net.minecraft.client.Minecraft;
 
 public class ClientPacketHandler {
 
+    public static void handleTerritoryInfluenceOverlay(
+            com.ruskserver.moveearth_addtional.network.S2C_TerritoryInfluenceOverlayPacket packet) {
+        TerritoryInfluenceOverlay.update(packet);
+    }
+
     public static void handleOpenPvp(com.ruskserver.moveearth_addtional.network.S2C_OpenPvpScreenPacket packet) {
         Minecraft.getInstance().setScreen(new PvpScreen(packet.joined(), packet.active(), packet.hosting(), packet.points(), packet.tasks()));
     }
