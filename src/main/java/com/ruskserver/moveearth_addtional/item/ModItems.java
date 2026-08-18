@@ -17,6 +17,9 @@ public class ModItems {
     public static final DeferredHolder<Item, BlockItem> TERRITORY_CORE = ITEMS.register("territory_core",
             () -> new BlockItem(ModBlocks.TERRITORY_CORE.get(), new Item.Properties()));
 
+    public static final DeferredHolder<Item, BlockItem> TERRITORY_RAID = ITEMS.register("territory_raid",
+            () -> new BlockItem(ModBlocks.TERRITORY_RAID.get(), new Item.Properties()));
+
     public static final DeferredHolder<Item, Item> WEAPON_CRATE = ITEMS.register("weapon_crate",
             () -> new WeaponCrateItem(new Item.Properties().stacksTo(16).rarity(net.minecraft.world.item.Rarity.RARE)));
 }

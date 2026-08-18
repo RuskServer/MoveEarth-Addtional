@@ -25,4 +25,11 @@ public class ModBlocks {
                     .sound(SoundType.METAL)
                     .pushReaction(PushReaction.BLOCK)
             ));
+
+    public static final DeferredHolder<Block, TerritoryRaidBlock> TERRITORY_RAID = BLOCKS.register("territory_raid",
+            () -> new TerritoryRaidBlock(BlockBehaviour.Properties.of()
+                    .strength(6.0F, 12.0F)
+                    .requiresCorrectToolForDrops()
+                    .sound(SoundType.METAL)
+            ));
 }

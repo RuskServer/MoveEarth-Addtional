@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
-    "moveearth_addtional:territory_core"
+    "moveearth_addtional:territory_core",
+    "moveearth_addtional:territory_raid"
   ]
 }

@@ -93,6 +93,18 @@ class InfluenceEngineTest {
     }
 
     @Test
+    void overlappingEnemyRaidsRespectGlobalSuppressionCap() {
+        InfluenceSource source = source(OWNER_A, 0, 0, 0, 0.0D);
+        RaidEmitter first = raid(OWNER_B, 0, 0, 0, 20.0D, 90.0D);
+        RaidEmitter second = raid(OWNER_B, 0, 0, 0, 20.0D, 90.0D);
+
+        InfluenceResult result = engine.evaluate(position(0, 0, 0),
+                List.of(source), List.of(first, second), settings());
+
+        assertEquals(20.0D, result.leadingInfluence(), 0.0001D);
+    }
+
+    @Test
     void cylinderModeIgnoresVerticalDistance() {
         InfluenceSettings cylinder = new InfluenceSettings(
                 100.0D, 2.0D, 1.0D, 5.0D, 80.0D,
