@@ -123,6 +123,8 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     implementation fileTree(dir: 'lib', include: ['*.jar'])
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     
     // コンパイル時のみ参照し、ランタイムのモジュール解決競合を防ぐ
     compileOnly files('lib/discord-rpc-1.0.4.jar')
@@ -133,6 +135,10 @@ dependencies {
     // Sable is supplied by the target server; only its API is needed while compiling this mod.
     compileOnly 'dev.ryanhcode.sable:sable-common-1.21.1:2.0.3'
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
