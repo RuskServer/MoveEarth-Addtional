@@ -12,6 +12,10 @@ repositories {
     mavenLocal()
     mavenCentral()
     maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+    }
+    maven {
         name = "FDD Maven"
         url = "https://maven.firstdark.dev/releases"
     }
@@ -135,6 +139,7 @@ var extractCreateCompileDependencies = tasks.register('extractCreateCompileDepen
 dependencies {
     implementation fileTree(dir: 'lib', include: ['*.jar'])
     compileOnly fileTree(dir: createCompileDependencyDir, include: ['*.jar'])
+    implementation "maven.modrinth:jade:${jade_version}"
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     

@@ -36,5 +36,18 @@
   "overlay.moveearth_addtional.territory.hostile": "Foreign territory",
   "overlay.moveearth_addtional.territory.contested": "Contested territory",
   "overlay.moveearth_addtional.territory.none": "No territory influence",
-  "overlay.moveearth_addtional.territory.details": "Influence %.1f / protection tier %s"
+  "overlay.moveearth_addtional.territory.details": "Influence %.1f / protection tier %s",
+  "config.jade.plugin_moveearth_addtional.territory_core": "Territory Core status",
+  "jade.moveearth_addtional.territory_core.unclaimed": "Unclaimed",
+  "jade.moveearth_addtional.territory_core.owner": "Owner: %s",
+  "jade.moveearth_addtional.territory_core.active": "Core active",
+  "jade.moveearth_addtional.territory_core.inactive": "Core inactive",
+  "jade.moveearth_addtional.territory_core.stress": "Create stress: direct %s SU / nearby %s SU",
+  "jade.moveearth_addtional.territory_core.score": "Industrial score: Create %s / total %s",
+  "jade.moveearth_addtional.territory_core.influence": "Influence: leader %s / runner-up %s",
+  "jade.moveearth_addtional.territory_core.contested": "Contested territory",
+  "jade.moveearth_addtional.territory_core.controlled": "Controlled by this core's owner",
+  "jade.moveearth_addtional.territory_core.foreign_control": "Controlled by another territory",
+  "jade.moveearth_addtional.territory_core.no_control": "No controlling territory",
+  "jade.moveearth_addtional.territory_core.protection": "Protection tier: %s / 4"
 }

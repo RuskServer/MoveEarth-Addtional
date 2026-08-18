@@ -36,5 +36,18 @@
   "overlay.moveearth_addtional.territory.hostile": "他領土",
   "overlay.moveearth_addtional.territory.contested": "競合領域",
   "overlay.moveearth_addtional.territory.none": "領土影響なし",
-  "overlay.moveearth_addtional.territory.details": "影響 %.1f / 保護段階 %s"
+  "overlay.moveearth_addtional.territory.details": "影響 %.1f / 保護段階 %s",
+  "config.jade.plugin_moveearth_addtional.territory_core": "領土コアの状態",
+  "jade.moveearth_addtional.territory_core.unclaimed": "未占有",
+  "jade.moveearth_addtional.territory_core.owner": "所有者: %s",
+  "jade.moveearth_addtional.territory_core.active": "コア稼働中",
+  "jade.moveearth_addtional.territory_core.inactive": "コア停止中",
+  "jade.moveearth_addtional.territory_core.stress": "Create応力: 直結 %s SU / 周辺 %s SU",
+  "jade.moveearth_addtional.territory_core.score": "工業スコア: Create %s / 合計 %s",
+  "jade.moveearth_addtional.territory_core.influence": "影響度: 先頭 %s / 次点 %s",
+  "jade.moveearth_addtional.territory_core.contested": "競合領域",
+  "jade.moveearth_addtional.territory_core.controlled": "このコアの所有者が支配中",
+  "jade.moveearth_addtional.territory_core.foreign_control": "他領土が支配中",
+  "jade.moveearth_addtional.territory_core.no_control": "支配領土なし",
+  "jade.moveearth_addtional.territory_core.protection": "保護段階: %s / 4"
 }
