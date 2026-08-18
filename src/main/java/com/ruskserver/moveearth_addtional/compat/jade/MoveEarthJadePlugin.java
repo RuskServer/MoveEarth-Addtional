@@ -1,7 +1,9 @@
 package com.ruskserver.moveearth_addtional.compat.jade;
 
 import com.ruskserver.moveearth_addtional.block.TerritoryCoreBlock;
+import com.ruskserver.moveearth_addtional.block.TerritoryRaidBlock;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
+import com.ruskserver.moveearth_addtional.block.entity.TerritoryRaidBlockEntity;
 import net.minecraft.world.level.block.Block;
 import snownee.jade.api.IWailaClientRegistration;
 import snownee.jade.api.IWailaCommonRegistration;
@@ -20,6 +22,10 @@ public final class MoveEarthJadePlugin implements IWailaPlugin {
                 TerritoryCoreJadeProvider.INSTANCE,
                 TerritoryCoreBlockEntity.class
         );
+        registration.registerBlockDataProvider(
+                TerritoryRaidJadeProvider.INSTANCE,
+                TerritoryRaidBlockEntity.class
+        );
     }
 
     @Override
@@ -31,6 +37,10 @@ public final class MoveEarthJadePlugin implements IWailaPlugin {
         registration.registerBlockComponent(
                 TerritoryCoreJadeProvider.INSTANCE,
                 TerritoryCoreBlock.class
+        );
+        registration.registerBlockComponent(
+                TerritoryRaidJadeProvider.INSTANCE,
+                TerritoryRaidBlock.class
         );
     }
 }

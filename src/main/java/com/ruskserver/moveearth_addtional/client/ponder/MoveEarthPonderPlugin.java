@@ -11,6 +11,8 @@ import net.neoforged.api.distmarker.OnlyIn;
 public final class MoveEarthPonderPlugin implements PonderPlugin {
     private static final ResourceLocation TERRITORY_CORE =
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "territory_core");
+    private static final ResourceLocation TERRITORY_RAID =
+            ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "territory_raid");
     private static final ResourceLocation SHAFT_RELAY_STRUCTURE =
             ResourceLocation.fromNamespaceAndPath("create", "shaft/relay");
 
@@ -25,6 +27,11 @@ public final class MoveEarthPonderPlugin implements PonderPlugin {
                 TERRITORY_CORE,
                 SHAFT_RELAY_STRUCTURE,
                 TerritoryCoreScenes::usage
+        );
+        helper.addStoryBoard(
+                TERRITORY_RAID,
+                SHAFT_RELAY_STRUCTURE,
+                TerritoryRaidScenes::usage
         );
     }
 }
