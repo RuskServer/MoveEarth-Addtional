@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.compat.jade;
 import com.mojang.authlib.GameProfile;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.TerritoryCoreBlock;
+import com.ruskserver.moveearth_addtional.block.TerritoryRaidBlock;
 import com.ruskserver.moveearth_addtional.territory.domain.InfluenceResult;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryOwnerId;
 import com.ruskserver.moveearth_addtional.territory.service.TerritoryInfluenceService;
@@ -45,7 +46,7 @@ public enum TerritoryInfluenceJadeProvider implements IBlockComponentProvider,
 
     @Override
     public void appendServerData(CompoundTag data, BlockAccessor accessor) {
-        if (accessor.getBlock() instanceof TerritoryCoreBlock
+        if (isDedicatedTerritoryBlock(accessor)
                 || !(accessor.getLevel() instanceof ServerLevel level)) {
             return;
         }
@@ -68,12 +69,12 @@ public enum TerritoryInfluenceJadeProvider implements IBlockComponentProvider,
 
     @Override
     public boolean shouldRequestData(BlockAccessor accessor) {
-        return !(accessor.getBlock() instanceof TerritoryCoreBlock);
+        return !isDedicatedTerritoryBlock(accessor);
     }
 
     @Override
     public void appendTooltip(ITooltip tooltip, BlockAccessor accessor, IPluginConfig config) {
-        if (accessor.getBlock() instanceof TerritoryCoreBlock) {
+        if (isDedicatedTerritoryBlock(accessor)) {
             return;
         }
 
@@ -150,5 +151,10 @@ public enum TerritoryInfluenceJadeProvider implements IBlockComponentProvider,
 
     private static String decimal(double value) {
         return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    private static boolean isDedicatedTerritoryBlock(BlockAccessor accessor) {
+        return accessor.getBlock() instanceof TerritoryCoreBlock
+                || accessor.getBlock() instanceof TerritoryRaidBlock;
     }
 }
