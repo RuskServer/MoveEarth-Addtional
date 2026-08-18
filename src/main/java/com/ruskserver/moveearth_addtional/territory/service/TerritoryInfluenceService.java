@@ -1,7 +1,6 @@
 package com.ruskserver.moveearth_addtional.territory.service;
 
 import com.ruskserver.moveearth_addtional.territory.data.TerritoryCoreSavedData;
-import com.ruskserver.moveearth_addtional.territory.data.TerritoryPowerSavedData;
 import com.ruskserver.moveearth_addtional.territory.domain.DistanceModel;
 import com.ruskserver.moveearth_addtional.territory.domain.InfluenceEngine;
 import com.ruskserver.moveearth_addtional.territory.domain.InfluenceResult;
@@ -43,11 +42,11 @@ public final class TerritoryInfluenceService {
 
     public static InfluenceResult evaluate(ServerLevel level, BlockPos pos, Collection<RaidEmitter> raids) {
         String dimensionId = level.dimension().location().toString();
-        TerritoryPowerSavedData powerData = TerritoryPowerSavedData.get(level.getServer());
         List<InfluenceSource> sources = TerritoryCoreSavedData.get(level.getServer())
                 .coresIn(dimensionId)
                 .stream()
-                .map(core -> new InfluenceSource(core, powerData.industrialScore(core.ownerId())))
+                .map(core -> new InfluenceSource(core,
+                        TerritoryIndustrialPowerService.get(level.getServer(), core.ownerId()).totalScore()))
                 .toList();
         TerritoryPosition query = new TerritoryPosition(
                 dimensionId,

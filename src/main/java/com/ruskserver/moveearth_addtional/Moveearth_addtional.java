@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -13,6 +14,11 @@ public class Moveearth_addtional {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Moveearth_addtional(IEventBus modEventBus, ModContainer modContainer) {
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.territory.create.TerritoryCreateConfig.SPEC,
+                "moveearth-territory-create.toml");
+
         // Register Sounds
         ModSounds.SOUND_EVENTS.register(modEventBus);
 

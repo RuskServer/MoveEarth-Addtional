@@ -3,11 +3,13 @@ package com.ruskserver.moveearth_addtional.command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.territory.create.CreateStressScanner;
 import com.ruskserver.moveearth_addtional.territory.data.TerritoryCoreSavedData;
 import com.ruskserver.moveearth_addtional.territory.data.TerritoryPowerSavedData;
 import com.ruskserver.moveearth_addtional.territory.domain.InfluenceResult;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryCore;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryOwnerId;
+import com.ruskserver.moveearth_addtional.territory.service.TerritoryIndustrialPowerService;
 import com.ruskserver.moveearth_addtional.territory.service.TerritoryInfluenceService;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -15,6 +17,7 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
@@ -53,10 +56,13 @@ public final class TerritoryCommand {
                                                 .executes(context -> setPower(
                                                         context.getSource(),
                                                         EntityArgument.getPlayer(context, "player"),
-                                                        DoubleArgumentType.getDouble(context, "value"))))))));
+                                                        DoubleArgumentType.getDouble(context, "value"))))))
+                        .then(Commands.literal("refresh")
+                                .executes(context -> refreshPower(context.getSource())))));
     }
 
-    private static int inspect(CommandSourceStack source) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+    private static int inspect(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
         InfluenceResult result = TerritoryInfluenceService.evaluate(player.serverLevel(), player.blockPosition());
         if (result.leadingOwner().isEmpty()) {
@@ -82,17 +88,32 @@ public final class TerritoryCommand {
 
     private static int getPower(CommandSourceStack source, ServerPlayer player) {
         TerritoryOwnerId ownerId = TerritoryOwnerId.of(player.getUUID());
-        double score = TerritoryPowerSavedData.get(source.getServer()).industrialScore(ownerId);
-        source.sendSuccess(() -> Component.literal(
-                player.getScoreboardName() + " の暫定工業力: " + score), false);
-        return (int) Math.min(Integer.MAX_VALUE, Math.floor(score));
+        TerritoryIndustrialPowerService.Breakdown power =
+                TerritoryIndustrialPowerService.get(source.getServer(), ownerId);
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+                "%s の工業力: 合計=%.2f, Create=%.2f, 手動補正=%.2f, "
+                        + "使用応力=%.1f SU, 発電容量=%.1f SU, 発電源=%d, ネットワーク=%d",
+                player.getScoreboardName(), power.totalScore(), power.create().industrialScore(),
+                power.manualAdjustment(), power.create().usedStress(), power.create().generatedCapacity(),
+                power.create().sourceCount(), power.create().networkCount())), false);
+        return (int) Math.min(Integer.MAX_VALUE, Math.floor(power.totalScore()));
     }
 
     private static int setPower(CommandSourceStack source, ServerPlayer player, double score) {
         TerritoryPowerSavedData.get(source.getServer())
                 .setIndustrialScore(TerritoryOwnerId.of(player.getUUID()), score);
         source.sendSuccess(() -> Component.literal(
-                player.getScoreboardName() + " の暫定工業力を " + score + " に設定しました。"), true);
+                player.getScoreboardName() + " の工業力手動補正を " + score + " に設定しました。"), true);
+        return 1;
+    }
+
+    private static int refreshPower(CommandSourceStack source) {
+        if (!ModList.get().isLoaded("create")) {
+            source.sendFailure(Component.literal("Createが導入されていないため応力を取得できません。"));
+            return 0;
+        }
+        CreateStressScanner.refresh(source.getServer());
+        source.sendSuccess(() -> Component.literal("Create応力スナップショットを更新しました。"), false);
         return 1;
     }
 
