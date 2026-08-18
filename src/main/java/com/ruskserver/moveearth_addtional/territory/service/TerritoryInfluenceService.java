@@ -9,6 +9,8 @@ import com.ruskserver.moveearth_addtional.territory.domain.InfluenceSource;
 import com.ruskserver.moveearth_addtional.territory.domain.ProtectionAction;
 import com.ruskserver.moveearth_addtional.territory.domain.RaidEmitter;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryPosition;
+import com.ruskserver.moveearth_addtional.territory.raid.TerritoryRaidRegistry;
+import com.ruskserver.moveearth_addtional.territory.raid.SableRaidLocator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
@@ -37,7 +39,8 @@ public final class TerritoryInfluenceService {
     }
 
     public static InfluenceResult evaluate(ServerLevel level, BlockPos pos) {
-        return evaluate(level, pos, List.of());
+        return evaluate(level, pos, TerritoryRaidRegistry.activeEmitters(
+                level.getServer(), level.getGameTime()));
     }
 
     public static InfluenceResult evaluate(ServerLevel level, BlockPos pos, Collection<RaidEmitter> raids) {
@@ -48,11 +51,12 @@ public final class TerritoryInfluenceService {
                 .map(core -> new InfluenceSource(core,
                         TerritoryIndustrialPowerService.get(level.getServer(), core.ownerId()).totalScore()))
                 .toList();
+        var worldPosition = SableRaidLocator.projectToWorld(level, pos);
         TerritoryPosition query = new TerritoryPosition(
                 dimensionId,
-                pos.getX() + 0.5D,
-                pos.getY() + 0.5D,
-                pos.getZ() + 0.5D
+                worldPosition.x,
+                worldPosition.y,
+                worldPosition.z
         );
         return ENGINE.evaluate(query, sources, raids, SETTINGS);
     }

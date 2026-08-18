@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "moveearth_addtional:block/territory_raid"
+    },
+    "axis=y": {
+      "model": "moveearth_addtional:block/territory_raid"
+    },
+    "axis=z": {
+      "model": "moveearth_addtional:block/territory_raid"
+    }
+  }
+}

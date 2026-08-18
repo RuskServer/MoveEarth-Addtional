@@ -18,6 +18,10 @@ public class Moveearth_addtional {
                 ModConfig.Type.SERVER,
                 com.ruskserver.moveearth_addtional.territory.create.TerritoryCreateConfig.SPEC,
                 "moveearth-territory-create.toml");
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.territory.raid.TerritoryRaidConfig.SPEC,
+                "moveearth-territory-raid.toml");
 
         // Register Sounds
         ModSounds.SOUND_EVENTS.register(modEventBus);

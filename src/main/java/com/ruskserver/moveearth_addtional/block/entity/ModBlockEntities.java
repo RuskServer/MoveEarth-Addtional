@@ -15,4 +15,7 @@ public class ModBlockEntities {
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TerritoryCoreBlockEntity>> TERRITORY_CORE = BLOCK_ENTITIES.register("territory_core",
             () -> BlockEntityType.Builder.of(TerritoryCoreBlockEntity::new, ModBlocks.TERRITORY_CORE.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TerritoryRaidBlockEntity>> TERRITORY_RAID = BLOCK_ENTITIES.register("territory_raid",
+            () -> BlockEntityType.Builder.of(TerritoryRaidBlockEntity::new, ModBlocks.TERRITORY_RAID.get()).build(null));
 }

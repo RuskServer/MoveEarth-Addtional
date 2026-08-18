@@ -56,5 +56,9 @@
   "jade.moveearth_addtional.territory_influence.foreign": "Territory: %s (foreign)",
   "jade.moveearth_addtional.territory_influence.contested": "Territory: %s leads (contested)",
   "jade.moveearth_addtional.territory_influence.uncontrolled": "Territory: %s leads (uncontrolled)",
-  "jade.moveearth_addtional.territory_influence.details": "Influence %s / runner-up %s · protection %s / 4"
+  "jade.moveearth_addtional.territory_influence.details": "Influence %s / runner-up %s · protection %s / 4",
+  "block.moveearth_addtional.territory_raid": "Mobile Territory Raid Core",
+  "message.moveearth_addtional.territory_raid.armed": "Mobile raid core armed.",
+  "message.moveearth_addtional.territory_raid.disarmed": "Mobile raid core disarmed.",
+  "message.moveearth_addtional.territory_raid.not_member": "Only members of %s's territory may operate this raid core."
 }

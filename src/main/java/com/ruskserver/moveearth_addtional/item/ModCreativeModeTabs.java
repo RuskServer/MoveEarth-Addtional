@@ -19,6 +19,7 @@ public class ModCreativeModeTabs {
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.PLAYER_DETECTOR.get());
                         output.accept(ModItems.TERRITORY_CORE.get());
+                        output.accept(ModItems.TERRITORY_RAID.get());
                     })
                     .build());
 }
