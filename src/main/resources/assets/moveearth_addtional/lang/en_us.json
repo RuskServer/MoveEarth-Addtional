@@ -17,5 +17,6 @@
   "block.moveearth_addtional.territory_core": "Territory Protection Core",
   "message.moveearth_addtional.territory_core.claimed": "This territory core is now yours.",
   "message.moveearth_addtional.territory_core.member": "You are a member of %s's territory.",
-  "message.moveearth_addtional.territory_core.owner": "This territory belongs to %s."
+  "message.moveearth_addtional.territory_core.owner": "This territory belongs to %s.",
+  "message.moveearth_addtional.territory.protected": "That action is blocked by territory protection."
 }

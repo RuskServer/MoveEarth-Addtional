@@ -17,5 +17,6 @@
   "block.moveearth_addtional.territory_core": "領土保護ブロック",
   "message.moveearth_addtional.territory_core.claimed": "この領土保護ブロックの所有者になりました。",
   "message.moveearth_addtional.territory_core.member": "%sの領土メンバーです。",
-  "message.moveearth_addtional.territory_core.owner": "この領土は%sが所有しています。"
+  "message.moveearth_addtional.territory_core.owner": "この領土は%sが所有しています。",
+  "message.moveearth_addtional.territory.protected": "領土保護により、その操作は制限されています。"
 }
