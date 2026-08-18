@@ -4,16 +4,17 @@ import com.ruskserver.moveearth_addtional.territory.data.TerritoryCoreSavedData;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryCore;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryOwnerId;
 import com.ruskserver.moveearth_addtional.territory.domain.TerritoryPosition;
+import com.ruskserver.moveearth_addtional.territory.create.TerritoryCreateConfig;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.UUID;
 
-public final class TerritoryCoreBlockEntity extends BlockEntity {
+public final class TerritoryCoreBlockEntity extends KineticBlockEntity {
     private UUID coreId = UUID.randomUUID();
     private UUID ownerUUID;
     private String ownerName = "";
@@ -37,6 +38,13 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
 
     public boolean isActive() {
         return active;
+    }
+
+    @Override
+    public float calculateStressApplied() {
+        float impact = TerritoryCreateConfig.DIRECT_CORE_STRESS_IMPACT.get().floatValue();
+        lastStressApplied = impact;
+        return impact;
     }
 
     public void setOwner(UUID ownerUUID, String ownerName) {
@@ -79,8 +87,8 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
     }
 
     @Override
-    protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
+    protected void read(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
+        super.read(tag, registries, clientPacket);
         if (tag.hasUUID("CoreId")) {
             coreId = tag.getUUID("CoreId");
         }
@@ -94,8 +102,8 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
+    protected void write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
+        super.write(tag, registries, clientPacket);
         tag.putUUID("CoreId", coreId);
         if (ownerUUID != null) {
             tag.putUUID("OwnerUUID", ownerUUID);

@@ -92,9 +92,10 @@ public final class TerritoryCommand {
                 TerritoryIndustrialPowerService.get(source.getServer(), ownerId);
         source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
                 "%s の工業力: 合計=%.2f, Create=%.2f, 手動補正=%.2f, "
-                        + "使用応力=%.1f SU, 発電容量=%.1f SU, 発電源=%d, ネットワーク=%d",
+                        + "使用応力=%.1f SU（コア直接=%.1f SU）, 発電容量=%.1f SU, 発電源=%d, ネットワーク=%d",
                 player.getScoreboardName(), power.totalScore(), power.create().industrialScore(),
-                power.manualAdjustment(), power.create().usedStress(), power.create().generatedCapacity(),
+                power.manualAdjustment(), power.create().usedStress(), power.create().directCoreStress(),
+                power.create().generatedCapacity(),
                 power.create().sourceCount(), power.create().networkCount())), false);
         return (int) Math.min(Integer.MAX_VALUE, Math.floor(power.totalScore()));
     }
