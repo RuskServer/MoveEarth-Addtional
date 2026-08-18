@@ -27,9 +27,9 @@ public final class TerritoryInfluenceService {
             128.0D,
             DistanceModel.SPHERE_3D,
             Map.of(
-                    ProtectionAction.PLAYER_DAMAGE, 16.0D,
-                    ProtectionAction.BLOCK_MODIFICATION, 32.0D,
-                    ProtectionAction.CONTAINER_ACCESS, 48.0D,
+                    ProtectionAction.CONTAINER_ACCESS, 16.0D,
+                    ProtectionAction.PLAYER_DAMAGE, 32.0D,
+                    ProtectionAction.BLOCK_MODIFICATION, 48.0D,
                     ProtectionAction.SABLE_DAMAGE, 64.0D
             )
     );
