@@ -5,6 +5,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.PushReaction;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -15,5 +16,13 @@ public class ModBlocks {
             () -> new PlayerDetectorBlock(BlockBehaviour.Properties.of()
                     .strength(3.0F, 3.0F)
                     .sound(SoundType.METAL)
+            ));
+
+    public static final DeferredHolder<Block, TerritoryCoreBlock> TERRITORY_CORE = BLOCKS.register("territory_core",
+            () -> new TerritoryCoreBlock(BlockBehaviour.Properties.of()
+                    .strength(8.0F, 1200.0F)
+                    .requiresCorrectToolForDrops()
+                    .sound(SoundType.METAL)
+                    .pushReaction(PushReaction.BLOCK)
             ));
 }

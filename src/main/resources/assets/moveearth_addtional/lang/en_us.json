@@ -13,5 +13,9 @@
   "screen.moveearth_addtional.stats.distance": "Distance",
   "screen.moveearth_addtional.stats.details": "Damage Dealt: %s   Taken: %s   Jumps: %s",
   "entity.moveearth_addtional.airship_raider": "Airship Raider"
-  ,"item.moveearth_addtional.weapon_crate": "Weapon Crate"
+  ,"item.moveearth_addtional.weapon_crate": "Weapon Crate",
+  "block.moveearth_addtional.territory_core": "Territory Protection Core",
+  "message.moveearth_addtional.territory_core.claimed": "This territory core is now yours.",
+  "message.moveearth_addtional.territory_core.member": "You are a member of %s's territory.",
+  "message.moveearth_addtional.territory_core.owner": "This territory belongs to %s."
 }
