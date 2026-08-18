@@ -10,7 +10,19 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("1.8-pvp3");
+        final PayloadRegistrar registrar = event.registrar("1.9-territory-overlay");
+
+        registrar.playToServer(
+                C2S_RequestTerritoryInfluenceOverlayPacket.TYPE,
+                C2S_RequestTerritoryInfluenceOverlayPacket.STREAM_CODEC,
+                C2S_RequestTerritoryInfluenceOverlayPacket::handle
+        );
+
+        registrar.playToClient(
+                S2C_TerritoryInfluenceOverlayPacket.TYPE,
+                S2C_TerritoryInfluenceOverlayPacket.STREAM_CODEC,
+                S2C_TerritoryInfluenceOverlayPacket::handle
+        );
 
         registrar.playToClient(
                 S2C_AnnouncementPacket.TYPE,
