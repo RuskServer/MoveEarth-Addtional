@@ -13,5 +13,18 @@
   "screen.moveearth_addtional.stats.distance": "移動距離",
   "screen.moveearth_addtional.stats.details": "与ダメージ: %s   被ダメージ: %s   ジャンプ: %s",
   "entity.moveearth_addtional.airship_raider": "飛行船襲撃兵"
-  ,"item.moveearth_addtional.weapon_crate": "武器箱"
+  ,"item.moveearth_addtional.weapon_crate": "武器箱",
+  "message.moveearth_addtional.starterkit.first_login": "初心者キットを支給しました。三八式歩兵銃の予備弾8発と食料16個入りです。",
+  "message.moveearth_addtional.starterkit.granted": "初心者キットを受け取りました。",
+  "message.moveearth_addtional.starterkit.already_received": "初心者キットはすでに受け取っています。",
+  "message.moveearth_addtional.starterkit.play_time_exceeded": "初心者キットはプレイ時間8時間未満のプレイヤーのみ受け取れます。",
+  "message.moveearth_addtional.starterkit.content_unavailable": "初心者キットを作成できません。CIBR GunPackの三八式歩兵銃が読み込まれているか確認してください。",
+  "message.moveearth_addtional.starterkit.admin_granted_player": "管理者から初心者キットが支給されました。",
+  "message.moveearth_addtional.starterkit.admin_granted": "%sに初心者キットを支給しました。",
+  "message.moveearth_addtional.starterkit.reset": "%sの初心者キット受取履歴をリセットしました。",
+  "message.moveearth_addtional.starterkit.status": "%s: プレイ時間 %s時間%s分 / 受取 %s / 対象 %s",
+  "message.moveearth_addtional.starterkit.status.received": "済み",
+  "message.moveearth_addtional.starterkit.status.not_received": "未受取",
+  "message.moveearth_addtional.starterkit.status.eligible": "対象",
+  "message.moveearth_addtional.starterkit.status.ineligible": "対象外"
 }
