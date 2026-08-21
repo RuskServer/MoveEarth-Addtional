@@ -14,7 +14,7 @@
   "screen.moveearth_addtional.stats.details": "Damage Dealt: %s   Taken: %s   Jumps: %s",
   "entity.moveearth_addtional.airship_raider": "Airship Raider"
   ,"item.moveearth_addtional.weapon_crate": "Weapon Crate",
-  "message.moveearth_addtional.starterkit.first_login": "You received a beginner kit. The Type 38 rifle comes with 8 reserve rounds.",
+  "message.moveearth_addtional.starterkit.first_login": "You received a beginner kit with 8 reserve rounds for the Type 38 rifle and 16 food items.",
   "message.moveearth_addtional.starterkit.granted": "You received your beginner kit.",
   "message.moveearth_addtional.starterkit.already_received": "You have already received your beginner kit.",
   "message.moveearth_addtional.starterkit.play_time_exceeded": "The beginner kit is only available below 8 hours of play time.",

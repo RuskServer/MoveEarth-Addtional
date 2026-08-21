@@ -19,6 +19,7 @@ import java.util.List;
 public final class BeginnerKitService {
     public static final int MAX_PLAY_TIME_TICKS = 8 * 60 * 60 * 20;
     public static final int RESERVE_AMMO_COUNT = 8;
+    public static final int FOOD_COUNT = 16;
 
     private static final String NBT_KEY_GRANTED = "MoveEarthBeginnerKitGranted";
     private static final ResourceLocation TYPE_38_ID =
@@ -94,7 +95,8 @@ public final class BeginnerKitService {
                 enchantedArmor(player, new ItemStack(Items.IRON_LEGGINGS), false),
                 enchantedArmor(player, new ItemStack(Items.IRON_BOOTS), true),
                 gun,
-                ammo
+                ammo,
+                new ItemStack(Items.COOKED_BEEF, FOOD_COUNT)
         );
     }
 
