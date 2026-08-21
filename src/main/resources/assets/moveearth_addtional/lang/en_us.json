@@ -13,5 +13,18 @@
   "screen.moveearth_addtional.stats.distance": "Distance",
   "screen.moveearth_addtional.stats.details": "Damage Dealt: %s   Taken: %s   Jumps: %s",
   "entity.moveearth_addtional.airship_raider": "Airship Raider"
-  ,"item.moveearth_addtional.weapon_crate": "Weapon Crate"
+  ,"item.moveearth_addtional.weapon_crate": "Weapon Crate",
+  "message.moveearth_addtional.starterkit.first_login": "You received a beginner kit. The Type 38 rifle comes with 8 reserve rounds.",
+  "message.moveearth_addtional.starterkit.granted": "You received your beginner kit.",
+  "message.moveearth_addtional.starterkit.already_received": "You have already received your beginner kit.",
+  "message.moveearth_addtional.starterkit.play_time_exceeded": "The beginner kit is only available below 8 hours of play time.",
+  "message.moveearth_addtional.starterkit.content_unavailable": "The beginner kit could not be created. Check that the CIBR GunPack Type 38 rifle is loaded.",
+  "message.moveearth_addtional.starterkit.admin_granted_player": "An administrator granted you a beginner kit.",
+  "message.moveearth_addtional.starterkit.admin_granted": "Granted a beginner kit to %s.",
+  "message.moveearth_addtional.starterkit.reset": "Reset beginner-kit claim history for %s.",
+  "message.moveearth_addtional.starterkit.status": "%s: play time %s h %s min / claim %s / eligibility %s",
+  "message.moveearth_addtional.starterkit.status.received": "received",
+  "message.moveearth_addtional.starterkit.status.not_received": "not received",
+  "message.moveearth_addtional.starterkit.status.eligible": "eligible",
+  "message.moveearth_addtional.starterkit.status.ineligible": "ineligible"
 }
