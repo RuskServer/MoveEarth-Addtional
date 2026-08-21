@@ -21,11 +21,13 @@ public final class BeginnerKitEvents {
 
         BeginnerKitService.GrantResult result = BeginnerKitService.grant(player, false, "first-login");
         if (result == BeginnerKitService.GrantResult.GRANTED) {
-            player.sendSystemMessage(Component.translatable(
-                    "message.moveearth_addtional.starterkit.first_login"));
+            player.sendSystemMessage(Component.translatableWithFallback(
+                    "message.moveearth_addtional.starterkit.first_login",
+                    "初心者キットを支給しました。三八式歩兵銃の予備弾8発と食料16個入りです。"));
         } else if (result == BeginnerKitService.GrantResult.CONTENT_UNAVAILABLE) {
-            player.sendSystemMessage(Component.translatable(
-                    "message.moveearth_addtional.starterkit.content_unavailable"));
+            player.sendSystemMessage(Component.translatableWithFallback(
+                    "message.moveearth_addtional.starterkit.content_unavailable",
+                    "初心者キットを作成できません。CIBR GunPackの三八式歩兵銃が読み込まれているか確認してください。"));
         }
     }
 }
