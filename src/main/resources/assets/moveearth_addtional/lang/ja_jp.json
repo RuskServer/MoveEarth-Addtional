@@ -26,5 +26,6 @@
   "message.moveearth_addtional.starterkit.status.received": "済み",
   "message.moveearth_addtional.starterkit.status.not_received": "未受取",
   "message.moveearth_addtional.starterkit.status.eligible": "対象",
-  "message.moveearth_addtional.starterkit.status.ineligible": "対象外"
+  "message.moveearth_addtional.starterkit.status.ineligible": "対象外",
+  "message.moveearth_addtional.pvp.launcher_forbidden": "ランチャー系武器はPvPへ持ち込めません。"
 }

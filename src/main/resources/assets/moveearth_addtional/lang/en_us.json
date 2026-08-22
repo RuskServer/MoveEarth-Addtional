@@ -26,5 +26,6 @@
   "message.moveearth_addtional.starterkit.status.received": "received",
   "message.moveearth_addtional.starterkit.status.not_received": "not received",
   "message.moveearth_addtional.starterkit.status.eligible": "eligible",
-  "message.moveearth_addtional.starterkit.status.ineligible": "ineligible"
+  "message.moveearth_addtional.starterkit.status.ineligible": "ineligible",
+  "message.moveearth_addtional.pvp.launcher_forbidden": "Launcher-class weapons cannot be brought into PvP."
 }

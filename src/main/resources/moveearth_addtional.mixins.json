@@ -4,7 +4,8 @@
   "package": "com.ruskserver.moveearth_addtional.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "StonecutterMenuMixin"
+    "StonecutterMenuMixin",
+    "PvpFloatingCheckMixin"
   ],
   "client": [],
   "injectors": {
