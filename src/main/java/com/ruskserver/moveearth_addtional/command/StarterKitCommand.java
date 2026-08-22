@@ -14,6 +14,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class StarterKitCommand {
+    private static final int PLAYER_PERMISSION_LEVEL = 0;
     private static final int ADMIN_PERMISSION_LEVEL = 2;
 
     private StarterKitCommand() {
@@ -26,6 +27,7 @@ public final class StarterKitCommand {
 
     private static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("starterkit")
+                .requires(source -> source.hasPermission(PLAYER_PERMISSION_LEVEL))
                 .executes(context -> claim(context.getSource().getPlayerOrException()))
                 .then(Commands.literal("status")
                         .executes(context -> status(
