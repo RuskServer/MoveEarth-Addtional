@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpTeamPacket;
+import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.TimelessAPI;
 import net.minecraft.core.BlockPos;
@@ -30,7 +31,6 @@ import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.Team;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -52,13 +52,18 @@ public final class PvpMatchManager {
     private static final int MIN_REWARD_TEAM_SIZE = 2;
     private static final int MIN_INFINITE_RESERVE_AMMO = 120;
     private static final int COMBAT_FOOD_LEVEL = 18;
-    private static final String LAUNCHER_GUN_TYPE = "rpg";
+    private static final List<GunPreset> GUN_PRESETS = List.of(
+            preset(0, "ra39", "sight_exp3", "laser_x2"),
+            preset(1, "ef_smg", "sight_rmrhd_ris", "laser_flx9"),
+            preset(2, "ef_sg", "sight_rmrhd_ris"),
+            preset(3, "nsr20", "scope_mk5hd", "laser_fl23l"),
+            preset(4, "g45", "sight_rmrhd", "laser_fl23")
+    );
 
     /** Includes queued and active players. Insertion order is used for deterministic balancing. */
     private final Map<UUID, PvpTeam> teams = new LinkedHashMap<>();
     private final Map<UUID, Integer> queuedSlots = new HashMap<>();
     private final Map<UUID, PvpPlayerSnapshot> snapshots = new HashMap<>();
-    private final Map<UUID, ItemStack> matchGuns = new HashMap<>();
     private final Map<UUID, RespawnState> respawns = new HashMap<>();
     private final Map<KillPair, Integer> rewardedKills = new HashMap<>();
     private PvpPhase phase = PvpPhase.IDLE;
@@ -91,26 +96,15 @@ public final class PvpMatchManager {
             return false;
         }
         if (hotbarSlot < 0 || hotbarSlot > 8) return false;
-        ItemStack gun = player.getInventory().getItem(hotbarSlot);
-        if (gun.isEmpty() || IGun.getIGunOrNull(gun) == null) {
-            player.sendSystemMessage(Component.literal("持ち込むTaCZ銃をホットバーから1本選んでください。"));
-            return false;
-        }
-        if (isLauncher(gun)) {
-            player.sendSystemMessage(launcherForbiddenMessage());
-            return false;
-        }
-
         if (isQueued(player)) {
-            queuedSlots.put(player.getUUID(), hotbarSlot);
-            player.sendSystemMessage(Component.literal("持ち込み銃の選択を更新しました。"));
+            player.sendSystemMessage(fixedPresetMessage());
             return true;
         }
         PvpTeam assigned = count(PvpTeam.RED, false) <= count(PvpTeam.BLUE, false) ? PvpTeam.RED : PvpTeam.BLUE;
         teams.put(player.getUUID(), assigned);
-        queuedSlots.put(player.getUUID(), hotbarSlot);
+        queuedSlots.put(player.getUUID(), 0);
         phase = PvpPhase.WAITING;
-        player.sendSystemMessage(Component.literal("PvPキューに参加しました。試合開始までは通常どおり行動できます。"));
+        player.sendSystemMessage(fixedPresetMessage());
         return true;
     }
 
@@ -120,7 +114,6 @@ public final class PvpMatchManager {
         teams.remove(id);
         queuedSlots.remove(id);
         respawns.remove(id);
-        matchGuns.remove(id);
         if (wasActive) restore(player);
         clearClientState(player);
 
@@ -141,34 +134,27 @@ public final class PvpMatchManager {
                 "場所設定が不足しています。redspawn / bluespawn / hill1 / hill2 を設定してください。");
 
         removeOfflineQueueMembers(server);
-        removeInvalidGunSelections(server);
+        String missingPreset = missingPresetContent();
+        if (missingPreset != null) {
+            return rejectStart(server, "FMIC PvPプリセットのデータが見つかりません: " + missingPreset);
+        }
         rebalanceTeams();
         if (teams.size() < 2 || count(PvpTeam.RED, false) == 0 || count(PvpTeam.BLUE, false) == 0) {
-            return rejectStart(server, "試合開始には有効な銃を選択したオンライン参加者が2人以上必要です。");
+            return rejectStart(server, "試合開始にはオンライン参加者が2人以上必要です。");
         }
 
         PvpSessionSavedData sessions = PvpSessionSavedData.get(server);
-        Map<UUID, ItemStack> startingGuns = new HashMap<>();
         for (ServerPlayer player : participants(server, false)) {
-            int slot = queuedSlots.getOrDefault(player.getUUID(), -1);
-            ItemStack selectedGun = slot >= 0 ? player.getInventory().getItem(slot) : ItemStack.EMPTY;
-            if (selectedGun.isEmpty() || IGun.getIGunOrNull(selectedGun) == null) continue;
-
             PvpPlayerSnapshot snapshot = new PvpPlayerSnapshot(player);
             snapshots.put(player.getUUID(), snapshot);
             sessions.put(player.getUUID(), snapshot);
-            startingGuns.put(player.getUUID(), selectedGun.copy());
         }
         // Persist both the original vanilla player data and our recovery copy before replacing any inventory.
         server.saveEverything(false, true, false);
 
         for (ServerPlayer player : participants(server, true)) {
-            ItemStack carriedGun = startingGuns.getOrDefault(player.getUUID(), ItemStack.EMPTY);
-            matchGuns.put(player.getUUID(), carriedGun.copy());
-
             player.closeContainer();
             player.getInventory().clearContent();
-            player.getInventory().setItem(0, carriedGun);
             player.getInventory().selected = 0;
             player.removeAllEffects();
             player.setGameMode(GameType.SURVIVAL);
@@ -338,7 +324,7 @@ public final class PvpMatchManager {
             player.setInvulnerable(false);
             player.removeAllEffects();
             resetVitals(player);
-            refillGun(player);
+            refillGuns(player);
             PvpArenaSavedData data = PvpArenaSavedData.get(server);
             BlockPos spawn = team(player) == PvpTeam.RED ? data.redSpawn() : data.blueSpawn();
             teleport(player, server.getLevel(ARENA), spawn);
@@ -379,7 +365,8 @@ public final class PvpMatchManager {
         player.setItemSlot(EquipmentSlot.LEGS, protectionFour(player, Items.IRON_LEGGINGS));
         player.setItemSlot(EquipmentSlot.FEET, protectionFour(player, Items.IRON_BOOTS));
         player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
-        refillGun(player);
+        installPresetHotbar(player);
+        refillGuns(player);
     }
 
     private ItemStack protectionFour(ServerPlayer player, Item item) {
@@ -408,31 +395,23 @@ public final class PvpMatchManager {
     }
 
     private void enforceLoadout(ServerPlayer player) {
-        ItemStack gunStack = ItemStack.EMPTY;
-        for (int slot = 0; slot < 36; slot++) {
-            ItemStack candidate = player.getInventory().getItem(slot);
-            if (!candidate.isEmpty() && IGun.getIGunOrNull(candidate) != null) {
-                gunStack = candidate;
-                break;
-            }
-        }
-        if (gunStack.isEmpty()) gunStack = matchGuns.getOrDefault(player.getUUID(), ItemStack.EMPTY).copy();
-
         // clearContent() also empties the armor list. Calling it every tick caused
         // every armor piece to be removed and re-equipped 20 times per second,
         // repeatedly playing the equip sound. Only correct changed main-inventory
         // slots and missing equipment instead.
-        if (!gunStack.isEmpty() && player.getInventory().getItem(0) != gunStack) {
-            player.getInventory().setItem(0, gunStack);
-        } else if (gunStack.isEmpty() && !player.getInventory().getItem(0).isEmpty()) {
-            player.getInventory().setItem(0, ItemStack.EMPTY);
+        for (GunPreset preset : GUN_PRESETS) {
+            ItemStack gunStack = player.getInventory().getItem(preset.slot());
+            if (!isPresetGun(gunStack, preset.gunId())) {
+                gunStack = createPresetGun(player, preset);
+                player.getInventory().setItem(preset.slot(), gunStack);
+            }
+            maintainInfiniteReserve(gunStack);
         }
-        for (int slot = 1; slot < 36; slot++) {
+        for (int slot = GUN_PRESETS.size(); slot < 36; slot++) {
             if (!player.getInventory().getItem(slot).isEmpty()) {
                 player.getInventory().setItem(slot, ItemStack.EMPTY);
             }
         }
-        if (player.getInventory().selected != 0) player.getInventory().selected = 0;
 
         ensureArmor(player, EquipmentSlot.HEAD, Items.IRON_HELMET);
         ensureArmor(player, EquipmentSlot.CHEST, Items.IRON_CHESTPLATE);
@@ -441,8 +420,6 @@ public final class PvpMatchManager {
         if (!player.getItemBySlot(EquipmentSlot.OFFHAND).isEmpty()) {
             player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
         }
-
-        maintainInfiniteReserve(player, gunStack);
     }
 
     private void ensureArmor(ServerPlayer player, EquipmentSlot slot, Item expected) {
@@ -455,37 +432,78 @@ public final class PvpMatchManager {
         return !stack.isEmpty() && stack.is(expected);
     }
 
-    private void refillGun(ServerPlayer player) {
-        ItemStack gunStack = player.getInventory().getItem(0);
-        IGun gun = IGun.getIGunOrNull(gunStack);
-        if (gun != null) {
+    private void installPresetHotbar(ServerPlayer player) {
+        for (GunPreset preset : GUN_PRESETS) {
+            player.getInventory().setItem(preset.slot(), createPresetGun(player, preset));
+        }
+    }
+
+    private void refillGuns(ServerPlayer player) {
+        for (GunPreset preset : GUN_PRESETS) {
+            ItemStack gunStack = player.getInventory().getItem(preset.slot());
+            IGun gun = IGun.getIGunOrNull(gunStack);
+            if (gun == null) continue;
             int magazineSize = magazineSize(gun, gunStack);
             gun.setCurrentAmmoCount(gunStack, magazineSize);
             gun.setBulletInBarrel(gunStack, true);
             int reserveAmmo = Math.max(MIN_INFINITE_RESERVE_AMMO, magazineSize * 4);
             gun.setMaxDummyAmmoAmount(gunStack, reserveAmmo);
             gun.setDummyAmmoAmount(gunStack, reserveAmmo);
-            matchGuns.put(player.getUUID(), gunStack.copy());
         }
     }
 
-    private void maintainInfiniteReserve(ServerPlayer player, ItemStack gunStack) {
+    private static void maintainInfiniteReserve(ItemStack gunStack) {
         IGun gun = IGun.getIGunOrNull(gunStack);
         if (gun == null) return;
 
         int reserveAmmo = Math.max(MIN_INFINITE_RESERVE_AMMO, magazineSize(gun, gunStack) * 4);
-        boolean changed = false;
         if (gun.getMaxDummyAmmoAmount(gunStack) != reserveAmmo) {
             gun.setMaxDummyAmmoAmount(gunStack, reserveAmmo);
-            changed = true;
         }
         if (gun.getDummyAmmoAmount(gunStack) < reserveAmmo) {
             gun.setDummyAmmoAmount(gunStack, reserveAmmo);
-            changed = true;
         }
-        if (changed) {
-            matchGuns.put(player.getUUID(), gunStack.copy());
+    }
+
+    private static ItemStack createPresetGun(ServerPlayer player, GunPreset preset) {
+        ItemStack gunStack = new ItemStack(com.tacz.guns.init.ModItems.MODERN_KINETIC_GUN.get());
+        IGun gun = IGun.getIGunOrNull(gunStack);
+        if (gun == null || TimelessAPI.getCommonGunIndex(preset.gunId()).isEmpty()) return ItemStack.EMPTY;
+        gun.setGunId(gunStack, preset.gunId());
+
+        for (ResourceLocation attachmentId : preset.attachments()) {
+            ItemStack attachmentStack = new ItemStack(com.tacz.guns.init.ModItems.ATTACHMENT.get());
+            IAttachment attachment = IAttachment.getIAttachmentOrNull(attachmentStack);
+            if (attachment == null) continue;
+            attachment.setAttachmentId(attachmentStack, attachmentId);
+            try {
+                if (gun.allowAttachment(gunStack, attachmentStack)) {
+                    gun.installAttachment(player.registryAccess(), gunStack, attachmentStack);
+                } else {
+                    Moveearth_addtional.LOGGER.warn("FMIC PvP preset rejected attachment {} for {}",
+                            attachmentId, preset.gunId());
+                }
+            } catch (RuntimeException exception) {
+                Moveearth_addtional.LOGGER.warn("Could not install FMIC PvP attachment {} on {}",
+                        attachmentId, preset.gunId(), exception);
+            }
         }
+        return gunStack;
+    }
+
+    private static boolean isPresetGun(ItemStack stack, ResourceLocation expectedId) {
+        IGun gun = IGun.getIGunOrNull(stack);
+        return gun != null && expectedId.equals(gun.getGunId(stack));
+    }
+
+    private static String missingPresetContent() {
+        for (GunPreset preset : GUN_PRESETS) {
+            if (TimelessAPI.getCommonGunIndex(preset.gunId()).isEmpty()) return preset.gunId().toString();
+            for (ResourceLocation attachment : preset.attachments()) {
+                if (TimelessAPI.getCommonAttachmentIndex(attachment).isEmpty()) return attachment.toString();
+            }
+        }
+        return null;
     }
 
     private static int magazineSize(IGun gun, ItemStack gunStack) {
@@ -584,33 +602,18 @@ public final class PvpMatchManager {
         queuedSlots.keySet().retainAll(teams.keySet());
     }
 
-    private void removeInvalidGunSelections(MinecraftServer server) {
-        for (ServerPlayer player : new ArrayList<>(participants(server, false))) {
-            int slot = queuedSlots.getOrDefault(player.getUUID(), -1);
-            ItemStack gun = slot >= 0 && slot < 9 ? player.getInventory().getItem(slot) : ItemStack.EMPTY;
-            if (gun.isEmpty() || IGun.getIGunOrNull(gun) == null) {
-                player.sendSystemMessage(Component.literal("選択したTaCZ銃が見つからないためPvPキューから外れました。"));
-                teams.remove(player.getUUID());
-                queuedSlots.remove(player.getUUID());
-            } else if (isLauncher(gun)) {
-                player.sendSystemMessage(launcherForbiddenMessage());
-                teams.remove(player.getUUID());
-                queuedSlots.remove(player.getUUID());
-            }
-        }
-    }
-
-    private static boolean isLauncher(ItemStack gunStack) {
-        IGun gun = IGun.getIGunOrNull(gunStack);
-        return gun != null && TimelessAPI.getCommonGunIndex(gun.getGunId(gunStack))
-                .map(index -> LAUNCHER_GUN_TYPE.equalsIgnoreCase(index.getType()))
-                .orElse(false);
-    }
-
-    private static Component launcherForbiddenMessage() {
+    private static Component fixedPresetMessage() {
         return Component.translatableWithFallback(
-                "message.moveearth_addtional.pvp.launcher_forbidden",
-                "ランチャー系武器はPvPへ持ち込めません。");
+                "message.moveearth_addtional.pvp.fixed_preset",
+                "PvPに参加しました。試合中はFMIC固定プリセットに置き換わります。");
+    }
+
+    private static GunPreset preset(int slot, String gun, String... attachments) {
+        return new GunPreset(slot, fmic(gun), java.util.Arrays.stream(attachments).map(PvpMatchManager::fmic).toList());
+    }
+
+    private static ResourceLocation fmic(String path) {
+        return ResourceLocation.fromNamespaceAndPath("fmic", path);
     }
 
     private void rebalanceTeams() {
@@ -676,7 +679,6 @@ public final class PvpMatchManager {
         teams.clear();
         queuedSlots.clear();
         snapshots.clear();
-        matchGuns.clear();
         respawns.clear();
         rewardedKills.clear();
         matchResultsRecorded = false;
@@ -698,4 +700,6 @@ public final class PvpMatchManager {
     }
 
     private record KillPair(UUID killer, UUID victim) {}
+
+    private record GunPreset(int slot, ResourceLocation gunId, List<ResourceLocation> attachments) {}
 }
