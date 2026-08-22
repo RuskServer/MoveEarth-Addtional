@@ -52,6 +52,7 @@ public final class PvpMatchManager {
     private static final int MIN_REWARD_TEAM_SIZE = 2;
     private static final int MIN_INFINITE_RESERVE_AMMO = 120;
     private static final int COMBAT_FOOD_LEVEL = 18;
+    private static final String LAUNCHER_GUN_TYPE = "rpg";
 
     /** Includes queued and active players. Insertion order is used for deterministic balancing. */
     private final Map<UUID, PvpTeam> teams = new LinkedHashMap<>();
@@ -93,6 +94,10 @@ public final class PvpMatchManager {
         ItemStack gun = player.getInventory().getItem(hotbarSlot);
         if (gun.isEmpty() || IGun.getIGunOrNull(gun) == null) {
             player.sendSystemMessage(Component.literal("持ち込むTaCZ銃をホットバーから1本選んでください。"));
+            return false;
+        }
+        if (isLauncher(gun)) {
+            player.sendSystemMessage(launcherForbiddenMessage());
             return false;
         }
 
@@ -587,8 +592,25 @@ public final class PvpMatchManager {
                 player.sendSystemMessage(Component.literal("選択したTaCZ銃が見つからないためPvPキューから外れました。"));
                 teams.remove(player.getUUID());
                 queuedSlots.remove(player.getUUID());
+            } else if (isLauncher(gun)) {
+                player.sendSystemMessage(launcherForbiddenMessage());
+                teams.remove(player.getUUID());
+                queuedSlots.remove(player.getUUID());
             }
         }
+    }
+
+    private static boolean isLauncher(ItemStack gunStack) {
+        IGun gun = IGun.getIGunOrNull(gunStack);
+        return gun != null && TimelessAPI.getCommonGunIndex(gun.getGunId(gunStack))
+                .map(index -> LAUNCHER_GUN_TYPE.equalsIgnoreCase(index.getType()))
+                .orElse(false);
+    }
+
+    private static Component launcherForbiddenMessage() {
+        return Component.translatableWithFallback(
+                "message.moveearth_addtional.pvp.launcher_forbidden",
+                "ランチャー系武器はPvPへ持ち込めません。");
     }
 
     private void rebalanceTeams() {
