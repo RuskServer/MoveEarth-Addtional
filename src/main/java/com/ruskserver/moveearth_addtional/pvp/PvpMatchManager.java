@@ -51,6 +51,7 @@ public final class PvpMatchManager {
     private static final int REWARD_KILL_COOLDOWN = 60 * 20;
     private static final int MIN_REWARD_TEAM_SIZE = 2;
     private static final int MIN_INFINITE_RESERVE_AMMO = 120;
+    private static final int COMBAT_FOOD_LEVEL = 18;
 
     /** Includes queued and active players. Insertion order is used for deterministic balancing. */
     private final Map<UUID, PvpTeam> teams = new LinkedHashMap<>();
@@ -201,9 +202,7 @@ public final class PvpMatchManager {
                 BlockPos spawn = team(player) == PvpTeam.RED ? data.redSpawn() : data.blueSpawn();
                 teleport(player, server.getLevel(ARENA), spawn);
             }
-            player.getFoodData().setFoodLevel(20);
-            player.getFoodData().setSaturation(20.0F);
-            player.getFoodData().setExhaustion(0.0F);
+            maintainCombatHunger(player);
             enforceLoadout(player);
         }
 
@@ -388,12 +387,19 @@ public final class PvpMatchManager {
     private static void resetVitals(ServerPlayer player) {
         player.setHealth(player.getMaxHealth());
         player.setAbsorptionAmount(0.0F);
-        player.getFoodData().setFoodLevel(20);
-        player.getFoodData().setSaturation(20.0F);
+        player.getFoodData().setFoodLevel(COMBAT_FOOD_LEVEL);
+        player.getFoodData().setSaturation(0.0F);
         player.getFoodData().setExhaustion(0.0F);
         player.clearFire();
         player.setAirSupply(player.getMaxAirSupply());
         player.fallDistance = 0.0F;
+    }
+
+    private static void maintainCombatHunger(ServerPlayer player) {
+        if (player.getFoodData().getFoodLevel() < COMBAT_FOOD_LEVEL) {
+            player.getFoodData().setFoodLevel(COMBAT_FOOD_LEVEL);
+        }
+        player.getFoodData().setSaturation(0.0F);
     }
 
     private void enforceLoadout(ServerPlayer player) {
