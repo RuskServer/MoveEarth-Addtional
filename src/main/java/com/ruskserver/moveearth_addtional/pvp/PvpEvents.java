@@ -123,6 +123,9 @@ public final class PvpEvents {
         if (!(event.getEntity() instanceof ServerPlayer victim)) return;
         PvpMatchManager manager = PvpMatchManager.INSTANCE;
         if (!manager.isActive(victim) || manager.phase() != PvpPhase.RUNNING) return;
+        if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
+            manager.recordDamage(attacker, victim, event.getNewDamage());
+        }
         if (event.getNewDamage() < victim.getHealth() + victim.getAbsorptionAmount()) return;
 
         event.setNewDamage(0.0F);

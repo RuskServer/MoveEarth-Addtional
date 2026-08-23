@@ -36,10 +36,12 @@ import net.minecraft.world.scores.Team;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.registries.DeferredHolder;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -66,6 +68,7 @@ public final class PvpMatchManager {
     private final Map<UUID, PvpPlayerSnapshot> snapshots = new HashMap<>();
     private final Map<UUID, RespawnState> respawns = new HashMap<>();
     private final Map<KillPair, Integer> rewardedKills = new HashMap<>();
+    private final Map<UUID, MatchStats> matchStats = new HashMap<>();
     private final Map<UUID, KillAnnouncementState> killAnnouncements = new HashMap<>();
     private final Map<UUID, UUID> lastKillerByVictim = new HashMap<>();
     private PvpPhase phase = PvpPhase.IDLE;
@@ -157,10 +160,12 @@ public final class PvpMatchManager {
         }
 
         PvpSessionSavedData sessions = PvpSessionSavedData.get(server);
+        matchStats.clear();
         for (ServerPlayer player : participants(server, false)) {
             PvpPlayerSnapshot snapshot = new PvpPlayerSnapshot(player);
             snapshots.put(player.getUUID(), snapshot);
             sessions.put(player.getUUID(), snapshot);
+            matchStats.put(player.getUUID(), new MatchStats());
         }
         // Persist both the original vanilla player data and our recovery copy before replacing any inventory.
         server.saveEverything(false, true, false);
@@ -286,7 +291,9 @@ public final class PvpMatchManager {
     public void eliminate(ServerPlayer victim, ServerPlayer killer) {
         if (phase != PvpPhase.RUNNING || !isActive(victim) || respawns.containsKey(victim.getUUID())) return;
         boolean validPlayerKill = killer != null && isActive(killer) && team(killer) != team(victim);
+        matchStats.computeIfAbsent(victim.getUUID(), ignored -> new MatchStats()).deaths++;
         if (validPlayerKill) {
+            matchStats.computeIfAbsent(killer.getUUID(), ignored -> new MatchStats()).kills++;
             if (canRewardKill(killer, victim)) {
                 PvpRewardData.get(victim.server).recordKill(killer, killer.distanceToSqr(victim) <= 64.0D);
             }
@@ -317,6 +324,16 @@ public final class PvpMatchManager {
                 new S2C_PvpKillcamPacket(killerId, killerName, targetX, targetY, targetZ, RESPAWN_TICKS));
         Component notice = Component.literal(victim.getGameProfile().getName() + " は " + killerName + " に倒された");
         broadcastToParticipants(victim.server, notice);
+    }
+
+    public void recordDamage(ServerPlayer attacker, ServerPlayer victim, float damage) {
+        if (phase != PvpPhase.RUNNING || !isActive(attacker) || !isActive(victim)
+                || respawns.containsKey(victim.getUUID()) || team(attacker) == team(victim)
+                || !Float.isFinite(damage) || damage <= 0.0F) return;
+        float remainingHealth = Math.max(0.0F, victim.getHealth() + victim.getAbsorptionAmount());
+        float appliedDamage = Math.min(damage, remainingHealth);
+        if (appliedDamage <= 0.0F) return;
+        matchStats.computeIfAbsent(attacker.getUUID(), ignored -> new MatchStats()).damage += appliedDamage;
     }
 
     public void recoverIfNeeded(ServerPlayer player) {
@@ -373,6 +390,7 @@ public final class PvpMatchManager {
         });
         syncHud(server, message);
         broadcastToParticipants(server, Component.literal(message));
+        sendMatchSummary(server);
     }
 
     private String winnerText() {
@@ -449,6 +467,49 @@ public final class PvpMatchManager {
                         ? ModSounds.WARLORD_ROUND_WINNER
                         : ModSounds.WARLORD_MISSION_FAILED);
             }
+        }
+    }
+
+    private void sendMatchSummary(MinecraftServer server) {
+        List<MatchResultEntry> ranking = participants(server, true).stream()
+                .map(player -> new MatchResultEntry(player.getGameProfile().getName(), team(player),
+                        matchStats.getOrDefault(player.getUUID(), new MatchStats())))
+                .sorted(Comparator.comparingInt((MatchResultEntry entry) -> entry.stats.kills).reversed()
+                        .thenComparing(Comparator.comparingDouble(
+                                (MatchResultEntry entry) -> entry.stats.damage).reversed())
+                        .thenComparingInt(entry -> entry.stats.deaths)
+                        .thenComparing(entry -> entry.name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        if (ranking.isEmpty()) return;
+
+        Component separator = Component.literal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                .withStyle(ChatFormatting.DARK_GRAY);
+        Component header = Component.literal("  KOTH MATCH RESULT  ")
+                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        Component score = Component.literal("RED  " + redScore).withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
+                .append(Component.literal("   -   ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(blueScore + "  BLUE").withStyle(ChatFormatting.BLUE, ChatFormatting.BOLD));
+
+        for (ServerPlayer viewer : participants(server, true)) {
+            viewer.sendSystemMessage(separator);
+            viewer.sendSystemMessage(header);
+            viewer.sendSystemMessage(score);
+            for (int index = 0; index < ranking.size(); index++) {
+                MatchResultEntry entry = ranking.get(index);
+                ChatFormatting rankColor = index == 0 ? ChatFormatting.GOLD
+                        : index == 1 ? ChatFormatting.WHITE
+                        : index == 2 ? ChatFormatting.YELLOW : ChatFormatting.GRAY;
+                ChatFormatting teamColor = entry.team == PvpTeam.RED ? ChatFormatting.RED : ChatFormatting.BLUE;
+                String damage = String.format(Locale.ROOT, "%.1f", entry.stats.damage);
+                Component row = Component.literal("#" + (index + 1) + " ").withStyle(rankColor, ChatFormatting.BOLD)
+                        .append(Component.literal("[" + entry.team.name() + "] ").withStyle(teamColor))
+                        .append(Component.literal(entry.name).withStyle(ChatFormatting.WHITE))
+                        .append(Component.literal("  キル " + entry.stats.kills
+                                + " / デス " + entry.stats.deaths + " / DMG " + damage)
+                                .withStyle(ChatFormatting.GRAY));
+                viewer.sendSystemMessage(row);
+            }
+            viewer.sendSystemMessage(separator);
         }
     }
 
@@ -808,6 +869,7 @@ public final class PvpMatchManager {
         snapshots.clear();
         respawns.clear();
         rewardedKills.clear();
+        matchStats.clear();
         matchResultsRecorded = false;
         resetAnnouncerState();
     }
@@ -840,5 +902,13 @@ public final class PvpMatchManager {
     }
 
     private record KillPair(UUID killer, UUID victim) {}
+
+    private static final class MatchStats {
+        int kills;
+        int deaths;
+        float damage;
+    }
+
+    private record MatchResultEntry(String name, PvpTeam team, MatchStats stats) {}
 
 }
