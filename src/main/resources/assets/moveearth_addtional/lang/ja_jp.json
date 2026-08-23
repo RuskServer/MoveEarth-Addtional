@@ -57,5 +57,11 @@
   "screen.moveearth_addtional.pvp.loadout.breacher.range": "至近",
   "screen.moveearth_addtional.pvp.loadout.marksman": "MARKSMAN / 選抜射手",
   "screen.moveearth_addtional.pvp.loadout.marksman.description": "遠距離から精密射撃する高威力構成。",
-  "screen.moveearth_addtional.pvp.loadout.marksman.range": "遠"
+  "screen.moveearth_addtional.pvp.loadout.marksman.range": "遠",
+  "overlay.moveearth_addtional.pvp.victory": "VICTORY",
+  "overlay.moveearth_addtional.pvp.victory.detail": "作戦成功 — 戦場を制圧しました",
+  "overlay.moveearth_addtional.pvp.defeat": "DEFEAT",
+  "overlay.moveearth_addtional.pvp.defeat.detail": "作戦失敗 — 次の戦闘に備えてください",
+  "overlay.moveearth_addtional.pvp.draw": "DRAW",
+  "overlay.moveearth_addtional.pvp.draw.detail": "勝者なし — 戦闘終了"
 }

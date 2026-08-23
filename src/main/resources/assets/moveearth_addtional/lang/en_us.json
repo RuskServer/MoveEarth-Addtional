@@ -57,5 +57,11 @@
   "screen.moveearth_addtional.pvp.loadout.breacher.range": "Point blank",
   "screen.moveearth_addtional.pvp.loadout.marksman": "MARKSMAN",
   "screen.moveearth_addtional.pvp.loadout.marksman.description": "A high-power precision loadout for long-range control.",
-  "screen.moveearth_addtional.pvp.loadout.marksman.range": "Long"
+  "screen.moveearth_addtional.pvp.loadout.marksman.range": "Long",
+  "overlay.moveearth_addtional.pvp.victory": "VICTORY",
+  "overlay.moveearth_addtional.pvp.victory.detail": "MISSION ACCOMPLISHED — AREA SECURED",
+  "overlay.moveearth_addtional.pvp.defeat": "DEFEAT",
+  "overlay.moveearth_addtional.pvp.defeat.detail": "MISSION FAILED — PREPARE FOR THE NEXT ENGAGEMENT",
+  "overlay.moveearth_addtional.pvp.draw": "DRAW",
+  "overlay.moveearth_addtional.pvp.draw.detail": "NO VICTOR — ENGAGEMENT ENDED"
 }
