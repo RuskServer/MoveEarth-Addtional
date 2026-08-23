@@ -1,3 +1,49 @@
+# v1.9
+
+## Beginner Protection
+
+- Added a one-time beginner kit for players with less than eight hours of play time. It is granted automatically on the first login and can also be claimed through `/starterkit`.
+- The kit contains a loaded CIBR Type 38 rifle, eight reserve 6.5x50 rounds, sixteen cooked beef, and a full set of enchanted iron armor.
+- Kit armor has Protection II and Unbreaking I; the boots also have Feather Falling II.
+- Persisted claim status prevents repeated claims. Administrators can inspect players, grant a kit regardless of play time or prior claims, and reset claim status through permission-level-2 command subcommands.
+- Explicitly assigned permission level 0 to player kit claims and permission level 2 to administrative kit operations.
+
+## PvP Loadouts and Combat Balance
+
+- Replaced hotbar-based weapon selection with a server-authoritative loadout selector available through `/pvp`.
+- Added four FMIC loadouts: Assault with RA39, Rusher with EF_SMG, Breacher with EF_SG, and Marksman with NSR20. Every loadout also includes a customized G45 sidearm.
+- Added loadout cards showing each role, primary and secondary weapon, attachments, intended range, and estimated body-shot TTK.
+- Players can change loadouts while queued. Loadouts are locked after the match starts, and forged or unknown preset IDs are rejected by the server.
+- Fixed sights and lasers are installed on issued guns and locked against removal. Magazine extensions are not used, preserving each weapon's standard magazine capacity.
+- Match equipment is now limited to the selected primary and G45 sidearm instead of issuing every FMIC preset weapon.
+- Added PvP-only FMIC damage scaling for Protection IV iron armor, a fixed 1.5x headshot multiplier, and no armor bypass. Target body-shot TTK is approximately 200-300 ms, with NSR20 at approximately 333 ms due to its native 360 RPM cadence.
+- Preserved native distance falloff while applying the PvP damage scaling.
+- Reduced passive regeneration by maintaining hunger at 18 with zero saturation instead of continuously restoring a full hunger and saturation bar.
+- PvP loadouts contain no launcher-class weapons. Active PvP players are also protected from the vanilla floating-too-long kick.
+
+## Team Identification
+
+- Added a green `ALLY` name marker and glowing outline to teammates during active PvP matches.
+- Enemy name tags remain hidden, making ally and enemy identification explicit without revealing enemy positions through markers.
+
+## Announcer and Match Presentation
+
+- Added WARLORD announcer cues for match start, first blood, multikills, kill streaks, revenge kills, objective control, final stand, victory, defeat, and match end.
+- Added three-second full-screen result effects for `VICTORY`, `DEFEAT`, and `DRAW`, including the final RED and BLUE scores.
+- Match-result effects replace a remaining final-kill killcam and are cleared immediately if the player exits the match.
+- WARLORD audio is provided by VoiceBosch under CC BY-SA 4.0. Full attribution is included in `META-INF/NOTICE-WARLORD-AUDIO.txt`.
+
+## Match Statistics
+
+- Added a chat result table at the end of every PvP match showing team, kill rank, kills, deaths, and damage dealt for each remaining participant.
+- Rankings are sorted by kills, then damage dealt, then fewer deaths, and finally player name.
+- Damage statistics use damage after armor, enchantment, and other reductions. Friendly damage, environmental damage, and overkill beyond the target's remaining health are excluded from damage dealt.
+
+## Server Administration and Compatibility
+
+- Added `/notice <message>` for permission-level-2 command sources. It displays a custom message and notification sound to every online player and accepts up to 256 characters.
+- Updated the PvP network protocol to `1.9-pvp1`. v1.9 servers and clients must use the same v1.9 JAR; v1.8 clients are not network-compatible.
+
 # v1.8
 
 ## Player Detector
