@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("1.8-pvp5");
+        final PayloadRegistrar registrar = event.registrar("1.9-pvp1");
 
         registrar.playToClient(
                 S2C_AnnouncementPacket.TYPE,
