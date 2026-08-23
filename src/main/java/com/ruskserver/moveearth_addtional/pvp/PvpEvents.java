@@ -1,6 +1,8 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
+import com.tacz.guns.api.event.common.GunDamageSourcePart;
 import com.tacz.guns.api.event.server.AmmoHitBlockEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -76,6 +78,27 @@ public final class PvpEvents {
             PENDING_BLOCK_RESTORES.clear();
         }
         PvpMatchManager.INSTANCE.tick(event.getServer());
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void balancePvpGunDamage(EntityHurtByGunEvent.Pre event) {
+        if (!(event.getAttacker() instanceof ServerPlayer attacker)
+                || !(event.getHurtEntity() instanceof ServerPlayer victim)) return;
+
+        PvpMatchManager manager = PvpMatchManager.INSTANCE;
+        if (manager.phase() != PvpPhase.RUNNING
+                || !manager.isActive(attacker)
+                || !manager.isActive(victim)
+                || manager.team(attacker) == manager.team(victim)) return;
+
+        Float multiplier = PvpWeaponBalance.damageMultiplier(event.getGunId());
+        if (multiplier == null) return;
+        event.setBaseAmount(event.getBaseAmount() * multiplier);
+        event.setHeadshotMultiplier(event.isHeadShot() ? PvpWeaponBalance.HEADSHOT_MULTIPLIER : 1.0F);
+        var armoredSource = event.getDamageSource(GunDamageSourcePart.NON_ARMOR_PIERCING);
+        if (armoredSource != null) {
+            event.setDamageSource(GunDamageSourcePart.ARMOR_PIERCING, armoredSource);
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
