@@ -58,17 +58,9 @@ public final class PvpMatchManager {
     private static final int COMBAT_FOOD_LEVEL = 18;
     private static final int MULTI_KILL_WINDOW_TICKS = 8 * 20;
     private static final int FINAL_STAND_TICKS = 60 * 20;
-    private static final List<GunPreset> GUN_PRESETS = List.of(
-            preset(0, "ra39", "sight_exp3", "laser_x2"),
-            preset(1, "ef_smg", "sight_rmrhd_ris", "laser_flx9"),
-            preset(2, "ef_sg", "sight_rmrhd_ris"),
-            preset(3, "nsr20", "scope_mk5hd", "laser_fl23l"),
-            preset(4, "g45", "sight_rmrhd", "laser_fl23")
-    );
-
     /** Includes queued and active players. Insertion order is used for deterministic balancing. */
     private final Map<UUID, PvpTeam> teams = new LinkedHashMap<>();
-    private final Map<UUID, Integer> queuedSlots = new HashMap<>();
+    private final Map<UUID, PvpLoadoutPreset> loadoutSelections = new HashMap<>();
     private final Map<UUID, PvpPlayerSnapshot> snapshots = new HashMap<>();
     private final Map<UUID, RespawnState> respawns = new HashMap<>();
     private final Map<KillPair, Integer> rewardedKills = new HashMap<>();
@@ -87,16 +79,19 @@ public final class PvpMatchManager {
     private PvpMatchManager() {}
 
     public boolean isParticipant(ServerPlayer player) { return teams.containsKey(player.getUUID()); }
-    public boolean isQueued(ServerPlayer player) { return queuedSlots.containsKey(player.getUUID()); }
+    public boolean isQueued(ServerPlayer player) { return isParticipant(player) && !isActive(player); }
     public boolean isActive(ServerPlayer player) { return snapshots.containsKey(player.getUUID()); }
     public PvpTeam team(ServerPlayer player) { return teams.get(player.getUUID()); }
+    public PvpLoadoutPreset selectedLoadout(ServerPlayer player) {
+        return loadoutSelections.getOrDefault(player.getUUID(), PvpLoadoutPreset.defaultPreset());
+    }
     public PvpPhase phase() { return phase; }
     public int redScore() { return redScore; }
     public int blueScore() { return blueScore; }
     public int ticksLeft() { return ticksLeft; }
 
     /** Queue registration only. The player's inventory and position are untouched until start(). */
-    public boolean join(ServerPlayer player, int hotbarSlot) {
+    public boolean join(ServerPlayer player, String loadoutId) {
         PvpArenaSavedData arena = PvpArenaSavedData.get(player.server);
         if (!arena.hosting()) {
             player.sendSystemMessage(Component.literal("現在PvPイベントは開催されていません。"));
@@ -106,16 +101,21 @@ public final class PvpMatchManager {
             player.sendSystemMessage(Component.literal("試合進行中はキューへ参加できません。"));
             return false;
         }
-        if (hotbarSlot < 0 || hotbarSlot > 8) return false;
+        PvpLoadoutPreset loadout = PvpLoadoutPreset.byId(loadoutId).orElse(null);
+        if (loadout == null) {
+            player.sendSystemMessage(Component.literal("選択されたPvPプリセットは使用できません。"));
+            return false;
+        }
         if (isQueued(player)) {
-            player.sendSystemMessage(fixedPresetMessage());
+            loadoutSelections.put(player.getUUID(), loadout);
+            player.sendSystemMessage(loadoutMessage(loadout, true));
             return true;
         }
         PvpTeam assigned = count(PvpTeam.RED, false) <= count(PvpTeam.BLUE, false) ? PvpTeam.RED : PvpTeam.BLUE;
         teams.put(player.getUUID(), assigned);
-        queuedSlots.put(player.getUUID(), 0);
+        loadoutSelections.put(player.getUUID(), loadout);
         phase = PvpPhase.WAITING;
-        player.sendSystemMessage(fixedPresetMessage());
+        player.sendSystemMessage(loadoutMessage(loadout, false));
         return true;
     }
 
@@ -123,7 +123,7 @@ public final class PvpMatchManager {
         UUID id = player.getUUID();
         boolean wasActive = isActive(player) || PvpSessionSavedData.get(player.server).contains(id);
         teams.remove(id);
-        queuedSlots.remove(id);
+        loadoutSelections.remove(id);
         respawns.remove(id);
         if (wasActive) restore(player);
         clearClientState(player);
@@ -170,12 +170,11 @@ public final class PvpMatchManager {
             player.removeAllEffects();
             player.setGameMode(GameType.SURVIVAL);
             assignScoreboardTeam(player, team(player));
-            giveKit(player);
+            giveKit(player, selectedLoadout(player));
             resetVitals(player);
             BlockPos spawn = team(player) == PvpTeam.RED ? arenaData.redSpawn() : arenaData.blueSpawn();
             teleport(player, arena, spawn);
         }
-        queuedSlots.clear();
         phase = PvpPhase.RUNNING;
         redScore = blueScore = 0;
         ticksLeft = MATCH_TICKS;
@@ -207,7 +206,7 @@ public final class PvpMatchManager {
                 teleport(player, server.getLevel(ARENA), spawn);
             }
             maintainCombatHunger(player);
-            enforceLoadout(player);
+            enforceLoadout(player, selectedLoadout(player));
         }
 
         if (phase == PvpPhase.FINISHED) {
@@ -322,7 +321,7 @@ public final class PvpMatchManager {
         if (isActive(player)) return;
         if (!PvpSessionSavedData.get(player.server).contains(player.getUUID())) return;
         teams.remove(player.getUUID());
-        queuedSlots.remove(player.getUUID());
+        loadoutSelections.remove(player.getUUID());
         restore(player);
         clearClientState(player);
         player.sendSystemMessage(Component.literal("中断されたPvPセッションから所持品と状態を復旧しました。"));
@@ -352,7 +351,7 @@ public final class PvpMatchManager {
             player.setInvulnerable(false);
             player.removeAllEffects();
             resetVitals(player);
-            refillGuns(player);
+            refillGuns(player, selectedLoadout(player));
             PvpArenaSavedData data = PvpArenaSavedData.get(server);
             BlockPos spawn = team(player) == PvpTeam.RED ? data.redSpawn() : data.blueSpawn();
             teleport(player, server.getLevel(ARENA), spawn);
@@ -468,14 +467,14 @@ public final class PvpMatchManager {
         announcedZoneController = null;
     }
 
-    private void giveKit(ServerPlayer player) {
+    private void giveKit(ServerPlayer player, PvpLoadoutPreset loadout) {
         player.setItemSlot(EquipmentSlot.HEAD, protectionFour(player, Items.IRON_HELMET));
         player.setItemSlot(EquipmentSlot.CHEST, protectionFour(player, Items.IRON_CHESTPLATE));
         player.setItemSlot(EquipmentSlot.LEGS, protectionFour(player, Items.IRON_LEGGINGS));
         player.setItemSlot(EquipmentSlot.FEET, protectionFour(player, Items.IRON_BOOTS));
         player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
-        installPresetHotbar(player);
-        refillGuns(player);
+        installLoadout(player, loadout);
+        refillGuns(player, loadout);
     }
 
     private ItemStack protectionFour(ServerPlayer player, Item item) {
@@ -503,21 +502,21 @@ public final class PvpMatchManager {
         player.getFoodData().setSaturation(0.0F);
     }
 
-    private void enforceLoadout(ServerPlayer player) {
+    private void enforceLoadout(ServerPlayer player, PvpLoadoutPreset loadout) {
         // clearContent() also empties the armor list. Calling it every tick caused
         // every armor piece to be removed and re-equipped 20 times per second,
         // repeatedly playing the equip sound. Only correct changed main-inventory
         // slots and missing equipment instead.
-        for (GunPreset preset : GUN_PRESETS) {
-            ItemStack gunStack = player.getInventory().getItem(preset.slot());
-            if (!isPresetGun(gunStack, preset.gunId())) {
-                gunStack = createPresetGun(player, preset);
-                player.getInventory().setItem(preset.slot(), gunStack);
+        for (PvpLoadoutPreset.Weapon weapon : loadout.weapons()) {
+            ItemStack gunStack = player.getInventory().getItem(weapon.slot());
+            if (!isPresetGun(gunStack, weapon)) {
+                gunStack = createPresetGun(player, weapon);
+                player.getInventory().setItem(weapon.slot(), gunStack);
             }
             maintainInfiniteReserve(gunStack);
         }
-        for (int slot = GUN_PRESETS.size(); slot < 36; slot++) {
-            if (!player.getInventory().getItem(slot).isEmpty()) {
+        for (int slot = 0; slot < 36; slot++) {
+            if (!isLoadoutSlot(loadout, slot) && !player.getInventory().getItem(slot).isEmpty()) {
                 player.getInventory().setItem(slot, ItemStack.EMPTY);
             }
         }
@@ -541,15 +540,15 @@ public final class PvpMatchManager {
         return !stack.isEmpty() && stack.is(expected);
     }
 
-    private void installPresetHotbar(ServerPlayer player) {
-        for (GunPreset preset : GUN_PRESETS) {
-            player.getInventory().setItem(preset.slot(), createPresetGun(player, preset));
+    private void installLoadout(ServerPlayer player, PvpLoadoutPreset loadout) {
+        for (PvpLoadoutPreset.Weapon weapon : loadout.weapons()) {
+            player.getInventory().setItem(weapon.slot(), createPresetGun(player, weapon));
         }
     }
 
-    private void refillGuns(ServerPlayer player) {
-        for (GunPreset preset : GUN_PRESETS) {
-            ItemStack gunStack = player.getInventory().getItem(preset.slot());
+    private void refillGuns(ServerPlayer player, PvpLoadoutPreset loadout) {
+        for (PvpLoadoutPreset.Weapon weapon : loadout.weapons()) {
+            ItemStack gunStack = player.getInventory().getItem(weapon.slot());
             IGun gun = IGun.getIGunOrNull(gunStack);
             if (gun == null) continue;
             int magazineSize = magazineSize(gun, gunStack);
@@ -574,13 +573,13 @@ public final class PvpMatchManager {
         }
     }
 
-    private static ItemStack createPresetGun(ServerPlayer player, GunPreset preset) {
+    private static ItemStack createPresetGun(ServerPlayer player, PvpLoadoutPreset.Weapon weapon) {
         ItemStack gunStack = new ItemStack(com.tacz.guns.init.ModItems.MODERN_KINETIC_GUN.get());
         IGun gun = IGun.getIGunOrNull(gunStack);
-        if (gun == null || TimelessAPI.getCommonGunIndex(preset.gunId()).isEmpty()) return ItemStack.EMPTY;
-        gun.setGunId(gunStack, preset.gunId());
+        if (gun == null || TimelessAPI.getCommonGunIndex(weapon.gunId()).isEmpty()) return ItemStack.EMPTY;
+        gun.setGunId(gunStack, weapon.gunId());
 
-        for (ResourceLocation attachmentId : preset.attachments()) {
+        for (ResourceLocation attachmentId : weapon.attachments()) {
             ItemStack attachmentStack = new ItemStack(com.tacz.guns.init.ModItems.ATTACHMENT.get());
             IAttachment attachment = IAttachment.getIAttachmentOrNull(attachmentStack);
             if (attachment == null) continue;
@@ -590,29 +589,46 @@ public final class PvpMatchManager {
                     gun.installAttachment(player.registryAccess(), gunStack, attachmentStack);
                 } else {
                     Moveearth_addtional.LOGGER.warn("FMIC PvP preset rejected attachment {} for {}",
-                            attachmentId, preset.gunId());
+                            attachmentId, weapon.gunId());
                 }
             } catch (RuntimeException exception) {
                 Moveearth_addtional.LOGGER.warn("Could not install FMIC PvP attachment {} on {}",
-                        attachmentId, preset.gunId(), exception);
+                        attachmentId, weapon.gunId(), exception);
             }
         }
+        gun.setAttachmentLock(gunStack, true);
         return gunStack;
     }
 
-    private static boolean isPresetGun(ItemStack stack, ResourceLocation expectedId) {
+    private static boolean isPresetGun(ItemStack stack, PvpLoadoutPreset.Weapon expected) {
         IGun gun = IGun.getIGunOrNull(stack);
-        return gun != null && expectedId.equals(gun.getGunId(stack));
+        if (gun == null || !expected.gunId().equals(gun.getGunId(stack)) || !gun.hasAttachmentLock(stack)) {
+            return false;
+        }
+        for (ResourceLocation attachmentId : expected.attachments()) {
+            var attachment = TimelessAPI.getCommonAttachmentIndex(attachmentId);
+            if (attachment.isEmpty()
+                    || !attachmentId.equals(gun.getAttachmentId(stack, attachment.get().getType()))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String missingPresetContent() {
-        for (GunPreset preset : GUN_PRESETS) {
-            if (TimelessAPI.getCommonGunIndex(preset.gunId()).isEmpty()) return preset.gunId().toString();
-            for (ResourceLocation attachment : preset.attachments()) {
-                if (TimelessAPI.getCommonAttachmentIndex(attachment).isEmpty()) return attachment.toString();
+        for (PvpLoadoutPreset loadout : PvpLoadoutPreset.values()) {
+            for (PvpLoadoutPreset.Weapon weapon : loadout.weapons()) {
+                if (TimelessAPI.getCommonGunIndex(weapon.gunId()).isEmpty()) return weapon.gunId().toString();
+                for (ResourceLocation attachment : weapon.attachments()) {
+                    if (TimelessAPI.getCommonAttachmentIndex(attachment).isEmpty()) return attachment.toString();
+                }
             }
         }
         return null;
+    }
+
+    private static boolean isLoadoutSlot(PvpLoadoutPreset loadout, int slot) {
+        return loadout.weapons().stream().anyMatch(weapon -> weapon.slot() == slot);
     }
 
     private static int magazineSize(IGun gun, ItemStack gunStack) {
@@ -708,21 +724,16 @@ public final class PvpMatchManager {
 
     private void removeOfflineQueueMembers(MinecraftServer server) {
         teams.keySet().removeIf(id -> server.getPlayerList().getPlayer(id) == null);
-        queuedSlots.keySet().retainAll(teams.keySet());
+        loadoutSelections.keySet().retainAll(teams.keySet());
     }
 
-    private static Component fixedPresetMessage() {
+    private static Component loadoutMessage(PvpLoadoutPreset loadout, boolean updated) {
+        Component loadoutName = Component.translatable(loadout.translationKey());
         return Component.translatableWithFallback(
-                "message.moveearth_addtional.pvp.fixed_preset",
-                "PvPに参加しました。試合中はFMIC固定プリセットに置き換わります。");
-    }
-
-    private static GunPreset preset(int slot, String gun, String... attachments) {
-        return new GunPreset(slot, fmic(gun), java.util.Arrays.stream(attachments).map(PvpMatchManager::fmic).toList());
-    }
-
-    private static ResourceLocation fmic(String path) {
-        return ResourceLocation.fromNamespaceAndPath("fmic", path);
+                updated ? "message.moveearth_addtional.pvp.loadout_updated"
+                        : "message.moveearth_addtional.pvp.loadout_joined",
+                updated ? "PvPプリセットを%sへ変更しました。" : "%sプリセットでPvPへ参加しました。",
+                loadoutName);
     }
 
     private void rebalanceTeams() {
@@ -786,7 +797,7 @@ public final class PvpMatchManager {
         phase = PvpPhase.IDLE;
         redScore = blueScore = ticksLeft = syncTicker = 0;
         teams.clear();
-        queuedSlots.clear();
+        loadoutSelections.clear();
         snapshots.clear();
         respawns.clear();
         rewardedKills.clear();
@@ -823,5 +834,4 @@ public final class PvpMatchManager {
 
     private record KillPair(UUID killer, UUID victim) {}
 
-    private record GunPreset(int slot, ResourceLocation gunId, List<ResourceLocation> attachments) {}
 }

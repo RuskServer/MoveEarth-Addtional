@@ -5,7 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.Map;
 
 /**
- * PvP-only body-damage scaling for the fixed FMIC presets.
+ * PvP-only body-damage scaling for the selectable FMIC loadouts.
  *
  * <p>The targets assume full Protection IV iron armor, TaCZ Tweaks armor
  * penetration set to zero, a 1.5x raw headshot multiplier, close-range gun
