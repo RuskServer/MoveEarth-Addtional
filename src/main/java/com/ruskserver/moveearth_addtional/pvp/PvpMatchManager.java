@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.ModSounds;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PvpResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpTeamPacket;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
@@ -52,6 +53,7 @@ public final class PvpMatchManager {
     private static final int MATCH_TICKS = 10 * 60 * 20;
     private static final int RESPAWN_TICKS = 80;
     private static final int FINISHED_TICKS = 100;
+    private static final int RESULT_OVERLAY_TICKS = 60;
     private static final int REWARD_KILL_COOLDOWN = 60 * 20;
     private static final int MIN_REWARD_TEAM_SIZE = 2;
     private static final int MIN_INFINITE_RESERVE_AMMO = 120;
@@ -436,6 +438,10 @@ public final class PvpMatchManager {
     private void announceMatchResult(MinecraftServer server) {
         PvpTeam winner = redScore == blueScore ? null : redScore > blueScore ? PvpTeam.RED : PvpTeam.BLUE;
         for (ServerPlayer player : participants(server, true)) {
+            int outcome = winner == null ? S2C_PvpResultPacket.DRAW
+                    : team(player) == winner ? S2C_PvpResultPacket.WIN : S2C_PvpResultPacket.LOSS;
+            PacketDistributor.sendToPlayer(player,
+                    new S2C_PvpResultPacket(outcome, redScore, blueScore, RESULT_OVERLAY_TICKS));
             if (winner == null) {
                 playToPlayer(player, ModSounds.WARLORD_GAME_OVER);
             } else {
@@ -696,6 +702,7 @@ public final class PvpMatchManager {
     private void clearClientState(ServerPlayer player) {
         PacketDistributor.sendToPlayer(player, S2C_PvpHudPacket.inactive());
         PacketDistributor.sendToPlayer(player, new S2C_PvpTeamPacket(List.of()));
+        PacketDistributor.sendToPlayer(player, S2C_PvpResultPacket.clear());
     }
 
     private void recordZoneForTeam(MinecraftServer server, PvpTeam team, PvpArenaSavedData data) {

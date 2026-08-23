@@ -21,6 +21,10 @@ public class ClientPacketHandler {
         PvpClientState.startKillcam(packet);
     }
 
+    public static void handlePvpResult(com.ruskserver.moveearth_addtional.network.S2C_PvpResultPacket packet) {
+        PvpClientState.showResult(packet);
+    }
+
     public static void handleOpenPvpTasks(com.ruskserver.moveearth_addtional.network.S2C_OpenPvpTasksPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof PvpTaskScreen screen) screen.update(packet);

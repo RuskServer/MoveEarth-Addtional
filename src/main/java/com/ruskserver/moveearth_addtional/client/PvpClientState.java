@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.client;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PvpResultPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.ChatFormatting;
@@ -29,6 +30,9 @@ public final class PvpClientState {
     private static S2C_PvpKillcamPacket killcam;
     private static int killcamTicks;
     private static int killcamTotalTicks;
+    private static S2C_PvpResultPacket matchResult;
+    private static int resultTicks;
+    private static int resultTotalTicks;
     private static UUID highlightedKiller;
     private static final Map<UUID, Boolean> originalGlow = new HashMap<>();
 
@@ -54,6 +58,22 @@ public final class PvpClientState {
         if (mc.player != null) mc.player.playSound(SoundEvents.PLAYER_DEATH, 1.0F, 1.0F);
     }
 
+    public static void showResult(S2C_PvpResultPacket packet) {
+        if (packet.ticks() <= 0) {
+            matchResult = null;
+            resultTicks = 0;
+            resultTotalTicks = 0;
+            return;
+        }
+        clearKillerHighlight();
+        killcam = null;
+        killcamTicks = 0;
+        killcamTotalTicks = 0;
+        matchResult = packet;
+        resultTicks = packet.ticks();
+        resultTotalTicks = packet.ticks();
+    }
+
     public static void reset() {
         for (UUID id : new HashSet<>(originalGlow.keySet())) restoreGlow(id);
         allies.clear();
@@ -62,6 +82,9 @@ public final class PvpClientState {
         killcam = null;
         killcamTicks = 0;
         killcamTotalTicks = 0;
+        matchResult = null;
+        resultTicks = 0;
+        resultTotalTicks = 0;
     }
 
     @SubscribeEvent
@@ -92,6 +115,11 @@ public final class PvpClientState {
         } else if (killcamTicks <= 0) {
             clearKillerHighlight();
             killcam = null;
+        }
+        if (matchResult != null && --resultTicks <= 0) {
+            matchResult = null;
+            resultTicks = 0;
+            resultTotalTicks = 0;
         }
     }
 
@@ -135,6 +163,74 @@ public final class PvpClientState {
             g.drawCenteredString(mc.font, "KILLED BY", center, y + 7, 0xFF999999);
             g.drawCenteredString(mc.font, killcam.killer(), center, y + 22, 0xFFFF6464);
         }
+        if (matchResult != null) renderMatchResult(g, mc);
+    }
+
+    private static void renderMatchResult(GuiGraphics graphics, Minecraft minecraft) {
+        int elapsed = resultTotalTicks - Math.max(0, resultTicks);
+        float fadeIn = Mth.clamp(elapsed / 8.0F, 0.0F, 1.0F);
+        float fadeOut = Mth.clamp(resultTicks / 15.0F, 0.0F, 1.0F);
+        float visibility = Math.min(fadeIn, fadeOut);
+        if (visibility <= 0.0F) return;
+
+        int accent = switch (matchResult.outcome()) {
+            case S2C_PvpResultPacket.WIN -> 0xFF55E6C1;
+            case S2C_PvpResultPacket.LOSS -> 0xFFFF5364;
+            default -> 0xFFFFC857;
+        };
+        int tint = switch (matchResult.outcome()) {
+            case S2C_PvpResultPacket.WIN -> 0x00123538;
+            case S2C_PvpResultPacket.LOSS -> 0x00380C14;
+            default -> 0x00312712;
+        };
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
+        int centerX = width / 2;
+        int centerY = height / 2;
+        int backgroundAlpha = (int) (185.0F * visibility);
+        int panelAlpha = (int) (220.0F * visibility);
+        int textAlpha = Math.max(4, (int) (255.0F * visibility));
+
+        graphics.fill(0, 0, width, height, (backgroundAlpha << 24) | tint);
+        int edge = Math.max(18, height / 7);
+        graphics.fill(0, 0, width, edge, ((int) (145.0F * visibility) << 24));
+        graphics.fill(0, height - edge, width, height, ((int) (145.0F * visibility) << 24));
+        graphics.fill(0, centerY - 62, width, centerY + 65, (panelAlpha << 24) | 0x080B10);
+        graphics.fill(centerX - 142, centerY - 50, centerX + 142, centerY - 48,
+                withAlpha(accent, textAlpha));
+        graphics.fill(centerX - 86, centerY + 51, centerX + 86, centerY + 53,
+                withAlpha(accent, textAlpha));
+
+        Component title = switch (matchResult.outcome()) {
+            case S2C_PvpResultPacket.WIN -> Component.translatable("overlay.moveearth_addtional.pvp.victory");
+            case S2C_PvpResultPacket.LOSS -> Component.translatable("overlay.moveearth_addtional.pvp.defeat");
+            default -> Component.translatable("overlay.moveearth_addtional.pvp.draw");
+        };
+        Component status = switch (matchResult.outcome()) {
+            case S2C_PvpResultPacket.WIN -> Component.translatable("overlay.moveearth_addtional.pvp.victory.detail");
+            case S2C_PvpResultPacket.LOSS -> Component.translatable("overlay.moveearth_addtional.pvp.defeat.detail");
+            default -> Component.translatable("overlay.moveearth_addtional.pvp.draw.detail");
+        };
+
+        float intro = Mth.clamp(elapsed / 12.0F, 0.0F, 1.0F);
+        float titleScale = 2.65F - 0.45F * intro;
+        graphics.pose().pushPose();
+        graphics.pose().translate(centerX, centerY - 31, 0.0F);
+        graphics.pose().scale(titleScale, titleScale, 1.0F);
+        graphics.drawCenteredString(minecraft.font, title, 0, 0, withAlpha(accent, textAlpha));
+        graphics.pose().popPose();
+
+        Component score = Component.literal("RED  " + matchResult.redScore()).withStyle(ChatFormatting.RED)
+                .append(Component.literal("     —     ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(matchResult.blueScore() + "  BLUE").withStyle(ChatFormatting.BLUE));
+        graphics.drawCenteredString(minecraft.font, score, centerX, centerY + 8,
+                withAlpha(0xFFFFFFFF, textAlpha));
+        graphics.drawCenteredString(minecraft.font, status, centerX, centerY + 29,
+                withAlpha(0xFFD7DFE8, textAlpha));
+    }
+
+    private static int withAlpha(int color, int alpha) {
+        return (Mth.clamp(alpha, 0, 255) << 24) | (color & 0x00FFFFFF);
     }
 
     private static Entity findEntity(Minecraft mc, UUID id) {

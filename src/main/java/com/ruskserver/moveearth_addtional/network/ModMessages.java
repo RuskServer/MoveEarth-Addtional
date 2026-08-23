@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("1.8-pvp4");
+        final PayloadRegistrar registrar = event.registrar("1.8-pvp5");
 
         registrar.playToClient(
                 S2C_AnnouncementPacket.TYPE,
@@ -61,6 +61,7 @@ public class ModMessages {
         registrar.playToClient(S2C_PvpHudPacket.TYPE, S2C_PvpHudPacket.STREAM_CODEC, S2C_PvpHudPacket::handle);
         registrar.playToClient(S2C_PvpTeamPacket.TYPE, S2C_PvpTeamPacket.STREAM_CODEC, S2C_PvpTeamPacket::handle);
         registrar.playToClient(S2C_PvpKillcamPacket.TYPE, S2C_PvpKillcamPacket.STREAM_CODEC, S2C_PvpKillcamPacket::handle);
+        registrar.playToClient(S2C_PvpResultPacket.TYPE, S2C_PvpResultPacket.STREAM_CODEC, S2C_PvpResultPacket::handle);
         registrar.playToClient(S2C_OpenPvpTasksPacket.TYPE, S2C_OpenPvpTasksPacket.STREAM_CODEC, S2C_OpenPvpTasksPacket::handle);
         registrar.playToServer(C2S_RequestPvpTasksPacket.TYPE, C2S_RequestPvpTasksPacket.STREAM_CODEC, C2S_RequestPvpTasksPacket::handle);
         registrar.playToServer(C2S_ClaimPvpTaskPacket.TYPE, C2S_ClaimPvpTaskPacket.STREAM_CODEC, C2S_ClaimPvpTaskPacket::handle);
