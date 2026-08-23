@@ -1,8 +1,35 @@
 {
   "server_notice": {
     "category": "master",
-    "sounds": [
-      "moveearth_addtional:notice"
-    ]
-  }
+    "sounds": ["moveearth_addtional:notice"]
+  },
+  "warlord_start": { "sounds": ["moveearth_addtional:pvp/warlord/start"] },
+  "warlord_rampage": { "sounds": ["moveearth_addtional:pvp/warlord/rampage"] },
+  "warlord_double_kill": { "sounds": ["moveearth_addtional:pvp/warlord/double_kill"] },
+  "warlord_triple_kill": { "sounds": ["moveearth_addtional:pvp/warlord/triple_kill"] },
+  "warlord_dominating": { "sounds": ["moveearth_addtional:pvp/warlord/dominating"] },
+  "warlord_unstoppable": { "sounds": ["moveearth_addtional:pvp/warlord/unstoppable"] },
+  "warlord_target_locked": { "sounds": ["moveearth_addtional:pvp/warlord/target_locked"] },
+  "warlord_first_blood": { "sounds": ["moveearth_addtional:pvp/warlord/first_blood"] },
+  "warlord_headshot": { "sounds": ["moveearth_addtional:pvp/warlord/headshot"] },
+  "warlord_killshot": { "sounds": ["moveearth_addtional:pvp/warlord/killshot"] },
+  "warlord_payload_delivered": { "sounds": ["moveearth_addtional:pvp/warlord/payload_delivered"] },
+  "warlord_team_deathmatch": { "sounds": ["moveearth_addtional:pvp/warlord/team_deathmatch"] },
+  "warlord_elimination": { "sounds": ["moveearth_addtional:pvp/warlord/elimination"] },
+  "warlord_capture_the_flag": { "sounds": ["moveearth_addtional:pvp/warlord/capture_the_flag"] },
+  "warlord_last_man_standing": { "sounds": ["moveearth_addtional:pvp/warlord/last_man_standing"] },
+  "warlord_precision_kill": { "sounds": ["moveearth_addtional:pvp/warlord/precision_kill"] },
+  "warlord_objective_completed": { "sounds": ["moveearth_addtional:pvp/warlord/objective_completed"] },
+  "warlord_enemy_eliminated": { "sounds": ["moveearth_addtional:pvp/warlord/enemy_eliminated"] },
+  "warlord_round_winner": { "sounds": ["moveearth_addtional:pvp/warlord/round_winner"] },
+  "warlord_mission_failed": { "sounds": ["moveearth_addtional:pvp/warlord/mission_failed"] },
+  "warlord_tango_down": { "sounds": ["moveearth_addtional:pvp/warlord/tango_down"] },
+  "warlord_mission_accomplished": { "sounds": ["moveearth_addtional:pvp/warlord/mission_accomplished"] },
+  "warlord_final_stand": { "sounds": ["moveearth_addtional:pvp/warlord/final_stand"] },
+  "warlord_annihilation": { "sounds": ["moveearth_addtional:pvp/warlord/annihilation"] },
+  "warlord_payback": { "sounds": ["moveearth_addtional:pvp/warlord/payback"] },
+  "warlord_eradication": { "sounds": ["moveearth_addtional:pvp/warlord/eradication"] },
+  "warlord_revenge_kill": { "sounds": ["moveearth_addtional:pvp/warlord/revenge_kill"] },
+  "warlord_target_secured": { "sounds": ["moveearth_addtional:pvp/warlord/target_secured"] },
+  "warlord_game_over": { "sounds": ["moveearth_addtional:pvp/warlord/game_over"] }
 }

@@ -28,6 +28,9 @@ lib/
 # Packaged artifacts created in the project root
 /*.jar
 
+# Source audio retained locally; converted OGG assets are tracked under resources
+/*.wav
+
 # Operating-system metadata
 .DS_Store
 Thumbs.db

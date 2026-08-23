@@ -1,0 +1,19 @@
+WARLORD - Announcer Audio Pack
+================================
+
+Creator and preferred attribution: VoiceBosch
+Source: https://voicebosch.itch.io/warlord-announcer-audio-pack
+License: Creative Commons Attribution-ShareAlike 4.0 International
+License URL: https://creativecommons.org/licenses/by-sa/4.0/
+
+The audio files under
+assets/moveearth_addtional/sounds/pvp/warlord/
+are distributed under CC BY-SA 4.0.
+
+Modifications made for this project:
+- The supplied WAV files were converted to Ogg Vorbis for Minecraft playback.
+- The spoken content was not edited.
+
+This notice and license apply to the WARLORD audio assets only. They do not
+change the license of the project's independently authored source code or
+other assets.

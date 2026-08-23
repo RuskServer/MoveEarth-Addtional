@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
+import com.ruskserver.moveearth_addtional.ModSounds;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
@@ -16,6 +17,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -30,6 +33,7 @@ import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.Team;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.registries.DeferredHolder;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -52,6 +56,8 @@ public final class PvpMatchManager {
     private static final int MIN_REWARD_TEAM_SIZE = 2;
     private static final int MIN_INFINITE_RESERVE_AMMO = 120;
     private static final int COMBAT_FOOD_LEVEL = 18;
+    private static final int MULTI_KILL_WINDOW_TICKS = 8 * 20;
+    private static final int FINAL_STAND_TICKS = 60 * 20;
     private static final List<GunPreset> GUN_PRESETS = List.of(
             preset(0, "ra39", "sight_exp3", "laser_x2"),
             preset(1, "ef_smg", "sight_rmrhd_ris", "laser_flx9"),
@@ -66,12 +72,17 @@ public final class PvpMatchManager {
     private final Map<UUID, PvpPlayerSnapshot> snapshots = new HashMap<>();
     private final Map<UUID, RespawnState> respawns = new HashMap<>();
     private final Map<KillPair, Integer> rewardedKills = new HashMap<>();
+    private final Map<UUID, KillAnnouncementState> killAnnouncements = new HashMap<>();
+    private final Map<UUID, UUID> lastKillerByVictim = new HashMap<>();
     private PvpPhase phase = PvpPhase.IDLE;
     private int redScore;
     private int blueScore;
     private int ticksLeft;
     private int syncTicker;
     private boolean matchResultsRecorded;
+    private boolean firstBloodAnnounced;
+    private boolean finalStandAnnounced;
+    private PvpTeam announcedZoneController;
 
     private PvpMatchManager() {}
 
@@ -170,9 +181,11 @@ public final class PvpMatchManager {
         ticksLeft = MATCH_TICKS;
         syncTicker = 0;
         matchResultsRecorded = false;
+        resetAnnouncerState();
         cleanupArenaMobs(arena);
         syncTeams(server);
         syncHud(server, "争奪中");
+        playToAllParticipants(server, ModSounds.WARLORD_START);
         broadcastToParticipants(server, Component.literal("PvP試合開始！ 丘を占領して180ポイントを獲得してください。"));
         return true;
     }
@@ -206,6 +219,10 @@ public final class PvpMatchManager {
             finish(server, winnerText());
             return;
         }
+        if (!finalStandAnnounced && ticksLeft <= FINAL_STAND_TICKS) {
+            finalStandAnnounced = true;
+            playToAllParticipants(server, ModSounds.WARLORD_FINAL_STAND);
+        }
 
         tickRespawns(server);
         if (count(PvpTeam.RED, true) == 0 || count(PvpTeam.BLUE, true) == 0) {
@@ -223,6 +240,12 @@ public final class PvpMatchManager {
             }
         }
         String status = red > 0 && blue > 0 ? "争奪中" : red > 0 ? "RED 制圧中" : blue > 0 ? "BLUE 制圧中" : "無人";
+        PvpTeam exclusiveController = red > 0 && blue == 0 ? PvpTeam.RED
+                : blue > 0 && red == 0 ? PvpTeam.BLUE : null;
+        if (exclusiveController != null && exclusiveController != announcedZoneController) {
+            announcedZoneController = exclusiveController;
+            announceZoneControl(server, exclusiveController);
+        }
         if (server.getTickCount() % 20 == 0) {
             boolean rewardEligible = rewardsEnabled();
             if (red > 0 && blue == 0) {
@@ -261,9 +284,14 @@ public final class PvpMatchManager {
 
     public void eliminate(ServerPlayer victim, ServerPlayer killer) {
         if (phase != PvpPhase.RUNNING || !isActive(victim) || respawns.containsKey(victim.getUUID())) return;
-        if (killer != null && isActive(killer) && team(killer) != team(victim)
-                && canRewardKill(killer, victim)) {
-            PvpRewardData.get(victim.server).recordKill(killer, killer.distanceToSqr(victim) <= 64.0D);
+        boolean validPlayerKill = killer != null && isActive(killer) && team(killer) != team(victim);
+        if (validPlayerKill) {
+            if (canRewardKill(killer, victim)) {
+                PvpRewardData.get(victim.server).recordKill(killer, killer.distanceToSqr(victim) <= 64.0D);
+            }
+            announceElimination(victim, killer);
+        } else {
+            resetKillState(victim.getUUID());
         }
 
         double targetX = killer == null ? victim.getX() : killer.getX();
@@ -334,6 +362,7 @@ public final class PvpMatchManager {
     private void finish(MinecraftServer server, String message) {
         if (phase == PvpPhase.FINISHED) return;
         recordMatchResults(server);
+        announceMatchResult(server);
         phase = PvpPhase.FINISHED;
         ticksLeft = FINISHED_TICKS;
         respawns.clear();
@@ -357,6 +386,86 @@ public final class PvpMatchManager {
         for (ServerPlayer player : participants(server, true)) {
             rewards.recordMatchResult(player, winner != null && team(player) == winner);
         }
+    }
+
+    private void announceElimination(ServerPlayer victim, ServerPlayer killer) {
+        int now = killer.server.getTickCount();
+        UUID killerId = killer.getUUID();
+        UUID victimId = victim.getUUID();
+        boolean revenge = victimId.equals(lastKillerByVictim.get(killerId));
+        lastKillerByVictim.put(victimId, killerId);
+        resetKillState(victimId);
+
+        KillAnnouncementState state = killAnnouncements.computeIfAbsent(killerId,
+                ignored -> new KillAnnouncementState());
+        state.streak++;
+        state.multiKills = state.lastKillTick >= 0 && now - state.lastKillTick <= MULTI_KILL_WINDOW_TICKS
+                ? state.multiKills + 1 : 1;
+        state.lastKillTick = now;
+
+        if (!firstBloodAnnounced) {
+            firstBloodAnnounced = true;
+            playToAllParticipants(killer.server, ModSounds.WARLORD_FIRST_BLOOD);
+            return;
+        }
+
+        DeferredHolder<SoundEvent, SoundEvent> sound;
+        if (state.streak == 12) sound = ModSounds.WARLORD_UNSTOPPABLE;
+        else if (state.streak == 8) sound = ModSounds.WARLORD_RAMPAGE;
+        else if (state.streak == 5) sound = ModSounds.WARLORD_DOMINATING;
+        else if (state.multiKills == 5) sound = ModSounds.WARLORD_ERADICATION;
+        else if (state.multiKills == 4) sound = ModSounds.WARLORD_ANNIHILATION;
+        else if (state.multiKills == 3) sound = ModSounds.WARLORD_TRIPLE_KILL;
+        else if (state.multiKills == 2) sound = ModSounds.WARLORD_DOUBLE_KILL;
+        else if (revenge) sound = ModSounds.WARLORD_REVENGE_KILL;
+        else sound = switch (state.streak % 3) {
+            case 0 -> ModSounds.WARLORD_KILLSHOT;
+            case 1 -> ModSounds.WARLORD_ENEMY_ELIMINATED;
+            default -> ModSounds.WARLORD_TANGO_DOWN;
+        };
+        playToPlayer(killer, sound);
+    }
+
+    private void announceZoneControl(MinecraftServer server, PvpTeam controller) {
+        for (ServerPlayer player : participants(server, true)) {
+            playToPlayer(player, team(player) == controller
+                    ? ModSounds.WARLORD_TARGET_SECURED
+                    : ModSounds.WARLORD_TARGET_LOCKED);
+        }
+    }
+
+    private void announceMatchResult(MinecraftServer server) {
+        PvpTeam winner = redScore == blueScore ? null : redScore > blueScore ? PvpTeam.RED : PvpTeam.BLUE;
+        for (ServerPlayer player : participants(server, true)) {
+            if (winner == null) {
+                playToPlayer(player, ModSounds.WARLORD_GAME_OVER);
+            } else {
+                playToPlayer(player, team(player) == winner
+                        ? ModSounds.WARLORD_ROUND_WINNER
+                        : ModSounds.WARLORD_MISSION_FAILED);
+            }
+        }
+    }
+
+    private static void playToPlayer(ServerPlayer player, DeferredHolder<SoundEvent, SoundEvent> sound) {
+        player.playNotifySound(sound.get(), SoundSource.MASTER, 1.0F, 1.0F);
+    }
+
+    private void playToAllParticipants(MinecraftServer server, DeferredHolder<SoundEvent, SoundEvent> sound) {
+        forEachPlayer(server, true, player -> playToPlayer(player, sound));
+    }
+
+    private void resetKillState(UUID playerId) {
+        KillAnnouncementState state = killAnnouncements.get(playerId);
+        if (state != null) state.reset();
+    }
+
+    private void resetAnnouncerState() {
+        killAnnouncements.clear();
+        lastKillerByVictim.clear();
+        firstBloodAnnounced = false;
+        finalStandAnnounced = false;
+        announcedZoneController = null;
     }
 
     private void giveKit(ServerPlayer player) {
@@ -682,6 +791,19 @@ public final class PvpMatchManager {
         respawns.clear();
         rewardedKills.clear();
         matchResultsRecorded = false;
+        resetAnnouncerState();
+    }
+
+    private static final class KillAnnouncementState {
+        int streak;
+        int multiKills;
+        int lastKillTick = -1;
+
+        private void reset() {
+            streak = 0;
+            multiKills = 0;
+            lastKillTick = -1;
+        }
     }
 
     private static final class RespawnState {
