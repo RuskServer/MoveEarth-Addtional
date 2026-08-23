@@ -5,6 +5,8 @@ import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.neoforged.api.distmarker.Dist;
@@ -94,10 +96,16 @@ public final class PvpClientState {
     }
 
     @SubscribeEvent
-    public static void hidePlayerNameTags(RenderNameTagEvent event) {
-        if (hud.active() && event.getEntity() instanceof Player) {
+    public static void renderTeamNameTags(RenderNameTagEvent event) {
+        if (!hud.active() || !(event.getEntity() instanceof Player player)) return;
+        if (!allies.contains(player.getUUID())) {
             event.setCanRender(TriState.FALSE);
+            return;
         }
+
+        event.setCanRender(TriState.TRUE);
+        event.setContent(Component.literal("◆ ALLY ").withStyle(ChatFormatting.GREEN)
+                .append(event.getOriginalContent().copy().withStyle(ChatFormatting.WHITE)));
     }
 
     @SubscribeEvent
