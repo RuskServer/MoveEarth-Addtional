@@ -49,7 +49,8 @@ public final class PvpCommand {
         PacketDistributor.sendToPlayer(player, new S2C_OpenPvpScreenPacket(PvpMatchManager.INSTANCE.isParticipant(player),
                 PvpMatchManager.INSTANCE.isActive(player),
                 com.ruskserver.moveearth_addtional.pvp.PvpArenaSavedData.get(player.server).hosting(),
-                rewards.points(player.getUUID()), rewards.summary(player.getUUID())));
+                rewards.points(player.getUUID()), rewards.summary(player.getUUID()),
+                PvpMatchManager.INSTANCE.selectedLoadout(player).id()));
         return 1;
     }
     private static int leave(ServerPlayer player) { PvpMatchManager.INSTANCE.leave(player); return 1; }
