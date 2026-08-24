@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.pvp.PvpMatchManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.level.block.piston.PistonStructureResolver;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.EventPriority;
@@ -12,11 +13,16 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.PistonEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
+import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
+import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 
 /** Server-only action detection for job rewards. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class JobEvents {
+    private static final String NO_HUNTER_XP_TAG = "moveearth_jobs_no_hunter_xp";
+
     private JobEvents() {
     }
 
@@ -26,7 +32,7 @@ public final class JobEvents {
             return;
         }
         BlockState state = event.getPlacedBlock();
-        if (JobDefinitions.INSTANCE.rewardsBlock(state)) {
+        if (JobDefinitions.INSTANCE.tracksPlacement(state)) {
             PlacedJobBlockSavedData.get(level).mark(event.getPos().immutable());
         }
     }
@@ -56,6 +62,47 @@ public final class JobEvents {
             if (reward > 0) {
                 JobService.INSTANCE.awardBlockBreak(player, definition, reward);
             }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onEntityKilled(LivingDeathEvent event) {
+        if (event.isCanceled() || !(event.getSource().getEntity() instanceof ServerPlayer player)
+                || player.isCreative() || player.isSpectator()
+                || player.level().dimension().equals(PvpMatchManager.ARENA)
+                || event.getEntity().getPersistentData().getBoolean(NO_HUNTER_XP_TAG)) {
+            return;
+        }
+        for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
+            int reward = definition.entityKillXp(event.getEntity().getType());
+            if (reward > 0) {
+                JobService.INSTANCE.awardAction(player, definition, reward);
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onAnimalBred(BabyEntitySpawnEvent event) {
+        if (event.isCanceled() || event.getChild() == null
+                || !(event.getCausedByPlayer() instanceof ServerPlayer player)
+                || player.isCreative() || player.isSpectator()
+                || player.level().dimension().equals(PvpMatchManager.ARENA)) {
+            return;
+        }
+        for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
+            int reward = definition.entityBreedXp(event.getParentA().getType());
+            if (reward > 0) {
+                JobService.INSTANCE.awardAction(player, definition, reward);
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onMobSpawned(FinalizeSpawnEvent event) {
+        MobSpawnType spawnType = event.getSpawnType();
+        if (MobSpawnType.isSpawner(spawnType) || spawnType == MobSpawnType.SPAWN_EGG
+                || spawnType == MobSpawnType.COMMAND || spawnType == MobSpawnType.DISPENSER) {
+            event.getEntity().getPersistentData().putBoolean(NO_HUNTER_XP_TAG, true);
         }
     }
 

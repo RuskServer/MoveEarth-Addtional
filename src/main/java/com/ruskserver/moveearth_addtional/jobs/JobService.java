@@ -12,6 +12,10 @@ public final class JobService {
     }
 
     public void awardBlockBreak(ServerPlayer player, JobDefinition definition, int baseXp) {
+        awardAction(player, definition, baseXp);
+    }
+
+    public void awardAction(ServerPlayer player, JobDefinition definition, int baseXp) {
         int xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
         JobProgressSavedData.AwardResult result = JobProgressSavedData.get(player.getServer())
                 .award(player.getUUID(), definition, xp);

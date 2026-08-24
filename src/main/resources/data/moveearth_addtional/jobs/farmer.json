@@ -1,0 +1,29 @@
+{
+  "display_name": "農家",
+  "max_level": 50,
+  "points_per_level": 1,
+  "xp_curve": {
+    "base": 100,
+    "linear": 25,
+    "quadratic": 10
+  },
+  "block_break": [
+    {
+      "tag": "moveearth_addtional:jobs/farmer/age_crops",
+      "xp": 3,
+      "condition": "mature",
+      "exclude_player_placed": false
+    },
+    {
+      "tag": "moveearth_addtional:jobs/farmer/harvest_blocks",
+      "xp": 4,
+      "exclude_player_placed": true
+    }
+  ],
+  "entity_breed": [
+    {
+      "tag": "moveearth_addtional:jobs/farmer/livestock",
+      "xp": 8
+    }
+  ]
+}

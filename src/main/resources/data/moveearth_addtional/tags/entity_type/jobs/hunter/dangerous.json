@@ -1,0 +1,19 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:enderman",
+    "minecraft:witch",
+    "minecraft:pillager",
+    "minecraft:vindicator",
+    "minecraft:evoker",
+    "minecraft:ravager",
+    "minecraft:blaze",
+    "minecraft:ghast",
+    "minecraft:piglin_brute",
+    "minecraft:wither_skeleton",
+    "minecraft:guardian",
+    "minecraft:shulker",
+    "minecraft:phantom",
+    "minecraft:breeze"
+  ]
+}

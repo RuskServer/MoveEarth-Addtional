@@ -56,6 +56,15 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         return false;
     }
 
+    public boolean tracksPlacement(BlockState state) {
+        for (JobDefinition definition : definitions.values()) {
+            if (definition.tracksPlacement(state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     protected Map<ResourceLocation, JsonElement> prepare(ResourceManager resourceManager, ProfilerFiller profiler) {
         Map<ResourceLocation, JsonElement> json = new LinkedHashMap<>();
@@ -102,17 +111,52 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         int linearXp = nonNegative(curve, "linear", 25);
         int quadraticXp = nonNegative(curve, "quadratic", 10);
 
-        List<JobDefinition.BlockBreakReward> rewards = new ArrayList<>();
-        for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, "block_break")) {
-            JsonObject action = actionElement.getAsJsonObject();
-            ResourceLocation tag = ResourceLocation.tryParse(GsonHelper.getAsString(action, "tag"));
-            if (tag == null) {
-                throw new IllegalArgumentException("Invalid block tag");
+        List<JobDefinition.BlockBreakReward> blockRewards = new ArrayList<>();
+        if (json.has("block_break")) {
+            for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, "block_break")) {
+                JsonObject action = actionElement.getAsJsonObject();
+                ResourceLocation tag = requiredLocation(action, "tag");
+                JobDefinition.BlockCondition condition = parseCondition(
+                        GsonHelper.getAsString(action, "condition", "any"));
+                boolean excludePlayerPlaced = GsonHelper.getAsBoolean(action, "exclude_player_placed", true);
+                blockRewards.add(JobDefinition.BlockBreakReward.of(
+                        tag, positive(action, "xp", 1), condition, excludePlayerPlaced));
             }
-            rewards.add(JobDefinition.BlockBreakReward.of(tag, positive(action, "xp", 1)));
         }
+
+        List<JobDefinition.EntityReward> killRewards = parseEntityRewards(json, "entity_kill");
+        List<JobDefinition.EntityReward> breedRewards = parseEntityRewards(json, "entity_breed");
         return new JobDefinition(id, displayName, maxLevel, pointsPerLevel,
-                baseXp, linearXp, quadraticXp, rewards);
+                baseXp, linearXp, quadraticXp, blockRewards, killRewards, breedRewards);
+    }
+
+    private static List<JobDefinition.EntityReward> parseEntityRewards(JsonObject json, String key) {
+        if (!json.has(key)) {
+            return List.of();
+        }
+        List<JobDefinition.EntityReward> rewards = new ArrayList<>();
+        for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, key)) {
+            JsonObject action = actionElement.getAsJsonObject();
+            rewards.add(JobDefinition.EntityReward.of(
+                    requiredLocation(action, "tag"), positive(action, "xp", 1)));
+        }
+        return rewards;
+    }
+
+    private static ResourceLocation requiredLocation(JsonObject json, String key) {
+        ResourceLocation location = ResourceLocation.tryParse(GsonHelper.getAsString(json, key));
+        if (location == null) {
+            throw new IllegalArgumentException("Invalid resource location in " + key);
+        }
+        return location;
+    }
+
+    private static JobDefinition.BlockCondition parseCondition(String value) {
+        return switch (value.toLowerCase(java.util.Locale.ROOT)) {
+            case "any" -> JobDefinition.BlockCondition.ANY;
+            case "mature" -> JobDefinition.BlockCondition.MATURE;
+            default -> throw new IllegalArgumentException("Unknown block condition: " + value);
+        };
     }
 
     private static int positive(JsonObject json, String key, int fallback) {

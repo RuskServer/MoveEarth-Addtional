@@ -9,6 +9,8 @@
 - Changed `/jobs` to open a unified Jobs screen containing the job list, selection slots, levels, XP progress, shared points, and join or leave controls. `/jobs status` retains the chat summary.
 - Added a permission-level-2 panel to the same screen for inspecting online players, granting job XP, changing shared points, and resetting job data with confirmation and server-side audit logging.
 - Updated the network protocol to `1.9-jobs1`; clients and servers must use the same updated JAR.
+- Added Lumberjack XP for non-player-placed logs, Farmer XP for mature crops, naturally grown harvest blocks and player-caused livestock breeding, and Hunter XP for player kills against configured hostile mobs.
+- Added persistent Hunter exclusions for mobs created by spawners, spawn eggs, dispensers, or commands. All new jobs share the existing PvP exclusion and per-minute soft cap.
 
 # v1.9
 

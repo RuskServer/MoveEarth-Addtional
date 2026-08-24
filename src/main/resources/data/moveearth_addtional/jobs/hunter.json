@@ -1,0 +1,24 @@
+{
+  "display_name": "狩人",
+  "max_level": 50,
+  "points_per_level": 1,
+  "xp_curve": {
+    "base": 100,
+    "linear": 25,
+    "quadratic": 10
+  },
+  "entity_kill": [
+    {
+      "tag": "moveearth_addtional:jobs/hunter/common",
+      "xp": 5
+    },
+    {
+      "tag": "moveearth_addtional:jobs/hunter/dangerous",
+      "xp": 10
+    },
+    {
+      "tag": "moveearth_addtional:jobs/hunter/bosses",
+      "xp": 50
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:elder_guardian",
+    "minecraft:warden",
+    "minecraft:wither",
+    "minecraft:ender_dragon"
+  ]
+}

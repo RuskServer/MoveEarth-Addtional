@@ -1,0 +1,17 @@
+{
+  "display_name": "木こり",
+  "max_level": 50,
+  "points_per_level": 1,
+  "xp_curve": {
+    "base": 100,
+    "linear": 25,
+    "quadratic": 10
+  },
+  "block_break": [
+    {
+      "tag": "moveearth_addtional:jobs/lumberjack/logs",
+      "xp": 4,
+      "exclude_player_placed": true
+    }
+  ]
+}
