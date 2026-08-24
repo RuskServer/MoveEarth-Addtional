@@ -46,7 +46,8 @@
 ## Server Administration and Compatibility
 
 - Added `/notice <message>` for permission-level-2 command sources. It displays a custom message and notification sound to every online player and accepts up to 256 characters.
-- Clarified the mixed project licensing: original code is LGPL-3.0-only, WARLORD audio is CC BY-SA 4.0, and the adapted stonecutter compatibility implementation retains its declared MIT terms. All applicable license texts and notices are bundled in the JAR.
+- Relicensed the current source tree and future distributions of the original code and assets from LGPL-3.0-only to GPL-3.0-only. Previously received LGPL-3.0-only copies retain their existing rights.
+- Preserved the separate CC BY-SA 4.0 license and VoiceBosch attribution for WARLORD audio, and the MIT terms for the stonecutter compatibility implementation and bundled FirstDark Discord RPC classes. All applicable license texts and notices are bundled in the JAR.
 - Updated the PvP network protocol to `1.9-pvp2`. v1.9 servers and clients must use the same v1.9 JAR; older clients are not network-compatible.
 
 # v1.8

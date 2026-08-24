@@ -1,0 +1,20 @@
+FirstDark Discord RPC provenance
+================================
+
+MoveEarth-Addtional incorporates selected classes from:
+  FirstDark Discord RPC 1.0.4
+
+Project source:
+  https://github.com/firstdarkdev/discord-rpc
+
+Copyright notice:
+  Copyright (c) 2024 HypherionSA and Contributors
+
+License:
+  MIT License
+
+The incorporated classes are copied from discord-rpc-1.0.4.jar during the
+build. dev.firstdark.rpc.connection.WinRegistry is excluded from the copy.
+
+The complete applicable MIT license text is included at:
+  META-INF/licenses/moveearth_addtional/MIT-FirstDark-Discord-RPC.txt
