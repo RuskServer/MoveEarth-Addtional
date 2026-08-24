@@ -147,6 +147,13 @@ dependencies {
     // Sable is supplied by the target server; only its API is needed while compiling this mod.
     compileOnly 'dev.ryanhcode.sable:sable-common-1.21.1:2.0.3'
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

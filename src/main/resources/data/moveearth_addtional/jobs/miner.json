@@ -1,0 +1,24 @@
+{
+  "display_name": "採掘師",
+  "max_level": 50,
+  "points_per_level": 1,
+  "xp_curve": {
+    "base": 100,
+    "linear": 25,
+    "quadratic": 10
+  },
+  "block_break": [
+    {
+      "tag": "moveearth_addtional:jobs/miner/common_ores",
+      "xp": 4
+    },
+    {
+      "tag": "moveearth_addtional:jobs/miner/uncommon_ores",
+      "xp": 8
+    },
+    {
+      "tag": "moveearth_addtional:jobs/miner/rare_ores",
+      "xp": 20
+    }
+  ]
+}

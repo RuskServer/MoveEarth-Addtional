@@ -1,3 +1,12 @@
+# Unreleased
+
+## Jobs System
+
+- Added a server-authoritative job progression foundation with up to two active jobs per player, per-job XP and levels, and shared job points earned on level-up.
+- Added the Miner job. Breaking natural vanilla ores grants configurable XP, while player-placed reward blocks, invalid tools, creative or spectator play, and the PvP arena grant no XP.
+- Added a one-minute XP soft cap, persistent UUID-based job progress, data-pack-driven job definitions and ore reward tags, and permission-level-2 administration commands.
+- Added `/jobs`, `/jobs list`, `/jobs join`, `/jobs leave`, and `/jobs info` as explicit permission-level-0 player commands.
+
 # v1.9
 
 ## Beginner Protection
