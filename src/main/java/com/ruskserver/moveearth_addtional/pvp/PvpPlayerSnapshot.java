@@ -9,6 +9,8 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 
@@ -19,6 +21,7 @@ final class PvpPlayerSnapshot {
     final float yaw, pitch;
     final int selected;
     final GameType gameMode;
+    final double maxHealthBase;
     final float health;
     final float absorption;
     final CompoundTag food;
@@ -38,6 +41,8 @@ final class PvpPlayerSnapshot {
         pitch = player.getXRot();
         selected = player.getInventory().selected;
         gameMode = player.gameMode.getGameModeForPlayer();
+        AttributeInstance maxHealth = player.getAttribute(Attributes.MAX_HEALTH);
+        maxHealthBase = maxHealth == null ? player.getMaxHealth() : maxHealth.getBaseValue();
         health = player.getHealth();
         absorption = player.getAbsorptionAmount();
         food = new CompoundTag();
@@ -60,6 +65,7 @@ final class PvpPlayerSnapshot {
         pitch = tag.getFloat("Pitch");
         selected = Mth.clamp(tag.getInt("Selected"), 0, 8);
         gameMode = GameType.byId(tag.getInt("GameMode"));
+        maxHealthBase = tag.contains("MaxHealthBase") ? tag.getDouble("MaxHealthBase") : 40.0D;
         health = tag.getFloat("Health");
         absorption = tag.getFloat("Absorption");
         food = tag.getCompound("Food");
@@ -81,6 +87,7 @@ final class PvpPlayerSnapshot {
         tag.putFloat("Pitch", pitch);
         tag.putInt("Selected", selected);
         tag.putInt("GameMode", gameMode.getId());
+        tag.putDouble("MaxHealthBase", maxHealthBase);
         tag.putFloat("Health", health);
         tag.putFloat("Absorption", absorption);
         tag.put("Food", food.copy());
@@ -104,6 +111,8 @@ final class PvpPlayerSnapshot {
         player.experienceLevel = experienceLevel;
         player.totalExperience = totalExperience;
         player.experienceProgress = experienceProgress;
+        AttributeInstance maxHealth = player.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth != null) maxHealth.setBaseValue(maxHealthBase);
         player.removeAllEffects();
         for (int i = 0; i < effects.size(); i++) {
             MobEffectInstance effect = MobEffectInstance.load(effects.getCompound(i));

@@ -28,26 +28,40 @@ public final class PvpScreen extends Screen {
     private static final int DANGER = 0xFFFF6577;
     private static final int GOLD = 0xFFFFB454;
 
-    private final boolean joined;
-    private final boolean active;
-    private final boolean hosting;
+    private boolean joined;
+    private boolean active;
+    private boolean hosting;
+    private boolean matchRunning;
+    private int entryCount;
     private final int points;
     private final String tasks;
     private final PvpLoadoutPreset serverSelection;
     private final Map<PvpLoadoutPreset, ItemStack> displayGuns = new EnumMap<>(PvpLoadoutPreset.class);
     private PvpLoadoutPreset selected;
 
-    public PvpScreen(boolean joined, boolean active, boolean hosting, int points, String tasks,
+    public PvpScreen(boolean joined, boolean active, boolean hosting, boolean matchRunning, int entryCount,
+                     int points, String tasks,
                      String selectedLoadoutId) {
         super(Component.translatable("screen.moveearth_addtional.pvp.title"));
         this.joined = joined;
         this.active = active;
         this.hosting = hosting;
+        this.matchRunning = matchRunning;
+        this.entryCount = Math.max(0, entryCount);
         this.points = points;
         this.tasks = tasks;
         this.serverSelection = PvpLoadoutPreset.byId(selectedLoadoutId)
                 .orElse(PvpLoadoutPreset.defaultPreset());
         this.selected = serverSelection;
+    }
+
+    public void updateEntryState(boolean joined, boolean active, boolean hosting, boolean matchRunning,
+                                 int entryCount) {
+        this.joined = joined;
+        this.active = active;
+        this.hosting = hosting;
+        this.matchRunning = matchRunning;
+        this.entryCount = Math.max(0, entryCount);
     }
 
     @Override
@@ -64,6 +78,8 @@ public final class PvpScreen extends Screen {
 
         graphics.drawString(font, title, layout.contentLeft, layout.top + 13, TEXT, false);
         graphics.drawString(font, stateText(), layout.contentLeft, layout.top + 29, stateColor(), false);
+        Component entries = Component.translatable("screen.moveearth_addtional.pvp.entries", entryCount);
+        graphics.drawString(font, entries, layout.contentRight - font.width(entries), layout.top + 29, MUTED, false);
         String balance = points + " WEAPON PT";
         graphics.drawString(font, balance, layout.contentRight - font.width(balance), layout.top + 14, GOLD, false);
 
@@ -159,6 +175,8 @@ public final class PvpScreen extends Screen {
                 ? Component.translatable("screen.moveearth_addtional.pvp.registered")
                 : joined
                 ? Component.translatable("screen.moveearth_addtional.pvp.change")
+                : matchRunning
+                ? Component.translatable("screen.moveearth_addtional.pvp.join_running")
                 : Component.translatable("screen.moveearth_addtional.pvp.join");
         drawButton(graphics, footer.actionX, layout.footerY, footer.actionWidth, 28, ACCENT,
                 actionText, actionHovered, actionEnabled);
@@ -236,6 +254,7 @@ public final class PvpScreen extends Screen {
     private Component stateText() {
         if (active) return Component.translatable("screen.moveearth_addtional.pvp.state.active");
         if (joined) return Component.translatable("screen.moveearth_addtional.pvp.state.queued");
+        if (hosting && matchRunning) return Component.translatable("screen.moveearth_addtional.pvp.state.join_running");
         if (hosting) return Component.translatable("screen.moveearth_addtional.pvp.state.open");
         return Component.translatable("screen.moveearth_addtional.pvp.state.closed");
     }

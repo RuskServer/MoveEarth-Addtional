@@ -49,6 +49,8 @@ public final class PvpCommand {
         PacketDistributor.sendToPlayer(player, new S2C_OpenPvpScreenPacket(PvpMatchManager.INSTANCE.isParticipant(player),
                 PvpMatchManager.INSTANCE.isActive(player),
                 com.ruskserver.moveearth_addtional.pvp.PvpArenaSavedData.get(player.server).hosting(),
+                PvpMatchManager.INSTANCE.phase() == com.ruskserver.moveearth_addtional.pvp.PvpPhase.RUNNING,
+                PvpMatchManager.INSTANCE.participantCount(),
                 rewards.points(player.getUUID()), rewards.summary(player.getUUID()),
                 PvpMatchManager.INSTANCE.selectedLoadout(player).id()));
         return 1;
@@ -85,6 +87,7 @@ public final class PvpCommand {
         }
         arenaData.setHosting(open);
         if (!open) PvpMatchManager.INSTANCE.stop(source.getServer());
+        else PvpMatchManager.INSTANCE.syncEntryState(source.getServer());
         source.sendSuccess(() -> Component.literal(open ? "PvPイベントの受付を開始しました。" : "PvPイベントを終了しました。"), true);
         return 1;
     }

@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.pvp;
 import com.ruskserver.moveearth_addtional.ModSounds;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PvpEntryStatePacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpTeamPacket;
@@ -24,6 +25,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -60,6 +63,7 @@ public final class PvpMatchManager {
     private static final int MIN_REWARD_TEAM_SIZE = 2;
     private static final int MIN_INFINITE_RESERVE_AMMO = 120;
     private static final int COMBAT_FOOD_LEVEL = 18;
+    private static final double PVP_MAX_HEALTH = 20.0D;
     private static final int MULTI_KILL_WINDOW_TICKS = 8 * 20;
     private static final int FINAL_STAND_TICKS = 60 * 20;
     /** Includes queued and active players. Insertion order is used for deterministic balancing. */
@@ -94,22 +98,26 @@ public final class PvpMatchManager {
     public int redScore() { return redScore; }
     public int blueScore() { return blueScore; }
     public int ticksLeft() { return ticksLeft; }
+    public int participantCount() { return teams.size(); }
 
-    /** Queue registration only. The player's inventory and position are untouched until start(). */
+    /** Registers for the next match, or immediately activates the player when a match is running. */
     public boolean join(ServerPlayer player, String loadoutId) {
         PvpArenaSavedData arena = PvpArenaSavedData.get(player.server);
         if (!arena.hosting()) {
             player.sendSystemMessage(Component.literal("現在PvPイベントは開催されていません。"));
             return false;
         }
-        if (phase == PvpPhase.RUNNING || phase == PvpPhase.FINISHED || isActive(player)) {
-            player.sendSystemMessage(Component.literal("試合進行中はキューへ参加できません。"));
+        if (phase == PvpPhase.FINISHED || isActive(player)) {
+            player.sendSystemMessage(Component.literal("現在はPvPへ参加できません。"));
             return false;
         }
         PvpLoadoutPreset loadout = PvpLoadoutPreset.byId(loadoutId).orElse(null);
         if (loadout == null) {
             player.sendSystemMessage(Component.literal("選択されたPvPプリセットは使用できません。"));
             return false;
+        }
+        if (phase == PvpPhase.RUNNING) {
+            return joinRunningMatch(player, loadout);
         }
         if (isQueued(player)) {
             loadoutSelections.put(player.getUUID(), loadout);
@@ -121,6 +129,7 @@ public final class PvpMatchManager {
         loadoutSelections.put(player.getUUID(), loadout);
         phase = PvpPhase.WAITING;
         player.sendSystemMessage(loadoutMessage(loadout, false));
+        syncEntryState(player.server);
         return true;
     }
 
@@ -134,10 +143,11 @@ public final class PvpMatchManager {
         clearClientState(player);
 
         if (phase == PvpPhase.RUNNING && (count(PvpTeam.RED, true) == 0 || count(PvpTeam.BLUE, true) == 0)) {
-            finish(player.server, "対戦相手が退出したため試合終了");
+            finish(player.server, "対戦相手が退出したため試合終了", winnerFromRemainingTeams());
         } else if (teams.isEmpty()) {
             resetRuntime();
         }
+        syncEntryState(player.server);
     }
 
     public boolean start(MinecraftServer server) {
@@ -170,18 +180,7 @@ public final class PvpMatchManager {
         // Persist both the original vanilla player data and our recovery copy before replacing any inventory.
         server.saveEverything(false, true, false);
 
-        for (ServerPlayer player : participants(server, true)) {
-            player.closeContainer();
-            player.getInventory().clearContent();
-            player.getInventory().selected = 0;
-            player.removeAllEffects();
-            player.setGameMode(GameType.SURVIVAL);
-            assignScoreboardTeam(player, team(player));
-            giveKit(player, selectedLoadout(player));
-            resetVitals(player);
-            BlockPos spawn = team(player) == PvpTeam.RED ? arenaData.redSpawn() : arenaData.blueSpawn();
-            teleport(player, arena, spawn);
-        }
+        for (ServerPlayer player : participants(server, true)) activateParticipant(player, arena, arenaData);
         phase = PvpPhase.RUNNING;
         redScore = blueScore = 0;
         ticksLeft = MATCH_TICKS;
@@ -191,9 +190,59 @@ public final class PvpMatchManager {
         cleanupArenaMobs(arena);
         syncTeams(server);
         syncHud(server, "争奪中");
+        syncEntryState(server);
         playToAllParticipants(server, ModSounds.WARLORD_START);
         broadcastToParticipants(server, Component.literal("PvP試合開始！ 丘を占領して180ポイントを獲得してください。"));
         return true;
+    }
+
+    private boolean joinRunningMatch(ServerPlayer player, PvpLoadoutPreset loadout) {
+        MinecraftServer server = player.server;
+        ServerLevel arena = server.getLevel(ARENA);
+        PvpArenaSavedData arenaData = PvpArenaSavedData.get(server);
+        if (arena == null || !arenaData.configured()) {
+            player.sendSystemMessage(Component.literal("PvPアリーナの設定を読み込めないため途中参加できません。"));
+            return false;
+        }
+        String missingPreset = missingPresetContent();
+        if (missingPreset != null) {
+            player.sendSystemMessage(Component.literal("FMIC PvPプリセットのデータが見つかりません: " + missingPreset));
+            return false;
+        }
+
+        UUID id = player.getUUID();
+        PvpTeam assigned = count(PvpTeam.RED, true) <= count(PvpTeam.BLUE, true) ? PvpTeam.RED : PvpTeam.BLUE;
+        PvpPlayerSnapshot snapshot = new PvpPlayerSnapshot(player);
+        teams.put(id, assigned);
+        loadoutSelections.put(id, loadout);
+        snapshots.put(id, snapshot);
+        matchStats.put(id, new MatchStats());
+        PvpSessionSavedData.get(server).put(id, snapshot);
+        // Make the recovery copy durable before replacing the late entrant's inventory.
+        server.saveEverything(false, true, false);
+
+        activateParticipant(player, arena, arenaData);
+        syncTeams(server);
+        syncEntryState(server);
+        PacketDistributor.sendToPlayer(player,
+                new S2C_PvpHudPacket(true, redScore, blueScore, WIN_SCORE, ticksLeft, "途中参加"));
+        broadcastToParticipants(server, Component.literal(
+                player.getGameProfile().getName() + " が " + assigned.name() + " チームへ途中参加しました"));
+        return true;
+    }
+
+    private void activateParticipant(ServerPlayer player, ServerLevel arena, PvpArenaSavedData arenaData) {
+        player.closeContainer();
+        player.getInventory().clearContent();
+        player.getInventory().selected = 0;
+        player.removeAllEffects();
+        player.setGameMode(GameType.SURVIVAL);
+        applyPvpMaxHealth(player);
+        assignScoreboardTeam(player, team(player));
+        giveKit(player, selectedLoadout(player));
+        resetVitals(player);
+        BlockPos spawn = team(player) == PvpTeam.RED ? arenaData.redSpawn() : arenaData.blueSpawn();
+        teleport(player, arena, spawn);
     }
 
     public void stop(MinecraftServer server) {
@@ -203,6 +252,7 @@ public final class PvpMatchManager {
             clearClientState(player);
         }
         resetRuntime();
+        syncEntryState(server);
     }
 
     public void tick(MinecraftServer server) {
@@ -222,7 +272,7 @@ public final class PvpMatchManager {
         }
         if (phase != PvpPhase.RUNNING) return;
         if (--ticksLeft <= 0) {
-            finish(server, winnerText());
+            finish(server, winnerText(), scoreWinner());
             return;
         }
         if (!finalStandAnnounced && ticksLeft <= FINAL_STAND_TICKS) {
@@ -232,7 +282,7 @@ public final class PvpMatchManager {
 
         tickRespawns(server);
         if (count(PvpTeam.RED, true) == 0 || count(PvpTeam.BLUE, true) == 0) {
-            finish(server, "対戦相手がいないため試合終了");
+            finish(server, "対戦相手がいないため試合終了", winnerFromRemainingTeams());
             return;
         }
 
@@ -263,7 +313,7 @@ public final class PvpMatchManager {
                 if (rewardEligible) recordZoneForTeam(server, PvpTeam.BLUE, data);
             }
             if (redScore >= WIN_SCORE || blueScore >= WIN_SCORE) {
-                finish(server, winnerText());
+                finish(server, winnerText(), scoreWinner());
                 return;
             }
         }
@@ -377,10 +427,10 @@ public final class PvpMatchManager {
         }
     }
 
-    private void finish(MinecraftServer server, String message) {
+    private void finish(MinecraftServer server, String message, PvpTeam winner) {
         if (phase == PvpPhase.FINISHED) return;
-        recordMatchResults(server);
-        announceMatchResult(server);
+        recordMatchResults(server, winner);
+        announceMatchResult(server, winner);
         phase = PvpPhase.FINISHED;
         ticksLeft = FINISHED_TICKS;
         respawns.clear();
@@ -391,16 +441,27 @@ public final class PvpMatchManager {
         syncHud(server, message);
         broadcastToParticipants(server, Component.literal(message));
         sendMatchSummary(server);
+        syncEntryState(server);
     }
 
     private String winnerText() {
-        return redScore == blueScore ? "引き分け" : redScore > blueScore ? "RED 勝利" : "BLUE 勝利";
+        PvpTeam winner = scoreWinner();
+        return winner == null ? "引き分け" : winner == PvpTeam.RED ? "RED 勝利" : "BLUE 勝利";
     }
 
-    private void recordMatchResults(MinecraftServer server) {
+    private PvpTeam scoreWinner() {
+        return redScore == blueScore ? null : redScore > blueScore ? PvpTeam.RED : PvpTeam.BLUE;
+    }
+
+    private PvpTeam winnerFromRemainingTeams() {
+        boolean redPresent = count(PvpTeam.RED, true) > 0;
+        boolean bluePresent = count(PvpTeam.BLUE, true) > 0;
+        return redPresent == bluePresent ? null : redPresent ? PvpTeam.RED : PvpTeam.BLUE;
+    }
+
+    private void recordMatchResults(MinecraftServer server, PvpTeam winner) {
         if (matchResultsRecorded || !rewardsEnabled()) return;
         matchResultsRecorded = true;
-        PvpTeam winner = redScore == blueScore ? null : redScore > blueScore ? PvpTeam.RED : PvpTeam.BLUE;
         PvpRewardData rewards = PvpRewardData.get(server);
         for (ServerPlayer player : participants(server, true)) {
             rewards.recordMatchResult(player, winner != null && team(player) == winner);
@@ -453,8 +514,7 @@ public final class PvpMatchManager {
         }
     }
 
-    private void announceMatchResult(MinecraftServer server) {
-        PvpTeam winner = redScore == blueScore ? null : redScore > blueScore ? PvpTeam.RED : PvpTeam.BLUE;
+    private void announceMatchResult(MinecraftServer server, PvpTeam winner) {
         for (ServerPlayer player : participants(server, true)) {
             int outcome = winner == null ? S2C_PvpResultPacket.DRAW
                     : team(player) == winner ? S2C_PvpResultPacket.WIN : S2C_PvpResultPacket.LOSS;
@@ -560,6 +620,11 @@ public final class PvpMatchManager {
         player.clearFire();
         player.setAirSupply(player.getMaxAirSupply());
         player.fallDistance = 0.0F;
+    }
+
+    private static void applyPvpMaxHealth(ServerPlayer player) {
+        AttributeInstance maxHealth = player.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealth != null) maxHealth.setBaseValue(PVP_MAX_HEALTH);
     }
 
     private static void maintainCombatHunger(ServerPlayer player) {
@@ -758,6 +823,16 @@ public final class PvpMatchManager {
                     .toList();
             PacketDistributor.sendToPlayer(viewer, new S2C_PvpTeamPacket(allies));
         });
+    }
+
+    public void syncEntryState(MinecraftServer server) {
+        boolean hosting = PvpArenaSavedData.get(server).hosting();
+        boolean running = phase == PvpPhase.RUNNING;
+        int entries = participantCount();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            PacketDistributor.sendToPlayer(player, new S2C_PvpEntryStatePacket(
+                    isParticipant(player), isActive(player), hosting, running, entries));
+        }
     }
 
     private void clearClientState(ServerPlayer player) {
