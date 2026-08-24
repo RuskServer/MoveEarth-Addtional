@@ -52,15 +52,12 @@ cd MoveEarth-Addtional
 
 ```text
 lib/
-├─ Antique Atlas-1.21.1-8.0.1-NeoForge.jar
 ├─ create-1.21.1-6.0.10.jar
 ├─ create-aeronautics-bundled-1.21.1-1.3.0.jar
 ├─ createdieselgenerators-1.21.1-1.3.15.jar
-├─ create-new-age-1.2.0+neoforge-mc1.21.1.jar
 ├─ discord-rpc-1.0.4.jar
 ├─ LocalizedChat-neoforge-1.21.1-5.2.1.jar
 ├─ PlayerRevive_NEOFORGE_v2.1.2_mc1.21.1.jar
-├─ surveyor-1.2.4+1.21.jar
 └─ tacz-neoforge-1.21.1-1.1.8-hotfix-r3.jar
 ```
 
