@@ -18,7 +18,8 @@ import java.util.UUID;
 /** Server-authoritative job selection, experience and shared points. */
 public final class JobProgressSavedData extends SavedData {
     public static final int MAX_ACTIVE_JOBS = 2;
-    private static final int DATA_VERSION = 1;
+    private static final int DATA_VERSION = 2;
+    private static final double XP_EPSILON = 1.0E-9D;
     private final Map<UUID, PlayerJobs> players = new HashMap<>();
 
     public JoinResult join(UUID playerId, ResourceLocation jobId) {
@@ -43,44 +44,52 @@ public final class JobProgressSavedData extends SavedData {
         return removed;
     }
 
-    public AwardResult award(UUID playerId, JobDefinition definition, int amount) {
+    public AwardResult award(UUID playerId, JobDefinition definition, double amount) {
         PlayerJobs jobs = player(playerId);
-        if (!jobs.activeJobs.contains(definition.id()) || amount <= 0) {
+        if (!jobs.activeJobs.contains(definition.id()) || !Double.isFinite(amount) || amount <= 0) {
             return AwardResult.NONE;
         }
         return awardInternal(jobs, definition, amount);
     }
 
-    public AwardResult awardAdmin(UUID playerId, JobDefinition definition, int amount) {
-        if (amount <= 0) {
+    public AwardResult awardAdmin(UUID playerId, JobDefinition definition, double amount) {
+        if (!Double.isFinite(amount) || amount <= 0) {
             return AwardResult.NONE;
         }
         return awardInternal(player(playerId), definition, amount);
     }
 
-    private AwardResult awardInternal(PlayerJobs jobs, JobDefinition definition, int amount) {
+    private AwardResult awardInternal(PlayerJobs jobs, JobDefinition definition, double amount) {
         Progress progress = jobs.progress.computeIfAbsent(definition.id(), ignored -> new Progress());
         if (progress.level >= definition.maxLevel()) {
             return AwardResult.NONE;
         }
 
         int oldLevel = progress.level;
-        long remaining = amount;
-        while (remaining > 0 && progress.level < definition.maxLevel()) {
-            long needed = definition.xpNeededForNextLevel(progress.level) - progress.xpInLevel;
-            long applied = Math.min(remaining, needed);
+        double remaining = amount;
+        while (progress.level < definition.maxLevel()) {
+            double threshold = definition.xpNeededForNextLevel(progress.level);
+            if (progress.xpInLevel + XP_EPSILON >= threshold) {
+                progress.xpInLevel = Math.max(0.0D, progress.xpInLevel - threshold);
+                progress.level++;
+                jobs.points = safeAdd(jobs.points, definition.pointsPerLevel());
+                continue;
+            }
+            if (remaining <= XP_EPSILON) {
+                break;
+            }
+            double needed = threshold - progress.xpInLevel;
+            double applied = Math.min(remaining, needed);
             progress.xpInLevel += applied;
             progress.totalXp += applied;
             remaining -= applied;
-            if (progress.xpInLevel >= definition.xpNeededForNextLevel(progress.level)) {
-                progress.level++;
-                progress.xpInLevel = 0;
-                jobs.points = safeAdd(jobs.points, definition.pointsPerLevel());
-            }
+        }
+        if (progress.level >= definition.maxLevel()) {
+            progress.xpInLevel = 0.0D;
         }
         setDirty();
         int gainedLevels = progress.level - oldLevel;
-        return new AwardResult(amount - (int) remaining, oldLevel, progress.level,
+        return new AwardResult(amount - remaining, oldLevel, progress.level,
                 gainedLevels * definition.pointsPerLevel());
     }
 
@@ -145,7 +154,7 @@ public final class JobProgressSavedData extends SavedData {
         LIMIT_REACHED
     }
 
-    public record AwardResult(int awardedXp, int oldLevel, int newLevel, int pointsEarned) {
+    public record AwardResult(double awardedXp, int oldLevel, int newLevel, int pointsEarned) {
         public static final AwardResult NONE = new AwardResult(0, 0, 0, 0);
 
         public boolean leveledUp() {
@@ -153,7 +162,7 @@ public final class JobProgressSavedData extends SavedData {
         }
     }
 
-    public record ProgressSnapshot(int level, long xpInLevel, long totalXp) {
+    public record ProgressSnapshot(int level, double xpInLevel, double totalXp) {
     }
 
     public record PlayerSnapshot(int points, Set<ResourceLocation> activeJobs,
@@ -204,22 +213,22 @@ public final class JobProgressSavedData extends SavedData {
 
     private static final class Progress {
         private int level = 1;
-        private long xpInLevel;
-        private long totalXp;
+        private double xpInLevel;
+        private double totalXp;
 
         private CompoundTag save() {
             CompoundTag tag = new CompoundTag();
             tag.putInt("Level", level);
-            tag.putLong("Xp", xpInLevel);
-            tag.putLong("TotalXp", totalXp);
+            tag.putDouble("Xp", xpInLevel);
+            tag.putDouble("TotalXp", totalXp);
             return tag;
         }
 
         private static Progress load(CompoundTag tag) {
             Progress progress = new Progress();
             progress.level = Math.max(1, tag.getInt("Level"));
-            progress.xpInLevel = Math.max(0, tag.getLong("Xp"));
-            progress.totalXp = Math.max(progress.xpInLevel, tag.getLong("TotalXp"));
+            progress.xpInLevel = Math.max(0.0D, tag.getDouble("Xp"));
+            progress.totalXp = Math.max(progress.xpInLevel, tag.getDouble("TotalXp"));
             return progress;
         }
     }

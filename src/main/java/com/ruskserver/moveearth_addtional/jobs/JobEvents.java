@@ -59,7 +59,7 @@ public final class JobEvents {
         }
 
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
-            int reward = definition.blockBreakXp(state);
+            double reward = definition.blockBreakXp(state);
             if (reward > 0) {
                 JobService.INSTANCE.awardBlockBreak(player, definition, reward);
             }
@@ -75,7 +75,7 @@ public final class JobEvents {
             return;
         }
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
-            int reward = definition.entityKillXp(event.getEntity().getType());
+            double reward = definition.entityKillXp(event.getEntity().getType());
             if (reward > 0) {
                 JobService.INSTANCE.awardAction(player, definition, reward);
             }
@@ -91,7 +91,7 @@ public final class JobEvents {
             return;
         }
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
-            int reward = definition.entityBreedXp(event.getParentA().getType());
+            double reward = definition.entityBreedXp(event.getParentA().getType());
             if (reward > 0) {
                 JobService.INSTANCE.awardAction(player, definition, reward);
             }
@@ -107,7 +107,7 @@ public final class JobEvents {
             return;
         }
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
-            int reward = definition.itemCraftXp(event.getCrafting());
+            double reward = definition.itemCraftXp(event.getCrafting());
             if (reward > 0) {
                 // Reward per completed crafting action, not per output stack size. This avoids recipes
                 // producing many items at once multiplying XP unexpectedly.

@@ -39,9 +39,9 @@ public record S2C_OpenJobsScreenPacket(
             buffer.writeVarInt(job.pointsPerLevel);
             buffer.writeBoolean(job.active);
             buffer.writeVarInt(job.level);
-            buffer.writeVarLong(job.xpInLevel);
-            buffer.writeVarLong(job.xpForNextLevel);
-            buffer.writeVarLong(job.totalXp);
+            buffer.writeDouble(job.xpInLevel);
+            buffer.writeDouble(job.xpForNextLevel);
+            buffer.writeDouble(job.totalXp);
         }
         buffer.writeVarInt(packet.onlinePlayers.size());
         for (String playerName : packet.onlinePlayers) {
@@ -66,9 +66,9 @@ public record S2C_OpenJobsScreenPacket(
                     buffer.readVarInt(),
                     buffer.readBoolean(),
                     buffer.readVarInt(),
-                    buffer.readVarLong(),
-                    buffer.readVarLong(),
-                    buffer.readVarLong()));
+                    buffer.readDouble(),
+                    buffer.readDouble(),
+                    buffer.readDouble()));
         }
         int playerCount = checkedSize(buffer.readVarInt(), MAX_PLAYERS, "player");
         List<String> onlinePlayers = new ArrayList<>(playerCount);
@@ -97,6 +97,6 @@ public record S2C_OpenJobsScreenPacket(
 
     public record JobEntry(ResourceLocation id, String displayName, String description,
                            int maxLevel, int pointsPerLevel,
-                           boolean active, int level, long xpInLevel, long xpForNextLevel, long totalXp) {
+                           boolean active, int level, double xpInLevel, double xpForNextLevel, double totalXp) {
     }
 }

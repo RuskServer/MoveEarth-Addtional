@@ -23,4 +23,11 @@ class JobProgressionTest {
     void clampsInvalidNegativeCurveToOne() {
         assertEquals(1, JobProgression.xpNeededForNextLevel(1, 50, -10, 0, 0));
     }
+
+    @Test
+    void formatsFractionalXpWithoutFloatingPointNoise() {
+        assertEquals("0.35", JobXpFormat.format(0.35D));
+        assertEquals("8", JobXpFormat.format(8.0D));
+        assertEquals("27.5", JobXpFormat.format(27.50D));
+    }
 }

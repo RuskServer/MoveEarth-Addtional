@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
@@ -116,12 +117,20 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         if (json.has("block_break")) {
             for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, "block_break")) {
                 JsonObject action = actionElement.getAsJsonObject();
-                ResourceLocation tag = requiredLocation(action, "tag");
                 JobDefinition.BlockCondition condition = parseCondition(
                         GsonHelper.getAsString(action, "condition", "any"));
                 boolean excludePlayerPlaced = GsonHelper.getAsBoolean(action, "exclude_player_placed", true);
-                blockRewards.add(JobDefinition.BlockBreakReward.of(
-                        tag, positive(action, "xp", 1), condition, excludePlayerPlaced));
+                double xp = positiveDouble(action, "xp", 1.0D);
+                boolean hasTag = action.has("tag");
+                boolean hasBlock = action.has("block");
+                if (hasTag == hasBlock) {
+                    throw new IllegalArgumentException("block_break requires exactly one of tag or block");
+                }
+                blockRewards.add(hasTag
+                        ? JobDefinition.BlockBreakReward.ofTag(requiredLocation(action, "tag"), xp,
+                        condition, excludePlayerPlaced)
+                        : JobDefinition.BlockBreakReward.ofBlock(requiredBlock(action, "block"), xp,
+                        condition, excludePlayerPlaced));
             }
         }
 
@@ -140,7 +149,7 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, "item_craft")) {
             JsonObject action = actionElement.getAsJsonObject();
             rewards.add(JobDefinition.ItemCraftReward.of(
-                    requiredLocation(action, "tag"), positive(action, "xp", 1)));
+                    requiredLocation(action, "tag"), positiveDouble(action, "xp", 1.0D)));
         }
         return rewards;
     }
@@ -153,7 +162,7 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, key)) {
             JsonObject action = actionElement.getAsJsonObject();
             rewards.add(JobDefinition.EntityReward.of(
-                    requiredLocation(action, "tag"), positive(action, "xp", 1)));
+                    requiredLocation(action, "tag"), positiveDouble(action, "xp", 1.0D)));
         }
         return rewards;
     }
@@ -162,6 +171,14 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         ResourceLocation location = ResourceLocation.tryParse(GsonHelper.getAsString(json, key));
         if (location == null) {
             throw new IllegalArgumentException("Invalid resource location in " + key);
+        }
+        return location;
+    }
+
+    private static ResourceLocation requiredBlock(JsonObject json, String key) {
+        ResourceLocation location = requiredLocation(json, key);
+        if (BuiltInRegistries.BLOCK.getOptional(location).isEmpty()) {
+            throw new IllegalArgumentException("Unknown block: " + location);
         }
         return location;
     }
@@ -178,6 +195,14 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         int value = GsonHelper.getAsInt(json, key, fallback);
         if (value <= 0) {
             throw new IllegalArgumentException(key + " must be positive");
+        }
+        return value;
+    }
+
+    private static double positiveDouble(JsonObject json, String key, double fallback) {
+        double value = GsonHelper.getAsDouble(json, key, fallback);
+        if (!Double.isFinite(value) || value <= 0.0D || value > 1_000_000.0D) {
+            throw new IllegalArgumentException(key + " must be a finite positive number up to 1000000");
         }
         return value;
     }

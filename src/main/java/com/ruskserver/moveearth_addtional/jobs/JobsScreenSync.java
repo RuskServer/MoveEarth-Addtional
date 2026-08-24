@@ -42,7 +42,7 @@ public final class JobsScreenSync {
     private static S2C_OpenJobsScreenPacket.JobEntry entry(
             JobDefinition definition, JobProgressSavedData.PlayerSnapshot snapshot) {
         JobProgressSavedData.ProgressSnapshot progress = snapshot.progress(definition.id());
-        long nextXp = progress.level() >= definition.maxLevel()
+        double nextXp = progress.level() >= definition.maxLevel()
                 ? 0 : definition.xpNeededForNextLevel(progress.level());
         return new S2C_OpenJobsScreenPacket.JobEntry(
                 definition.id(), definition.displayName(), definition.description(),

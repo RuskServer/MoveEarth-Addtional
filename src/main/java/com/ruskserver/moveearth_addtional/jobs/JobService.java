@@ -11,12 +11,12 @@ public final class JobService {
     private JobService() {
     }
 
-    public void awardBlockBreak(ServerPlayer player, JobDefinition definition, int baseXp) {
+    public void awardBlockBreak(ServerPlayer player, JobDefinition definition, double baseXp) {
         awardAction(player, definition, baseXp);
     }
 
-    public void awardAction(ServerPlayer player, JobDefinition definition, int baseXp) {
-        int xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
+    public void awardAction(ServerPlayer player, JobDefinition definition, double baseXp) {
+        double xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
         JobProgressSavedData.AwardResult result = JobProgressSavedData.get(player.getServer())
                 .award(player.getUUID(), definition, xp);
         if (result.awardedXp() <= 0) {
@@ -29,7 +29,7 @@ public final class JobService {
                     + result.pointsEarned() + "ポイント）"));
         } else {
             player.displayClientMessage(Component.literal("[Jobs] " + definition.displayName()
-                    + " +" + result.awardedXp() + " XP"), true);
+                    + " +" + JobXpFormat.format(result.awardedXp()) + " XP"), true);
         }
     }
 

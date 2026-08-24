@@ -13,7 +13,7 @@ final class JobRateLimiter {
     private static final double OVERFLOW_MULTIPLIER = 0.10D;
     private final Map<Key, Window> windows = new HashMap<>();
 
-    int apply(UUID playerId, ResourceLocation jobId, int requested, long gameTime) {
+    double apply(UUID playerId, ResourceLocation jobId, double requested, long gameTime) {
         if (requested <= 0) {
             return 0;
         }
@@ -24,10 +24,10 @@ final class JobRateLimiter {
             window.fullRateXp = 0;
         }
 
-        int fullRate = Math.min(requested, Math.max(0, FULL_RATE_XP_PER_WINDOW - window.fullRateXp));
-        int overflow = requested - fullRate;
+        double fullRate = Math.min(requested, Math.max(0.0D, FULL_RATE_XP_PER_WINDOW - window.fullRateXp));
+        double overflow = requested - fullRate;
         window.fullRateXp += fullRate;
-        return fullRate + (int) Math.ceil(overflow * OVERFLOW_MULTIPLIER);
+        return fullRate + overflow * OVERFLOW_MULTIPLIER;
     }
 
     void clear() {
@@ -39,7 +39,7 @@ final class JobRateLimiter {
 
     private static final class Window {
         private long startedAt;
-        private int fullRateXp;
+        private double fullRateXp;
 
         private Window(long startedAt) {
             this.startedAt = startedAt;

@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.jobs;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
@@ -39,8 +40,8 @@ public record JobDefinition(
         return JobProgression.xpNeededForNextLevel(level, maxLevel, baseXp, linearXp, quadraticXp);
     }
 
-    public int blockBreakXp(BlockState state) {
-        int reward = 0;
+    public double blockBreakXp(BlockState state) {
+        double reward = 0;
         for (BlockBreakReward candidate : blockBreakRewards) {
             if (candidate.matches(state)) {
                 reward = Math.max(reward, candidate.xp());
@@ -51,23 +52,23 @@ public record JobDefinition(
 
     public boolean tracksPlacement(BlockState state) {
         for (BlockBreakReward candidate : blockBreakRewards) {
-            if (candidate.excludePlayerPlaced() && state.is(candidate.tag())) {
+            if (candidate.excludePlayerPlaced() && candidate.matchesBlock(state)) {
                 return true;
             }
         }
         return false;
     }
 
-    public int entityKillXp(EntityType<?> entityType) {
+    public double entityKillXp(EntityType<?> entityType) {
         return entityReward(entityKillRewards, entityType);
     }
 
-    public int entityBreedXp(EntityType<?> entityType) {
+    public double entityBreedXp(EntityType<?> entityType) {
         return entityReward(entityBreedRewards, entityType);
     }
 
-    public int itemCraftXp(ItemStack result) {
-        int reward = 0;
+    public double itemCraftXp(ItemStack result) {
+        double reward = 0;
         for (ItemCraftReward candidate : itemCraftRewards) {
             if (result.is(candidate.tag())) {
                 reward = Math.max(reward, candidate.xp());
@@ -76,8 +77,8 @@ public record JobDefinition(
         return reward;
     }
 
-    private static int entityReward(List<EntityReward> rewards, EntityType<?> entityType) {
-        int reward = 0;
+    private static double entityReward(List<EntityReward> rewards, EntityType<?> entityType) {
+        double reward = 0;
         for (EntityReward candidate : rewards) {
             if (entityType.is(candidate.tag())) {
                 reward = Math.max(reward, candidate.xp());
@@ -86,16 +87,26 @@ public record JobDefinition(
         return reward;
     }
 
-    public record BlockBreakReward(TagKey<Block> tag, int xp, BlockCondition condition,
+    public record BlockBreakReward(TagKey<Block> tag, ResourceLocation blockId, double xp, BlockCondition condition,
                                    boolean excludePlayerPlaced) {
-        public static BlockBreakReward of(ResourceLocation tag, int xp, BlockCondition condition,
-                                          boolean excludePlayerPlaced) {
-            return new BlockBreakReward(TagKey.create(Registries.BLOCK, tag), xp,
+        public static BlockBreakReward ofTag(ResourceLocation tag, double xp, BlockCondition condition,
+                                             boolean excludePlayerPlaced) {
+            return new BlockBreakReward(TagKey.create(Registries.BLOCK, tag), null, xp,
                     condition, excludePlayerPlaced);
         }
 
+        public static BlockBreakReward ofBlock(ResourceLocation blockId, double xp, BlockCondition condition,
+                                               boolean excludePlayerPlaced) {
+            return new BlockBreakReward(null, blockId, xp, condition, excludePlayerPlaced);
+        }
+
         private boolean matches(BlockState state) {
-            return state.is(tag) && (condition != BlockCondition.MATURE || isMature(state));
+            return matchesBlock(state) && (condition != BlockCondition.MATURE || isMature(state));
+        }
+
+        private boolean matchesBlock(BlockState state) {
+            return tag != null ? state.is(tag)
+                    : blockId != null && blockId.equals(BuiltInRegistries.BLOCK.getKey(state.getBlock()));
         }
 
         private static boolean isMature(BlockState state) {
@@ -110,14 +121,14 @@ public record JobDefinition(
         }
     }
 
-    public record EntityReward(TagKey<EntityType<?>> tag, int xp) {
-        public static EntityReward of(ResourceLocation tag, int xp) {
+    public record EntityReward(TagKey<EntityType<?>> tag, double xp) {
+        public static EntityReward of(ResourceLocation tag, double xp) {
             return new EntityReward(TagKey.create(Registries.ENTITY_TYPE, tag), xp);
         }
     }
 
-    public record ItemCraftReward(TagKey<Item> tag, int xp) {
-        public static ItemCraftReward of(ResourceLocation tag, int xp) {
+    public record ItemCraftReward(TagKey<Item> tag, double xp) {
+        public static ItemCraftReward of(ResourceLocation tag, double xp) {
             return new ItemCraftReward(TagKey.create(Registries.ITEM, tag), xp);
         }
     }

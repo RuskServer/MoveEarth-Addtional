@@ -1,6 +1,6 @@
 {
   "display_name": "採掘師",
-  "description": "天然鉱石を採掘するとXPを獲得します",
+  "description": "石材・ネザー岩・天然鉱石を採掘するとXPを獲得します",
   "max_level": 50,
   "points_per_level": 1,
   "xp_curve": {
@@ -9,17 +9,41 @@
     "quadratic": 10
   },
   "block_break": [
-    {
-      "tag": "moveearth_addtional:jobs/miner/common_ores",
-      "xp": 4
-    },
-    {
-      "tag": "moveearth_addtional:jobs/miner/uncommon_ores",
-      "xp": 8
-    },
-    {
-      "tag": "moveearth_addtional:jobs/miner/rare_ores",
-      "xp": 20
-    }
+    { "block": "minecraft:stone", "xp": 0.7 },
+    { "block": "minecraft:granite", "xp": 0.8 },
+    { "block": "minecraft:diorite", "xp": 0.8 },
+    { "block": "minecraft:andesite", "xp": 0.8 },
+    { "block": "minecraft:tuff", "xp": 0.8 },
+    { "block": "minecraft:deepslate", "xp": 1.1 },
+    { "block": "minecraft:smooth_basalt", "xp": 1.0 },
+    { "block": "minecraft:calcite", "xp": 1.0 },
+    { "block": "minecraft:budding_amethyst", "xp": 12.0 },
+    { "block": "minecraft:dripstone_block", "xp": 0.8 },
+    { "block": "minecraft:pointed_dripstone", "xp": 0.5 },
+    { "block": "minecraft:netherrack", "xp": 0.3 },
+    { "block": "minecraft:crimson_nylium", "xp": 0.4 },
+    { "block": "minecraft:warped_nylium", "xp": 0.4 },
+    { "block": "minecraft:blackstone", "xp": 0.8 },
+    { "block": "minecraft:basalt", "xp": 0.7 },
+    { "block": "minecraft:magma_block", "xp": 0.9 },
+    { "block": "minecraft:coal_ore", "xp": 4.0 },
+    { "block": "minecraft:deepslate_coal_ore", "xp": 4.4 },
+    { "block": "minecraft:copper_ore", "xp": 3.0 },
+    { "block": "minecraft:deepslate_copper_ore", "xp": 3.3 },
+    { "block": "minecraft:iron_ore", "xp": 8.0 },
+    { "block": "minecraft:deepslate_iron_ore", "xp": 8.8 },
+    { "block": "minecraft:gold_ore", "xp": 12.0 },
+    { "block": "minecraft:deepslate_gold_ore", "xp": 13.2 },
+    { "block": "minecraft:nether_gold_ore", "xp": 10.0 },
+    { "block": "minecraft:lapis_ore", "xp": 16.0 },
+    { "block": "minecraft:deepslate_lapis_ore", "xp": 17.6 },
+    { "block": "minecraft:redstone_ore", "xp": 7.0 },
+    { "block": "minecraft:deepslate_redstone_ore", "xp": 7.7 },
+    { "block": "minecraft:diamond_ore", "xp": 50.0 },
+    { "block": "minecraft:deepslate_diamond_ore", "xp": 55.0 },
+    { "block": "minecraft:emerald_ore", "xp": 100.0 },
+    { "block": "minecraft:deepslate_emerald_ore", "xp": 110.0 },
+    { "block": "minecraft:nether_quartz_ore", "xp": 8.0 },
+    { "block": "minecraft:ancient_debris", "xp": 60.0 }
   ]
 }

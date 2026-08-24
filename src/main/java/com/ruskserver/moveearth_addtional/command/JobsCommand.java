@@ -8,6 +8,7 @@ import com.ruskserver.moveearth_addtional.jobs.JobDefinition;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinitions;
 import com.ruskserver.moveearth_addtional.jobs.JobProgressSavedData;
 import com.ruskserver.moveearth_addtional.jobs.JobsScreenSync;
+import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -107,7 +108,8 @@ public final class JobsCommand {
             Optional<JobDefinition> definition = JobDefinitions.INSTANCE.get(id);
             String name = definition.map(JobDefinition::displayName).orElse(id.toString());
             String next = definition.filter(value -> progress.level() < value.maxLevel())
-                    .map(value -> progress.xpInLevel() + "/" + value.xpNeededForNextLevel(progress.level()) + " XP")
+                    .map(value -> JobXpFormat.format(progress.xpInLevel()) + "/"
+                            + value.xpNeededForNextLevel(progress.level()) + " XP")
                     .orElse("MAX");
             player.sendSystemMessage(Component.literal("- " + name + " Lv." + progress.level() + " (" + next + ")"));
         }
@@ -171,7 +173,7 @@ public final class JobsCommand {
         JobProgressSavedData.AwardResult result = JobProgressSavedData.get(source.getServer())
                 .awardAdmin(player.getUUID(), definition.get(), amount);
         source.sendSuccess(() -> Component.literal("[Jobs] " + player.getScoreboardName() + "に "
-                + result.awardedXp() + " XPを付与しました。"), true);
+                + JobXpFormat.format(result.awardedXp()) + " XPを付与しました。"), true);
         return result.awardedXp() > 0 ? 1 : 0;
     }
 

@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.network.C2S_JobsActionPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket;
+import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -142,7 +143,8 @@ public final class JobsScreen extends Screen {
 
         if (adminMode) {
             String compactProgress = "Lv." + job.level() + "/" + job.maxLevel() + "  |  "
-                    + (job.xpForNextLevel() <= 0 ? "MAX" : job.xpInLevel() + "/" + job.xpForNextLevel() + " XP");
+                    + (job.xpForNextLevel() <= 0 ? "MAX" : JobXpFormat.format(job.xpInLevel()) + "/"
+                    + JobXpFormat.format(job.xpForNextLevel()) + " XP");
             graphics.drawString(font, fit(compactProgress, layout.rightWidth - 24), x, y + 44, ACCENT, false);
             return;
         }
@@ -157,9 +159,10 @@ public final class JobsScreen extends Screen {
         graphics.fill(x, barY, x + (int) (barWidth * ratio), barY + 9,
                 job.level() >= job.maxLevel() ? ACTIVE : ACCENT);
         String xp = job.xpForNextLevel() <= 0 ? "MAX"
-                : job.xpInLevel() + " / " + job.xpForNextLevel() + " XP";
+                : JobXpFormat.format(job.xpInLevel()) + " / "
+                + JobXpFormat.format(job.xpForNextLevel()) + " XP";
         graphics.drawString(font, xp, x, barY + 14, TEXT, false);
-        graphics.drawString(font, "累計XP: " + job.totalXp(), x, barY + 29, MUTED, false);
+        graphics.drawString(font, "累計XP: " + JobXpFormat.format(job.totalXp()), x, barY + 29, MUTED, false);
         graphics.drawString(font, "レベルアップ報酬: " + job.pointsPerLevel() + " PT", x, barY + 44,
                 0xFFFFB454, false);
 
