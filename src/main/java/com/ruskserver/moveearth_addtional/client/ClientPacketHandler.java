@@ -4,6 +4,12 @@ import net.minecraft.client.Minecraft;
 
 public class ClientPacketHandler {
 
+    public static void handleOpenJobs(com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof JobsScreen screen) screen.update(packet);
+        else minecraft.setScreen(new JobsScreen(packet));
+    }
+
     public static void handleOpenPvp(com.ruskserver.moveearth_addtional.network.S2C_OpenPvpScreenPacket packet) {
         Minecraft.getInstance().setScreen(new PvpScreen(packet.joined(), packet.active(), packet.hosting(),
                 packet.matchRunning(), packet.entryCount(), packet.points(), packet.tasks(), packet.selectedLoadoutId()));

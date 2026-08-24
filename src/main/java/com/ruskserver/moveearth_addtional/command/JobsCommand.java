@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinition;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinitions;
 import com.ruskserver.moveearth_addtional.jobs.JobProgressSavedData;
+import com.ruskserver.moveearth_addtional.jobs.JobsScreenSync;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -33,7 +34,9 @@ public final class JobsCommand {
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
         dispatcher.register(Commands.literal("jobs")
                 .requires(source -> source.hasPermission(PLAYER_PERMISSION_LEVEL))
-                .executes(context -> status(context.getSource().getPlayerOrException()))
+                .executes(context -> open(context.getSource().getPlayerOrException()))
+                .then(Commands.literal("status")
+                        .executes(context -> status(context.getSource().getPlayerOrException())))
                 .then(Commands.literal("list")
                         .executes(context -> list(context.getSource())))
                 .then(Commands.literal("join")
@@ -68,6 +71,11 @@ public final class JobsCommand {
                                 .then(Commands.argument("player", EntityArgument.player())
                                         .executes(context -> reset(context.getSource(),
                                                 EntityArgument.getPlayer(context, "player")))))));
+    }
+
+    private static int open(ServerPlayer player) {
+        JobsScreenSync.open(player);
+        return 1;
     }
 
     private static com.mojang.brigadier.builder.RequiredArgumentBuilder<CommandSourceStack, String> jobArgument() {
