@@ -18,6 +18,7 @@ crash-reports/
 
 # Local AI agent instructions
 /AGENTS.md
+/.agents/
 
 # Java and diagnostic output
 *.class
