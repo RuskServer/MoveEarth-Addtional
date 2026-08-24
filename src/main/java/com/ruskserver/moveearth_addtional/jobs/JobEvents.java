@@ -27,6 +27,14 @@ public final class JobEvents {
     private JobEvents() {
     }
 
+    @SubscribeEvent
+    public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
+            data.rememberName(player.getUUID(), player.getGameProfile().getName());
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel level)) {

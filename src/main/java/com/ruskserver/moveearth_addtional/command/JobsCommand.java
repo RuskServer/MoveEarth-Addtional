@@ -52,6 +52,10 @@ public final class JobsCommand {
                         .then(jobArgument()
                                 .executes(context -> info(context.getSource(),
                                         StringArgumentType.getString(context, "job")))))
+                .then(Commands.literal("top")
+                        .then(jobArgument()
+                                .executes(context -> top(context.getSource(),
+                                        StringArgumentType.getString(context, "job")))))
                 .then(Commands.literal("admin")
                         .requires(source -> source.hasPermission(ADMIN_PERMISSION_LEVEL))
                         .then(Commands.literal("addxp")
@@ -162,6 +166,29 @@ public final class JobsCommand {
             source.sendSuccess(() -> Component.literal("- " + value.description()), false);
         }
         return 1;
+    }
+
+    private static int top(CommandSourceStack source, String input) {
+        Optional<JobDefinition> definition = resolve(input);
+        if (definition.isEmpty()) {
+            source.sendFailure(Component.literal("[Jobs] 不明な職業です: " + input));
+            return 0;
+        }
+        JobDefinition job = definition.get();
+        var entries = JobProgressSavedData.get(source.getServer()).leaderboard(job.id(), 10);
+        source.sendSuccess(() -> Component.literal("[Jobs] " + job.displayName() + " ランキング"), false);
+        if (entries.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("- まだランキング対象者がいません"), false);
+            return 1;
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            int rank = i + 1;
+            JobProgressSavedData.LeaderboardEntry entry = entries.get(i);
+            source.sendSuccess(() -> Component.literal(rank + ". " + entry.playerName()
+                    + "  Lv." + entry.level() + "  累計 "
+                    + JobXpFormat.format(entry.totalXp()) + " XP"), false);
+        }
+        return entries.size();
     }
 
     private static int addXp(CommandSourceStack source, ServerPlayer player, String input, int amount) {

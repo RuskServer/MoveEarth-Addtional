@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.jobs;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.C2S_JobsActionPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_JobsLeaderboardPacket;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -15,6 +16,7 @@ import java.util.Optional;
 /** Builds Jobs GUI snapshots and validates every GUI action on the server. */
 public final class JobsScreenSync {
     private static final int ADMIN_PERMISSION_LEVEL = 2;
+    private static final int LEADERBOARD_DISPLAY_LIMIT = 10;
 
     private JobsScreenSync() {
     }
@@ -24,8 +26,10 @@ public final class JobsScreenSync {
     }
 
     public static void send(ServerPlayer viewer, ServerPlayer subject) {
-        JobProgressSavedData.PlayerSnapshot snapshot = JobProgressSavedData.get(viewer.getServer())
-                .snapshot(subject.getUUID());
+        JobProgressSavedData data = JobProgressSavedData.get(viewer.getServer());
+        data.rememberName(viewer.getUUID(), viewer.getGameProfile().getName());
+        data.rememberName(subject.getUUID(), subject.getGameProfile().getName());
+        JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(subject.getUUID());
         List<S2C_OpenJobsScreenPacket.JobEntry> entries = JobDefinitions.INSTANCE.all().stream()
                 .map(definition -> entry(definition, snapshot))
                 .toList();
@@ -37,6 +41,18 @@ public final class JobsScreenSync {
         PacketDistributor.sendToPlayer(viewer, new S2C_OpenJobsScreenPacket(
                 subject.getGameProfile().getName(), viewer.getUUID().equals(subject.getUUID()), canAdmin,
                 snapshot.points(), JobProgressSavedData.MAX_ACTIVE_JOBS, entries, onlinePlayers));
+    }
+
+    public static void sendLeaderboard(ServerPlayer viewer, JobDefinition definition) {
+        JobProgressSavedData data = JobProgressSavedData.get(viewer.getServer());
+        data.rememberName(viewer.getUUID(), viewer.getGameProfile().getName());
+        List<S2C_JobsLeaderboardPacket.Entry> entries = data
+                .leaderboard(definition.id(), LEADERBOARD_DISPLAY_LIMIT).stream()
+                .map(entry -> new S2C_JobsLeaderboardPacket.Entry(entry.playerName(), entry.level(),
+                        entry.xpInLevel(), entry.totalXp()))
+                .toList();
+        PacketDistributor.sendToPlayer(viewer,
+                new S2C_JobsLeaderboardPacket(definition.id(), entries));
     }
 
     private static S2C_OpenJobsScreenPacket.JobEntry entry(
@@ -105,6 +121,10 @@ public final class JobsScreenSync {
                 send(viewer, target);
             }
             case REFRESH -> send(viewer, viewer);
+            case RANKING -> {
+                if (definition.isEmpty()) return;
+                sendLeaderboard(viewer, definition.get());
+            }
         }
     }
 
@@ -134,6 +154,7 @@ public final class JobsScreenSync {
         JOIN(false),
         LEAVE(false),
         REFRESH(false),
+        RANKING(false),
         VIEW(true),
         ADD_XP(true),
         ADD_POINTS(true),

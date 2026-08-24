@@ -10,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -18,7 +19,7 @@ import java.util.UUID;
 /** Server-authoritative job selection, experience and shared points. */
 public final class JobProgressSavedData extends SavedData {
     public static final int MAX_ACTIVE_JOBS = 2;
-    private static final int DATA_VERSION = 2;
+    private static final int DATA_VERSION = 3;
     private static final double XP_EPSILON = 1.0E-9D;
     private final Map<UUID, PlayerJobs> players = new HashMap<>();
 
@@ -112,6 +113,41 @@ public final class JobProgressSavedData extends SavedData {
         return new PlayerSnapshot(jobs.points, Set.copyOf(jobs.activeJobs), Map.copyOf(progress));
     }
 
+    public void rememberName(UUID playerId, String name) {
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        String boundedName = name.length() > 16 ? name.substring(0, 16) : name;
+        PlayerJobs jobs = player(playerId);
+        if (!boundedName.equals(jobs.lastKnownName)) {
+            jobs.lastKnownName = boundedName;
+            setDirty();
+        }
+    }
+
+    public List<LeaderboardEntry> leaderboard(ResourceLocation jobId, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        return players.entrySet().stream()
+                .filter(entry -> entry.getValue().progress.containsKey(jobId))
+                .map(entry -> {
+                    Progress progress = entry.getValue().progress.get(jobId);
+                    String name = entry.getValue().lastKnownName;
+                    if (name.isBlank()) {
+                        name = entry.getKey().toString().substring(0, 8);
+                    }
+                    return new LeaderboardEntry(entry.getKey(), name, progress.level,
+                            progress.xpInLevel, progress.totalXp);
+                })
+                .filter(entry -> entry.level() > 1 || entry.totalXp() > XP_EPSILON)
+                .sorted((left, right) -> JobLeaderboardOrder.compare(
+                        left.level(), left.xpInLevel(), left.totalXp(), left.playerName(), left.playerId(),
+                        right.level(), right.xpInLevel(), right.totalXp(), right.playerName(), right.playerId()))
+                .limit(Math.min(limit, 100))
+                .toList();
+    }
+
     private PlayerJobs player(UUID playerId) {
         return players.computeIfAbsent(playerId, ignored -> new PlayerJobs());
     }
@@ -172,14 +208,20 @@ public final class JobProgressSavedData extends SavedData {
         }
     }
 
+    public record LeaderboardEntry(UUID playerId, String playerName, int level,
+                                   double xpInLevel, double totalXp) {
+    }
+
     private static final class PlayerJobs {
         private int points;
+        private String lastKnownName = "";
         private final Set<ResourceLocation> activeJobs = new LinkedHashSet<>();
         private final Map<ResourceLocation, Progress> progress = new HashMap<>();
 
         private CompoundTag save() {
             CompoundTag tag = new CompoundTag();
             tag.putInt("Points", points);
+            tag.putString("LastKnownName", lastKnownName);
             ListTag active = new ListTag();
             activeJobs.forEach(id -> active.add(StringTag.valueOf(id.toString())));
             tag.put("Active", active);
@@ -193,6 +235,8 @@ public final class JobProgressSavedData extends SavedData {
         private static PlayerJobs load(CompoundTag tag) {
             PlayerJobs jobs = new PlayerJobs();
             jobs.points = Math.max(0, tag.getInt("Points"));
+            String loadedName = tag.getString("LastKnownName");
+            jobs.lastKnownName = loadedName.length() > 16 ? loadedName.substring(0, 16) : loadedName;
             ListTag active = tag.getList("Active", Tag.TAG_STRING);
             for (int i = 0; i < active.size() && jobs.activeJobs.size() < MAX_ACTIVE_JOBS; i++) {
                 ResourceLocation id = ResourceLocation.tryParse(active.getString(i));

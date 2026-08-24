@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.network.C2S_JobsActionPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_JobsLeaderboardPacket;
 import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -10,7 +11,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** One-screen job browser, progress view, selection control and operator panel. */
 public final class JobsScreen extends Screen {
@@ -29,6 +32,8 @@ public final class JobsScreen extends Screen {
     private int selectedJob;
     private int scroll;
     private boolean adminMode;
+    private boolean rankingMode;
+    private final Map<String, List<S2C_JobsLeaderboardPacket.Entry>> leaderboards = new HashMap<>();
     private EditBox amountBox;
     private long resetArmedUntil;
 
@@ -44,7 +49,7 @@ public final class JobsScreen extends Screen {
                 Math.max(70, layout.rightWidth - 24), 20, Component.literal("数量"));
         amountBox.setMaxLength(7);
         amountBox.setValue("100");
-        amountBox.visible = adminMode && packet.canAdmin();
+        amountBox.visible = adminMode && !rankingMode && packet.canAdmin();
         addRenderableWidget(amountBox);
     }
 
@@ -60,8 +65,12 @@ public final class JobsScreen extends Screen {
         selectedJob = Mth.clamp(selectedJob, 0, Math.max(0, updated.jobs().size() - 1));
         clampScroll();
         if (amountBox != null) {
-            amountBox.visible = adminMode && updated.canAdmin();
+            amountBox.visible = adminMode && !rankingMode && updated.canAdmin();
         }
+    }
+
+    public void updateLeaderboard(S2C_JobsLeaderboardPacket updated) {
+        leaderboards.put(updated.jobId().toString(), updated.entries());
     }
 
     @Override
@@ -87,16 +96,65 @@ public final class JobsScreen extends Screen {
             drawButton(graphics, layout.left + layout.width - 84, layout.top + 34, 52, 18,
                     adminMode ? "自分" : "管理", ACCENT, mouseX, mouseY, true);
         }
+        drawButton(graphics, layout.left + layout.width - 154, layout.top + 34, 64, 18,
+                rankingMode ? "進捗" : "ランキング", rankingMode ? ACTIVE : ACCENT,
+                mouseX, mouseY, true);
         drawButton(graphics, layout.left + layout.width - 26, layout.top + 8, 18, 18,
                 "×", DANGER, mouseX, mouseY, true);
 
         drawJobList(graphics, layout, mouseX, mouseY);
-        drawDetails(graphics, layout, mouseX, mouseY);
-        if (adminMode && packet.canAdmin()) {
+        if (rankingMode) {
+            drawLeaderboard(graphics, layout);
+        } else {
+            drawDetails(graphics, layout, mouseX, mouseY);
+        }
+        if (!rankingMode && adminMode && packet.canAdmin()) {
             drawAdminControls(graphics, layout, mouseX, mouseY);
         }
 
         super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private void drawLeaderboard(GuiGraphics graphics, Layout layout) {
+        S2C_OpenJobsScreenPacket.JobEntry job = selectedEntry();
+        if (job == null) return;
+        int x = layout.right + 12;
+        int y = layout.top + 62;
+        int availableWidth = layout.rightWidth - 24;
+        graphics.drawString(font, job.displayName() + " ランキング", x, y, TEXT, false);
+        graphics.drawString(font, "順位", x + 4, y + 19, MUTED, false);
+        graphics.drawString(font, "プレイヤー", x + 27, y + 19, MUTED, false);
+        graphics.drawString(font, "Lv", x + availableWidth - 137, y + 19, MUTED, false);
+        graphics.drawString(font, "現在XP", x + availableWidth - 108, y + 19, MUTED, false);
+        graphics.drawString(font, "累計XP", x + availableWidth - 55, y + 19, MUTED, false);
+        List<S2C_JobsLeaderboardPacket.Entry> entries = leaderboards.get(job.id().toString());
+        if (entries == null) {
+            graphics.drawCenteredString(font, "読み込み中...", x + availableWidth / 2, y + 64, MUTED);
+            return;
+        }
+        if (entries.isEmpty()) {
+            graphics.drawCenteredString(font, "まだランキング対象者がいません",
+                    x + availableWidth / 2, y + 64, MUTED);
+            return;
+        }
+        int maxRows = Math.min(entries.size(), 10);
+        for (int i = 0; i < maxRows; i++) {
+            S2C_JobsLeaderboardPacket.Entry entry = entries.get(i);
+            int rowY = y + 37 + i * 21;
+            int color = i == 0 ? 0xFFFFD76A : i == 1 ? 0xFFDDE5EC : i == 2 ? 0xFFD89A67 : TEXT;
+            if ((i & 1) == 0) {
+                graphics.fill(x, rowY - 4, x + availableWidth, rowY + 13, 0x551B222C);
+            }
+            graphics.drawString(font, Integer.toString(i + 1), x + 4, rowY, color, false);
+            graphics.drawString(font, fit(entry.playerName(), Math.max(50, availableWidth - 174)),
+                    x + 27, rowY, color, false);
+            graphics.drawString(font, Integer.toString(entry.level()), x + availableWidth - 137, rowY,
+                    ACCENT, false);
+            String currentXp = JobXpFormat.format(entry.xpInLevel());
+            String totalXp = JobXpFormat.format(entry.totalXp());
+            graphics.drawString(font, fit(currentXp, 47), x + availableWidth - 108, rowY, MUTED, false);
+            graphics.drawString(font, fit(totalXp, 52), x + availableWidth - 55, rowY, MUTED, false);
+        }
     }
 
     private void drawJobList(GuiGraphics graphics, Layout layout, int mouseX, int mouseY) {
@@ -213,10 +271,19 @@ public final class JobsScreen extends Screen {
         if (packet.canAdmin() && inside(mouseX, mouseY,
                 layout.left + layout.width - 84, layout.top + 34, 52, 18)) {
             adminMode = !adminMode;
+            rankingMode = false;
             resetArmedUntil = 0;
             if (!adminMode) send("REFRESH", "", "", 0);
             else send("VIEW", "", packet.subjectName(), 0);
             if (amountBox != null) amountBox.visible = adminMode;
+            return true;
+        }
+        if (inside(mouseX, mouseY, layout.left + layout.width - 154, layout.top + 34, 64, 18)) {
+            rankingMode = !rankingMode;
+            adminMode = false;
+            resetArmedUntil = 0;
+            if (amountBox != null) amountBox.visible = false;
+            if (rankingMode) requestSelectedLeaderboard();
             return true;
         }
 
@@ -226,6 +293,7 @@ public final class JobsScreen extends Screen {
             if (inside(mouseX, mouseY, listX, listY + row * 44, layout.leftWidth - 24, 38)) {
                 selectedJob = scroll + row;
                 resetArmedUntil = 0;
+                if (rankingMode) requestSelectedLeaderboard();
                 return true;
             }
         }
@@ -317,6 +385,14 @@ public final class JobsScreen extends Screen {
 
     private void send(String action, String jobId, String target, int amount) {
         PacketDistributor.sendToServer(new C2S_JobsActionPacket(action, jobId, target, amount));
+    }
+
+    private void requestSelectedLeaderboard() {
+        S2C_OpenJobsScreenPacket.JobEntry job = selectedEntry();
+        if (job != null) {
+            leaderboards.remove(job.id().toString());
+            send("RANKING", job.id().toString(), "", 0);
+        }
     }
 
     private S2C_OpenJobsScreenPacket.JobEntry selectedEntry() {
