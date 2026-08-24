@@ -16,9 +16,9 @@ import java.util.List;
 
 /**
  * Integrated and adapted from the standalone compatibility patch
- * {@code moveearth_patch_unti-1.0-SNAPSHOT.jar}.
- * The original artifact did not provide an author name; provenance details are
- * retained in {@code META-INF/NOTICE-moveearth_patch_unti.txt}.
+ * {@code moveearth_patch_unti-1.0-SNAPSHOT.jar}, created by iesuok.
+ * Provenance details are retained in
+ * {@code META-INF/NOTICE-moveearth_patch_unti.txt}.
  */
 @Mixin(StonecutterMenu.class)
 public abstract class StonecutterMenuMixin {

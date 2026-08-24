@@ -16,6 +16,9 @@ crash-reports/
 *.ipr
 *.iws
 
+# Local AI agent instructions
+/AGENTS.md
+
 # Java and diagnostic output
 *.class
 *.log

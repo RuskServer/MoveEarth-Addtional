@@ -14,9 +14,12 @@
 - Added four FMIC loadouts: Assault with RA39, Rusher with EF_SMG, Breacher with EF_SG, and Marksman with NSR20. Every loadout also includes a customized G45 sidearm.
 - Added loadout cards showing each role, primary and secondary weapon, attachments, intended range, and estimated body-shot TTK.
 - Players can change loadouts while queued. Loadouts are locked after the match starts, and forged or unknown preset IDs are rejected by the server.
+- Players may join an active match from the loadout screen. Late entrants are assigned to the smaller team and receive the same protected inventory snapshot, fixed loadout, combat health, HUD, and teammate markers as starting participants.
+- The loadout screen now shows the live number of registered or active participants and updates while the screen remains open.
 - Fixed sights and lasers are installed on issued guns and locked against removal. Magazine extensions are not used, preserving each weapon's standard magazine capacity.
 - Match equipment is now limited to the selected primary and G45 sidearm instead of issuing every FMIC preset weapon.
 - Added PvP-only FMIC damage scaling for Protection IV iron armor, a fixed 1.5x headshot multiplier, and no armor bypass. Target body-shot TTK is approximately 200-300 ms, with NSR20 at approximately 333 ms due to its native 360 RPM cadence.
+- PvP now temporarily uses 20 maximum health so the configured weapon multipliers match their TTK target. The player's original maximum-health base value is restored after the match and retained by crash recovery.
 - Preserved native distance falloff while applying the PvP damage scaling.
 - Reduced passive regeneration by maintaining hunger at 18 with zero saturation instead of continuously restoring a full hunger and saturation bar.
 - PvP loadouts contain no launcher-class weapons. Active PvP players are also protected from the vanilla floating-too-long kick.
@@ -30,6 +33,7 @@
 
 - Added WARLORD announcer cues for match start, first blood, multikills, kill streaks, revenge kills, objective control, final stand, victory, defeat, and match end.
 - Added three-second full-screen result effects for `VICTORY`, `DEFEAT`, and `DRAW`, including the final RED and BLUE scores.
+- If every member of one team leaves, the remaining team now receives the victory result instead of deriving the outcome from the unfinished objective score.
 - Match-result effects replace a remaining final-kill killcam and are cleared immediately if the player exits the match.
 - WARLORD audio is provided by VoiceBosch under CC BY-SA 4.0. Full attribution is included in `META-INF/NOTICE-WARLORD-AUDIO.txt`.
 
@@ -42,7 +46,9 @@
 ## Server Administration and Compatibility
 
 - Added `/notice <message>` for permission-level-2 command sources. It displays a custom message and notification sound to every online player and accepts up to 256 characters.
-- Updated the PvP network protocol to `1.9-pvp1`. v1.9 servers and clients must use the same v1.9 JAR; v1.8 clients are not network-compatible.
+- Relicensed the current source tree and future distributions of the original code and assets from LGPL-3.0-only to GPL-3.0-only. Previously received LGPL-3.0-only copies retain their existing rights.
+- Preserved the separate CC BY-SA 4.0 license and VoiceBosch attribution for WARLORD audio, and the MIT terms for the stonecutter compatibility implementation and bundled FirstDark Discord RPC classes. All applicable license texts and notices are bundled in the JAR.
+- Updated the PvP network protocol to `1.9-pvp2`. v1.9 servers and clients must use the same v1.9 JAR; older clients are not network-compatible.
 
 # v1.8
 
@@ -68,7 +74,7 @@
 - Fixed existing players being mistaken for first-time players and receiving an unintended first-login random teleport after random-spawn tracking was introduced.
 - Added integration with LocalizedChat NeoForge 5.2.1 to record the list of players who received each localized chat message in the server log.
 - Integrated the stonecutter crash fix from `moveearth_patch_unti-1.0-SNAPSHOT`. Stale stonecutter recipes are cleared when the input is removed, preventing the server-environment crash.
-- Preserved attribution for the original stonecutter patch author and implementation in `META-INF/NOTICE-moveearth_patch_unti.txt`.
+- Preserved attribution to iesuok, the original stonecutter patch author, and the implementation provenance in `META-INF/NOTICE-moveearth_patch_unti.txt`.
 - Updated the network protocol to `1.8-pvp3`. The server and clients must use the same v1.8 JAR.
 
 # v1.7

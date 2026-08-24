@@ -10,11 +10,14 @@ Original mod ID:
 Original implementation class:
   net.example.me_patch.moveearth_patch_unti.mixin.MixinStonecutterMenu
 
+Original patch author:
+  iesuok
+
 Original artifact SHA-256:
   AC4E5E7BBFA74311D1F7C08E6CF5319D2918D86B59426E4A080A431407F19963
 
-The original artifact declared the MIT license, but its authors metadata was
-empty and no author name was present in its manifest or compiled classes.
+The original artifact declared the MIT license. Its embedded authors metadata
+was empty; the original patch author is iesuok.
 
 The MoveEarth-Addtional integration preserves the original crash-workaround
 intent while replacing the recipe list with a mutable empty list. This also

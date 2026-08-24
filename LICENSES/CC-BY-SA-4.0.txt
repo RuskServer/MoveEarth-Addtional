@@ -1,0 +1,13 @@
+Creative Commons Attribution-ShareAlike 4.0 International
+==========================================================
+
+Canonical license URL:
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Legal code:
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+This license applies only to the WARLORD announcer audio identified in
+THIRD_PARTY_NOTICES.md and META-INF/NOTICE-WARLORD-AUDIO.txt. The attribution notice
+identifies the creator, source, license, and modifications made for this
+project.

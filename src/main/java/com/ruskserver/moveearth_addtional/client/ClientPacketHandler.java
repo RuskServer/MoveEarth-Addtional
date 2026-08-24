@@ -6,7 +6,14 @@ public class ClientPacketHandler {
 
     public static void handleOpenPvp(com.ruskserver.moveearth_addtional.network.S2C_OpenPvpScreenPacket packet) {
         Minecraft.getInstance().setScreen(new PvpScreen(packet.joined(), packet.active(), packet.hosting(),
-                packet.points(), packet.tasks(), packet.selectedLoadoutId()));
+                packet.matchRunning(), packet.entryCount(), packet.points(), packet.tasks(), packet.selectedLoadoutId()));
+    }
+
+    public static void handlePvpEntryState(com.ruskserver.moveearth_addtional.network.S2C_PvpEntryStatePacket packet) {
+        if (Minecraft.getInstance().screen instanceof PvpScreen screen) {
+            screen.updateEntryState(packet.joined(), packet.active(), packet.hosting(),
+                    packet.matchRunning(), packet.entryCount());
+        }
     }
 
     public static void handlePvpHud(com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket packet) {
