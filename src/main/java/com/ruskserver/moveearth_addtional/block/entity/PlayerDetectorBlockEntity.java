@@ -33,6 +33,9 @@ import java.util.UUID;
 
 public class PlayerDetectorBlockEntity extends BlockEntity {
 
+    public static final double DETECTION_RANGE = 100.0D;
+    public static final long WARMUP_DURATION_MS = 20 * 60 * 1000L;
+
     private static final String DUMMY_TAG = "MoveEarthDetectorDummy";
     private static final String DUMMY_BLOCK_POS_TAG = "MoveEarthDetectorBlockPos";
     private static final String DUMMY_DIMENSION_TAG = "MoveEarthDetectorDimension";
@@ -50,8 +53,6 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     // 作動猶予・ダミーエンティティ用データ
     private long placedTime = 0L;
     private UUID dummyEntityUUID = null;
-
-    private static final long WARMUP_DURATION = 20 * 60 * 1000L; // 20分
 
     // リフレクションによる protected な DATA_SHARED_FLAGS_ID 取得
     private static net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS = null;
@@ -104,6 +105,14 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public boolean isActive() {
         return this.isActive;
+    }
+
+    public boolean isOperational(long currentTimeMillis) {
+        return this.isActive
+                && this.ownerUUID != null
+                && this.placedTime > 0L
+                && this.nextPaymentTime > currentTimeMillis
+                && currentTimeMillis >= this.placedTime + WARMUP_DURATION_MS;
     }
 
     public void setActive(boolean active) {
@@ -234,7 +243,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             }
 
             // 設置から20分間は作動しない（ウォーミングアップ猶予時間）
-            if (currentTime < blockEntity.placedTime + WARMUP_DURATION) {
+            if (currentTime < blockEntity.placedTime + WARMUP_DURATION_MS) {
                 return;
             }
 
@@ -242,7 +251,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             Set<String> whitelist = PlayerWhitelistSavedData.get(serverLevel).getWhitelist(blockEntity.ownerUUID);
 
             // 周囲100ブロック以内のプレイヤーをスキャン
-            double range = 100.0;
+            double range = DETECTION_RANGE;
             AABB aabb = new AABB(pos).inflate(range);
             List<ServerPlayer> players = level.getEntitiesOfClass(ServerPlayer.class, aabb);
 
