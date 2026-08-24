@@ -1,8 +1,8 @@
 MIT License
 
-The original moveearth_patch_unti artifact declared this license but did not
-provide copyright-holder or author metadata in its manifest or compiled
-classes. The following license terms are preserved with the adapted portion.
+The original moveearth_patch_unti artifact was created by iesuok and declared
+this license. The following license terms are preserved with the adapted
+portion.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

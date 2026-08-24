@@ -34,8 +34,8 @@ See `META-INF/NOTICE-WARLORD-AUDIO.txt` for the bundled attribution notice.
 ## Stonecutter compatibility implementation
 
 The stonecutter compatibility implementation was adapted from the standalone
-`moveearth_patch_unti` artifact, which declared the MIT License. Its artifact
-did not provide author metadata.
+`moveearth_patch_unti` artifact created by **iesuok**, which declared the MIT
+License.
 
 See `META-INF/NOTICE-moveearth_patch_unti.txt` for provenance and
 `LICENSES/MIT.txt` for the declared license terms.

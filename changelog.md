@@ -73,7 +73,7 @@
 - Fixed existing players being mistaken for first-time players and receiving an unintended first-login random teleport after random-spawn tracking was introduced.
 - Added integration with LocalizedChat NeoForge 5.2.1 to record the list of players who received each localized chat message in the server log.
 - Integrated the stonecutter crash fix from `moveearth_patch_unti-1.0-SNAPSHOT`. Stale stonecutter recipes are cleared when the input is removed, preventing the server-environment crash.
-- Preserved attribution for the original stonecutter patch author and implementation in `META-INF/NOTICE-moveearth_patch_unti.txt`.
+- Preserved attribution to iesuok, the original stonecutter patch author, and the implementation provenance in `META-INF/NOTICE-moveearth_patch_unti.txt`.
 - Updated the network protocol to `1.8-pvp3`. The server and clients must use the same v1.8 JAR.
 
 # v1.7
