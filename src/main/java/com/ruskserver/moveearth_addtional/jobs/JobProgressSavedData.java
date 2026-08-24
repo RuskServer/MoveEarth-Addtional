@@ -100,6 +100,19 @@ public final class JobProgressSavedData extends SavedData {
         setDirty();
     }
 
+    public boolean trySpendPoints(UUID playerId, int amount) {
+        if (amount <= 0) {
+            return false;
+        }
+        PlayerJobs jobs = player(playerId);
+        if (jobs.points < amount) {
+            return false;
+        }
+        jobs.points -= amount;
+        setDirty();
+        return true;
+    }
+
     public void reset(UUID playerId) {
         players.remove(playerId);
         setDirty();

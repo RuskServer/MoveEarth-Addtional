@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("1.9-jobs4");
+        final PayloadRegistrar registrar = event.registrar("1.9-jobs5");
 
         registrar.playToClient(
                 S2C_AnnouncementPacket.TYPE,
@@ -68,6 +68,8 @@ public class ModMessages {
         registrar.playToServer(C2S_ClaimPvpTaskPacket.TYPE, C2S_ClaimPvpTaskPacket.STREAM_CODEC, C2S_ClaimPvpTaskPacket::handle);
         registrar.playToClient(S2C_OpenJobsScreenPacket.TYPE, S2C_OpenJobsScreenPacket.STREAM_CODEC, S2C_OpenJobsScreenPacket::handle);
         registrar.playToClient(S2C_JobsLeaderboardPacket.TYPE, S2C_JobsLeaderboardPacket.STREAM_CODEC, S2C_JobsLeaderboardPacket::handle);
+        registrar.playToClient(S2C_JobShopPacket.TYPE, S2C_JobShopPacket.STREAM_CODEC, S2C_JobShopPacket::handle);
         registrar.playToServer(C2S_JobsActionPacket.TYPE, C2S_JobsActionPacket.STREAM_CODEC, C2S_JobsActionPacket::handle);
+        registrar.playToServer(C2S_JobShopActionPacket.TYPE, C2S_JobShopActionPacket.STREAM_CODEC, C2S_JobShopActionPacket::handle);
     }
 }

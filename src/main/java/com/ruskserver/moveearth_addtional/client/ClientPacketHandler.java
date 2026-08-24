@@ -17,6 +17,12 @@ public class ClientPacketHandler {
         }
     }
 
+    public static void handleJobShop(com.ruskserver.moveearth_addtional.network.S2C_JobShopPacket packet) {
+        if (Minecraft.getInstance().screen instanceof JobsScreen screen) {
+            screen.updateShop(packet);
+        }
+    }
+
     public static void handleOpenPvp(com.ruskserver.moveearth_addtional.network.S2C_OpenPvpScreenPacket packet) {
         Minecraft.getInstance().setScreen(new PvpScreen(packet.joined(), packet.active(), packet.hosting(),
                 packet.matchRunning(), packet.entryCount(), packet.points(), packet.tasks(), packet.selectedLoadoutId()));
