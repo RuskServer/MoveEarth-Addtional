@@ -6,6 +6,8 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.block.state.properties.Property;
 
@@ -15,6 +17,7 @@ import java.util.List;
 public record JobDefinition(
         ResourceLocation id,
         String displayName,
+        String description,
         int maxLevel,
         int pointsPerLevel,
         int baseXp,
@@ -22,12 +25,14 @@ public record JobDefinition(
         int quadraticXp,
         List<BlockBreakReward> blockBreakRewards,
         List<EntityReward> entityKillRewards,
-        List<EntityReward> entityBreedRewards) {
+        List<EntityReward> entityBreedRewards,
+        List<ItemCraftReward> itemCraftRewards) {
 
     public JobDefinition {
         blockBreakRewards = List.copyOf(blockBreakRewards);
         entityKillRewards = List.copyOf(entityKillRewards);
         entityBreedRewards = List.copyOf(entityBreedRewards);
+        itemCraftRewards = List.copyOf(itemCraftRewards);
     }
 
     public long xpNeededForNextLevel(int level) {
@@ -59,6 +64,16 @@ public record JobDefinition(
 
     public int entityBreedXp(EntityType<?> entityType) {
         return entityReward(entityBreedRewards, entityType);
+    }
+
+    public int itemCraftXp(ItemStack result) {
+        int reward = 0;
+        for (ItemCraftReward candidate : itemCraftRewards) {
+            if (result.is(candidate.tag())) {
+                reward = Math.max(reward, candidate.xp());
+            }
+        }
+        return reward;
     }
 
     private static int entityReward(List<EntityReward> rewards, EntityType<?> entityType) {
@@ -98,6 +113,12 @@ public record JobDefinition(
     public record EntityReward(TagKey<EntityType<?>> tag, int xp) {
         public static EntityReward of(ResourceLocation tag, int xp) {
             return new EntityReward(TagKey.create(Registries.ENTITY_TYPE, tag), xp);
+        }
+    }
+
+    public record ItemCraftReward(TagKey<Item> tag, int xp) {
+        public static ItemCraftReward of(ResourceLocation tag, int xp) {
+            return new ItemCraftReward(TagKey.create(Registries.ITEM, tag), xp);
         }
     }
 

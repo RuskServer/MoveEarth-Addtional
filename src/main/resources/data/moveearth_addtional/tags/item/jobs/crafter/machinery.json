@@ -1,0 +1,28 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:anvil",
+    "minecraft:brewing_stand",
+    "minecraft:enchanting_table",
+    "minecraft:ender_chest",
+    "minecraft:jukebox",
+    { "id": "create:mechanical_press", "required": false },
+    { "id": "create:mechanical_mixer", "required": false },
+    { "id": "create:deployer", "required": false },
+    { "id": "create:encased_fan", "required": false },
+    { "id": "create:mechanical_pump", "required": false },
+    { "id": "create:mechanical_saw", "required": false },
+    { "id": "create:mechanical_drill", "required": false },
+    { "id": "create:mechanical_harvester", "required": false },
+    { "id": "create:mechanical_plough", "required": false },
+    { "id": "create:mechanical_crafter", "required": false },
+    { "id": "create:mechanical_arm", "required": false },
+    { "id": "create:steam_engine", "required": false },
+    { "id": "create:hose_pulley", "required": false },
+    { "id": "create:rope_pulley", "required": false },
+    { "id": "create:elevator_pulley", "required": false },
+    { "id": "create:windmill_bearing", "required": false },
+    { "id": "create:mechanical_bearing", "required": false },
+    { "id": "create:clockwork_bearing", "required": false }
+  ]
+}

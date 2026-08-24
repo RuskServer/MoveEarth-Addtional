@@ -102,7 +102,8 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
     }
 
     private static JobDefinition parse(ResourceLocation id, JsonObject json) {
-        String displayName = GsonHelper.getAsString(json, "display_name", id.toString());
+        String displayName = boundedString(json, "display_name", id.toString(), 64);
+        String description = boundedString(json, "description", "", 160);
         int maxLevel = positive(json, "max_level", 50);
         int pointsPerLevel = positive(json, "points_per_level", 1);
 
@@ -126,8 +127,22 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
 
         List<JobDefinition.EntityReward> killRewards = parseEntityRewards(json, "entity_kill");
         List<JobDefinition.EntityReward> breedRewards = parseEntityRewards(json, "entity_breed");
-        return new JobDefinition(id, displayName, maxLevel, pointsPerLevel,
-                baseXp, linearXp, quadraticXp, blockRewards, killRewards, breedRewards);
+        List<JobDefinition.ItemCraftReward> craftRewards = parseItemCraftRewards(json);
+        return new JobDefinition(id, displayName, description, maxLevel, pointsPerLevel,
+                baseXp, linearXp, quadraticXp, blockRewards, killRewards, breedRewards, craftRewards);
+    }
+
+    private static List<JobDefinition.ItemCraftReward> parseItemCraftRewards(JsonObject json) {
+        if (!json.has("item_craft")) {
+            return List.of();
+        }
+        List<JobDefinition.ItemCraftReward> rewards = new ArrayList<>();
+        for (JsonElement actionElement : GsonHelper.getAsJsonArray(json, "item_craft")) {
+            JsonObject action = actionElement.getAsJsonObject();
+            rewards.add(JobDefinition.ItemCraftReward.of(
+                    requiredLocation(action, "tag"), positive(action, "xp", 1)));
+        }
+        return rewards;
     }
 
     private static List<JobDefinition.EntityReward> parseEntityRewards(JsonObject json, String key) {
@@ -163,6 +178,14 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         int value = GsonHelper.getAsInt(json, key, fallback);
         if (value <= 0) {
             throw new IllegalArgumentException(key + " must be positive");
+        }
+        return value;
+    }
+
+    private static String boundedString(JsonObject json, String key, String fallback, int maxLength) {
+        String value = GsonHelper.getAsString(json, key, fallback);
+        if (value.length() > maxLength) {
+            throw new IllegalArgumentException(key + " exceeds " + maxLength + " characters");
         }
         return value;
     }

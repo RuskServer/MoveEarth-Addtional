@@ -1,0 +1,19 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:piston",
+    "minecraft:sticky_piston",
+    "minecraft:repeater",
+    "minecraft:comparator",
+    "minecraft:observer",
+    "minecraft:dispenser",
+    "minecraft:dropper",
+    "minecraft:hopper",
+    { "id": "create:shaft", "required": false },
+    { "id": "create:cogwheel", "required": false },
+    { "id": "create:large_cogwheel", "required": false },
+    { "id": "create:andesite_alloy", "required": false },
+    { "id": "create:fluid_pipe", "required": false },
+    { "id": "create:belt_connector", "required": false }
+  ]
+}

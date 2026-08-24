@@ -1,5 +1,6 @@
 {
   "display_name": "木こり",
+  "description": "設置されていない原木を伐採するとXPを獲得します",
   "max_level": 50,
   "points_per_level": 1,
   "xp_curve": {

@@ -34,6 +34,7 @@ public record S2C_OpenJobsScreenPacket(
         for (JobEntry job : packet.jobs) {
             buffer.writeResourceLocation(job.id);
             buffer.writeUtf(job.displayName, 64);
+            buffer.writeUtf(job.description, 160);
             buffer.writeVarInt(job.maxLevel);
             buffer.writeVarInt(job.pointsPerLevel);
             buffer.writeBoolean(job.active);
@@ -60,6 +61,7 @@ public record S2C_OpenJobsScreenPacket(
             jobs.add(new JobEntry(
                     buffer.readResourceLocation(),
                     buffer.readUtf(64),
+                    buffer.readUtf(160),
                     buffer.readVarInt(),
                     buffer.readVarInt(),
                     buffer.readBoolean(),
@@ -93,7 +95,8 @@ public record S2C_OpenJobsScreenPacket(
         context.enqueueWork(() -> com.ruskserver.moveearth_addtional.client.ClientPacketHandler.handleOpenJobs(this));
     }
 
-    public record JobEntry(ResourceLocation id, String displayName, int maxLevel, int pointsPerLevel,
+    public record JobEntry(ResourceLocation id, String displayName, String description,
+                           int maxLevel, int pointsPerLevel,
                            boolean active, int level, long xpInLevel, long xpForNextLevel, long totalXp) {
     }
 }

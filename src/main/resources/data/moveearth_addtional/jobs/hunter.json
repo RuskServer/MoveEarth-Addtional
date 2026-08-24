@@ -1,5 +1,6 @@
 {
   "display_name": "狩人",
+  "description": "敵対Mobを自分で倒すとXPを獲得します",
   "max_level": 50,
   "points_per_level": 1,
   "xp_curve": {

@@ -45,7 +45,8 @@ public final class JobsScreenSync {
         long nextXp = progress.level() >= definition.maxLevel()
                 ? 0 : definition.xpNeededForNextLevel(progress.level());
         return new S2C_OpenJobsScreenPacket.JobEntry(
-                definition.id(), definition.displayName(), definition.maxLevel(), definition.pointsPerLevel(),
+                definition.id(), definition.displayName(), definition.description(),
+                definition.maxLevel(), definition.pointsPerLevel(),
                 snapshot.activeJobs().contains(definition.id()), progress.level(), progress.xpInLevel(),
                 nextXp, progress.totalXp());
     }

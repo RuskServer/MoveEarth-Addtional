@@ -1,0 +1,29 @@
+{
+  "display_name": "クラフター",
+  "description": "装備・機械部品・高度な設備のクラフトでXPを獲得します",
+  "max_level": 50,
+  "points_per_level": 1,
+  "xp_curve": {
+    "base": 100,
+    "linear": 25,
+    "quadratic": 10
+  },
+  "item_craft": [
+    {
+      "tag": "moveearth_addtional:jobs/crafter/components",
+      "xp": 2
+    },
+    {
+      "tag": "moveearth_addtional:jobs/crafter/equipment",
+      "xp": 8
+    },
+    {
+      "tag": "moveearth_addtional:jobs/crafter/machinery",
+      "xp": 10
+    },
+    {
+      "tag": "moveearth_addtional:jobs/crafter/advanced",
+      "xp": 20
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 {
   "display_name": "採掘師",
+  "description": "天然鉱石を採掘するとXPを獲得します",
   "max_level": 50,
   "points_per_level": 1,
   "xp_curve": {

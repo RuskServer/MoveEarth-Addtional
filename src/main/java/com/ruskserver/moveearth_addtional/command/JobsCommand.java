@@ -156,6 +156,9 @@ public final class JobsCommand {
         JobDefinition value = definition.get();
         source.sendSuccess(() -> Component.literal("[Jobs] " + value.displayName() + " (" + value.id()
                 + ") 最大Lv." + value.maxLevel() + " / レベルごとに " + value.pointsPerLevel() + "ポイント"), false);
+        if (!value.description().isBlank()) {
+            source.sendSuccess(() -> Component.literal("- " + value.description()), false);
+        }
         return 1;
     }
 

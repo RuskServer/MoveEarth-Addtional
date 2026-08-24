@@ -16,6 +16,7 @@ import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
 import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 
 /** Server-only action detection for job rewards. */
@@ -92,6 +93,24 @@ public final class JobEvents {
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
             int reward = definition.entityBreedXp(event.getParentA().getType());
             if (reward > 0) {
+                JobService.INSTANCE.awardAction(player, definition, reward);
+            }
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+                || event.getCrafting().isEmpty()
+                || player.isCreative() || player.isSpectator()
+                || player.level().dimension().equals(PvpMatchManager.ARENA)) {
+            return;
+        }
+        for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
+            int reward = definition.itemCraftXp(event.getCrafting());
+            if (reward > 0) {
+                // Reward per completed crafting action, not per output stack size. This avoids recipes
+                // producing many items at once multiplying XP unexpectedly.
                 JobService.INSTANCE.awardAction(player, definition, reward);
             }
         }

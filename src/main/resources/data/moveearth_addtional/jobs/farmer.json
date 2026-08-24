@@ -1,5 +1,6 @@
 {
   "display_name": "農家",
+  "description": "成熟作物の収穫と家畜の繁殖でXPを獲得します",
   "max_level": 50,
   "points_per_level": 1,
   "xp_curve": {

@@ -39,7 +39,7 @@ public final class JobsScreen extends Screen {
     @Override
     protected void init() {
         Layout layout = layout();
-        amountBox = new EditBox(font, layout.right + 12, layout.top + 137,
+        amountBox = new EditBox(font, layout.right + 12, layout.top + 155,
                 Math.max(70, layout.rightWidth - 24), 20, Component.literal("数量"));
         amountBox.setMaxLength(7);
         amountBox.setValue("100");
@@ -138,17 +138,18 @@ public final class JobsScreen extends Screen {
         int y = layout.top + 62;
         graphics.drawString(font, job.displayName(), x, y, TEXT, false);
         graphics.drawString(font, job.id().toString(), x, y + 14, MUTED, false);
+        graphics.drawString(font, fit(job.description(), layout.rightWidth - 24), x, y + 29, MUTED, false);
 
         if (adminMode) {
             String compactProgress = "Lv." + job.level() + "/" + job.maxLevel() + "  |  "
                     + (job.xpForNextLevel() <= 0 ? "MAX" : job.xpInLevel() + "/" + job.xpForNextLevel() + " XP");
-            graphics.drawString(font, fit(compactProgress, layout.rightWidth - 24), x, y + 32, ACCENT, false);
+            graphics.drawString(font, fit(compactProgress, layout.rightWidth - 24), x, y + 44, ACCENT, false);
             return;
         }
 
         String level = "レベル " + job.level() + " / " + job.maxLevel();
-        graphics.drawString(font, level, x, y + 39, job.level() >= job.maxLevel() ? ACTIVE : ACCENT, false);
-        int barY = y + 56;
+        graphics.drawString(font, level, x, y + 53, job.level() >= job.maxLevel() ? ACTIVE : ACCENT, false);
+        int barY = y + 70;
         int barWidth = Math.max(80, layout.rightWidth - 24);
         graphics.fill(x, barY, x + barWidth, barY + 9, 0xFF0C1015);
         double ratio = job.xpForNextLevel() <= 0 ? 1.0D
@@ -177,15 +178,15 @@ public final class JobsScreen extends Screen {
     private void drawAdminControls(GuiGraphics graphics, Layout layout, int mouseX, int mouseY) {
         int x = layout.right + 12;
         int width = layout.rightWidth - 24;
-        int targetY = layout.top + 101;
+        int targetY = layout.top + 119;
         drawButton(graphics, x, targetY, 22, 20, "‹", ACCENT, mouseX, mouseY,
                 packet.onlinePlayers().size() > 1);
         graphics.drawCenteredString(font, fit(packet.subjectName(), width - 60), x + width / 2, targetY + 6, TEXT);
         drawButton(graphics, x + width - 22, targetY, 22, 20, "›", ACCENT, mouseX, mouseY,
                 packet.onlinePlayers().size() > 1);
 
-        graphics.drawString(font, "操作量", x, layout.top + 126, MUTED, false);
-        int buttonY = layout.top + 161;
+        graphics.drawString(font, "操作量", x, layout.top + 144, MUTED, false);
+        int buttonY = layout.top + 179;
         drawButton(graphics, x, buttonY, width, 20, "選択職業へXPを追加", ACTIVE, mouseX, mouseY,
                 selectedEntry() != null);
         drawButton(graphics, x, buttonY + 24, (width - 5) / 2, 20, "ポイント加算", ACCENT,
@@ -238,7 +239,7 @@ public final class JobsScreen extends Screen {
         }
 
         if (adminMode && packet.canAdmin()) {
-            int targetY = layout.top + 101;
+            int targetY = layout.top + 119;
             if (inside(mouseX, mouseY, rightX, targetY, 22, 20)) {
                 cycleTarget(-1);
                 return true;
@@ -247,7 +248,7 @@ public final class JobsScreen extends Screen {
                 cycleTarget(1);
                 return true;
             }
-            int operationY = layout.top + 161;
+            int operationY = layout.top + 179;
             if (job != null && inside(mouseX, mouseY, rightX, operationY, rightWidth, 20)) {
                 send("ADD_XP", job.id().toString(), packet.subjectName(), amount());
                 return true;

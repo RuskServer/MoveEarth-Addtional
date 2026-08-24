@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:beacon",
+    "minecraft:conduit",
+    { "id": "create:rotation_speed_controller", "required": false }
+  ]
+}
