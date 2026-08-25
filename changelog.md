@@ -1,28 +1,46 @@
 # Unreleased
 
-## Jobs System
+# v2.0
 
-- Added a server-authoritative job progression foundation with up to two active jobs per player, per-job XP and levels, and shared job points earned on level-up.
-- Added the Miner job. Breaking natural vanilla ores grants configurable XP, while player-placed reward blocks, invalid tools, creative or spectator play, and the PvP arena grant no XP.
-- Added a one-minute XP soft cap, persistent UUID-based job progress, data-pack-driven job definitions and ore reward tags, and permission-level-2 administration commands.
-- Added `/jobs`, `/jobs list`, `/jobs join`, `/jobs leave`, and `/jobs info` as explicit permission-level-0 player commands.
-- Changed `/jobs` to open a unified Jobs screen containing the job list, selection slots, levels, XP progress, shared points, and join or leave controls. `/jobs status` retains the chat summary.
-- Added a permission-level-2 panel to the same screen for inspecting online players, granting job XP, changing shared points, and resetting job data with confirmation and server-side audit logging.
-- Updated the network protocol to `1.9-jobs6`; clients and servers must use the same updated JAR.
-- Added Lumberjack XP for non-player-placed logs, Farmer XP for mature crops, naturally grown harvest blocks and player-caused livestock breeding, and Hunter XP for player kills against configured hostile mobs.
-- Added persistent Hunter exclusions for mobs created by spawners, spawn eggs, dispensers, or commands. All new jobs share the existing PvP exclusion and per-minute soft cap.
-- Added the Crafter job for player-completed equipment, machinery, Create components, and advanced utility recipes. Automated crafting and unlisted reversible or bulk-material recipes do not grant XP, and output stack size does not multiply rewards.
-- Added short activity descriptions to every job card.
-- Expanded Miner rewards to stone variants, Nether geology, dripstone and individually balanced vanilla ores. Fractional XP is now preserved through persistence, rate limiting, commands, packets, and GUI display.
-- Replaced one-long-per-block placement tracking with compact 16x16x16 section bitsets, including migration of the previous format, so common building blocks can be protected from place-and-break farming without excessive save growth.
-- Added per-job leaderboards to the `/jobs` screen and `/jobs top <job>`. Rankings include offline players and sort by level, current-level XP, lifetime XP, player name, and UUID.
-- Persisted each participant's last known player name so offline leaderboard entries remain readable.
-- Added a Job Points shop to the `/jobs` screen. Products preserve their exact stack count and item components, including enchantments and modded gun customization.
-- Added a permission-level-2 product-management view. Administrators can register their current main-hand stack as an unlimited-stock template, set its price and per-player purchase limit, suspend sales, update it, or remove it without sending item data from the client.
-- Added persistent products and per-player purchase counts, server-side price and permission validation, inventory-capacity checks before charging, PvP purchase blocking, and audit logs for product-management operations.
-- Added renewable Job Point income: every 500 effective job XP grants 1 shared point, capped at 4 renewable points per player per one-hour window. Level-up points remain separate bonuses.
-- Persisted the renewable-point window, partial XP, and hourly count so reconnecting or restarting cannot reset the cap. XP beyond the hourly cap is discarded instead of being banked for the next window.
-- Continued accepting effective XP at level 50 for renewable points and lifetime-XP rankings. The Jobs screen, shop, and `/jobs status` now show progress toward the next point, the current hourly count, and the window timer.
+## Jobs and Progression
+
+- Added five server-authoritative jobs: Miner, Lumberjack, Farmer, Hunter, and Crafter. Players can keep progress in every job and have up to two active jobs at once.
+- Added per-job levels from 1 to 50, quadratic XP curves, one shared Job Point per level-up, fractional XP, and persistent UUID-based progress.
+- Made job definitions, XP curves, block rewards, entity rewards, crafting rewards, and activity descriptions data-pack configurable.
+- Added renewable Job Point income. Every 500 effective job XP grants 1 shared point, capped at 4 renewable points per player per one-hour window; level-up points remain separate bonuses.
+- Persisted partial renewable-point XP, the hourly count, and the window timer across reconnects and restarts. XP beyond the hourly cap is not banked for the next window.
+- Continued accepting effective XP at level 50 for renewable points and lifetime-XP rankings.
+
+## Jobs and Anti-Abuse Rules
+
+- Added individually balanced Miner rewards for stone variants, Nether geology, dripstone, and vanilla ores.
+- Prevented XP from player-placed reward blocks, invalid tools, creative or spectator play, and activity inside the PvP arena.
+- Added compact per-section placement tracking with migration from the previous coordinate format, piston movement tracking, and explosion cleanup.
+- Added a per-job one-minute XP soft cap: the first 500 XP is awarded at full rate and overflow is reduced to 10%.
+- Excluded Hunter targets created by spawners, spawn eggs, dispensers, or commands, and excluded automated or unlisted reversible crafting from Crafter rewards.
+
+## Jobs Interface and Administration
+
+- Added the unified `/jobs` screen for job selection, levels, XP progress, shared points, renewable-point progress, and activity descriptions.
+- Added `/jobs status`, `/jobs list`, `/jobs join`, `/jobs leave`, `/jobs info`, and `/jobs top` as permission-level-0 commands.
+- Added a permission-level-2 management panel for inspecting online players, granting XP, changing points, and resetting job data with confirmation and audit logging.
+
+## Rankings
+
+- Added per-job leaderboards to the Jobs screen and `/jobs top <job>`.
+- Included offline players using their persisted last-known name and ranked entries by level, current XP, lifetime XP, name, and UUID.
+
+## Job Point Shop
+
+- Added a persistent Job Point shop to the Jobs screen with exact ItemStack templates, including stack count, enchantments, durability, and modded gun customization.
+- Added permission-level-2 product management. Administrators can register their current main-hand stack, set its price and per-player purchase limit, suspend or resume sales, update products, and remove products.
+- Added server-side permission, product, price, purchase-limit, point-balance, and inventory-capacity validation. Failed capacity checks do not consume points.
+- Blocked purchasing and product management during active PvP sessions, persisted purchase counts, and added audit logs for product changes and purchases.
+
+## Compatibility
+
+- Updated the mod version to `2.0` and the network protocol to `2.0-jobs1`.
+- v2.0 clients and servers must use the same updated JAR; v1.9 clients are not network-compatible.
 
 # v1.9
 
