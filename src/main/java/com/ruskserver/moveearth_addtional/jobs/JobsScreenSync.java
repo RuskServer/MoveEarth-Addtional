@@ -29,6 +29,7 @@ public final class JobsScreenSync {
         JobProgressSavedData data = JobProgressSavedData.get(viewer.getServer());
         data.rememberName(viewer.getUUID(), viewer.getGameProfile().getName());
         data.rememberName(subject.getUUID(), subject.getGameProfile().getName());
+        data.reconcileActiveJobs(subject.getUUID(), JobDefinitions.INSTANCE.ids());
         JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(subject.getUUID());
         JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(subject.getUUID(),
                 viewer.getServer().overworld().getGameTime());

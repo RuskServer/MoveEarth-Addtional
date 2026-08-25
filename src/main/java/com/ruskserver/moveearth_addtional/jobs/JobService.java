@@ -16,8 +16,11 @@ public final class JobService {
     }
 
     public void awardAction(ServerPlayer player, JobDefinition definition, double baseXp) {
-        double xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
         JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
+        if (!data.isActive(player.getUUID(), definition.id())) {
+            return;
+        }
+        double xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
         JobProgressSavedData.AwardResult result = data.award(player.getUUID(), definition, xp,
                 player.getServer().overworld().getGameTime());
         if (result.awardedXp() <= 0) {

@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /** Loads {@code data/<namespace>/jobs/*.json} on server start and /reload. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
@@ -46,6 +47,10 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         return definitions.values().stream()
                 .sorted(Comparator.comparing(definition -> definition.id().toString()))
                 .toList();
+    }
+
+    public Set<ResourceLocation> ids() {
+        return definitions.keySet();
     }
 
     public boolean rewardsBlock(BlockState state) {

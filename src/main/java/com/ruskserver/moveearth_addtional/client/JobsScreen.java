@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_JobsLeaderboardPacket;
 import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
 import com.ruskserver.moveearth_addtional.jobs.JobPointIncome;
+import com.ruskserver.moveearth_addtional.jobs.JobSelectionRules;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -80,8 +81,12 @@ public final class JobsScreen extends Screen {
     }
 
     public void update(S2C_OpenJobsScreenPacket updated) {
+        String previousSubject = packet.subjectName();
         String selectedId = selectedEntry() == null ? "" : selectedEntry().id().toString();
         this.packet = updated;
+        if (!previousSubject.equalsIgnoreCase(updated.subjectName())) {
+            resetArmedUntil = 0;
+        }
         this.recurringSyncedAt = System.currentTimeMillis();
         for (int i = 0; i < updated.jobs().size(); i++) {
             if (updated.jobs().get(i).id().toString().equals(selectedId)) {
@@ -104,14 +109,7 @@ public final class JobsScreen extends Screen {
         String selectedId = selectedProductEntry() == null ? "" : selectedProductEntry().id().toString();
         this.shopPacket = updated;
         this.shopRecurringSyncedAt = System.currentTimeMillis();
-        selectedProduct = 0;
-        List<S2C_JobShopPacket.ProductEntry> products = visibleProducts();
-        for (int i = 0; i < products.size(); i++) {
-            if (products.get(i).id().toString().equals(selectedId)) {
-                selectedProduct = i;
-                break;
-            }
-        }
+        restoreProductSelection(selectedId);
         clampProductScroll();
         if (shopAdminMode) loadSelectedProductFields();
         updateBoxVisibility();
@@ -438,8 +436,11 @@ public final class JobsScreen extends Screen {
         if (packet.canAdmin() && inside(mouseX, mouseY,
                 layout.left + layout.width - 84, layout.top + 34, 52, 18)) {
             if (shopMode) {
+                String selectedId = selectedProductEntry() == null
+                        ? "" : selectedProductEntry().id().toString();
                 shopAdminMode = !shopAdminMode;
                 deleteProductArmedUntil = 0;
+                restoreProductSelection(selectedId);
                 clampProductScroll();
                 if (shopAdminMode) loadSelectedProductFields();
                 updateBoxVisibility();
@@ -620,6 +621,7 @@ public final class JobsScreen extends Screen {
             }
         }
         int next = Math.floorMod(current + direction, players.size());
+        resetArmedUntil = 0;
         send("VIEW", "", players.get(next), 0);
     }
 
@@ -698,6 +700,12 @@ public final class JobsScreen extends Screen {
         if (products.isEmpty()) return null;
         selectedProduct = Mth.clamp(selectedProduct, 0, products.size() - 1);
         return products.get(selectedProduct);
+    }
+
+    private void restoreProductSelection(String selectedId) {
+        List<S2C_JobShopPacket.ProductEntry> products = visibleProducts();
+        selectedProduct = JobSelectionRules.indexOfId(
+                products.stream().map(product -> product.id().toString()).toList(), selectedId);
     }
 
     private List<S2C_JobShopPacket.ProductEntry> visibleProducts() {

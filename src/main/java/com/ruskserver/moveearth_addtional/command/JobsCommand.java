@@ -101,6 +101,7 @@ public final class JobsCommand {
 
     private static int status(ServerPlayer player) {
         JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
+        data.reconcileActiveJobs(player.getUUID(), JobDefinitions.INSTANCE.ids());
         JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(player.getUUID());
         player.sendSystemMessage(Component.literal("[Jobs] ポイント: " + snapshot.points()
                 + " / 選択中: " + snapshot.activeJobs().size() + "/" + JobProgressSavedData.MAX_ACTIVE_JOBS));
@@ -151,16 +152,24 @@ public final class JobsCommand {
     }
 
     private static int leave(ServerPlayer player, String input) {
+        JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
         Optional<JobDefinition> definition = resolve(input);
-        if (definition.isEmpty()) {
+        ResourceLocation parsed = ResourceLocation.tryParse(input);
+        ResourceLocation jobId = definition.map(JobDefinition::id).orElseGet(() -> data.snapshot(player.getUUID())
+                .activeJobs().stream()
+                .filter(id -> id.toString().equals(input) || id.getPath().equals(input))
+                .findFirst()
+                .orElse(parsed));
+        if (jobId == null) {
             player.sendSystemMessage(Component.literal("[Jobs] 不明な職業です: " + input));
             return 0;
         }
-        if (!JobProgressSavedData.get(player.getServer()).leave(player.getUUID(), definition.get().id())) {
+        if (!data.leave(player.getUUID(), jobId)) {
             player.sendSystemMessage(Component.literal("[Jobs] その職業は選択していません。"));
             return 0;
         }
-        player.sendSystemMessage(Component.literal("[Jobs] " + definition.get().displayName()
+        String displayName = definition.map(JobDefinition::displayName).orElse(jobId.toString());
+        player.sendSystemMessage(Component.literal("[Jobs] " + displayName
                 + "を解除しました。進捗は保持されます。"));
         return 1;
     }

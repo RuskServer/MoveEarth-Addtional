@@ -1,5 +1,12 @@
 # Unreleased
 
+## Fixed
+
+- Applied the per-minute XP soft cap only to jobs the player has actually selected, so pre-join activity no longer reduces post-join rewards.
+- Removed missing job definitions from active selections without deleting their saved progress, while preserving selections if every definition fails to load.
+- Cleared destructive reset confirmation when an administrator changes the target player.
+- Preserved the selected shop product by UUID when switching between purchase and management views, preventing updates or deletion from targeting another product.
+
 # v2.0
 
 ## Jobs and Progression

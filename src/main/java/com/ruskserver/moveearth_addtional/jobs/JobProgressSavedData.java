@@ -24,6 +24,7 @@ public final class JobProgressSavedData extends SavedData {
     private final Map<UUID, PlayerJobs> players = new HashMap<>();
 
     public JoinResult join(UUID playerId, ResourceLocation jobId) {
+        reconcileActiveJobs(playerId, JobDefinitions.INSTANCE.ids());
         PlayerJobs jobs = player(playerId);
         if (jobs.activeJobs.contains(jobId)) {
             return JoinResult.ALREADY_ACTIVE;
@@ -43,6 +44,28 @@ public final class JobProgressSavedData extends SavedData {
             setDirty();
         }
         return removed;
+    }
+
+    public boolean isActive(UUID playerId, ResourceLocation jobId) {
+        PlayerJobs jobs = players.get(playerId);
+        return jobs != null && jobs.activeJobs.contains(jobId);
+    }
+
+    /**
+     * Removes selections whose definitions no longer exist while retaining their progress in case the
+     * definition is restored later. An empty definition set is treated as a failed reload and is not
+     * allowed to erase every player's selections.
+     */
+    public boolean reconcileActiveJobs(UUID playerId, Set<ResourceLocation> validJobIds) {
+        PlayerJobs jobs = players.get(playerId);
+        if (jobs == null) {
+            return false;
+        }
+        boolean changed = JobSelectionRules.removeMissing(jobs.activeJobs, validJobIds);
+        if (changed) {
+            setDirty();
+        }
+        return changed;
     }
 
     public AwardResult award(UUID playerId, JobDefinition definition, double amount, long gameTime) {
