@@ -7,6 +7,10 @@
 - Cleared destructive reset confirmation when an administrator changes the target player.
 - Preserved the selected shop product by UUID when switching between purchase and management views, preventing updates or deletion from targeting another product.
 
+## Jobs Interface
+
+- Replaced routine Jobs XP action-bar messages with a four-second vanilla boss bar showing job level, name, current XP, next-level XP, and the latest XP gain.
+
 # v2.0
 
 ## Jobs and Progression

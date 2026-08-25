@@ -27,6 +27,10 @@ public final class JobService {
             return;
         }
 
+        JobProgressSavedData.ProgressSnapshot progress = data.snapshot(player.getUUID())
+                .progress(definition.id());
+        JobProgressBossBar.show(player, definition, progress, result.awardedXp());
+
         if (result.leveledUp()) {
             player.sendSystemMessage(Component.literal("[Jobs] " + definition.displayName()
                     + " がレベル " + result.newLevel() + " になりました（+"
@@ -37,9 +41,6 @@ public final class JobService {
             player.sendSystemMessage(Component.literal("[Jobs] 継続報酬 +"
                     + result.recurringPointsEarned() + " PT（今時間 " + recurring.pointsInWindow()
                     + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW + "）"));
-        } else {
-            player.displayClientMessage(Component.literal("[Jobs] " + definition.displayName()
-                    + " +" + JobXpFormat.format(result.awardedXp()) + " XP"), true);
         }
     }
 

@@ -18,6 +18,7 @@ import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /** Server-only action detection for job rewards. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
@@ -33,6 +34,16 @@ public final class JobEvents {
             JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
             data.rememberName(player.getUUID(), player.getGameProfile().getName());
         }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        JobProgressBossBar.remove(event.getEntity().getUUID());
+    }
+
+    @SubscribeEvent
+    public static void onServerTick(ServerTickEvent.Post event) {
+        JobProgressBossBar.tick();
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -159,5 +170,6 @@ public final class JobEvents {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         JobService.INSTANCE.clearTransientState();
+        JobProgressBossBar.clear();
     }
 }
