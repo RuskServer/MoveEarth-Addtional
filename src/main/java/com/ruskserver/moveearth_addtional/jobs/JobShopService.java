@@ -93,7 +93,13 @@ public final class JobShopService {
                         product.price(), product.purchaseLimit(), product.purchased(), product.enabled()))
                 .toList();
         int points = JobProgressSavedData.get(player.getServer()).snapshot(player.getUUID()).points();
-        PacketDistributor.sendToPlayer(player, new S2C_JobShopPacket(points, canAdmin, entries));
+        JobProgressSavedData.RecurringPointSnapshot recurring = JobProgressSavedData.get(player.getServer())
+                .recurringSnapshot(player.getUUID(), player.getServer().overworld().getGameTime());
+        int secondsRemaining = (int) Math.min(Integer.MAX_VALUE,
+                Math.max(0, (recurring.ticksRemaining() + 19L) / 20L));
+        PacketDistributor.sendToPlayer(player, new S2C_JobShopPacket(points,
+                recurring.xpTowardsNextPoint(), recurring.pointsInWindow(), secondsRemaining,
+                canAdmin, entries));
     }
 
     private static void purchase(ServerPlayer player, JobShopSavedData shop, UUID productId) {

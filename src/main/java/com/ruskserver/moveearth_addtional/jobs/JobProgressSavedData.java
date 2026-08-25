@@ -19,7 +19,7 @@ import java.util.UUID;
 /** Server-authoritative job selection, experience and shared points. */
 public final class JobProgressSavedData extends SavedData {
     public static final int MAX_ACTIVE_JOBS = 2;
-    private static final int DATA_VERSION = 3;
+    private static final int DATA_VERSION = 4;
     private static final double XP_EPSILON = 1.0E-9D;
     private final Map<UUID, PlayerJobs> players = new HashMap<>();
 
@@ -45,27 +45,23 @@ public final class JobProgressSavedData extends SavedData {
         return removed;
     }
 
-    public AwardResult award(UUID playerId, JobDefinition definition, double amount) {
+    public AwardResult award(UUID playerId, JobDefinition definition, double amount, long gameTime) {
         PlayerJobs jobs = player(playerId);
         if (!jobs.activeJobs.contains(definition.id()) || !Double.isFinite(amount) || amount <= 0) {
             return AwardResult.NONE;
         }
-        return awardInternal(jobs, definition, amount);
+        return awardInternal(jobs, definition, amount, gameTime);
     }
 
-    public AwardResult awardAdmin(UUID playerId, JobDefinition definition, double amount) {
+    public AwardResult awardAdmin(UUID playerId, JobDefinition definition, double amount, long gameTime) {
         if (!Double.isFinite(amount) || amount <= 0) {
             return AwardResult.NONE;
         }
-        return awardInternal(player(playerId), definition, amount);
+        return awardInternal(player(playerId), definition, amount, gameTime);
     }
 
-    private AwardResult awardInternal(PlayerJobs jobs, JobDefinition definition, double amount) {
+    private AwardResult awardInternal(PlayerJobs jobs, JobDefinition definition, double amount, long gameTime) {
         Progress progress = jobs.progress.computeIfAbsent(definition.id(), ignored -> new Progress());
-        if (progress.level >= definition.maxLevel()) {
-            return AwardResult.NONE;
-        }
-
         int oldLevel = progress.level;
         double remaining = amount;
         while (progress.level < definition.maxLevel()) {
@@ -73,7 +69,6 @@ public final class JobProgressSavedData extends SavedData {
             if (progress.xpInLevel + XP_EPSILON >= threshold) {
                 progress.xpInLevel = Math.max(0.0D, progress.xpInLevel - threshold);
                 progress.level++;
-                jobs.points = safeAdd(jobs.points, definition.pointsPerLevel());
                 continue;
             }
             if (remaining <= XP_EPSILON) {
@@ -82,16 +77,25 @@ public final class JobProgressSavedData extends SavedData {
             double needed = threshold - progress.xpInLevel;
             double applied = Math.min(remaining, needed);
             progress.xpInLevel += applied;
-            progress.totalXp += applied;
             remaining -= applied;
         }
         if (progress.level >= definition.maxLevel()) {
             progress.xpInLevel = 0.0D;
         }
-        setDirty();
+        double updatedTotalXp = progress.totalXp + amount;
+        progress.totalXp = Double.isFinite(updatedTotalXp) ? updatedTotalXp : Double.MAX_VALUE;
         int gainedLevels = progress.level - oldLevel;
-        return new AwardResult(amount - remaining, oldLevel, progress.level,
-                gainedLevels * definition.pointsPerLevel());
+        int levelPoints = safeMultiply(gainedLevels, definition.pointsPerLevel());
+        JobPointIncome.Result recurring = JobPointIncome.apply(jobs.recurringWindowStartedAt,
+                jobs.recurringPointXp, jobs.recurringPointsInWindow, amount, gameTime);
+        jobs.recurringWindowStartedAt = recurring.startedAt();
+        jobs.recurringPointXp = recurring.xpTowardsNextPoint();
+        jobs.recurringPointsInWindow = recurring.pointsInWindow();
+        int pointsEarned = safeAdd(levelPoints, recurring.pointsEarned());
+        jobs.points = Math.max(0, safeAdd(jobs.points, pointsEarned));
+        setDirty();
+        return new AwardResult(amount, oldLevel, progress.level, pointsEarned,
+                recurring.pointsEarned());
     }
 
     public void addPoints(UUID playerId, int amount) {
@@ -124,6 +128,20 @@ public final class JobProgressSavedData extends SavedData {
         jobs.progress.forEach((id, value) -> progress.put(id,
                 new ProgressSnapshot(value.level, value.xpInLevel, value.totalXp)));
         return new PlayerSnapshot(jobs.points, Set.copyOf(jobs.activeJobs), Map.copyOf(progress));
+    }
+
+    public RecurringPointSnapshot recurringSnapshot(UUID playerId, long gameTime) {
+        PlayerJobs jobs = player(playerId);
+        if (jobs.recurringWindowStartedAt >= 0
+                && (gameTime < jobs.recurringWindowStartedAt
+                || gameTime - jobs.recurringWindowStartedAt >= JobPointIncome.WINDOW_TICKS)) {
+            jobs.recurringWindowStartedAt = -1;
+            jobs.recurringPointXp = 0;
+            jobs.recurringPointsInWindow = 0;
+            setDirty();
+        }
+        long remaining = JobPointIncome.ticksRemaining(jobs.recurringWindowStartedAt, gameTime);
+        return new RecurringPointSnapshot(jobs.recurringPointXp, jobs.recurringPointsInWindow, remaining);
     }
 
     public void rememberName(UUID playerId, String name) {
@@ -170,6 +188,11 @@ public final class JobProgressSavedData extends SavedData {
         return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, sum));
     }
 
+    private static int safeMultiply(int left, int right) {
+        long product = (long) left * right;
+        return (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, product));
+    }
+
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         tag.putInt("Version", DATA_VERSION);
@@ -203,8 +226,9 @@ public final class JobProgressSavedData extends SavedData {
         LIMIT_REACHED
     }
 
-    public record AwardResult(double awardedXp, int oldLevel, int newLevel, int pointsEarned) {
-        public static final AwardResult NONE = new AwardResult(0, 0, 0, 0);
+    public record AwardResult(double awardedXp, int oldLevel, int newLevel, int pointsEarned,
+                              int recurringPointsEarned) {
+        public static final AwardResult NONE = new AwardResult(0, 0, 0, 0, 0);
 
         public boolean leveledUp() {
             return newLevel > oldLevel;
@@ -212,6 +236,10 @@ public final class JobProgressSavedData extends SavedData {
     }
 
     public record ProgressSnapshot(int level, double xpInLevel, double totalXp) {
+    }
+
+    public record RecurringPointSnapshot(double xpTowardsNextPoint, int pointsInWindow,
+                                         long ticksRemaining) {
     }
 
     public record PlayerSnapshot(int points, Set<ResourceLocation> activeJobs,
@@ -228,6 +256,9 @@ public final class JobProgressSavedData extends SavedData {
     private static final class PlayerJobs {
         private int points;
         private String lastKnownName = "";
+        private long recurringWindowStartedAt = -1;
+        private double recurringPointXp;
+        private int recurringPointsInWindow;
         private final Set<ResourceLocation> activeJobs = new LinkedHashSet<>();
         private final Map<ResourceLocation, Progress> progress = new HashMap<>();
 
@@ -235,6 +266,9 @@ public final class JobProgressSavedData extends SavedData {
             CompoundTag tag = new CompoundTag();
             tag.putInt("Points", points);
             tag.putString("LastKnownName", lastKnownName);
+            if (recurringWindowStartedAt >= 0) tag.putLong("RecurringWindowStartedAt", recurringWindowStartedAt);
+            tag.putDouble("RecurringPointXp", recurringPointXp);
+            tag.putInt("RecurringPointsInWindow", recurringPointsInWindow);
             ListTag active = new ListTag();
             activeJobs.forEach(id -> active.add(StringTag.valueOf(id.toString())));
             tag.put("Active", active);
@@ -250,6 +284,13 @@ public final class JobProgressSavedData extends SavedData {
             jobs.points = Math.max(0, tag.getInt("Points"));
             String loadedName = tag.getString("LastKnownName");
             jobs.lastKnownName = loadedName.length() > 16 ? loadedName.substring(0, 16) : loadedName;
+            jobs.recurringWindowStartedAt = tag.contains("RecurringWindowStartedAt")
+                    ? tag.getLong("RecurringWindowStartedAt") : -1;
+            double loadedRecurringXp = tag.getDouble("RecurringPointXp");
+            jobs.recurringPointXp = Double.isFinite(loadedRecurringXp)
+                    ? Math.max(0.0D, Math.min(JobPointIncome.XP_PER_POINT, loadedRecurringXp)) : 0.0D;
+            jobs.recurringPointsInWindow = Math.max(0,
+                    Math.min(JobPointIncome.MAX_POINTS_PER_WINDOW, tag.getInt("RecurringPointsInWindow")));
             ListTag active = tag.getList("Active", Tag.TAG_STRING);
             for (int i = 0; i < active.size() && jobs.activeJobs.size() < MAX_ACTIVE_JOBS; i++) {
                 ResourceLocation id = ResourceLocation.tryParse(active.getString(i));

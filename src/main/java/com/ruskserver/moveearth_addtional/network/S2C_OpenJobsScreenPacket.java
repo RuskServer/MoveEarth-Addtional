@@ -14,6 +14,9 @@ public record S2C_OpenJobsScreenPacket(
         boolean selfView,
         boolean canAdmin,
         int points,
+        double recurringXp,
+        int recurringPointsInWindow,
+        int recurringSecondsRemaining,
         int maxActiveJobs,
         List<JobEntry> jobs,
         List<String> onlinePlayers) implements CustomPacketPayload {
@@ -29,6 +32,9 @@ public record S2C_OpenJobsScreenPacket(
         buffer.writeBoolean(packet.selfView);
         buffer.writeBoolean(packet.canAdmin);
         buffer.writeVarInt(packet.points);
+        buffer.writeDouble(packet.recurringXp);
+        buffer.writeVarInt(packet.recurringPointsInWindow);
+        buffer.writeVarInt(packet.recurringSecondsRemaining);
         buffer.writeVarInt(packet.maxActiveJobs);
         buffer.writeVarInt(packet.jobs.size());
         for (JobEntry job : packet.jobs) {
@@ -54,6 +60,9 @@ public record S2C_OpenJobsScreenPacket(
         boolean selfView = buffer.readBoolean();
         boolean canAdmin = buffer.readBoolean();
         int points = buffer.readVarInt();
+        double recurringXp = buffer.readDouble();
+        int recurringPointsInWindow = buffer.readVarInt();
+        int recurringSecondsRemaining = buffer.readVarInt();
         int maxActiveJobs = buffer.readVarInt();
         int jobCount = checkedSize(buffer.readVarInt(), MAX_JOBS, "job");
         List<JobEntry> jobs = new ArrayList<>(jobCount);
@@ -75,7 +84,8 @@ public record S2C_OpenJobsScreenPacket(
         for (int i = 0; i < playerCount; i++) {
             onlinePlayers.add(buffer.readUtf(16));
         }
-        return new S2C_OpenJobsScreenPacket(subjectName, selfView, canAdmin, points, maxActiveJobs,
+        return new S2C_OpenJobsScreenPacket(subjectName, selfView, canAdmin, points, recurringXp,
+                recurringPointsInWindow, recurringSecondsRemaining, maxActiveJobs,
                 List.copyOf(jobs), List.copyOf(onlinePlayers));
     }
 

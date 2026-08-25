@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinition;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinitions;
 import com.ruskserver.moveearth_addtional.jobs.JobProgressSavedData;
+import com.ruskserver.moveearth_addtional.jobs.JobPointIncome;
 import com.ruskserver.moveearth_addtional.jobs.JobsScreenSync;
 import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
 import net.minecraft.commands.CommandSourceStack;
@@ -103,6 +104,17 @@ public final class JobsCommand {
         JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(player.getUUID());
         player.sendSystemMessage(Component.literal("[Jobs] ポイント: " + snapshot.points()
                 + " / 選択中: " + snapshot.activeJobs().size() + "/" + JobProgressSavedData.MAX_ACTIVE_JOBS));
+        JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(player.getUUID(),
+                player.getServer().overworld().getGameTime());
+        long seconds = (recurring.ticksRemaining() + 19L) / 20L;
+        String recurringText = recurring.pointsInWindow() >= JobPointIncome.MAX_POINTS_PER_WINDOW
+                ? "今時間の継続報酬は上限です"
+                : "次の継続ポイントまで " + JobXpFormat.format(recurring.xpTowardsNextPoint())
+                + "/" + JobXpFormat.format(JobPointIncome.XP_PER_POINT) + " XP";
+        player.sendSystemMessage(Component.literal("[Jobs] " + recurringText + " / 今時間 "
+                + recurring.pointsInWindow() + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW
+                + " PT / 残り " + String.format(java.util.Locale.ROOT, "%02d:%02d",
+                seconds / 60L, seconds % 60L)));
         if (snapshot.activeJobs().isEmpty()) {
             player.sendSystemMessage(Component.literal("[Jobs] /jobs join <職業> で職業を選択できます。"));
             return 1;
@@ -198,7 +210,8 @@ public final class JobsCommand {
             return 0;
         }
         JobProgressSavedData.AwardResult result = JobProgressSavedData.get(source.getServer())
-                .awardAdmin(player.getUUID(), definition.get(), amount);
+                .awardAdmin(player.getUUID(), definition.get(), amount,
+                        source.getServer().overworld().getGameTime());
         source.sendSuccess(() -> Component.literal("[Jobs] " + player.getScoreboardName() + "に "
                 + JobXpFormat.format(result.awardedXp()) + " XPを付与しました。"), true);
         return result.awardedXp() > 0 ? 1 : 0;

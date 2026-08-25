@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.network.S2C_JobShopPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_JobsLeaderboardPacket;
 import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
+import com.ruskserver.moveearth_addtional.jobs.JobPointIncome;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -46,10 +47,13 @@ public final class JobsScreen extends Screen {
     private int productScroll;
     private long resetArmedUntil;
     private long deleteProductArmedUntil;
+    private long recurringSyncedAt;
+    private long shopRecurringSyncedAt;
 
     public JobsScreen(S2C_OpenJobsScreenPacket packet) {
         super(Component.literal("JOBS"));
         this.packet = packet;
+        this.recurringSyncedAt = System.currentTimeMillis();
     }
 
     @Override
@@ -78,6 +82,7 @@ public final class JobsScreen extends Screen {
     public void update(S2C_OpenJobsScreenPacket updated) {
         String selectedId = selectedEntry() == null ? "" : selectedEntry().id().toString();
         this.packet = updated;
+        this.recurringSyncedAt = System.currentTimeMillis();
         for (int i = 0; i < updated.jobs().size(); i++) {
             if (updated.jobs().get(i).id().toString().equals(selectedId)) {
                 selectedJob = i;
@@ -98,6 +103,7 @@ public final class JobsScreen extends Screen {
     public void updateShop(S2C_JobShopPacket updated) {
         String selectedId = selectedProductEntry() == null ? "" : selectedProductEntry().id().toString();
         this.shopPacket = updated;
+        this.shopRecurringSyncedAt = System.currentTimeMillis();
         selectedProduct = 0;
         List<S2C_JobShopPacket.ProductEntry> products = visibleProducts();
         for (int i = 0; i < products.size(); i++) {
@@ -128,7 +134,12 @@ public final class JobsScreen extends Screen {
         graphics.drawString(font, subject, layout.left + 72, layout.top + 14,
                 adminMode || shopMode ? 0xFFFFB454 : MUTED, false);
         int displayedPoints = shopMode && shopPacket != null ? shopPacket.points() : packet.points();
-        String summary = shopMode ? displayedPoints + " PT"
+        int shopWindowPoints = shopPacket == null ? 0
+                : liveRemainingSeconds(shopPacket.recurringSecondsRemaining(), shopRecurringSyncedAt) <= 0
+                ? 0 : shopPacket.recurringPointsInWindow();
+        String summary = shopMode ? displayedPoints + " PT  |  継続 "
+                + (shopPacket == null ? "-" : shopWindowPoints)
+                + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW
                 : displayedPoints + " PT  |  選択 " + activeCount() + "/" + packet.maxActiveJobs();
         graphics.drawString(font, summary, layout.left + layout.width - 190, layout.top + 14,
                 0xFFFFB454, false);
@@ -217,6 +228,12 @@ public final class JobsScreen extends Screen {
             String limit = remaining < 0 ? "購入上限: 無制限"
                     : "残り購入回数: " + remaining + " / " + product.purchaseLimit();
             graphics.drawString(font, limit, x, y + 50, remaining == 0 ? DANGER : MUTED, false);
+            if (!shopAdminMode && shopPacket != null) {
+                graphics.drawString(font, fit(recurringStatus(shopPacket.recurringXp(),
+                                shopPacket.recurringPointsInWindow(), liveRemainingSeconds(
+                                        shopPacket.recurringSecondsRemaining(), shopRecurringSyncedAt)),
+                                areaWidth), x, y + 68, ACCENT, false);
+            }
         }
 
         if (shopAdminMode && packet.canAdmin()) {
@@ -346,6 +363,10 @@ public final class JobsScreen extends Screen {
                     + (job.xpForNextLevel() <= 0 ? "MAX" : JobXpFormat.format(job.xpInLevel()) + "/"
                     + JobXpFormat.format(job.xpForNextLevel()) + " XP");
             graphics.drawString(font, fit(compactProgress, layout.rightWidth - 24), x, y + 44, ACCENT, false);
+            graphics.drawString(font, fit(recurringStatus(packet.recurringXp(),
+                            packet.recurringPointsInWindow(), liveRemainingSeconds(
+                                    packet.recurringSecondsRemaining(), recurringSyncedAt)),
+                            layout.rightWidth - 24), x, y + 59, 0xFFFFB454, false);
             return;
         }
 
@@ -365,6 +386,10 @@ public final class JobsScreen extends Screen {
         graphics.drawString(font, "累計XP: " + JobXpFormat.format(job.totalXp()), x, barY + 29, MUTED, false);
         graphics.drawString(font, "レベルアップ報酬: " + job.pointsPerLevel() + " PT", x, barY + 44,
                 0xFFFFB454, false);
+        graphics.drawString(font, fit(recurringStatus(packet.recurringXp(),
+                        packet.recurringPointsInWindow(), liveRemainingSeconds(
+                                packet.recurringSecondsRemaining(), recurringSyncedAt)),
+                        layout.rightWidth - 24), x, barY + 59, ACCENT, false);
 
         if (!adminMode) {
             String buttonText = job.active() ? "職業を解除" : "この職業を選択";
@@ -707,6 +732,26 @@ public final class JobsScreen extends Screen {
 
     private String fit(String text, int maxWidth) {
         return font.plainSubstrByWidth(text, Math.max(10, maxWidth));
+    }
+
+    private static String recurringStatus(double xp, int pointsInWindow, int secondsRemaining) {
+        if (secondsRemaining <= 0) {
+            return "継続PT: 新しい1時間枠を利用可能";
+        }
+        String time = String.format(java.util.Locale.ROOT, "%02d:%02d",
+                Math.max(0, secondsRemaining) / 60, Math.max(0, secondsRemaining) % 60);
+        if (pointsInWindow >= JobPointIncome.MAX_POINTS_PER_WINDOW) {
+            return "継続PT: 今時間 " + pointsInWindow + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW
+                    + "（再開 " + time + "）";
+        }
+        return "次PT: " + JobXpFormat.format(xp) + "/" + JobXpFormat.format(JobPointIncome.XP_PER_POINT)
+                + " XP | 今時間 " + pointsInWindow + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW
+                + " | " + time;
+    }
+
+    private static int liveRemainingSeconds(int syncedSeconds, long syncedAt) {
+        long elapsed = Math.max(0, (System.currentTimeMillis() - syncedAt) / 1_000L);
+        return (int) Math.max(0, syncedSeconds - elapsed);
     }
 
     private Layout layout() {

@@ -30,6 +30,8 @@ public final class JobsScreenSync {
         data.rememberName(viewer.getUUID(), viewer.getGameProfile().getName());
         data.rememberName(subject.getUUID(), subject.getGameProfile().getName());
         JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(subject.getUUID());
+        JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(subject.getUUID(),
+                viewer.getServer().overworld().getGameTime());
         List<S2C_OpenJobsScreenPacket.JobEntry> entries = JobDefinitions.INSTANCE.all().stream()
                 .map(definition -> entry(definition, snapshot))
                 .toList();
@@ -40,7 +42,13 @@ public final class JobsScreenSync {
         boolean canAdmin = viewer.createCommandSourceStack().hasPermission(ADMIN_PERMISSION_LEVEL);
         PacketDistributor.sendToPlayer(viewer, new S2C_OpenJobsScreenPacket(
                 subject.getGameProfile().getName(), viewer.getUUID().equals(subject.getUUID()), canAdmin,
-                snapshot.points(), JobProgressSavedData.MAX_ACTIVE_JOBS, entries, onlinePlayers));
+                snapshot.points(), recurring.xpTowardsNextPoint(), recurring.pointsInWindow(),
+                secondsRemaining(recurring.ticksRemaining()), JobProgressSavedData.MAX_ACTIVE_JOBS,
+                entries, onlinePlayers));
+    }
+
+    private static int secondsRemaining(long ticks) {
+        return (int) Math.min(Integer.MAX_VALUE, Math.max(0, (ticks + 19L) / 20L));
     }
 
     public static void sendLeaderboard(ServerPlayer viewer, JobDefinition definition) {
@@ -105,7 +113,8 @@ public final class JobsScreenSync {
             case ADD_XP -> {
                 if (definition.isEmpty() || packet.amount() <= 0
                         || packet.amount() > C2S_JobsActionPacket.MAX_ABSOLUTE_AMOUNT) return;
-                data.awardAdmin(target.getUUID(), definition.get(), packet.amount());
+                data.awardAdmin(target.getUUID(), definition.get(), packet.amount(),
+                        viewer.getServer().overworld().getGameTime());
                 audit(viewer, target, "XP +" + packet.amount() + " (" + definition.get().id() + ")");
                 send(viewer, target);
             }

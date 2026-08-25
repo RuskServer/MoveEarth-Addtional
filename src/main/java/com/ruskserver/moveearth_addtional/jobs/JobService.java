@@ -17,8 +17,9 @@ public final class JobService {
 
     public void awardAction(ServerPlayer player, JobDefinition definition, double baseXp) {
         double xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
-        JobProgressSavedData.AwardResult result = JobProgressSavedData.get(player.getServer())
-                .award(player.getUUID(), definition, xp);
+        JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
+        JobProgressSavedData.AwardResult result = data.award(player.getUUID(), definition, xp,
+                player.getServer().overworld().getGameTime());
         if (result.awardedXp() <= 0) {
             return;
         }
@@ -27,6 +28,12 @@ public final class JobService {
             player.sendSystemMessage(Component.literal("[Jobs] " + definition.displayName()
                     + " がレベル " + result.newLevel() + " になりました（+"
                     + result.pointsEarned() + "ポイント）"));
+        } else if (result.recurringPointsEarned() > 0) {
+            JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(player.getUUID(),
+                    player.getServer().overworld().getGameTime());
+            player.sendSystemMessage(Component.literal("[Jobs] 継続報酬 +"
+                    + result.recurringPointsEarned() + " PT（今時間 " + recurring.pointsInWindow()
+                    + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW + "）"));
         } else {
             player.displayClientMessage(Component.literal("[Jobs] " + definition.displayName()
                     + " +" + JobXpFormat.format(result.awardedXp()) + " XP"), true);

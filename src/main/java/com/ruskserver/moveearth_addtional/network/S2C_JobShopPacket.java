@@ -10,7 +10,8 @@ import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 
-public record S2C_JobShopPacket(int points, boolean canAdmin, List<ProductEntry> products)
+public record S2C_JobShopPacket(int points, double recurringXp, int recurringPointsInWindow,
+                               int recurringSecondsRemaining, boolean canAdmin, List<ProductEntry> products)
         implements CustomPacketPayload {
     private static final int MAX_PRODUCTS = 128;
     public static final Type<S2C_JobShopPacket> TYPE = new Type<>(
@@ -20,6 +21,9 @@ public record S2C_JobShopPacket(int points, boolean canAdmin, List<ProductEntry>
 
     private static void encode(RegistryFriendlyByteBuf buffer, S2C_JobShopPacket packet) {
         buffer.writeVarInt(packet.points);
+        buffer.writeDouble(packet.recurringXp);
+        buffer.writeVarInt(packet.recurringPointsInWindow);
+        buffer.writeVarInt(packet.recurringSecondsRemaining);
         buffer.writeBoolean(packet.canAdmin);
         buffer.writeVarInt(packet.products.size());
         for (ProductEntry product : packet.products) {
@@ -34,6 +38,9 @@ public record S2C_JobShopPacket(int points, boolean canAdmin, List<ProductEntry>
 
     private static S2C_JobShopPacket decode(RegistryFriendlyByteBuf buffer) {
         int points = buffer.readVarInt();
+        double recurringXp = buffer.readDouble();
+        int recurringPointsInWindow = buffer.readVarInt();
+        int recurringSecondsRemaining = buffer.readVarInt();
         boolean canAdmin = buffer.readBoolean();
         int count = buffer.readVarInt();
         if (count < 0 || count > MAX_PRODUCTS) {
@@ -44,7 +51,8 @@ public record S2C_JobShopPacket(int points, boolean canAdmin, List<ProductEntry>
             products.add(new ProductEntry(buffer.readUUID(), ItemStack.OPTIONAL_STREAM_CODEC.decode(buffer),
                     buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(), buffer.readBoolean()));
         }
-        return new S2C_JobShopPacket(points, canAdmin, List.copyOf(products));
+        return new S2C_JobShopPacket(points, recurringXp, recurringPointsInWindow,
+                recurringSecondsRemaining, canAdmin, List.copyOf(products));
     }
 
     @Override
