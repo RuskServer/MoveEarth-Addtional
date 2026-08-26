@@ -66,5 +66,22 @@
   "overlay.moveearth_addtional.pvp.defeat": "DEFEAT",
   "overlay.moveearth_addtional.pvp.defeat.detail": "作戦失敗 — 次の戦闘に備えてください",
   "overlay.moveearth_addtional.pvp.draw": "DRAW",
-  "overlay.moveearth_addtional.pvp.draw.detail": "勝者なし — 戦闘終了"
+  "overlay.moveearth_addtional.pvp.draw.detail": "勝者なし — 戦闘終了",
+  "screen.moveearth_addtional.gunpack.title": "必須TaCZ GunPackが不足しています",
+  "screen.moveearth_addtional.gunpack.description": "不足しているパックを公式CurseForgeページからダウンロードしてください。",
+  "screen.moveearth_addtional.gunpack.download": "ダウンロード",
+  "screen.moveearth_addtional.gunpack.open_folder": "GunPackフォルダ",
+  "screen.moveearth_addtional.gunpack.recheck": "再検査",
+  "screen.moveearth_addtional.gunpack.later": "後で",
+  "screen.moveearth_addtional.gunpack.close_restart": "閉じる / 再起動",
+  "screen.moveearth_addtional.gunpack.drop_hint": "ダウンロードしたZIPを上の枠へドロップしてください。ZIPは展開しません。",
+  "screen.moveearth_addtional.gunpack.drop_zone": "GunPackのZIPをここへドラッグ＆ドロップ",
+  "screen.moveearth_addtional.gunpack.complete": "必須GunPackはすべて導入済みです。",
+  "screen.moveearth_addtional.gunpack.complete_restart": "必須パックをすべて確認しました。サーバー参加前にMinecraftを再起動してください。",
+  "screen.moveearth_addtional.gunpack.installed": "%s個のパックを導入しました。サーバー参加前にMinecraftを再起動してください。",
+  "screen.moveearth_addtional.gunpack.installed_partial": "%s個を導入し、%s個を拒否しました。Minecraftを再起動してください。",
+  "screen.moveearth_addtional.gunpack.already_installed": "その必須GunPackはすでに導入済みです。",
+  "screen.moveearth_addtional.gunpack.rejected": "ドロップしたファイルを拒否しました: %s",
+  "screen.moveearth_addtional.gunpack.still_missing": "必須GunPackがあと%s個不足しています。",
+  "screen.moveearth_addtional.gunpack.folder_error": "GunPackフォルダを開けませんでした: %s"
 }

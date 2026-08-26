@@ -1,15 +1,19 @@
 # Unreleased
 
-## Fixed
+# v2.1
 
-- Applied the per-minute XP soft cap only to jobs the player has actually selected, so pre-join activity no longer reduces post-join rewards.
-- Removed missing job definitions from active selections without deleting their saved progress, while preserving selections if every definition fails to load.
-- Cleared destructive reset confirmation when an administrator changes the target player.
-- Preserved the selected shop product by UUID when switching between purchase and management views, preventing updates or deletion from targeting another product.
+## GunPack Distribution and Setup
 
-## Jobs Interface
+- Stopped distributing the required TaCZ GunPacks as bundled project content. FMIC-WolfeinRace, Charge into Battle: Reboot, and TaCZ: Classics Reborn are now obtained separately from their selected official CurseForge file pages.
+- Added a pre-main-menu prompt when the `fmic`, `cib`, or `ccrp` GunPack namespace is missing. It is shown before `TitleScreen` opens so menu customization mods such as FancyMenu do not render underneath it, and each missing pack has a button that opens its selected official download page.
+- Added drag-and-drop installation for downloaded GunPack ZIP files. Archives are checked for a valid root `gunpack.meta.json` and an expected namespace before being copied to the client `tacz` directory without extraction or filename changes.
+- Added manual GunPack-folder access, installation rechecking, copy-through-temporary-file behavior, rejection of unrelated or oversized archives, and a restart reminder.
+- Documented that dedicated-server administrators must install the same three GunPacks separately because the title-screen installer is client-only.
 
-- Replaced routine Jobs XP action-bar messages with a four-second vanilla boss bar showing job level, name, current XP, next-level XP, and the latest XP gain.
+## Compatibility
+
+- Updated the mod version to `2.1`.
+- Kept the network protocol at `2.0-jobs1` because this release does not change packets or server-authoritative gameplay. v2.1 remains network-compatible with v2.0.
 
 # v2.0
 
@@ -21,6 +25,7 @@
 - Added renewable Job Point income. Every 500 effective job XP grants 1 shared point, capped at 4 renewable points per player per one-hour window; level-up points remain separate bonuses.
 - Persisted partial renewable-point XP, the hourly count, and the window timer across reconnects and restarts. XP beyond the hourly cap is not banked for the next window.
 - Continued accepting effective XP at level 50 for renewable points and lifetime-XP rankings.
+- Removed missing job definitions from active selections without deleting their saved progress. If every definition fails to load, existing selections are preserved instead of being erased.
 
 ## Jobs and Anti-Abuse Rules
 
@@ -28,13 +33,16 @@
 - Prevented XP from player-placed reward blocks, invalid tools, creative or spectator play, and activity inside the PvP arena.
 - Added compact per-section placement tracking with migration from the previous coordinate format, piston movement tracking, and explosion cleanup.
 - Added a per-job one-minute XP soft cap: the first 500 XP is awarded at full rate and overflow is reduced to 10%.
+- Applied the per-minute XP soft cap only to jobs the player has actually selected, so activity before joining a job does not reduce later rewards.
 - Excluded Hunter targets created by spawners, spawn eggs, dispensers, or commands, and excluded automated or unlisted reversible crafting from Crafter rewards.
 
 ## Jobs Interface and Administration
 
 - Added the unified `/jobs` screen for job selection, levels, XP progress, shared points, renewable-point progress, and activity descriptions.
+- Added a four-second vanilla boss bar after Jobs actions showing the job level, name, current XP, next-level XP, and latest XP gain. Repeated actions update the bar and extend its display time.
 - Added `/jobs status`, `/jobs list`, `/jobs join`, `/jobs leave`, `/jobs info`, and `/jobs top` as permission-level-0 commands.
 - Added a permission-level-2 management panel for inspecting online players, granting XP, changing points, and resetting job data with confirmation and audit logging.
+- Cleared destructive reset confirmation whenever an administrator changes the target player, preventing accidental one-click resets of the new target.
 
 ## Rankings
 
@@ -47,6 +55,7 @@
 - Added permission-level-2 product management. Administrators can register their current main-hand stack, set its price and per-player purchase limit, suspend or resume sales, update products, and remove products.
 - Added server-side permission, product, price, purchase-limit, point-balance, and inventory-capacity validation. Failed capacity checks do not consume points.
 - Blocked purchasing and product management during active PvP sessions, persisted purchase counts, and added audit logs for product changes and purchases.
+- Preserved the selected product by UUID when switching between purchase and management views, preventing updates, toggles, or deletion from targeting a different product.
 
 ## Compatibility
 

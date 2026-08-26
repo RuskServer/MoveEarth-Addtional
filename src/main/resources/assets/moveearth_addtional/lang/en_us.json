@@ -66,5 +66,22 @@
   "overlay.moveearth_addtional.pvp.defeat": "DEFEAT",
   "overlay.moveearth_addtional.pvp.defeat.detail": "MISSION FAILED — PREPARE FOR THE NEXT ENGAGEMENT",
   "overlay.moveearth_addtional.pvp.draw": "DRAW",
-  "overlay.moveearth_addtional.pvp.draw.detail": "NO VICTOR — ENGAGEMENT ENDED"
+  "overlay.moveearth_addtional.pvp.draw.detail": "NO VICTOR — ENGAGEMENT ENDED",
+  "screen.moveearth_addtional.gunpack.title": "Required TaCZ GunPacks are missing",
+  "screen.moveearth_addtional.gunpack.description": "Download the missing packs from their official CurseForge pages.",
+  "screen.moveearth_addtional.gunpack.download": "Download",
+  "screen.moveearth_addtional.gunpack.open_folder": "Open GunPack folder",
+  "screen.moveearth_addtional.gunpack.recheck": "Check again",
+  "screen.moveearth_addtional.gunpack.later": "Later",
+  "screen.moveearth_addtional.gunpack.close_restart": "Close / restart",
+  "screen.moveearth_addtional.gunpack.drop_hint": "Drop downloaded ZIP files into the area above. ZIP files are not extracted.",
+  "screen.moveearth_addtional.gunpack.drop_zone": "Drag and drop downloaded GunPack ZIP files here",
+  "screen.moveearth_addtional.gunpack.complete": "All required GunPacks are installed.",
+  "screen.moveearth_addtional.gunpack.complete_restart": "All required packs were found. Restart Minecraft before joining a server.",
+  "screen.moveearth_addtional.gunpack.installed": "Installed %s pack(s). Restart Minecraft before joining a server.",
+  "screen.moveearth_addtional.gunpack.installed_partial": "Installed %s pack(s); rejected %s file(s). Restart Minecraft before joining.",
+  "screen.moveearth_addtional.gunpack.already_installed": "That required GunPack is already installed.",
+  "screen.moveearth_addtional.gunpack.rejected": "The dropped file was rejected: %s",
+  "screen.moveearth_addtional.gunpack.still_missing": "%s required GunPack(s) are still missing.",
+  "screen.moveearth_addtional.gunpack.folder_error": "Could not open the GunPack folder: %s"
 }

@@ -31,6 +31,7 @@ lib/
 
 # Packaged artifacts created in the project root
 /*.jar
+/*.zip
 
 # Source audio retained locally; converted OGG assets are tracked under resources
 /*.wav

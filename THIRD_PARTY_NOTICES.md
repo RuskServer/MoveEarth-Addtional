@@ -59,3 +59,8 @@ Minecraft, NeoForge, TaCZ, FMIC, CIBR, Create and other third-party libraries,
 mods, and data packs retain their respective licenses. They are not
 relicensed by this project. Bundling a separately licensed component does not
 change that component's license or attribution requirements.
+
+The FMIC-WolfeinRace, Charge into Battle: Reboot, and TaCZ: Classics Reborn
+GunPack archives are not distributed in this repository or in this project's
+release JAR. The client prompt only links to their selected official
+CurseForge file pages and copies archives the user supplies locally.
