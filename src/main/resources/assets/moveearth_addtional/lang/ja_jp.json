@@ -83,5 +83,16 @@
   "screen.moveearth_addtional.gunpack.already_installed": "その必須GunPackはすでに導入済みです。",
   "screen.moveearth_addtional.gunpack.rejected": "ドロップしたファイルを拒否しました: %s",
   "screen.moveearth_addtional.gunpack.still_missing": "必須GunPackがあと%s個不足しています。",
-  "screen.moveearth_addtional.gunpack.folder_error": "GunPackフォルダを開けませんでした: %s"
+  "screen.moveearth_addtional.gunpack.folder_error": "GunPackフォルダを開けませんでした: %s",
+  "item.moveearth_addtional.gas_mask": "ガスマスク",
+  "item.moveearth_addtional.carbon_filter": "活性炭フィルター",
+  "tooltip.moveearth_addtional.gas_mask.filter": "フィルター残量: %s%% (%s秒)",
+  "tooltip.moveearth_addtional.gas_mask.desc": "地下深部の無酸素・有毒ガスを遮断する。探索や激しい行動で消耗。",
+  "tooltip.moveearth_addtional.carbon_filter.desc": "ガスマスクの交換用フィルター。右クリックで装備中のマスクに装填。",
+  "message.moveearth_addtional.filter_replaced": "活性炭フィルターを装填しました (100%)。",
+  "message.moveearth_addtional.filter_already_full": "フィルターはすでに満タンです。",
+  "message.moveearth_addtional.no_gas_mask_equipped": "ガスマスクを装備していません。",
+  "message.moveearth_addtional.filter_low": "警告: ガスマスクのフィルター残量が低下しています！",
+  "message.moveearth_addtional.filter_depleted": "警告: ガスマスクのフィルターが切れた！呼吸ができない！",
+  "message.moveearth_addtional.torch_extinguished": "酸素が欠乏しているため、松明の火が消えてしまった…"
 }

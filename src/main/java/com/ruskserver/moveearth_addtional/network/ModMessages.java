@@ -71,5 +71,8 @@ public class ModMessages {
         registrar.playToClient(S2C_JobShopPacket.TYPE, S2C_JobShopPacket.STREAM_CODEC, S2C_JobShopPacket::handle);
         registrar.playToServer(C2S_JobsActionPacket.TYPE, C2S_JobsActionPacket.STREAM_CODEC, C2S_JobsActionPacket::handle);
         registrar.playToServer(C2S_JobShopActionPacket.TYPE, C2S_JobShopActionPacket.STREAM_CODEC, C2S_JobShopActionPacket::handle);
+
+        // 酸素システム同期パケット
+        registrar.playToClient(S2C_SyncOxygenPacket.TYPE, S2C_SyncOxygenPacket.STREAM_CODEC, S2C_SyncOxygenPacket::handle);
     }
 }

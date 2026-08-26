@@ -83,5 +83,16 @@
   "screen.moveearth_addtional.gunpack.already_installed": "That required GunPack is already installed.",
   "screen.moveearth_addtional.gunpack.rejected": "The dropped file was rejected: %s",
   "screen.moveearth_addtional.gunpack.still_missing": "%s required GunPack(s) are still missing.",
-  "screen.moveearth_addtional.gunpack.folder_error": "Could not open the GunPack folder: %s"
+  "screen.moveearth_addtional.gunpack.folder_error": "Could not open the GunPack folder: %s",
+  "item.moveearth_addtional.gas_mask": "Gas Mask",
+  "item.moveearth_addtional.carbon_filter": "Carbon Filter",
+  "tooltip.moveearth_addtional.gas_mask.filter": "Filter: %s%% (%ss)",
+  "tooltip.moveearth_addtional.gas_mask.desc": "Protects against toxic and oxygen-depleted deep zones. Consumed by activity.",
+  "tooltip.moveearth_addtional.carbon_filter.desc": "Replacement filter for gas masks. Right-click to reload equipped mask.",
+  "message.moveearth_addtional.filter_replaced": "Carbon filter installed (100%).",
+  "message.moveearth_addtional.filter_already_full": "Filter is already at full capacity.",
+  "message.moveearth_addtional.no_gas_mask_equipped": "No gas mask equipped.",
+  "message.moveearth_addtional.filter_low": "WARNING: Gas mask filter is running low!",
+  "message.moveearth_addtional.filter_depleted": "WARNING: Gas mask filter depleted! Cannot breathe!",
+  "message.moveearth_addtional.torch_extinguished": "The torch was extinguished due to lack of oxygen..."
 }

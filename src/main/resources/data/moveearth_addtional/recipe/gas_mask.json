@@ -1,0 +1,30 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "L": {
+      "item": "minecraft:leather"
+    },
+    "G": {
+      "item": "minecraft:glass_pane"
+    },
+    "I": {
+      "item": "minecraft:iron_ingot"
+    },
+    "C": {
+      "item": "minecraft:copper_ingot"
+    },
+    "F": {
+      "item": "minecraft:charcoal"
+    }
+  },
+  "pattern": [
+    " L ",
+    "GIG",
+    "CFC"
+  ],
+  "result": {
+    "count": 1,
+    "id": "moveearth_addtional:gas_mask"
+  }
+}

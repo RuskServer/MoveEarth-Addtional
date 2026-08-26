@@ -40,6 +40,14 @@ public class ModSounds {
     public static final DeferredHolder<SoundEvent, SoundEvent> WARLORD_TARGET_SECURED = warlord("target_secured");
     public static final DeferredHolder<SoundEvent, SoundEvent> WARLORD_GAME_OVER = warlord("game_over");
 
+    // 酸素・ガスマスク・サバイバル音
+    public static final DeferredHolder<SoundEvent, SoundEvent> GAS_MASK_BREATHE = register("gas_mask_breathe");
+    public static final DeferredHolder<SoundEvent, SoundEvent> GAS_MASK_EQUIP = register("gas_mask_equip");
+    public static final DeferredHolder<SoundEvent, SoundEvent> FILTER_REPLACE = register("filter_replace");
+    public static final DeferredHolder<SoundEvent, SoundEvent> FILTER_WARNING = register("filter_warning");
+    public static final DeferredHolder<SoundEvent, SoundEvent> HEARTBEAT_LOW_OXYGEN = register("heartbeat_low_oxygen");
+    public static final DeferredHolder<SoundEvent, SoundEvent> TORCH_EXTINGUISH = register("torch_extinguish");
+
     private static DeferredHolder<SoundEvent, SoundEvent> warlord(String name) {
         return register("warlord_" + name);
     }

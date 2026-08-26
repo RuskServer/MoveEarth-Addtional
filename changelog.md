@@ -1,5 +1,14 @@
 # Unreleased
 
+## Deep Underground Oxygen Depletion and Gas Mask Survival System
+
+- Added deep underground dead zone mechanics where oxygen is completely depleted at depths below Y<=0, inflicting percentage-based suffocation damage when unprotected.
+- Added `GasMaskItem` and `CarbonFilterItem` with real-time filter degradation, durability consumption, and right-click filter reload functionality.
+- Added dynamic filter consumption scaling based on player physical load: sprinting (1.5x), mining (2.0x), and combat (2.5x), plus extreme depth multiplier (2.0x at Y<=-32).
+- Added torch extinguishing mechanics in oxygen-depleted zones: placing torches at Y<=0 causes them to instantly extinguish with smoke and sound effects, converting into charcoal.
+- Added client HUD overlays: gas mask lens frame, filter fogging effects, real-time filter/oxygen meters, load rate indicators, and low-oxygen red pulse warning.
+- Added server configuration (`OxygenConfig`) to customize danger depth thresholds, base filter duration, multiplier rates, and torch extinguishing toggle.
+
 # v2.1
 
 ## GunPack Distribution and Setup

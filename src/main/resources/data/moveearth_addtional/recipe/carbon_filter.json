@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:charcoal"
+    },
+    {
+      "item": "minecraft:paper"
+    },
+    {
+      "item": "minecraft:copper_ingot"
+    },
+    {
+      "tag": "minecraft:wool"
+    }
+  ],
+  "result": {
+    "count": 2,
+    "id": "moveearth_addtional:carbon_filter"
+  }
+}

@@ -95,4 +95,8 @@ public class ClientPacketHandler {
             );
         }
     }
+
+    public static void handleOxygenSync(com.ruskserver.moveearth_addtional.network.S2C_SyncOxygenPacket packet) {
+        OxygenClientState.update(packet);
+    }
 }
