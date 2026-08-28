@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.analytics.storage;
 
 import com.ruskserver.moveearth_addtional.analytics.model.*;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.*;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
 
 import java.io.File;
@@ -8,6 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * SQLite WALモードを用いたプレイヤー分析データの永続化エンジン実装
@@ -490,6 +493,335 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         } catch (SQLException e) {
             return false;
         }
+    }
+
+    @Override
+    public synchronized Optional<PlayerSummaryDto> queryPlayerSummary(UUID playerUuid, TimeWindow window, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Optional.empty();
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        String name = null;
+        long firstSeen = 0L;
+        long lastSeen = 0L;
+
+        // 1. Identity
+        String idSql = "SELECT last_known_name, first_seen_at, last_seen_at FROM player_identity WHERE player_uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(idSql)) {
+            ps.setString(1, playerUuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    name = rs.getString("last_known_name");
+                    firstSeen = rs.getLong("first_seen_at");
+                    lastSeen = rs.getLong("last_seen_at");
+                } else {
+                    return Optional.empty();
+                }
+            }
+        }
+
+        // 2. Sessions (窓期間内)
+        int sessionCount = 0;
+        long totalOnlineSec = 0L;
+        long totalActiveSec = 0L;
+        long totalAfkSec = 0L;
+        long avgSessionSec = 0L;
+
+        String sessSql = """
+            SELECT COUNT(*), SUM(online_seconds), SUM(active_seconds), SUM(afk_seconds), AVG(online_seconds)
+            FROM player_session
+            WHERE player_uuid = ? AND joined_at >= ?;
+        """;
+        try (PreparedStatement ps = connection.prepareStatement(sessSql)) {
+            ps.setString(1, playerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    sessionCount = rs.getInt(1);
+                    totalOnlineSec = rs.getLong(2);
+                    totalActiveSec = rs.getLong(3);
+                    totalAfkSec = rs.getLong(4);
+                    avgSessionSec = Math.round(rs.getDouble(5));
+                }
+            }
+        }
+
+        // 3. Activity 5m (窓期間内)
+        int activeDays = 0;
+        long breaks = 0L;
+        long places = 0L;
+        long crafts = 0L;
+        long pveKills = 0L;
+        long pvpKills = 0L;
+        long deaths = 0L;
+        double jobsXp = 0.0;
+        int tpaSuccesses = 0;
+        double distance = 0.0;
+        long activity5mActiveSec = 0L;
+
+        String actSql = """
+            SELECT
+                COUNT(DISTINCT (bucket_at / 86400)),
+                SUM(breaks), SUM(places), SUM(crafts),
+                SUM(pve_kills), SUM(pvp_kills), SUM(deaths),
+                SUM(jobs_xp), SUM(tpa_successes), SUM(distance_blocks),
+                SUM(active_seconds)
+            FROM player_activity_5m
+            WHERE player_uuid = ? AND bucket_at >= ?;
+        """;
+        try (PreparedStatement ps = connection.prepareStatement(actSql)) {
+            ps.setString(1, playerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    activeDays = rs.getInt(1);
+                    breaks = rs.getLong(2);
+                    places = rs.getLong(3);
+                    crafts = rs.getLong(4);
+                    pveKills = rs.getLong(5);
+                    pvpKills = rs.getLong(6);
+                    deaths = rs.getLong(7);
+                    jobsXp = rs.getDouble(8);
+                    tpaSuccesses = rs.getInt(9);
+                    distance = rs.getDouble(10);
+                    activity5mActiveSec = rs.getLong(11);
+                }
+            }
+        }
+
+        // セッションが完了していない（ログアウト前）場合でも5mアクティブ秒数を加味
+        if (totalActiveSec == 0 && activity5mActiveSec > 0) {
+            totalActiveSec = activity5mActiveSec;
+        }
+
+        // 4. Primary Dimension & Group
+        String primaryDim = "minecraft:overworld";
+        UUID primaryGroup = null;
+
+        String dimSql = """
+            SELECT dimension, SUM(active_seconds) as s
+            FROM player_activity_5m
+            WHERE player_uuid = ? AND bucket_at >= ?
+            GROUP BY dimension ORDER BY s DESC LIMIT 1;
+        """;
+        try (PreparedStatement ps = connection.prepareStatement(dimSql)) {
+            ps.setString(1, playerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getString("dimension") != null) {
+                    primaryDim = rs.getString("dimension");
+                }
+            }
+        }
+
+        String grpSql = """
+            SELECT group_owner_uuid, SUM(active_seconds) as s
+            FROM player_activity_5m
+            WHERE player_uuid = ? AND bucket_at >= ? AND group_owner_uuid IS NOT NULL
+            GROUP BY group_owner_uuid ORDER BY s DESC LIMIT 1;
+        """;
+        try (PreparedStatement ps = connection.prepareStatement(grpSql)) {
+            ps.setString(1, playerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next() && rs.getString("group_owner_uuid") != null) {
+                    try {
+                        primaryGroup = UUID.fromString(rs.getString("group_owner_uuid"));
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+
+        return Optional.of(new PlayerSummaryDto(
+                playerUuid,
+                name,
+                firstSeen,
+                lastSeen,
+                sessionCount,
+                totalOnlineSec,
+                totalActiveSec,
+                totalAfkSec,
+                avgSessionSec,
+                activeDays,
+                breaks,
+                places,
+                crafts,
+                pveKills,
+                pvpKills,
+                deaths,
+                jobsXp,
+                tpaSuccesses,
+                distance,
+                primaryDim,
+                primaryGroup
+        ));
+    }
+
+    @Override
+    public synchronized List<PlayerSummaryDto> queryTopActivePlayers(TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        List<PlayerSummaryDto> result = new java.util.ArrayList<>();
+        if (connection == null || connection.isClosed()) return result;
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        String sql = """
+            SELECT player_uuid, SUM(active_seconds) as s
+            FROM player_activity_5m
+            WHERE bucket_at >= ?
+            GROUP BY player_uuid ORDER BY s DESC LIMIT ?;
+        """;
+
+        List<UUID> topUuids = new java.util.ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, startEpochSec);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    try {
+                        topUuids.add(UUID.fromString(rs.getString("player_uuid")));
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+
+        for (UUID uuid : topUuids) {
+            queryPlayerSummary(uuid, window, currentEpochSec).ifPresent(result::add);
+        }
+
+        return result;
+    }
+
+    @Override
+    public synchronized Optional<GroupSummaryDto> queryGroupSummary(UUID groupOwnerUuid, TimeWindow window, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Optional.empty();
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        String ownerName = null;
+
+        String idSql = "SELECT last_known_name FROM player_identity WHERE player_uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(idSql)) {
+            ps.setString(1, groupOwnerUuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    ownerName = rs.getString("last_known_name");
+                }
+            }
+        }
+
+        String sql = """
+            SELECT
+                COUNT(DISTINCT detector_pos_hash),
+                SUM(member_minutes),
+                SUM(visitor_minutes),
+                SUM(intrusion_sessions),
+                MAX(distinct_members),
+                MAX(distinct_visitors)
+            FROM detector_activity_5m
+            WHERE group_owner_uuid = ? AND bucket_at >= ?;
+        """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, groupOwnerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    int detectorCount = rs.getInt(1);
+                    double memberMins = rs.getDouble(2);
+                    double visitorMins = rs.getDouble(3);
+                    int intrusions = rs.getInt(4);
+                    int maxMembers = rs.getInt(5);
+                    int maxVisitors = rs.getInt(6);
+
+                    return Optional.of(new GroupSummaryDto(
+                            groupOwnerUuid,
+                            ownerName,
+                            detectorCount,
+                            memberMins,
+                            visitorMins,
+                            intrusions,
+                            maxMembers,
+                            maxVisitors
+                    ));
+                }
+            }
+        }
+
+        return Optional.of(GroupSummaryDto.empty(groupOwnerUuid, ownerName));
+    }
+
+    @Override
+    public synchronized List<SpatialHeatmapCellDto> querySpatialHeatmap(String dimension, TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        List<SpatialHeatmapCellDto> result = new java.util.ArrayList<>();
+        if (connection == null || connection.isClosed()) return result;
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        String sql = """
+            SELECT
+                cell_x, cell_z, y_band, group_owner_uuid, relation,
+                SUM(active_samples) as samples, MAX(unique_players) as players
+            FROM spatial_activity_5m
+            WHERE dimension = ? AND bucket_at >= ?
+            GROUP BY cell_x, cell_z, y_band, group_owner_uuid, relation
+            ORDER BY samples DESC LIMIT ?;
+        """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, dimension);
+            ps.setLong(2, startEpochSec);
+            ps.setInt(3, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    UUID groupOwner = null;
+                    String gStr = rs.getString("group_owner_uuid");
+                    if (gStr != null && !gStr.isEmpty()) {
+                        try {
+                            groupOwner = UUID.fromString(gStr);
+                        } catch (Exception ignored) {
+                        }
+                    }
+
+                    result.add(new SpatialHeatmapCellDto(
+                            dimension,
+                            rs.getInt("cell_x"),
+                            rs.getInt("cell_z"),
+                            rs.getString("y_band"),
+                            groupOwner,
+                            rs.getString("relation"),
+                            rs.getInt("samples"),
+                            rs.getInt("players")
+                    ));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    @Override
+    public synchronized CollectorHealthDto queryCollectorHealth() throws SQLException {
+        if (connection == null || connection.isClosed()) return CollectorHealthDto.empty();
+
+        String sql = "SELECT * FROM collector_health ORDER BY recorded_at DESC LIMIT 1;";
+        try (PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                return new CollectorHealthDto(
+                        rs.getLong("recorded_at"),
+                        rs.getInt("queue_depth"),
+                        rs.getLong("dropped_events"),
+                        rs.getLong("flush_ms"),
+                        rs.getLong("db_bytes")
+                );
+            }
+        }
+
+        return new CollectorHealthDto(
+                System.currentTimeMillis() / 1000L,
+                0,
+                0L,
+                0L,
+                getDatabaseSizeBytes()
+        );
     }
 
     @Override

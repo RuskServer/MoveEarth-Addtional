@@ -1,5 +1,12 @@
 # Unreleased
 
+## Player Analytics (Phase 3: Aggregation & Query Engine)
+
+- Added query DTOs: `TimeWindow` (`DAYS_7`, `DAYS_30`, `ALL_TIME`), `PlayerSummaryDto`, `GroupSummaryDto`, `SpatialHeatmapCellDto`, and `CollectorHealthDto`.
+- Added analytical query methods to `AnalyticsStorageEngine` and `SqliteAnalyticsStorageEngine` supporting multi-window aggregation for player KPI breakdowns, top active players, detector group utilization, spatial 32x32 heatmaps, and system health metrics.
+- Implemented `AnalyticsQueryCache` with configurable TTL expiration (60 seconds) to prevent redundant database access.
+- Implemented `AnalyticsQueryService` providing non-blocking `CompletableFuture` queries offloaded to a dedicated worker pool with safe fallback defaults for nonexistent players or groups.
+
 ## Player Analytics (Phase 2: Storage & Aggregation)
 
 - Added SQLite JDBC driver (`org.xerial:sqlite-jdbc:3.46.1.3`) under Apache-2.0 with license notice in `THIRD_PARTY_NOTICES.md`.
