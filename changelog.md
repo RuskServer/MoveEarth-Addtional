@@ -1,5 +1,10 @@
 # Unreleased
 
+## Jobs Compatibility
+
+- Added optional Farmer's Delight 1.3.3 support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.
+- Added verified right-click harvest rewards for crops such as tomatoes. XP is awarded only after the server confirms that the same mature crop was reset to an immature state.
+
 # v2.2
 
 ## PvP Loadouts and Combat Balance

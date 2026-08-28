@@ -57,12 +57,15 @@ lib/
 ├─ create-aeronautics-bundled-1.21.1-1.3.0.jar
 ├─ createdieselgenerators-1.21.1-1.3.15.jar
 ├─ discord-rpc-1.0.4.jar
+├─ FarmersDelight-1.21.1-1.3.3.jar
 ├─ LocalizedChat-neoforge-1.21.1-5.2.1.jar
 ├─ PlayerRevive_NEOFORGE_v2.1.2_mc1.21.1.jar
 └─ tacz-neoforge-1.21.1-1.1.8-hotfix-r3.jar
 ```
 
 依存JARをコミットしたり、Pull Requestへ添付したりしないでください。
+
+Farmer's Delightは任意依存です。導入時は農家ジョブがキャベツ、タマネギ、トマト、稲穂の成熟収穫に対応します。
 
 ### TaCZ GunPack
 

@@ -2,9 +2,14 @@ package com.ruskserver.moveearth_addtional.jobs;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.pvp.PvpMatchManager;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.piston.PistonStructureResolver;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.EventPriority;
@@ -17,13 +22,22 @@ import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
 import net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /** Server-only action detection for job rewards. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class JobEvents {
     private static final String NO_HUNTER_XP_TAG = "moveearth_jobs_no_hunter_xp";
+    private static final long HARVEST_VERIFICATION_TICKS = 2L;
+    private static final Map<PendingHarvestKey, PendingHarvest> PENDING_HARVESTS = new HashMap<>();
 
     private JobEvents() {
     }
@@ -38,12 +52,43 @@ public final class JobEvents {
 
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
-        JobProgressBossBar.remove(event.getEntity().getUUID());
+        UUID playerId = event.getEntity().getUUID();
+        JobProgressBossBar.remove(playerId);
+        PENDING_HARVESTS.keySet().removeIf(key -> key.playerId().equals(playerId));
     }
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         JobProgressBossBar.tick();
+        verifyPendingHarvests(event.getServer());
+    }
+
+    /**
+     * Some crop mods harvest a mature crop by right-clicking it and reset the same block to a younger
+     * age instead of breaking it. Record the mature state before interaction, then award only after the
+     * server has actually changed that same block to a non-rewarding state. This also prevents an empty
+     * or cancelled interaction from granting XP.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onBlockRightClicked(PlayerInteractEvent.RightClickBlock event) {
+        if (event.isCanceled() || !(event.getEntity() instanceof ServerPlayer player)
+                || !(event.getLevel() instanceof ServerLevel level)
+                || player.isCreative() || player.isSpectator()
+                || level.dimension().equals(PvpMatchManager.ARENA)) {
+            return;
+        }
+
+        BlockState state = level.getBlockState(event.getPos());
+        List<PendingJobReward> rewards = JobDefinitions.INSTANCE.all().stream()
+                .map(definition -> new PendingJobReward(definition, definition.blockBreakXp(state)))
+                .filter(reward -> reward.xp() > 0)
+                .toList();
+        if (rewards.isEmpty()) {
+            return;
+        }
+
+        PendingHarvestKey key = new PendingHarvestKey(player.getUUID(), level.dimension(), event.getPos().immutable());
+        PENDING_HARVESTS.put(key, new PendingHarvest(state.getBlock(), level.getGameTime(), rewards));
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -171,5 +216,48 @@ public final class JobEvents {
     public static void onServerStopped(ServerStoppedEvent event) {
         JobService.INSTANCE.clearTransientState();
         JobProgressBossBar.clear();
+        PENDING_HARVESTS.clear();
+    }
+
+    private static void verifyPendingHarvests(MinecraftServer server) {
+        Iterator<Map.Entry<PendingHarvestKey, PendingHarvest>> iterator = PENDING_HARVESTS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<PendingHarvestKey, PendingHarvest> entry = iterator.next();
+            PendingHarvestKey key = entry.getKey();
+            PendingHarvest pending = entry.getValue();
+            ServerLevel level = server.getLevel(key.dimension());
+            ServerPlayer player = server.getPlayerList().getPlayer(key.playerId());
+            if (level == null || player == null || player.isCreative() || player.isSpectator()
+                    || level.dimension().equals(PvpMatchManager.ARENA)) {
+                iterator.remove();
+                continue;
+            }
+
+            BlockState current = level.getBlockState(key.pos());
+            if (current.getBlock() != pending.block()) {
+                iterator.remove();
+                continue;
+            }
+
+            boolean harvested = pending.rewards().stream()
+                    .noneMatch(reward -> reward.definition().blockBreakXp(current) > 0);
+            if (harvested) {
+                for (PendingJobReward reward : pending.rewards()) {
+                    JobService.INSTANCE.awardAction(player, reward.definition(), reward.xp());
+                }
+                iterator.remove();
+            } else if (level.getGameTime() - pending.gameTime() >= HARVEST_VERIFICATION_TICKS) {
+                iterator.remove();
+            }
+        }
+    }
+
+    private record PendingHarvestKey(UUID playerId, ResourceKey<Level> dimension, BlockPos pos) {
+    }
+
+    private record PendingHarvest(Block block, long gameTime, List<PendingJobReward> rewards) {
+    }
+
+    private record PendingJobReward(JobDefinition definition, double xp) {
     }
 }
