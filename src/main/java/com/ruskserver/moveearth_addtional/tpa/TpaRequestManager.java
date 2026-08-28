@@ -291,6 +291,7 @@ public final class TpaRequestManager {
 
         requester.fallDistance = 0.0F;
         usage.tryConsume(requester.getUUID());
+        com.ruskserver.moveearth_addtional.analytics.collector.AnalyticsCollectorManager.INSTANCE.recordTpaSuccess(requester);
         int remaining = usage.remaining(requester.getUUID());
         requester.sendSystemMessage(Component.literal("TPAが完了しました。残り " + remaining + " 回です。"));
         host.sendSystemMessage(Component.literal(requester.getScoreboardName() + " を招待しました。"));

@@ -28,6 +28,7 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -255,6 +256,10 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             AABB aabb = new AABB(pos).inflate(range);
             List<ServerPlayer> players = level.getEntitiesOfClass(ServerPlayer.class, aabb);
 
+            Set<UUID> currentMembers = new HashSet<>();
+            Set<UUID> currentVisitors = new HashSet<>();
+            Set<UUID> currentIntruders = new HashSet<>();
+
             for (ServerPlayer player : players) {
                 double dist = player.position().distanceTo(Vec3.atCenterOf(pos));
                 if (dist <= range) {
@@ -262,9 +267,13 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
                     // 所有者およびホワイトリストに入っているプレイヤーは除外
                     if (player.getUUID().equals(blockEntity.ownerUUID) || whitelistData.isWhitelisted(blockEntity.ownerUUID, player.getUUID())) {
+                        currentMembers.add(player.getUUID());
                         blockEntity.sendGlowingPacket(player, false); // 発光を解除
                         continue;
                     }
+
+                    // 侵入者を記録
+                    currentIntruders.add(player.getUUID());
 
                     // 侵入者を検知
                     // 1. 警告メッセージの構築と送信
@@ -293,6 +302,18 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     blockEntity.sendGlowingPacket(player, false);
                 }
             }
+
+            // 分析用侵入トラッカーへスキャン結果を記録
+            String posHash = Integer.toHexString(Objects.hash(serverLevel.dimension().location().toString(), pos.getX(), pos.getY(), pos.getZ()));
+            com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.recordScan(
+                    serverLevel.dimension().location().toString(),
+                    posHash,
+                    blockEntity.ownerUUID,
+                    currentMembers,
+                    currentVisitors,
+                    currentIntruders,
+                    currentTime
+            );
         }
     }
 

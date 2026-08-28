@@ -1,5 +1,14 @@
 # Unreleased
 
+## Player Analytics (Phase 1: Telemetry Collection Engine)
+
+- Implemented `AnalyticsCollectorManager` to orchestrate 30-second position sampling distributed across server ticks by player UUID hash, excluding spectators and tagging PvP arena participants.
+- Added 5-minute memory aggregation for `PlayerActivityBucket` and `SpatialActivityBucket` (32x32 cells, Y-bands) to prevent high-frequency raw coordinate storage.
+- Added `IntrusionTracker` to consolidate 5-second detector scans into persistent entry-to-exit intrusion sessions and track distinct visitor/member duration.
+- Added bounded non-blocking `AnalyticsEventQueue` (capacity 10,000) to isolate server thread execution from storage I/O, safely dropping low-priority spatial samples on overflow while tracking dropped event metrics.
+- Added `SessionTracker` to measure true active vs. AFK seconds across player sessions.
+- Added telemetry event hooks in `AnalyticsGameEvents`, `JobService` (Jobs XP), `TpaRequestManager` (TPA success), and `PlayerDetectorBlockEntity` (detector scans).
+
 ## Player Analytics (Phase 0: Identity & Group Foundation)
 
 - Migrated `PlayerWhitelistSavedData` from player names to UUID-based storage unified in the overworld `SavedData`, ensuring consistent group membership across all dimensions.
