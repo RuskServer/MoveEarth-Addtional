@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.analytics.storage;
 
+import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
 
 import java.util.ArrayList;
@@ -7,12 +8,14 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 非同期イベントキューから定期的にイベントを排出し、ストレージエンジンへバッチ書き込みを行うワーカースレッド
+ * 非同期イベントキューから定期的にイベントを排出し、ストレージエンジンへバッチ書き込みおよび
+ * 定期ヘルス計測・日次集約メンテをバックグラウンドで実行するワーカースレッド
  */
 public class AnalyticsStorageWorker implements Runnable {
 
     private static final int BATCH_SIZE = 200;
-    private static final long FLUSH_INTERVAL_MS = 2000L;
+    private static final long HEALTH_METRIC_INTERVAL_MS = 60_000L; // 60秒
+    private static final long MAINTENANCE_INTERVAL_MS = 3600_000L; // 1時間
 
     private final AnalyticsStorageEngine storageEngine;
     private final AnalyticsEventQueue queue;
@@ -21,6 +24,8 @@ public class AnalyticsStorageWorker implements Runnable {
 
     private long lastFlushTimeMs = 0L;
     private long lastFlushDurationMs = 0L;
+    private long lastHealthRecordMs = 0L;
+    private long lastMaintenanceMs = 0L;
 
     public AnalyticsStorageWorker(AnalyticsStorageEngine storageEngine, AnalyticsEventQueue queue) {
         this.storageEngine = storageEngine;
@@ -42,6 +47,8 @@ public class AnalyticsStorageWorker implements Runnable {
         while (running.get()) {
             try {
                 int count = queue.drainTo(batch, BATCH_SIZE);
+                long now = System.currentTimeMillis();
+
                 if (count > 0) {
                     long startMs = System.currentTimeMillis();
                     storageEngine.writeBatch(batch);
@@ -51,6 +58,19 @@ public class AnalyticsStorageWorker implements Runnable {
                 } else {
                     Thread.sleep(100);
                 }
+
+                // 1. 定期ヘルス指標の自動計測・永続化 (60秒毎)
+                if (now - lastHealthRecordMs >= HEALTH_METRIC_INTERVAL_MS) {
+                    recordHealthMetric(now);
+                    lastHealthRecordMs = now;
+                }
+
+                // 2. 定期日次集約・パージの非同期メンテナンス (1時間毎)
+                if (now - lastMaintenanceMs >= MAINTENANCE_INTERVAL_MS) {
+                    performAsyncMaintenance(now / 1000L);
+                    lastMaintenanceMs = now;
+                }
+
             } catch (InterruptedException e) {
                 // 停止要求
                 break;
@@ -66,6 +86,39 @@ public class AnalyticsStorageWorker implements Runnable {
                 batch.clear();
             }
             flushRemaining();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void recordHealthMetric(long nowMs) {
+        if (!storageEngine.isOpen()) return;
+        try {
+            AnalyticsEventQueue.HealthMetricEvent healthEvent = new AnalyticsEventQueue.HealthMetricEvent(
+                    nowMs / 1000L,
+                    queue.size(),
+                    queue.getDroppedEventsCount(),
+                    lastFlushDurationMs,
+                    storageEngine.getDatabaseSizeBytes()
+            );
+            storageEngine.writeBatch(List.of(healthEvent));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void performAsyncMaintenance(long nowSec) {
+        if (!storageEngine.isOpen()) return;
+        try {
+            long cutoffDailySec = nowSec - (AnalyticsConfig.RETENTION_DAILY_DAYS * 86400L);
+            long cutoff5mSec = nowSec - (AnalyticsConfig.RETENTION_5M_DAYS * 86400L);
+            long cutoffSessionSec = nowSec - (AnalyticsConfig.RETENTION_SESSION_DAYS * 86400L);
+
+            // 日次集約
+            storageEngine.aggregateDaily(nowSec);
+
+            // パージ
+            storageEngine.purgeOldRecords(cutoff5mSec, cutoffDailySec, cutoffSessionSec);
         } catch (Exception e) {
             e.printStackTrace();
         }

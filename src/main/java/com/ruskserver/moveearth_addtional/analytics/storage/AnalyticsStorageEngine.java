@@ -74,6 +74,13 @@ public interface AnalyticsStorageEngine extends AutoCloseable {
             long currentEpochSec) throws Exception;
 
     /**
+     * サーバー全体の総合概況KPIを集計
+     */
+    com.ruskserver.moveearth_addtional.analytics.query.dto.OverviewSummaryDto queryOverviewSummary(
+            com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow window,
+            long currentEpochSec) throws Exception;
+
+    /**
      * コレクターおよびストレージの最新ヘルス情報を取得
      */
     com.ruskserver.moveearth_addtional.analytics.query.dto.CollectorHealthDto queryCollectorHealth() throws Exception;

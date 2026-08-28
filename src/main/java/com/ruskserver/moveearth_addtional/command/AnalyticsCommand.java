@@ -17,7 +17,7 @@ import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
-import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -44,6 +44,11 @@ public final class AnalyticsCommand {
                 // /analytics web
                 .then(Commands.literal("web")
                         .executes(ctx -> showWebUrl(ctx.getSource())))
+                // /analytics token [regenerate]
+                .then(Commands.literal("token")
+                        .executes(ctx -> showToken(ctx.getSource()))
+                        .then(Commands.literal("regenerate")
+                                .executes(ctx -> regenerateToken(ctx.getSource()))))
                 // /analytics health
                 .then(Commands.literal("health")
                         .executes(ctx -> showHealth(ctx.getSource())))
@@ -92,14 +97,16 @@ public final class AnalyticsCommand {
     }
 
     private static int showWebUrl(CommandSourceStack source) {
+        String host = AnalyticsConfig.WEB_SERVER_HOST;
         int port = AnalyticsConfig.WEB_SERVER_PORT;
-        String url = "http://localhost:" + port;
+        String token = AnalyticsConfig.getAuthToken();
+        String url = "http://" + host + ":" + port + "/?token=" + token;
 
         Component linkComponent = Component.literal(url)
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
                 .withStyle(style -> style
                         .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("クリックしてブラウザで開く"))));
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("クリックしてブラウザで開く（認証トークン付）"))));
 
         source.sendSuccess(() -> Component.literal("[MoveEarth] 分析Webダッシュボード: ")
                 .withStyle(ChatFormatting.GOLD)
@@ -108,65 +115,91 @@ public final class AnalyticsCommand {
         return 1;
     }
 
+    private static int showToken(CommandSourceStack source) {
+        String token = AnalyticsConfig.getAuthToken();
+        source.sendSuccess(() -> Component.literal("[MoveEarth] 現在のWeb API認証トークン: ")
+                .withStyle(ChatFormatting.GOLD)
+                .append(Component.literal(token).withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD)), false);
+        return 1;
+    }
+
+    private static int regenerateToken(CommandSourceStack source) {
+        String newToken = AnalyticsConfig.regenerateAuthToken();
+        source.sendSuccess(() -> Component.literal("[MoveEarth] 新しいWeb API認証トークンを生成しました: ")
+                .withStyle(ChatFormatting.GREEN)
+                .append(Component.literal(newToken).withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD)), true);
+        return 1;
+    }
+
     private static int showHealth(CommandSourceStack source) {
+        MinecraftServer server = source.getServer();
         AnalyticsQueryService.INSTANCE.getCollectorHealthAsync().thenAccept(health -> {
             Component msg = AnalyticsTextFormatter.formatCollectorHealth(health);
-            source.sendSuccess(() -> msg, false);
+            server.execute(() -> source.sendSuccess(() -> msg, false));
         });
         return 1;
     }
 
     private static int showPlayer(CommandSourceStack source, UUID playerUuid, TimeWindow window) {
+        MinecraftServer server = source.getServer();
         AnalyticsQueryService.INSTANCE.getPlayerSummaryAsync(playerUuid, window).thenAccept(opt -> {
-            if (opt.isPresent()) {
-                Component msg = AnalyticsTextFormatter.formatPlayerSummary(opt.get(), window);
-                source.sendSuccess(() -> msg, false);
-            } else {
-                source.sendFailure(Component.literal("該当プレイヤーの分析データが見つかりませんでした。"));
-            }
+            server.execute(() -> {
+                if (opt.isPresent()) {
+                    Component msg = AnalyticsTextFormatter.formatPlayerSummary(opt.get(), window);
+                    source.sendSuccess(() -> msg, false);
+                } else {
+                    source.sendFailure(Component.literal("該当プレイヤーの分析データが見つかりませんでした。"));
+                }
+            });
         });
         return 1;
     }
 
     private static int showRanking(CommandSourceStack source, TimeWindow window, int limit) {
+        MinecraftServer server = source.getServer();
         AnalyticsQueryService.INSTANCE.getTopActivePlayersAsync(window, limit).thenAccept(list -> {
             Component msg = AnalyticsTextFormatter.formatTopPlayers(list, window);
-            source.sendSuccess(() -> msg, false);
+            server.execute(() -> source.sendSuccess(() -> msg, false));
         });
         return 1;
     }
 
     private static int showGroup(CommandSourceStack source, UUID ownerUuid, TimeWindow window) {
+        MinecraftServer server = source.getServer();
         AnalyticsQueryService.INSTANCE.getGroupSummaryAsync(ownerUuid, window).thenAccept(opt -> {
-            if (opt.isPresent()) {
-                Component msg = AnalyticsTextFormatter.formatGroupSummary(opt.get(), window);
-                source.sendSuccess(() -> msg, false);
-            } else {
-                source.sendFailure(Component.literal("該当拠点の分析データが見つかりませんでした。"));
-            }
+            server.execute(() -> {
+                if (opt.isPresent()) {
+                    Component msg = AnalyticsTextFormatter.formatGroupSummary(opt.get(), window);
+                    source.sendSuccess(() -> msg, false);
+                } else {
+                    source.sendFailure(Component.literal("該当拠点の分析データが見つかりませんでした。"));
+                }
+            });
         });
         return 1;
     }
 
     private static int showHeatmap(CommandSourceStack source, String dimension, TimeWindow window, int limit) {
+        MinecraftServer server = source.getServer();
         AnalyticsQueryService.INSTANCE.getSpatialHeatmapAsync(dimension, window, limit).thenAccept(cells -> {
             Component msg = AnalyticsTextFormatter.formatSpatialHeatmap(cells, dimension, window);
-            source.sendSuccess(() -> msg, false);
+            server.execute(() -> source.sendSuccess(() -> msg, false));
         });
         return 1;
     }
 
     private static int exportData(CommandSourceStack source, String formatStr, TimeWindow window) {
+        MinecraftServer server = source.getServer();
         AnalyticsExportService.ExportFormat format = "jsonl".equalsIgnoreCase(formatStr)
                 ? AnalyticsExportService.ExportFormat.JSONL
                 : AnalyticsExportService.ExportFormat.CSV;
 
         source.sendSuccess(() -> Component.literal("[MoveEarth] プレイヤー分析データをエクスポート中...").withStyle(ChatFormatting.YELLOW), false);
 
-        AnalyticsExportService.INSTANCE.exportPlayersAsync(source.getServer(), format, window)
-                .thenAccept(path -> source.sendSuccess(() -> Component.literal("[MoveEarth] エクスポート完了: " + path.toAbsolutePath()).withStyle(ChatFormatting.GREEN), true))
+        AnalyticsExportService.INSTANCE.exportPlayersAsync(server, format, window)
+                .thenAccept(path -> server.execute(() -> source.sendSuccess(() -> Component.literal("[MoveEarth] エクスポート完了: " + path.toAbsolutePath()).withStyle(ChatFormatting.GREEN), true)))
                 .exceptionally(e -> {
-                    source.sendFailure(Component.literal("[MoveEarth] エクスポートに失敗しました: " + e.getMessage()));
+                    server.execute(() -> source.sendFailure(Component.literal("[MoveEarth] エクスポートに失敗しました: " + e.getMessage())));
                     return null;
                 });
 

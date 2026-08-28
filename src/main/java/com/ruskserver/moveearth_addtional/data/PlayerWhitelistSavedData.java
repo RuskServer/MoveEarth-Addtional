@@ -248,11 +248,14 @@ public class PlayerWhitelistSavedData extends SavedData {
         return get(level.getServer());
     }
 
+    private static volatile boolean migratedFromOtherDimensions = false;
+
     /**
      * MinecraftServerインスタンスから共通のPlayerWhitelistSavedDataを取得
+     * 初回取得時に他ディメンション（Nether, End等）の旧SavedDataを走査・自動マージ
      */
     public static PlayerWhitelistSavedData get(MinecraftServer server) {
-        return server.overworld().getDataStorage().computeIfAbsent(
+        PlayerWhitelistSavedData overworldData = server.overworld().getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(
                         PlayerWhitelistSavedData::new,
                         PlayerWhitelistSavedData::load,
@@ -260,5 +263,54 @@ public class PlayerWhitelistSavedData extends SavedData {
                 ),
                 "player_whitelist"
         );
+
+        if (!migratedFromOtherDimensions) {
+            synchronized (PlayerWhitelistSavedData.class) {
+                if (!migratedFromOtherDimensions) {
+                    migrateFromOtherDimensions(server, overworldData);
+                    migratedFromOtherDimensions = true;
+                }
+            }
+        }
+
+        return overworldData;
+    }
+
+    private static void migrateFromOtherDimensions(MinecraftServer server, PlayerWhitelistSavedData overworldData) {
+        for (ServerLevel level : server.getAllLevels()) {
+            if (level == server.overworld()) {
+                continue;
+            }
+
+            try {
+                PlayerWhitelistSavedData otherData = level.getDataStorage().get(
+                        new SavedData.Factory<>(
+                                PlayerWhitelistSavedData::new,
+                                PlayerWhitelistSavedData::load,
+                                null
+                        ),
+                        "player_whitelist"
+                );
+
+                if (otherData != null) {
+                    boolean merged = false;
+                    for (UUID owner : otherData.getRegistry().getAllOwners()) {
+                        for (Map.Entry<UUID, String> memberEntry : otherData.getMembers(owner).entrySet()) {
+                            overworldData.addToWhitelist(owner, memberEntry.getKey(), memberEntry.getValue());
+                            merged = true;
+                        }
+                        for (String unresolved : otherData.getUnresolvedNames(owner)) {
+                            overworldData.addByNameFallback(owner, unresolved, null);
+                            merged = true;
+                        }
+                    }
+                    if (merged) {
+                        overworldData.setDirty();
+                    }
+                }
+            } catch (Exception e) {
+                // 他ディメンションにデータが存在しない場合は通常スキップ
+            }
+        }
     }
 }

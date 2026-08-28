@@ -25,11 +25,15 @@ public class AnalyticsCollectorManager {
 
     public static final AnalyticsCollectorManager INSTANCE = new AnalyticsCollectorManager();
 
-    /** プレイヤーごとの5分バケット集計状態 */
+    /** プレイヤー・ディメンション・グループごとの集計キー */
+    public record PlayerBucketKey(UUID playerUuid, String dimension, @Nullable UUID groupOwnerUuid) {
+    }
+
+    /** プレイヤー・ディメンション・グループごとの5分バケット集計状態 */
     private static class PlayerBucketAccumulator {
         final UUID playerUuid;
-        String currentDimension;
-        @Nullable UUID currentGroupOwnerUuid;
+        final String dimension;
+        @Nullable final UUID groupOwnerUuid;
 
         int activeSeconds = 0;
         double distanceBlocks = 0.0;
@@ -44,8 +48,8 @@ public class AnalyticsCollectorManager {
 
         PlayerBucketAccumulator(UUID playerUuid, String dimension, @Nullable UUID groupOwnerUuid) {
             this.playerUuid = playerUuid;
-            this.currentDimension = dimension;
-            this.currentGroupOwnerUuid = groupOwnerUuid;
+            this.dimension = dimension;
+            this.groupOwnerUuid = groupOwnerUuid;
         }
     }
 
@@ -55,7 +59,7 @@ public class AnalyticsCollectorManager {
         final Set<UUID> uniquePlayers = new HashSet<>();
     }
 
-    private final Map<UUID, PlayerBucketAccumulator> playerBuckets = new ConcurrentHashMap<>();
+    private final Map<PlayerBucketKey, PlayerBucketAccumulator> playerBuckets = new ConcurrentHashMap<>();
     private final Map<SpatialCellKey, SpatialBucketAccumulator> spatialBuckets = new ConcurrentHashMap<>();
 
     private long currentBucketEpochSec = 0L;
@@ -113,8 +117,8 @@ public class AnalyticsCollectorManager {
         double z = player.getZ();
         String dimension = player.serverLevel().dimension().location().toString();
 
-        // 2ブロック以上移動したかの判定
-        boolean moved = PlayerActivityTracker.INSTANCE.updatePosition(uuid, x, y, z, currentTimeMs);
+        // 2ブロック以上の有効移動判定および移動距離計測
+        double distance = PlayerActivityTracker.INSTANCE.updatePositionAndGetDistance(uuid, x, y, z, currentTimeMs);
 
         // AFK判定
         boolean isAfk = PlayerActivityTracker.INSTANCE.isAfk(uuid, currentTimeMs);
@@ -130,10 +134,11 @@ public class AnalyticsCollectorManager {
         GroupRelation relation = DetectorGroupService.INSTANCE.getGroupRelation(player.serverLevel(), blockPos, uuid);
 
         // プレイヤーバケットの更新
-        PlayerBucketAccumulator pAcc = playerBuckets.computeIfAbsent(uuid,
+        PlayerBucketKey pKey = new PlayerBucketKey(uuid, effectiveDimension, groupOwner);
+        PlayerBucketAccumulator pAcc = playerBuckets.computeIfAbsent(pKey,
                 k -> new PlayerBucketAccumulator(uuid, effectiveDimension, groupOwner));
-        pAcc.currentDimension = effectiveDimension;
-        pAcc.currentGroupOwnerUuid = groupOwner;
+
+        pAcc.distanceBlocks += distance;
         if (!isAfk) {
             pAcc.activeSeconds += 30; // 30秒間アクティブ
         }
@@ -247,11 +252,15 @@ public class AnalyticsCollectorManager {
 
     private PlayerBucketAccumulator getOrCreatePlayerBucket(ServerPlayer player) {
         UUID uuid = player.getUUID();
-        return playerBuckets.computeIfAbsent(uuid, k -> {
-            String dimension = player.serverLevel().dimension().location().toString();
-            UUID groupOwner = DetectorGroupService.INSTANCE.findCoveringGroupOwner(player.serverLevel(), player.blockPosition());
-            return new PlayerBucketAccumulator(uuid, dimension, groupOwner);
-        });
+        boolean inPvpArena = PvpMatchManager.INSTANCE.isActive(player)
+                || player.serverLevel().dimension().equals(PvpMatchManager.ARENA);
+        String rawDim = player.serverLevel().dimension().location().toString();
+        String effectiveDim = inPvpArena ? "pvp_arena" : rawDim;
+
+        UUID groupOwner = DetectorGroupService.INSTANCE.findCoveringGroupOwner(player.serverLevel(), player.blockPosition());
+        PlayerBucketKey key = new PlayerBucketKey(uuid, effectiveDim, groupOwner);
+
+        return playerBuckets.computeIfAbsent(key, k -> new PlayerBucketAccumulator(uuid, effectiveDim, groupOwner));
     }
 
     /**
@@ -264,8 +273,8 @@ public class AnalyticsCollectorManager {
             pList.add(new PlayerActivityBucket(
                     bucketAtEpochSec,
                     acc.playerUuid,
-                    acc.currentDimension != null ? acc.currentDimension : "minecraft:overworld",
-                    acc.currentGroupOwnerUuid,
+                    acc.dimension != null ? acc.dimension : "minecraft:overworld",
+                    acc.groupOwnerUuid,
                     acc.activeSeconds,
                     acc.distanceBlocks,
                     acc.breaks,

@@ -10,7 +10,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -25,6 +24,7 @@ import java.util.concurrent.Executors;
 
 /**
  * プレイヤー分析WebダッシュボードおよびREST APIを提供する軽量内蔵HTTPサーバー
+ * (127.0.0.1限定バインド・トークン認証・CORS制限)
  */
 public class AnalyticsWebServer {
 
@@ -46,8 +46,11 @@ public class AnalyticsWebServer {
         }
 
         try {
-            server = HttpServer.create(new InetSocketAddress(port), 0);
+            String host = AnalyticsConfig.WEB_SERVER_HOST;
+            server = HttpServer.create(new InetSocketAddress(host, port), 0);
+
             server.createContext("/", new StaticDashboardHandler());
+            server.createContext("/api/overview", new OverviewApiHandler());
             server.createContext("/api/players", new PlayersApiHandler());
             server.createContext("/api/player", new PlayerDetailApiHandler());
             server.createContext("/api/groups", new GroupsApiHandler());
@@ -62,7 +65,7 @@ public class AnalyticsWebServer {
             }));
 
             server.start();
-            System.out.println("[MoveEarth] プレイヤー分析Webダッシュボードを開始しました: http://localhost:" + port);
+            System.out.println("[MoveEarth] プレイヤー分析Webダッシュボードを開始しました: http://" + host + ":" + port);
         } catch (Exception e) {
             System.err.println("[MoveEarth] Webダッシュボードの起動に失敗しました: " + e.getMessage());
         }
@@ -78,6 +81,38 @@ public class AnalyticsWebServer {
 
     public boolean isRunning() {
         return server != null;
+    }
+
+    // --- 認証チェック ---
+
+    private static boolean checkAuth(HttpExchange exchange) throws IOException {
+        if (!AnalyticsConfig.WEB_SERVER_REQUIRE_AUTH) {
+            return true;
+        }
+
+        String expectedToken = AnalyticsConfig.getAuthToken();
+        if (expectedToken == null || expectedToken.isEmpty()) {
+            return true;
+        }
+
+        // 1. Authorization: Bearer <token>
+        String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring("Bearer ".length()).trim();
+            if (expectedToken.equals(token)) {
+                return true;
+            }
+        }
+
+        // 2. Query param ?token=<token>
+        Map<String, String> params = parseQueryParams(exchange.getRequestURI());
+        String tokenParam = params.get("token");
+        if (expectedToken.equals(tokenParam)) {
+            return true;
+        }
+
+        sendResponse(exchange, 401, "{\"error\":\"Unauthorized. Valid token required.\"}", "application/json; charset=UTF-8");
+        return false;
     }
 
     // --- 各種ハンドラー ---
@@ -108,9 +143,28 @@ public class AnalyticsWebServer {
         }
     }
 
+    private static class OverviewApiHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI());
+            TimeWindow window = parseWindow(params.get("window"));
+
+            try {
+                var overview = AnalyticsQueryService.INSTANCE.getOverviewSummaryAsync(window).get();
+                sendResponse(exchange, 200, GSON.toJson(overview), "application/json; charset=UTF-8");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}", "application/json; charset=UTF-8");
+            }
+        }
+    }
+
     private static class PlayersApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             TimeWindow window = parseWindow(params.get("window"));
             int limit = parseInt(params.get("limit"), 100);
@@ -128,6 +182,8 @@ public class AnalyticsWebServer {
     private static class PlayerDetailApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String uuidStr = params.get("uuid");
             TimeWindow window = parseWindow(params.get("window"));
@@ -154,11 +210,12 @@ public class AnalyticsWebServer {
     private static class GroupsApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             TimeWindow window = parseWindow(params.get("window"));
 
             try {
-                // サンプルまたはトップアクティブプレイヤーの拠点一覧を返却
                 var topPlayers = AnalyticsQueryService.INSTANCE.getTopActivePlayersAsync(window, 50).get();
                 List<Object> groups = new ArrayList<>();
                 Set<UUID> seenOwners = new HashSet<>();
@@ -180,6 +237,8 @@ public class AnalyticsWebServer {
     private static class HeatmapApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String dim = params.getOrDefault("dimension", "minecraft:overworld");
             TimeWindow window = parseWindow(params.get("window"));
@@ -197,6 +256,8 @@ public class AnalyticsWebServer {
     private static class HealthApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
             try {
                 var health = AnalyticsQueryService.INSTANCE.getCollectorHealthAsync().get();
                 sendResponse(exchange, 200, GSON.toJson(health), "application/json; charset=UTF-8");
@@ -206,9 +267,11 @@ public class AnalyticsWebServer {
         }
     }
 
-    private class ExportApiHandler implements HttpHandler {
+    private static class ExportApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuth(exchange)) return;
+
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String formatStr = params.getOrDefault("format", "csv").toLowerCase();
             TimeWindow window = parseWindow(params.get("window"));
@@ -242,7 +305,13 @@ public class AnalyticsWebServer {
 
     private static void sendBinaryResponse(HttpExchange exchange, int statusCode, byte[] data, String contentType) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", contentType);
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+
+        // CORS制限: 自ループバックオリジンのみ許可
+        String origin = exchange.getRequestHeaders().getFirst("Origin");
+        if (origin != null && (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:"))) {
+            exchange.getResponseHeaders().set("Access-Control-Allow-Origin", origin);
+        }
+
         exchange.sendResponseHeaders(statusCode, data.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(data);

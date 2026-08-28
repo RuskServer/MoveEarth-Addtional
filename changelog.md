@@ -1,12 +1,15 @@
 # Unreleased
 
-## Player Analytics (Phase 4: Visualization & Web Dashboard)
+## Player Analytics (Phase 4: Visualization, Web Dashboard & Critical Hardening)
 
-- Implemented an embedded HTTP web dashboard server (`AnalyticsWebServer`) on port 8080 (configurable via `AnalyticsConfig`) with asynchronous REST API endpoints for overview KPIs, player profiles, base intrusion summaries, spatial heatmaps, system health, and downloads.
-- Built a modern, responsive Single Page Application (SPA) dashboard UI (`assets/moveearth_addtional/web/index.html`) featuring dark mode, glassmorphic card layouts, interactive tab switching, multi-window filtering (7d/30d/all), player detail modals, and offline-compatible SVG/CSS visualizers.
-- Added OP management command `/analytics` with subcommands: `web`, `player <target> [window]`, `ranking [window] [limit]`, `group <owner> [window]`, `heatmap [dim] [window] [limit]`, `health`, and `export <csv|jsonl> [window]`.
-- Implemented `AnalyticsExportService` to stream and write player activity summaries to `<world>/moveearth/analytics/exports/` in CSV or JSONL formats without blocking the server thread.
-- Added `AnalyticsFormatUtil` and `AnalyticsTextFormatter` for chat and text dashboard rendering.
+- **Security & Token Authentication**: Restricted `AnalyticsWebServer` binding to `127.0.0.1` (loopback only), enforced token authentication (`Authorization: Bearer <token>` / `?token=<token>`) for all REST API endpoints and file exports, restricted CORS to loopback origins, and added `/analytics token [regenerate]` management commands.
+- **Server Overview KPI Endpoint**: Added `/api/overview` endpoint and `OverviewSummaryDto` aggregating true server-wide unique players, active time, block breaks/places, jobs XP, and combat statistics via hybrid multi-table queries.
+- **Dimensional Activity Attribution**: Refactored in-memory bucket accumulators to partition by `(playerUuid, dimension, groupOwnerUuid)` ensuring cross-dimension transitions correctly attribute mining, jobs, and movement to each world.
+- **Hybrid Multi-Tier Query Engine**: Integrated `player_activity_5m` (realtime/intra-day) with `player_activity_daily` (historical) using non-duplicative `UNION ALL` queries to preserve complete 365-day `all_time` statistics even after 90-day 5m purging.
+- **Multi-Dimension Whitelist Migration**: Added automatic startup scanning and merging of legacy `player_whitelist.dat` files across all server dimensions into the overworld canonical storage.
+- **Async Maintenance & Health Telemetry**: Offloaded 24,000-tick daily aggregation and retention purging to `AnalyticsStorageWorker` background intervals, eliminating tick lag on the server thread, and implemented 60-second automatic `HealthMetricEvent` persistence.
+- **Distance & Spatial Group Key Fixes**: Fixed distance measurement tracking via `updatePositionAndGetDistance`, upgraded SQLite schema to Version 2 including `group_owner_uuid` in `spatial_activity_5m` primary keys, and implemented dynamic priority-based queue eviction under high load.
+- **Server Thread Safety**: Enforced server-thread dispatch (`source.getServer().execute(...)`) for all asynchronous command response rendering in `AnalyticsCommand`.
 
 ## Player Analytics (Phase 3: Aggregation & Query Engine)
 

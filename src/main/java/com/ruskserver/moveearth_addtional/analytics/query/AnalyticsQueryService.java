@@ -27,6 +27,7 @@ public class AnalyticsQueryService {
     private final AnalyticsQueryCache<String, GroupSummaryDto> groupCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, List<SpatialHeatmapCellDto>> heatmapCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, CollectorHealthDto> healthCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
+    private final AnalyticsQueryCache<String, OverviewSummaryDto> overviewCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
 
     private final ExecutorService queryExecutor = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "MoveEarth-Analytics-Query-Worker");
@@ -202,6 +203,34 @@ public class AnalyticsQueryService {
     }
 
     /**
+     * サーバー全体の総合概況KPIを非同期で取得
+     */
+    public CompletableFuture<OverviewSummaryDto> getOverviewSummaryAsync(TimeWindow window) {
+        String cacheKey = "overview:" + window.getId();
+        Optional<OverviewSummaryDto> cached = overviewCache.get(cacheKey);
+        if (cached.isPresent()) {
+            return CompletableFuture.completedFuture(cached.get());
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) {
+                return OverviewSummaryDto.empty();
+            }
+
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                OverviewSummaryDto result = engine.queryOverviewSummary(window, nowSec);
+                overviewCache.put(cacheKey, result);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return OverviewSummaryDto.empty();
+            }
+        }, queryExecutor);
+    }
+
+    /**
      * キャッシュのクリア
      */
     public void clearCache() {
@@ -210,5 +239,6 @@ public class AnalyticsQueryService {
         groupCache.clear();
         heatmapCache.clear();
         healthCache.clear();
+        overviewCache.clear();
     }
 }

@@ -160,6 +160,40 @@ public class PlayerActivityTracker {
     }
 
     /**
+     * 移動による活動更新判定および移動距離（ブロック数）の取得
+     *
+     * @return 移動距離（ブロック数）。初回や未移動時は 0.0
+     */
+    public double updatePositionAndGetDistance(UUID playerUuid, double x, double y, double z, long currentTimeMs) {
+        PlayerState state = playerStates.get(playerUuid);
+        if (state == null) {
+            PlayerState newState = new PlayerState(currentTimeMs, x, y, z);
+            playerStates.put(playerUuid, newState);
+            return 0.0D;
+        }
+
+        if (!state.hasPos()) {
+            state.setPos(x, y, z);
+            state.setLastActiveTimeMs(currentTimeMs);
+            return 0.0D;
+        }
+
+        double dx = x - state.getLastX();
+        double dy = y - state.getLastY();
+        double dz = z - state.getLastZ();
+        double distSqr = dx * dx + dy * dy + dz * dz;
+
+        if (distSqr >= AnalyticsConfig.MOVEMENT_THRESHOLD_SQR) {
+            double distance = Math.sqrt(distSqr);
+            state.setPos(x, y, z);
+            state.setLastActiveTimeMs(currentTimeMs);
+            return distance;
+        }
+
+        return 0.0D;
+    }
+
+    /**
      * 指定時刻においてプレイヤーがAFK（無活動状態）であるかを判定
      */
     public boolean isAfk(UUID playerUuid, long currentTimeMs) {

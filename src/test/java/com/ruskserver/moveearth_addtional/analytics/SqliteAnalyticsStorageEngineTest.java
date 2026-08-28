@@ -50,7 +50,7 @@ public class SqliteAnalyticsStorageEngineTest {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT version FROM schema_version")) {
             assertTrue(rs.next());
-            assertEquals(1, rs.getInt("version"));
+            assertEquals(2, rs.getInt("version"));
         }
     }
 
@@ -186,5 +186,49 @@ public class SqliteAnalyticsStorageEngineTest {
         }
 
         reopenedEngine.close();
+    }
+
+    @Test
+    public void testOverviewSummaryAndHybridQuery() throws Exception {
+        UUID p1 = UUID.randomUUID();
+        UUID p2 = UUID.randomUUID();
+        long now = 86400L * 100 + 3600L; // Day 100, 1:00
+
+        // Day 10 (過去90日前の日次集約相当)
+        long day10 = 86400L * 10 + 300L;
+        PlayerActivityBucket pastP1 = new PlayerActivityBucket(
+                day10, p1, "minecraft:overworld", null, 1000, 500.0, 100, 50, 20, 5, 1, 0, 200.0, 3);
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.SessionStartEvent(UUID.randomUUID(), p1, "Player1", day10),
+                new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(pastP1))
+        ));
+        engine.aggregateDaily(86400L * 20); // 日次テーブルへ集約
+
+        // Day 100 (本日リアルタイム)
+        PlayerActivityBucket todayP2 = new PlayerActivityBucket(
+                now, p2, "minecraft:overworld", null, 2000, 1000.0, 200, 100, 40, 10, 2, 1, 400.0, 5);
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.SessionStartEvent(UUID.randomUUID(), p2, "Player2", now),
+                new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(todayP2))
+        ));
+
+        // 過去90日前の5分データをパージ (cutoff = Day 20)
+        engine.purgeOldRecords(86400L * 20, 0L, 0L);
+
+        // 1. Player1 のサマリー（ALL_TIMEで過去のdailyから合算されるか）
+        var p1SummaryOpt = engine.queryPlayerSummary(p1, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.ALL_TIME, now);
+        assertTrue(p1SummaryOpt.isPresent());
+        var p1Summary = p1SummaryOpt.get();
+        assertEquals("Player1", p1Summary.lastKnownName());
+        assertEquals(100, p1Summary.totalBreaks()); // dailyから復元
+        assertEquals(200.0, p1Summary.totalJobsXp(), 0.001);
+
+        // 2. OverviewSummary の全期間集約
+        var overview = engine.queryOverviewSummary(com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.ALL_TIME, now);
+        assertEquals(2, overview.activeUniquePlayers()); // p1 + p2
+        assertEquals(300, overview.totalBreaks()); // 100 + 200
+        assertEquals(150, overview.totalPlaces()); // 50 + 100
+        assertEquals(600.0, overview.totalJobsXp(), 0.001); // 200 + 400
+        assertEquals(1500.0, overview.totalDistanceBlocks(), 0.001); // 500 + 1000
     }
 }

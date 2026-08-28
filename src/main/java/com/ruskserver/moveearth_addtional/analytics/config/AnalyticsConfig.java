@@ -44,6 +44,24 @@ public final class AnalyticsConfig {
     /** Webダッシュボードサーバーの有効化フラグ */
     public static final boolean WEB_SERVER_ENABLED = true;
 
+    /** Webダッシュボードサーバーのバインドホスト (ループバック限定) */
+    public static final String WEB_SERVER_HOST = "127.0.0.1";
+
     /** Webダッシュボードサーバーのポート番号 */
     public static final int WEB_SERVER_PORT = 8080;
+
+    /** WebダッシュボードAPIの認証必須フラグ */
+    public static final boolean WEB_SERVER_REQUIRE_AUTH = true;
+
+    /** 現在有効なWebダッシュボードAPIトークン (volatile) */
+    private static volatile String currentAuthToken = java.util.UUID.randomUUID().toString().replace("-", "");
+
+    public static String getAuthToken() {
+        return currentAuthToken;
+    }
+
+    public static String regenerateAuthToken() {
+        currentAuthToken = java.util.UUID.randomUUID().toString().replace("-", "");
+        return currentAuthToken;
+    }
 }

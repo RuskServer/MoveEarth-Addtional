@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.analytics;
 
+import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
 import com.ruskserver.moveearth_addtional.analytics.model.PlayerActivityBucket;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
@@ -57,10 +58,10 @@ public class AnalyticsWebServerTest {
     }
 
     @Test
-    public void testGetIndexHtml() throws Exception {
+    public void testGetIndexHtmlWithoutAuth() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:8080/"))
+                .uri(URI.create("http://127.0.0.1:8080/"))
                 .GET()
                 .build();
 
@@ -70,10 +71,24 @@ public class AnalyticsWebServerTest {
     }
 
     @Test
-    public void testGetPlayersApi() throws Exception {
+    public void testGetApiUnauthorizedWithoutToken() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:8080/api/players?window=7d&limit=10"))
+                .uri(URI.create("http://127.0.0.1:8080/api/players?window=7d&limit=10"))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, response.statusCode());
+        assertTrue(response.body().contains("Unauthorized"));
+    }
+
+    @Test
+    public void testGetPlayersApiWithBearerToken() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:8080/api/players?window=7d&limit=10"))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken())
                 .GET()
                 .build();
 
@@ -83,10 +98,23 @@ public class AnalyticsWebServerTest {
     }
 
     @Test
-    public void testGetHealthApi() throws Exception {
+    public void testGetOverviewApiWithQueryToken() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:8080/api/health"))
+                .uri(URI.create("http://127.0.0.1:8080/api/overview?window=7d&token=" + AnalyticsConfig.getAuthToken()))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("activeUniquePlayers"));
+    }
+
+    @Test
+    public void testGetHealthApiWithToken() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:8080/api/health?token=" + AnalyticsConfig.getAuthToken()))
                 .GET()
                 .build();
 

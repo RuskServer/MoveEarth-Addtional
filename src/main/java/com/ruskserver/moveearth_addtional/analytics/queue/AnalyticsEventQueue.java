@@ -17,9 +17,22 @@ public class AnalyticsEventQueue {
 
     public static final AnalyticsEventQueue INSTANCE = new AnalyticsEventQueue();
 
+    /** イベント優先度定義 */
+    public enum EventPriority {
+        HIGH,
+        NORMAL,
+        LOW
+    }
+
     /** イベント基底インターフェース */
     public interface AnalyticsEvent {
-        boolean isHighPriority();
+        default EventPriority getPriority() {
+            return isHighPriority() ? EventPriority.HIGH : EventPriority.NORMAL;
+        }
+
+        default boolean isHighPriority() {
+            return getPriority() == EventPriority.HIGH;
+        }
     }
 
     /** プレイヤーログイン（セッション開始）イベント */
@@ -30,8 +43,8 @@ public class AnalyticsEventQueue {
             long joinedAtEpochSec
     ) implements AnalyticsEvent {
         @Override
-        public boolean isHighPriority() {
-            return true;
+        public EventPriority getPriority() {
+            return EventPriority.HIGH;
         }
     }
 
@@ -40,8 +53,8 @@ public class AnalyticsEventQueue {
             SessionRecord sessionRecord
     ) implements AnalyticsEvent {
         @Override
-        public boolean isHighPriority() {
-            return true;
+        public EventPriority getPriority() {
+            return EventPriority.HIGH;
         }
     }
 
@@ -50,8 +63,8 @@ public class AnalyticsEventQueue {
             List<PlayerActivityBucket> records
     ) implements AnalyticsEvent {
         @Override
-        public boolean isHighPriority() {
-            return false;
+        public EventPriority getPriority() {
+            return EventPriority.NORMAL;
         }
     }
 
@@ -60,8 +73,8 @@ public class AnalyticsEventQueue {
             List<SpatialActivityBucket> records
     ) implements AnalyticsEvent {
         @Override
-        public boolean isHighPriority() {
-            return false;
+        public EventPriority getPriority() {
+            return EventPriority.LOW;
         }
     }
 
@@ -70,8 +83,8 @@ public class AnalyticsEventQueue {
             List<DetectorActivityBucket> records
     ) implements AnalyticsEvent {
         @Override
-        public boolean isHighPriority() {
-            return false;
+        public EventPriority getPriority() {
+            return EventPriority.NORMAL;
         }
     }
 
@@ -84,12 +97,13 @@ public class AnalyticsEventQueue {
             long dbBytes
     ) implements AnalyticsEvent {
         @Override
-        public boolean isHighPriority() {
-            return true;
+        public EventPriority getPriority() {
+            return EventPriority.HIGH;
         }
     }
 
     private final BlockingQueue<AnalyticsEvent> queue;
+    private final int capacity;
     private final AtomicLong droppedEvents = new AtomicLong(0);
 
     public AnalyticsEventQueue() {
@@ -97,16 +111,25 @@ public class AnalyticsEventQueue {
     }
 
     public AnalyticsEventQueue(int capacity) {
+        this.capacity = capacity;
         this.queue = new ArrayBlockingQueue<>(capacity);
     }
 
     /**
      * イベントをキューへ投入（サーバースレッドをブロックしない非ブロッキング処理）
+     * 負荷逼迫時（容量の90%以上）はLOW優先度の空間イベントを能動的に破棄して重要イベントを保護
      *
-     * @return 正常にキューへ追加された場合は true、キュー満杯で破棄された場合は false
+     * @return 正常にキューへ追加された場合は true、破棄された場合は false
      */
     public boolean enqueue(AnalyticsEvent event) {
         Objects.requireNonNull(event, "event must not be null");
+
+        // キュー使用率が90%を超えている場合、LOW優先度（空間サンプル）を破棄してセッション/プレイヤー活動を保護
+        if (event.getPriority() == EventPriority.LOW && queue.size() >= (capacity * 0.9)) {
+            droppedEvents.incrementAndGet();
+            return false;
+        }
+
         boolean offered = queue.offer(event);
         if (!offered) {
             // キューが満杯の場合は破棄し、欠損件数を記録

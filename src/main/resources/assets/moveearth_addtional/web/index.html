@@ -643,6 +643,25 @@
         let currentTab = 'overview';
         let cachedPlayers = [];
 
+        // トークンの初期化 (URLパラメータ ?token=... または sessionStorage)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('token')) {
+            sessionStorage.setItem('me_analytics_token', urlParams.get('token'));
+        }
+
+        function getAuthToken() {
+            return sessionStorage.getItem('me_analytics_token') || '';
+        }
+
+        async function apiFetch(url) {
+            const token = getAuthToken();
+            const sep = url.includes('?') ? '&' : '?';
+            const authUrl = token ? `${url}${sep}token=${encodeURIComponent(token)}` : url;
+            return fetch(authUrl, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+        }
+
         function formatDuration(sec) {
             if (!sec || sec < 60) return (sec || 0) + '秒';
             const h = Math.floor(sec / 3600);
@@ -697,40 +716,32 @@
 
         async function fetchOverview(windowVal) {
             try {
-                const res = await fetch(`/api/players?window=${windowVal}&limit=10`);
-                const players = await res.json();
-                cachedPlayers = players;
+                // 1. サーバー全体の総合概要KPI取得
+                const ovRes = await apiFetch(`/api/overview?window=${windowVal}`);
+                if (ovRes.status === 401) {
+                    alert('API認証トークンが無効または未設定です。Minecraft内で /analytics web または /analytics token を実行してトークンを取得してください。');
+                    return;
+                }
+                const ov = await ovRes.json();
 
-                let totalActiveSec = 0;
-                let totalOnlineSec = 0;
-                let totalBreaks = 0;
-                let totalPlaces = 0;
-                let totalJobs = 0;
-
-                players.forEach(p => {
-                    totalActiveSec += p.totalActiveSeconds;
-                    totalOnlineSec += p.totalOnlineSeconds;
-                    totalBreaks += p.totalBreaks;
-                    totalPlaces += p.totalPlaces;
-                    totalJobs += p.totalJobsXp;
-                });
-
-                document.getElementById('ov-active-players').innerText = players.length;
-                document.getElementById('ov-active-hours').innerText = formatDuration(totalActiveSec);
-                const afkRate = totalOnlineSec > 0 ? (((totalOnlineSec - totalActiveSec) / totalOnlineSec) * 100).toFixed(0) : 0;
+                document.getElementById('ov-active-players').innerText = formatNumber(ov.activeUniquePlayers);
+                document.getElementById('ov-active-hours').innerText = formatDuration(ov.totalActiveSeconds);
+                const afkRate = ov.totalOnlineSeconds > 0 ? (((ov.totalOnlineSeconds - ov.totalActiveSeconds) / ov.totalOnlineSeconds) * 100).toFixed(0) : 0;
                 document.getElementById('ov-active-rate').innerText = `AFK率: ${afkRate}%`;
-                document.getElementById('ov-blocks-total').innerText = formatNumber(totalBreaks + totalPlaces);
-                document.getElementById('ov-blocks-sub').innerText = `破壊: ${formatNumber(totalBreaks)} | 設置: ${formatNumber(totalPlaces)}`;
-                document.getElementById('ov-jobs-xp').innerText = totalJobs.toFixed(1);
+                document.getElementById('ov-blocks-total').innerText = formatNumber(ov.totalBreaks + ov.totalPlaces);
+                document.getElementById('ov-blocks-sub').innerText = `破壊: ${formatNumber(ov.totalBreaks)} | 設置: ${formatNumber(ov.totalPlaces)}`;
+                document.getElementById('ov-jobs-xp').innerText = (ov.totalJobsXp || 0).toFixed(1);
 
-                // Ranking Table
+                // 2. Ranking Table (TOP 5)
+                const rankRes = await apiFetch(`/api/players?window=${windowVal}&limit=5`);
+                const topPlayers = await rankRes.json();
                 const tbody = document.getElementById('overview-ranking-body');
-                if (players.length === 0) {
+                if (!topPlayers || topPlayers.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">データがありません</td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = players.slice(0, 5).map((p, idx) => `
+                tbody.innerHTML = topPlayers.map((p, idx) => `
                     <tr>
                         <td><strong>${idx + 1}</strong></td>
                         <td><strong style="color:var(--accent-blue);">${p.lastKnownName}</strong></td>
@@ -747,7 +758,7 @@
 
         async function fetchPlayers(windowVal) {
             try {
-                const res = await fetch(`/api/players?window=${windowVal}&limit=100`);
+                const res = await apiFetch(`/api/players?window=${windowVal}&limit=100`);
                 cachedPlayers = await res.json();
                 renderPlayersTable(cachedPlayers);
             } catch (e) {
@@ -790,7 +801,7 @@
 
         async function fetchBases(windowVal) {
             try {
-                const res = await fetch(`/api/groups?window=${windowVal}`);
+                const res = await apiFetch(`/api/groups?window=${windowVal}`);
                 const bases = await res.json();
                 const tbody = document.getElementById('bases-table-body');
                 if (!bases || bases.length === 0) {
@@ -817,7 +828,7 @@
             const windowVal = document.getElementById('windowSelector').value;
             const dim = document.getElementById('heatmapDimSelector').value;
             try {
-                const res = await fetch(`/api/heatmap?dimension=${encodeURIComponent(dim)}&window=${windowVal}&limit=30`);
+                const res = await apiFetch(`/api/heatmap?dimension=${encodeURIComponent(dim)}&window=${windowVal}&limit=30`);
                 const cells = await res.json();
                 const tbody = document.getElementById('heatmap-table-body');
                 if (!cells || cells.length === 0) {
@@ -841,7 +852,7 @@
 
         async function fetchSystemHealth() {
             try {
-                const res = await fetch('/api/health');
+                const res = await apiFetch('/api/health');
                 const h = await res.json();
                 document.getElementById('sys-queue').innerText = h.queueDepth;
                 document.getElementById('sys-dropped').innerText = h.droppedEventsTotal;
@@ -854,7 +865,9 @@
 
         function exportData(format) {
             const windowVal = document.getElementById('windowSelector').value;
-            window.location.href = `/api/export?format=${format}&window=${windowVal}`;
+            const token = getAuthToken();
+            const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
+            window.location.href = `/api/export?format=${format}&window=${windowVal}${tokenQuery}`;
         }
 
         function openPlayerModal(p) {

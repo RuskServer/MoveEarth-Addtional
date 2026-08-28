@@ -82,11 +82,6 @@ public class AnalyticsGameEvents {
     public static void onServerTick(ServerTickEvent.Post event) {
         long gameTime = event.getServer().overworld().getGameTime();
         AnalyticsCollectorManager.INSTANCE.onServerTick(event.getServer(), gameTime);
-
-        // 1マイクラ日（24,000 ticks）ごとに日次集約・保持期間パージを実行
-        if (gameTime % 24000 == 0) {
-            AnalyticsStorageService.INSTANCE.performDailyMaintenance();
-        }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)

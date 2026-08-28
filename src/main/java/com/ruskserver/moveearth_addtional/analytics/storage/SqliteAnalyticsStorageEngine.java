@@ -8,16 +8,12 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 /**
- * SQLite WALモードを用いたプレイヤー分析データの永続化エンジン実装
+ * SQLite WALモードを用いた高スループット・ACID保証の分析ストレージエンジン
  */
 public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
-
-    public static final int SCHEMA_VERSION = 1;
 
     private Connection connection;
     private Path dbFilePath;
@@ -32,21 +28,15 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             Files.createDirectories(dbPath.getParent());
         }
 
-        String jdbcUrl = "jdbc:sqlite:" + dbPath.toAbsolutePath();
-        this.connection = DriverManager.getConnection(jdbcUrl);
+        String url = "jdbc:sqlite:" + dbPath.toAbsolutePath().toString().replace("\\", "/");
+        connection = DriverManager.getConnection(url);
 
         try (Statement stmt = connection.createStatement()) {
+            // WALモード & パフォーマンスPRAGMA設定
             stmt.execute("PRAGMA journal_mode = WAL;");
             stmt.execute("PRAGMA synchronous = NORMAL;");
             stmt.execute("PRAGMA busy_timeout = 5000;");
-            stmt.execute("PRAGMA foreign_keys = ON;");
-        }
 
-        applySchemaMigrations();
-    }
-
-    private void applySchemaMigrations() throws SQLException {
-        try (Statement stmt = connection.createStatement()) {
             // スキーマバージョン管理テーブル
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS schema_version (
@@ -62,120 +52,124 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 }
             }
 
-            if (currentVersion < 1) {
-                // Version 1 スキーマの作成
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS player_identity (
-                        player_uuid TEXT PRIMARY KEY,
-                        last_known_name TEXT NOT NULL,
-                        first_seen_at INTEGER NOT NULL,
-                        last_seen_at INTEGER NOT NULL
-                    );
-                """);
-
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS player_session (
-                        session_id TEXT PRIMARY KEY,
-                        player_uuid TEXT NOT NULL,
-                        last_known_name TEXT NOT NULL,
-                        joined_at INTEGER NOT NULL,
-                        left_at INTEGER NOT NULL,
-                        online_seconds INTEGER NOT NULL,
-                        active_seconds INTEGER NOT NULL,
-                        afk_seconds INTEGER NOT NULL
-                    );
-                """);
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_session_player ON player_session(player_uuid);");
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_session_joined ON player_session(joined_at);");
-
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS player_activity_5m (
-                        bucket_at INTEGER NOT NULL,
-                        player_uuid TEXT NOT NULL,
-                        dimension TEXT NOT NULL,
-                        group_owner_uuid TEXT,
-                        active_seconds INTEGER NOT NULL,
-                        distance_blocks REAL NOT NULL,
-                        breaks INTEGER NOT NULL,
-                        places INTEGER NOT NULL,
-                        crafts INTEGER NOT NULL,
-                        pve_kills INTEGER NOT NULL,
-                        pvp_kills INTEGER NOT NULL,
-                        deaths INTEGER NOT NULL,
-                        jobs_xp REAL NOT NULL,
-                        tpa_successes INTEGER NOT NULL,
-                        PRIMARY KEY (bucket_at, player_uuid, dimension)
-                    );
-                """);
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_player ON player_activity_5m(player_uuid, bucket_at);");
-
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS spatial_activity_5m (
-                        bucket_at INTEGER NOT NULL,
-                        dimension TEXT NOT NULL,
-                        cell_x INTEGER NOT NULL,
-                        cell_z INTEGER NOT NULL,
-                        y_band TEXT NOT NULL,
-                        group_owner_uuid TEXT,
-                        relation TEXT NOT NULL,
-                        active_samples INTEGER NOT NULL,
-                        unique_players INTEGER NOT NULL,
-                        PRIMARY KEY (bucket_at, dimension, cell_x, cell_z, y_band, relation)
-                    );
-                """);
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_spatial_bucket ON spatial_activity_5m(bucket_at, dimension);");
-
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS detector_activity_5m (
-                        bucket_at INTEGER NOT NULL,
-                        dimension TEXT NOT NULL,
-                        detector_pos_hash TEXT NOT NULL,
-                        group_owner_uuid TEXT,
-                        member_minutes REAL NOT NULL,
-                        visitor_minutes REAL NOT NULL,
-                        intrusion_sessions INTEGER NOT NULL,
-                        distinct_members INTEGER NOT NULL,
-                        distinct_visitors INTEGER NOT NULL,
-                        PRIMARY KEY (bucket_at, dimension, detector_pos_hash)
-                    );
-                """);
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_detector_bucket ON detector_activity_5m(bucket_at, dimension);");
-
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS player_activity_daily (
-                        date_epoch_day INTEGER NOT NULL,
-                        player_uuid TEXT NOT NULL,
-                        dimension TEXT NOT NULL,
-                        group_owner_uuid TEXT,
-                        active_seconds INTEGER NOT NULL,
-                        distance_blocks REAL NOT NULL,
-                        breaks INTEGER NOT NULL,
-                        places INTEGER NOT NULL,
-                        crafts INTEGER NOT NULL,
-                        pve_kills INTEGER NOT NULL,
-                        pvp_kills INTEGER NOT NULL,
-                        deaths INTEGER NOT NULL,
-                        jobs_xp REAL NOT NULL,
-                        tpa_successes INTEGER NOT NULL,
-                        PRIMARY KEY (date_epoch_day, player_uuid, dimension)
-                    );
-                """);
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_daily_player ON player_activity_daily(player_uuid, date_epoch_day);");
-
-                stmt.execute("""
-                    CREATE TABLE IF NOT EXISTS collector_health (
-                        recorded_at INTEGER NOT NULL,
-                        queue_depth INTEGER NOT NULL,
-                        dropped_events INTEGER NOT NULL,
-                        flush_ms INTEGER NOT NULL,
-                        db_bytes INTEGER NOT NULL
-                    );
-                """);
-                stmt.execute("CREATE INDEX IF NOT EXISTS idx_health_recorded ON collector_health(recorded_at);");
-
-                stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (1, " + (System.currentTimeMillis() / 1000L) + ");");
+            if (currentVersion < 2) {
+                applySchemaVersion2(stmt);
             }
         }
+    }
+
+    private void applySchemaVersion2(Statement stmt) throws SQLException {
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS player_identity (
+                player_uuid TEXT PRIMARY KEY,
+                last_known_name TEXT NOT NULL,
+                first_seen_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_identity_name ON player_identity(last_known_name);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS player_session (
+                session_id TEXT PRIMARY KEY,
+                player_uuid TEXT NOT NULL,
+                last_known_name TEXT NOT NULL,
+                joined_at INTEGER NOT NULL,
+                left_at INTEGER NOT NULL,
+                online_seconds INTEGER NOT NULL,
+                active_seconds INTEGER NOT NULL,
+                afk_seconds INTEGER NOT NULL
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_session_player ON player_session(player_uuid);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_session_joined ON player_session(joined_at);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS player_activity_5m (
+                bucket_at INTEGER NOT NULL,
+                player_uuid TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                group_owner_uuid TEXT NOT NULL DEFAULT '',
+                active_seconds INTEGER NOT NULL,
+                distance_blocks REAL NOT NULL,
+                breaks INTEGER NOT NULL,
+                places INTEGER NOT NULL,
+                crafts INTEGER NOT NULL,
+                pve_kills INTEGER NOT NULL,
+                pvp_kills INTEGER NOT NULL,
+                deaths INTEGER NOT NULL,
+                jobs_xp REAL NOT NULL,
+                tpa_successes INTEGER NOT NULL,
+                PRIMARY KEY (bucket_at, player_uuid, dimension, group_owner_uuid)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_player ON player_activity_5m(player_uuid, bucket_at);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS spatial_activity_5m (
+                bucket_at INTEGER NOT NULL,
+                dimension TEXT NOT NULL,
+                cell_x INTEGER NOT NULL,
+                cell_z INTEGER NOT NULL,
+                y_band TEXT NOT NULL,
+                group_owner_uuid TEXT NOT NULL DEFAULT '',
+                relation TEXT NOT NULL,
+                active_samples INTEGER NOT NULL,
+                unique_players INTEGER NOT NULL,
+                PRIMARY KEY (bucket_at, dimension, cell_x, cell_z, y_band, group_owner_uuid, relation)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_spatial_bucket ON spatial_activity_5m(bucket_at, dimension);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS detector_activity_5m (
+                bucket_at INTEGER NOT NULL,
+                dimension TEXT NOT NULL,
+                detector_pos_hash TEXT NOT NULL,
+                group_owner_uuid TEXT,
+                member_minutes REAL NOT NULL,
+                visitor_minutes REAL NOT NULL,
+                intrusion_sessions INTEGER NOT NULL,
+                distinct_members INTEGER NOT NULL,
+                distinct_visitors INTEGER NOT NULL,
+                PRIMARY KEY (bucket_at, dimension, detector_pos_hash)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_detector_bucket ON detector_activity_5m(bucket_at, dimension);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS player_activity_daily (
+                date_epoch_day INTEGER NOT NULL,
+                player_uuid TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                group_owner_uuid TEXT NOT NULL DEFAULT '',
+                active_seconds INTEGER NOT NULL,
+                distance_blocks REAL NOT NULL,
+                breaks INTEGER NOT NULL,
+                places INTEGER NOT NULL,
+                crafts INTEGER NOT NULL,
+                pve_kills INTEGER NOT NULL,
+                pvp_kills INTEGER NOT NULL,
+                deaths INTEGER NOT NULL,
+                jobs_xp REAL NOT NULL,
+                tpa_successes INTEGER NOT NULL,
+                PRIMARY KEY (date_epoch_day, player_uuid, dimension, group_owner_uuid)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_daily_player ON player_activity_daily(player_uuid, date_epoch_day);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS collector_health (
+                recorded_at INTEGER NOT NULL,
+                queue_depth INTEGER NOT NULL,
+                dropped_events INTEGER NOT NULL,
+                flush_ms INTEGER NOT NULL,
+                db_bytes INTEGER NOT NULL
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_health_recorded ON collector_health(recorded_at);");
+
+        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (2, " + (System.currentTimeMillis() / 1000L) + ");");
     }
 
     @Override
@@ -250,11 +244,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             ps.executeUpdate();
         }
 
-        // identityの最終確認時刻を更新
-        String updateIdentity = """
-            UPDATE player_identity SET last_seen_at = ? WHERE player_uuid = ?;
-        """;
-        try (PreparedStatement ps = connection.prepareStatement(updateIdentity)) {
+        String idSql = "UPDATE player_identity SET last_seen_at = MAX(last_seen_at, ?) WHERE player_uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(idSql)) {
             ps.setLong(1, r.leftAtEpochSec());
             ps.setString(2, r.playerUuid().toString());
             ps.executeUpdate();
@@ -270,7 +261,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 active_seconds, distance_blocks, breaks, places, crafts,
                 pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(bucket_at, player_uuid, dimension) DO UPDATE SET
+            ON CONFLICT(bucket_at, player_uuid, dimension, group_owner_uuid) DO UPDATE SET
                 active_seconds = active_seconds + excluded.active_seconds,
                 distance_blocks = distance_blocks + excluded.distance_blocks,
                 breaks = breaks + excluded.breaks,
@@ -287,7 +278,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 ps.setLong(1, r.bucketAtEpochSec());
                 ps.setString(2, r.playerUuid().toString());
                 ps.setString(3, r.dimension());
-                ps.setString(4, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : null);
+                ps.setString(4, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : "");
                 ps.setInt(5, r.activeSeconds());
                 ps.setDouble(6, r.distanceBlocks());
                 ps.setInt(7, r.breaks());
@@ -312,7 +303,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 bucket_at, dimension, cell_x, cell_z, y_band,
                 group_owner_uuid, relation, active_samples, unique_players
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(bucket_at, dimension, cell_x, cell_z, y_band, relation) DO UPDATE SET
+            ON CONFLICT(bucket_at, dimension, cell_x, cell_z, y_band, group_owner_uuid, relation) DO UPDATE SET
                 active_samples = active_samples + excluded.active_samples,
                 unique_players = MAX(unique_players, excluded.unique_players);
         """;
@@ -323,7 +314,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 ps.setInt(3, r.cellX());
                 ps.setInt(4, r.cellZ());
                 ps.setString(5, r.yBand().getId());
-                ps.setString(6, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : null);
+                ps.setString(6, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : "");
                 ps.setString(7, r.relation().getId());
                 ps.setInt(8, r.activeSamples());
                 ps.setInt(9, r.uniquePlayers());
@@ -408,8 +399,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 SUM(tpa_successes)
             FROM player_activity_5m
             WHERE bucket_at < ?
-            GROUP BY date_epoch_day, player_uuid, dimension
-            ON CONFLICT(date_epoch_day, player_uuid, dimension) DO UPDATE SET
+            GROUP BY date_epoch_day, player_uuid, dimension, group_owner_uuid
+            ON CONFLICT(date_epoch_day, player_uuid, dimension, group_owner_uuid) DO UPDATE SET
                 active_seconds = excluded.active_seconds,
                 distance_blocks = excluded.distance_blocks,
                 breaks = excluded.breaks,
@@ -500,6 +491,10 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (connection == null || connection.isClosed()) return Optional.empty();
 
         long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        long todayStartEpochSec = (currentEpochSec / 86400L) * 86400L;
+        long startDay = startEpochSec / 86400L;
+        long todayDay = todayStartEpochSec / 86400L;
+
         String name = null;
         long firstSeen = 0L;
         long lastSeen = 0L;
@@ -545,7 +540,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             }
         }
 
-        // 3. Activity 5m (窓期間内)
+        // 3. Activity 5m + Daily ハイブリッド統合クエリ
         int activeDays = 0;
         long breaks = 0L;
         long places = 0L;
@@ -556,21 +551,36 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         double jobsXp = 0.0;
         int tpaSuccesses = 0;
         double distance = 0.0;
-        long activity5mActiveSec = 0L;
+        long hybridActiveSec = 0L;
 
         String actSql = """
             SELECT
-                COUNT(DISTINCT (bucket_at / 86400)),
+                COUNT(DISTINCT date_day),
                 SUM(breaks), SUM(places), SUM(crafts),
                 SUM(pve_kills), SUM(pvp_kills), SUM(deaths),
                 SUM(jobs_xp), SUM(tpa_successes), SUM(distance_blocks),
                 SUM(active_seconds)
-            FROM player_activity_5m
-            WHERE player_uuid = ? AND bucket_at >= ?;
+            FROM (
+                SELECT
+                    (bucket_at / 86400) AS date_day,
+                    breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes, distance_blocks, active_seconds
+                FROM player_activity_5m
+                WHERE player_uuid = ? AND bucket_at >= ?
+                UNION ALL
+                SELECT
+                    date_epoch_day AS date_day,
+                    breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes, distance_blocks, active_seconds
+                FROM player_activity_daily
+                WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ?
+            );
         """;
         try (PreparedStatement ps = connection.prepareStatement(actSql)) {
             ps.setString(1, playerUuid.toString());
-            ps.setLong(2, startEpochSec);
+            ps.setLong(2, todayStartEpochSec);
+            ps.setString(3, playerUuid.toString());
+            ps.setLong(4, startDay);
+            ps.setLong(5, todayDay);
+
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     activeDays = rs.getInt(1);
@@ -583,14 +593,13 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                     jobsXp = rs.getDouble(8);
                     tpaSuccesses = rs.getInt(9);
                     distance = rs.getDouble(10);
-                    activity5mActiveSec = rs.getLong(11);
+                    hybridActiveSec = rs.getLong(11);
                 }
             }
         }
 
-        // セッションが完了していない（ログアウト前）場合でも5mアクティブ秒数を加味
-        if (totalActiveSec == 0 && activity5mActiveSec > 0) {
-            totalActiveSec = activity5mActiveSec;
+        if (totalActiveSec == 0 && hybridActiveSec > 0) {
+            totalActiveSec = hybridActiveSec;
         }
 
         // 4. Primary Dimension & Group
@@ -598,51 +607,192 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         UUID primaryGroup = null;
 
         String dimSql = """
-            SELECT dimension, SUM(active_seconds) as s
-            FROM player_activity_5m
-            WHERE player_uuid = ? AND bucket_at >= ?
-            GROUP BY dimension ORDER BY s DESC LIMIT 1;
+            SELECT dimension, SUM(active_seconds) as total_sec
+            FROM (
+                SELECT dimension, active_seconds FROM player_activity_5m WHERE player_uuid = ? AND bucket_at >= ?
+                UNION ALL
+                SELECT dimension, active_seconds FROM player_activity_daily WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ?
+            )
+            GROUP BY dimension
+            ORDER BY total_sec DESC
+            LIMIT 1;
         """;
         try (PreparedStatement ps = connection.prepareStatement(dimSql)) {
             ps.setString(1, playerUuid.toString());
-            ps.setLong(2, startEpochSec);
+            ps.setLong(2, todayStartEpochSec);
+            ps.setString(3, playerUuid.toString());
+            ps.setLong(4, startDay);
+            ps.setLong(5, todayDay);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getString("dimension") != null) {
-                    primaryDim = rs.getString("dimension");
+                if (rs.next() && rs.getString(1) != null) {
+                    primaryDim = rs.getString(1);
                 }
             }
         }
 
         String grpSql = """
-            SELECT group_owner_uuid, SUM(active_seconds) as s
-            FROM player_activity_5m
-            WHERE player_uuid = ? AND bucket_at >= ? AND group_owner_uuid IS NOT NULL
-            GROUP BY group_owner_uuid ORDER BY s DESC LIMIT 1;
+            SELECT group_owner_uuid, SUM(active_seconds) as total_sec
+            FROM (
+                SELECT group_owner_uuid, active_seconds FROM player_activity_5m WHERE player_uuid = ? AND bucket_at >= ? AND group_owner_uuid != ''
+                UNION ALL
+                SELECT group_owner_uuid, active_seconds FROM player_activity_daily WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ? AND group_owner_uuid != ''
+            )
+            GROUP BY group_owner_uuid
+            ORDER BY total_sec DESC
+            LIMIT 1;
         """;
         try (PreparedStatement ps = connection.prepareStatement(grpSql)) {
             ps.setString(1, playerUuid.toString());
-            ps.setLong(2, startEpochSec);
+            ps.setLong(2, todayStartEpochSec);
+            ps.setString(3, playerUuid.toString());
+            ps.setLong(4, startDay);
+            ps.setLong(5, todayDay);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getString("group_owner_uuid") != null) {
-                    try {
-                        primaryGroup = UUID.fromString(rs.getString("group_owner_uuid"));
-                    } catch (Exception ignored) {
+                if (rs.next()) {
+                    String gStr = rs.getString(1);
+                    if (gStr != null && !gStr.isEmpty()) {
+                        primaryGroup = UUID.fromString(gStr);
                     }
                 }
             }
         }
 
         return Optional.of(new PlayerSummaryDto(
-                playerUuid,
-                name,
-                firstSeen,
-                lastSeen,
-                sessionCount,
-                totalOnlineSec,
-                totalActiveSec,
-                totalAfkSec,
-                avgSessionSec,
-                activeDays,
+                playerUuid, name, firstSeen, lastSeen,
+                sessionCount, totalOnlineSec, totalActiveSec, totalAfkSec, avgSessionSec, activeDays,
+                breaks, places, crafts, pveKills, pvpKills, deaths, jobsXp, tpaSuccesses, distance,
+                primaryDim, primaryGroup
+        ));
+    }
+
+    @Override
+    public synchronized List<PlayerSummaryDto> queryTopActivePlayers(TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        long todayStartEpochSec = (currentEpochSec / 86400L) * 86400L;
+        long startDay = startEpochSec / 86400L;
+        long todayDay = todayStartEpochSec / 86400L;
+
+        String topSql = """
+            SELECT player_uuid, SUM(active_seconds) as total_act
+            FROM (
+                SELECT player_uuid, active_seconds FROM player_activity_5m WHERE bucket_at >= ?
+                UNION ALL
+                SELECT player_uuid, active_seconds FROM player_activity_daily WHERE date_epoch_day >= ? AND date_epoch_day < ?
+            )
+            GROUP BY player_uuid
+            ORDER BY total_act DESC
+            LIMIT ?;
+        """;
+
+        List<UUID> topUuids = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(topSql)) {
+            ps.setLong(1, todayStartEpochSec);
+            ps.setLong(2, startDay);
+            ps.setLong(3, todayDay);
+            ps.setInt(4, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    topUuids.add(UUID.fromString(rs.getString("player_uuid")));
+                }
+            }
+        }
+
+        List<PlayerSummaryDto> result = new ArrayList<>();
+        for (UUID u : topUuids) {
+            queryPlayerSummary(u, window, currentEpochSec).ifPresent(result::add);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized OverviewSummaryDto queryOverviewSummary(TimeWindow window, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return OverviewSummaryDto.empty();
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        long todayStartEpochSec = (currentEpochSec / 86400L) * 86400L;
+        long startDay = startEpochSec / 86400L;
+        long todayDay = todayStartEpochSec / 86400L;
+
+        // 1. セッション集計
+        long totalOnline = 0L;
+        long totalSessionActive = 0L;
+        long totalAfk = 0L;
+
+        String sessSql = "SELECT SUM(online_seconds), SUM(active_seconds), SUM(afk_seconds) FROM player_session WHERE joined_at >= ?";
+        try (PreparedStatement ps = connection.prepareStatement(sessSql)) {
+            ps.setLong(1, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    totalOnline = rs.getLong(1);
+                    totalSessionActive = rs.getLong(2);
+                    totalAfk = rs.getLong(3);
+                }
+            }
+        }
+
+        // 2. 活動総合集約
+        int uniquePlayers = 0;
+        long hybridActiveSec = 0L;
+        long breaks = 0L;
+        long places = 0L;
+        long crafts = 0L;
+        long pveKills = 0L;
+        long pvpKills = 0L;
+        long deaths = 0L;
+        double jobsXp = 0.0;
+        double distance = 0.0;
+
+        String actSql = """
+            SELECT
+                COUNT(DISTINCT player_uuid),
+                SUM(active_seconds),
+                SUM(breaks),
+                SUM(places),
+                SUM(crafts),
+                SUM(pve_kills),
+                SUM(pvp_kills),
+                SUM(deaths),
+                SUM(jobs_xp),
+                SUM(distance_blocks)
+            FROM (
+                SELECT player_uuid, active_seconds, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, distance_blocks
+                FROM player_activity_5m
+                WHERE bucket_at >= ?
+                UNION ALL
+                SELECT player_uuid, active_seconds, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, distance_blocks
+                FROM player_activity_daily
+                WHERE date_epoch_day >= ? AND date_epoch_day < ?
+            );
+        """;
+        try (PreparedStatement ps = connection.prepareStatement(actSql)) {
+            ps.setLong(1, todayStartEpochSec);
+            ps.setLong(2, startDay);
+            ps.setLong(3, todayDay);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    uniquePlayers = rs.getInt(1);
+                    hybridActiveSec = rs.getLong(2);
+                    breaks = rs.getLong(3);
+                    places = rs.getLong(4);
+                    crafts = rs.getLong(5);
+                    pveKills = rs.getLong(6);
+                    pvpKills = rs.getLong(7);
+                    deaths = rs.getLong(8);
+                    jobsXp = rs.getDouble(9);
+                    distance = rs.getDouble(10);
+                }
+            }
+        }
+
+        long finalActiveSec = totalSessionActive > 0 ? totalSessionActive : hybridActiveSec;
+
+        return new OverviewSummaryDto(
+                uniquePlayers,
+                finalActiveSec,
+                totalOnline,
+                totalAfk,
                 breaks,
                 places,
                 crafts,
@@ -650,45 +800,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 pvpKills,
                 deaths,
                 jobsXp,
-                tpaSuccesses,
-                distance,
-                primaryDim,
-                primaryGroup
-        ));
-    }
-
-    @Override
-    public synchronized List<PlayerSummaryDto> queryTopActivePlayers(TimeWindow window, int limit, long currentEpochSec) throws SQLException {
-        List<PlayerSummaryDto> result = new java.util.ArrayList<>();
-        if (connection == null || connection.isClosed()) return result;
-
-        long startEpochSec = window.getStartEpochSec(currentEpochSec);
-        String sql = """
-            SELECT player_uuid, SUM(active_seconds) as s
-            FROM player_activity_5m
-            WHERE bucket_at >= ?
-            GROUP BY player_uuid ORDER BY s DESC LIMIT ?;
-        """;
-
-        List<UUID> topUuids = new java.util.ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setLong(1, startEpochSec);
-            ps.setInt(2, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    try {
-                        topUuids.add(UUID.fromString(rs.getString("player_uuid")));
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-        }
-
-        for (UUID uuid : topUuids) {
-            queryPlayerSummary(uuid, window, currentEpochSec).ifPresent(result::add);
-        }
-
-        return result;
+                distance
+        );
     }
 
     @Override
@@ -703,12 +816,14 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             ps.setString(1, groupOwnerUuid.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    ownerName = rs.getString("last_known_name");
+                    ownerName = rs.getString(1);
+                } else {
+                    ownerName = groupOwnerUuid.toString().substring(0, 8);
                 }
             }
         }
 
-        String sql = """
+        String detSql = """
             SELECT
                 COUNT(DISTINCT detector_pos_hash),
                 SUM(member_minutes),
@@ -720,65 +835,51 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             WHERE group_owner_uuid = ? AND bucket_at >= ?;
         """;
 
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+        try (PreparedStatement ps = connection.prepareStatement(detSql)) {
             ps.setString(1, groupOwnerUuid.toString());
             ps.setLong(2, startEpochSec);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    int detectorCount = rs.getInt(1);
-                    double memberMins = rs.getDouble(2);
-                    double visitorMins = rs.getDouble(3);
-                    int intrusions = rs.getInt(4);
-                    int maxMembers = rs.getInt(5);
-                    int maxVisitors = rs.getInt(6);
-
+                if (rs.next() && rs.getInt(1) > 0) {
                     return Optional.of(new GroupSummaryDto(
                             groupOwnerUuid,
                             ownerName,
-                            detectorCount,
-                            memberMins,
-                            visitorMins,
-                            intrusions,
-                            maxMembers,
-                            maxVisitors
+                            rs.getInt(1),
+                            rs.getDouble(2),
+                            rs.getDouble(3),
+                            rs.getInt(4),
+                            rs.getInt(5),
+                            rs.getInt(6)
                     ));
                 }
             }
         }
 
-        return Optional.of(GroupSummaryDto.empty(groupOwnerUuid, ownerName));
+        return Optional.of(new GroupSummaryDto(groupOwnerUuid, ownerName, 0, 0.0, 0.0, 0, 0, 0));
     }
 
     @Override
     public synchronized List<SpatialHeatmapCellDto> querySpatialHeatmap(String dimension, TimeWindow window, int limit, long currentEpochSec) throws SQLException {
-        List<SpatialHeatmapCellDto> result = new java.util.ArrayList<>();
-        if (connection == null || connection.isClosed()) return result;
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
 
         long startEpochSec = window.getStartEpochSec(currentEpochSec);
         String sql = """
-            SELECT
-                cell_x, cell_z, y_band, group_owner_uuid, relation,
-                SUM(active_samples) as samples, MAX(unique_players) as players
+            SELECT cell_x, cell_z, y_band, group_owner_uuid, relation, SUM(active_samples) as total_samples, MAX(unique_players) as max_players
             FROM spatial_activity_5m
             WHERE dimension = ? AND bucket_at >= ?
             GROUP BY cell_x, cell_z, y_band, group_owner_uuid, relation
-            ORDER BY samples DESC LIMIT ?;
+            ORDER BY total_samples DESC
+            LIMIT ?;
         """;
 
+        List<SpatialHeatmapCellDto> result = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, dimension);
             ps.setLong(2, startEpochSec);
             ps.setInt(3, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    UUID groupOwner = null;
                     String gStr = rs.getString("group_owner_uuid");
-                    if (gStr != null && !gStr.isEmpty()) {
-                        try {
-                            groupOwner = UUID.fromString(gStr);
-                        } catch (Exception ignored) {
-                        }
-                    }
+                    UUID groupOwner = (gStr != null && !gStr.isEmpty()) ? UUID.fromString(gStr) : null;
 
                     result.add(new SpatialHeatmapCellDto(
                             dimension,
@@ -787,21 +888,23 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                             rs.getString("y_band"),
                             groupOwner,
                             rs.getString("relation"),
-                            rs.getInt("samples"),
-                            rs.getInt("players")
+                            rs.getInt("total_samples"),
+                            rs.getInt("max_players")
                     ));
                 }
             }
         }
-
         return result;
     }
 
     @Override
     public synchronized CollectorHealthDto queryCollectorHealth() throws SQLException {
-        if (connection == null || connection.isClosed()) return CollectorHealthDto.empty();
+        if (connection == null || connection.isClosed()) {
+            return CollectorHealthDto.empty();
+        }
 
-        String sql = "SELECT * FROM collector_health ORDER BY recorded_at DESC LIMIT 1;";
+        long dbBytes = getDatabaseSizeBytes();
+        String sql = "SELECT recorded_at, queue_depth, dropped_events, flush_ms FROM collector_health ORDER BY recorded_at DESC LIMIT 1;";
         try (PreparedStatement ps = connection.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             if (rs.next()) {
@@ -810,24 +913,19 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                         rs.getInt("queue_depth"),
                         rs.getLong("dropped_events"),
                         rs.getLong("flush_ms"),
-                        rs.getLong("db_bytes")
+                        dbBytes
                 );
             }
         }
 
-        return new CollectorHealthDto(
-                System.currentTimeMillis() / 1000L,
-                0,
-                0L,
-                0L,
-                getDatabaseSizeBytes()
-        );
+        return new CollectorHealthDto(System.currentTimeMillis() / 1000L, 0, 0L, 0L, dbBytes);
     }
 
     @Override
     public synchronized void close() throws Exception {
         if (connection != null && !connection.isClosed()) {
             connection.close();
+            connection = null;
         }
     }
 }
