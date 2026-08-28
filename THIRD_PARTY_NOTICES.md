@@ -53,6 +53,14 @@ into release JARs. FirstDark Discord RPC is licensed under the MIT License.
 See `META-INF/NOTICE-FIRSTDARK-DISCORD-RPC.txt` for provenance and
 `LICENSES/MIT-FirstDark-Discord-RPC.txt` for the applicable license terms.
 
+## SQLite JDBC Driver
+
+The SQLite JDBC driver (`org.xerial:sqlite-jdbc`) is licensed under the
+Apache License, Version 2.0.
+
+- Source: https://github.com/xerial/sqlite-jdbc
+- License: http://www.apache.org/licenses/LICENSE-2.0
+
 ## Third-party dependencies
 
 Minecraft, NeoForge, TaCZ, FMIC, CIBR, Create and other third-party libraries,

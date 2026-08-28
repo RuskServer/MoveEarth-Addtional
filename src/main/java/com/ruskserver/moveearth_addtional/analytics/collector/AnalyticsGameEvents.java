@@ -11,11 +11,19 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
+import com.ruskserver.moveearth_addtional.analytics.storage.AnalyticsStorageService;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
+
 /**
  * プレイヤー分析用ゲームイベントリスナー
  */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public class AnalyticsGameEvents {
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onServerStarting(ServerStartingEvent event) {
+        AnalyticsStorageService.INSTANCE.start(event.getServer());
+    }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -72,11 +80,18 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerTick(ServerTickEvent.Post event) {
-        AnalyticsCollectorManager.INSTANCE.onServerTick(event.getServer(), event.getServer().overworld().getGameTime());
+        long gameTime = event.getServer().overworld().getGameTime();
+        AnalyticsCollectorManager.INSTANCE.onServerTick(event.getServer(), gameTime);
+
+        // 1マイクラ日（24,000 ticks）ごとに日次集約・保持期間パージを実行
+        if (gameTime % 24000 == 0) {
+            AnalyticsStorageService.INSTANCE.performDailyMaintenance();
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerStopping(ServerStoppingEvent event) {
         AnalyticsCollectorManager.INSTANCE.onServerStopping(event.getServer());
+        AnalyticsStorageService.INSTANCE.stop(5000L); // 5秒タイムアウトでフラッシュ・クローズ
     }
 }

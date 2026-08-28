@@ -137,6 +137,7 @@ tasks.named('processResources', ProcessResources) {
 
 dependencies {
     implementation fileTree(dir: 'lib', include: ['*.jar'])
+    implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
     
     // コンパイル時のみ参照し、ランタイムのモジュール解決競合を防ぐ
     compileOnly files('lib/discord-rpc-1.0.4.jar')

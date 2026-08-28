@@ -1,5 +1,14 @@
 # Unreleased
 
+## Player Analytics (Phase 2: Storage & Aggregation)
+
+- Added SQLite JDBC driver (`org.xerial:sqlite-jdbc:3.46.1.3`) under Apache-2.0 with license notice in `THIRD_PARTY_NOTICES.md`.
+- Implemented `SqliteAnalyticsStorageEngine` operating in SQLite WAL mode (`PRAGMA journal_mode = WAL`, `synchronous = NORMAL`, `busy_timeout = 5000`) for high-throughput ACID persistence under `<world>/moveearth/analytics/analytics.db`.
+- Created schema version 1 migrations for `player_identity`, `player_session`, `player_activity_5m`, `spatial_activity_5m`, `detector_activity_5m`, `player_activity_daily`, and `collector_health`.
+- Implemented `AnalyticsStorageWorker` background daemon thread for periodic non-blocking batch transaction commits and deterministic shutdown flushing with safe interrupt recovery.
+- Implemented daily roll-up aggregation (`aggregateDaily`) from 5-minute buckets into `player_activity_daily` and automated retention purge (`purgeOldRecords`) for 90-day 5-minute data, 365-day daily data, and 365-day session history.
+- Integrated `AnalyticsStorageService` with `ServerStartingEvent`, server tick maintenance (every 24,000 ticks), and `ServerStoppingEvent`.
+
 ## Player Analytics (Phase 1: Telemetry Collection Engine)
 
 - Implemented `AnalyticsCollectorManager` to orchestrate 30-second position sampling distributed across server ticks by player UUID hash, excluding spectators and tagging PvP arena participants.
