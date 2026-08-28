@@ -40,4 +40,10 @@ public final class AnalyticsConfig {
 
     /** 収集処理の非同期キュー上限 */
     public static final int MAX_QUEUE_CAPACITY = 10_000;
+
+    /** Webダッシュボードサーバーの有効化フラグ */
+    public static final boolean WEB_SERVER_ENABLED = true;
+
+    /** Webダッシュボードサーバーのポート番号 */
+    public static final int WEB_SERVER_PORT = 8080;
 }

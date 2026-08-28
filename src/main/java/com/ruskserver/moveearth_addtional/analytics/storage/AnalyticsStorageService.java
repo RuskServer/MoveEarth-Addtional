@@ -38,6 +38,9 @@ public class AnalyticsStorageService {
 
             this.storageWorker = new AnalyticsStorageWorker(engine, AnalyticsEventQueue.INSTANCE);
             this.storageWorker.start();
+
+            // Webダッシュボードサーバーの起動
+            com.ruskserver.moveearth_addtional.analytics.web.AnalyticsWebServer.INSTANCE.start();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -71,6 +74,9 @@ public class AnalyticsStorageService {
      * サーバー停止時の終了処理
      */
     public synchronized void stop(long timeoutMs) {
+        // Webダッシュボードサーバーの停止
+        com.ruskserver.moveearth_addtional.analytics.web.AnalyticsWebServer.INSTANCE.stop();
+
         if (storageWorker != null) {
             storageWorker.stopAndFlush(timeoutMs);
             storageWorker = null;
