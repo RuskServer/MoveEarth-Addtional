@@ -28,7 +28,7 @@
   "message.moveearth_addtional.starterkit.status.eligible": "eligible",
   "message.moveearth_addtional.starterkit.status.ineligible": "ineligible",
   "message.moveearth_addtional.pvp.launcher_forbidden": "Launcher-class weapons cannot be brought into PvP.",
-  "message.moveearth_addtional.pvp.fixed_preset": "Joined PvP. Your inventory will be replaced with the fixed FMIC preset during the match.",
+  "message.moveearth_addtional.pvp.fixed_preset": "Joined PvP. Your inventory will be replaced with the fixed preset during the match.",
   "message.moveearth_addtional.pvp.loadout_joined": "Joined PvP with the %s preset.",
   "message.moveearth_addtional.pvp.loadout_updated": "Changed your PvP preset to %s.",
   "screen.moveearth_addtional.pvp.title": "KOTH LOADOUT SELECT",

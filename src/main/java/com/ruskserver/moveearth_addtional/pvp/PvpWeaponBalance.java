@@ -5,32 +5,33 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.Map;
 
 /**
- * PvP-only body-damage scaling for the selectable FMIC loadouts.
+ * PvP-only body-damage scaling for the selectable TaCZ standard-gun loadouts.
  *
  * <p>The targets assume full Protection IV iron armor, TaCZ Tweaks armor
  * penetration set to zero, a 1.5x raw headshot multiplier, close-range gun
  * damage and 20 health. TTK is measured from the first landed body shot:</p>
  *
  * <pre>
- * RA39   4 hits @ 680 RPM = 264.7 ms
- * EF_SMG 5 hits @ 900 RPM = 266.7 ms
- * EF_SG  3 full-pellet hits @ 400 RPM = 300.0 ms
- * NSR20  3 hits @ 360 RPM = 333.3 ms (precision weapon exception)
- * G45    2 hits @ 300 RPM = 200.0 ms
+ * SCAR-L 5 hits @ 650 RPM = 369.2 ms
+ * MP5A5  6 hits @ 820 RPM = 365.9 ms
+ * AA12   3 full-pellet hits @ 350 RPM = 342.9 ms (cadence exception)
+ * SKS    4 semi-auto hits @ 510 RPM = 352.9 ms
+ * P320   4 hits @ 450 RPM = 400.0 ms
  * </pre>
  *
- * <p>Multipliers preserve each gun's native distance falloff. The shotgun's
- * native 38 damage is already divided across eight projectiles by TaCZ.</p>
+ * <p>Multipliers preserve each gun's native distance falloff. AA12 damage is
+ * divided across ten projectiles by TaCZ. The targets rely on the server's
+ * TaCZ Tweaks configuration forcing armor penetration to zero.</p>
  */
 final class PvpWeaponBalance {
     static final float HEADSHOT_MULTIPLIER = 1.5F;
 
     private static final Map<ResourceLocation, Float> DAMAGE_MULTIPLIERS = Map.of(
-            fmic("ra39"), 18.7F / 8.3F,
-            fmic("ef_smg"), 16.15F / 7.2F,
-            fmic("ef_sg"), 1.0F,
-            fmic("nsr20"), 22.7F / 22.0F,
-            fmic("g45"), 31.6F / 11.4F
+            tacz("scar_l"), 16.15F / 7.5F,
+            tacz("hk_mp5a5"), 14.2F / 6.0F,
+            tacz("aa12"), 41.4F / 30.0F,
+            tacz("sks_tactical"), 18.4F / 11.0F,
+            tacz("p320"), 19.4F / 10.0F
     );
 
     private PvpWeaponBalance() {
@@ -40,7 +41,7 @@ final class PvpWeaponBalance {
         return DAMAGE_MULTIPLIERS.get(gunId);
     }
 
-    private static ResourceLocation fmic(String path) {
-        return ResourceLocation.fromNamespaceAndPath("fmic", path);
+    private static ResourceLocation tacz(String path) {
+        return ResourceLocation.fromNamespaceAndPath("tacz", path);
     }
 }

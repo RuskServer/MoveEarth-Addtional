@@ -162,7 +162,7 @@ public final class PvpMatchManager {
         removeOfflineQueueMembers(server);
         String missingPreset = missingPresetContent();
         if (missingPreset != null) {
-            return rejectStart(server, "FMIC PvPプリセットのデータが見つかりません: " + missingPreset);
+            return rejectStart(server, "PvPプリセットのデータが見つかりません: " + missingPreset);
         }
         rebalanceTeams();
         if (teams.size() < 2 || count(PvpTeam.RED, false) == 0 || count(PvpTeam.BLUE, false) == 0) {
@@ -206,7 +206,7 @@ public final class PvpMatchManager {
         }
         String missingPreset = missingPresetContent();
         if (missingPreset != null) {
-            player.sendSystemMessage(Component.literal("FMIC PvPプリセットのデータが見つかりません: " + missingPreset));
+            player.sendSystemMessage(Component.literal("PvPプリセットのデータが見つかりません: " + missingPreset));
             return false;
         }
 
@@ -720,11 +720,11 @@ public final class PvpMatchManager {
                 if (gun.allowAttachment(gunStack, attachmentStack)) {
                     gun.installAttachment(player.registryAccess(), gunStack, attachmentStack);
                 } else {
-                    Moveearth_addtional.LOGGER.warn("FMIC PvP preset rejected attachment {} for {}",
+                    Moveearth_addtional.LOGGER.warn("PvP preset rejected attachment {} for {}",
                             attachmentId, weapon.gunId());
                 }
             } catch (RuntimeException exception) {
-                Moveearth_addtional.LOGGER.warn("Could not install FMIC PvP attachment {} on {}",
+                Moveearth_addtional.LOGGER.warn("Could not install PvP attachment {} on {}",
                         attachmentId, weapon.gunId(), exception);
             }
         }

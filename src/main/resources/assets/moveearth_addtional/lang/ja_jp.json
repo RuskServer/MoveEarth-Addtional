@@ -28,7 +28,7 @@
   "message.moveearth_addtional.starterkit.status.eligible": "対象",
   "message.moveearth_addtional.starterkit.status.ineligible": "対象外",
   "message.moveearth_addtional.pvp.launcher_forbidden": "ランチャー系武器はPvPへ持ち込めません。",
-  "message.moveearth_addtional.pvp.fixed_preset": "PvPに参加しました。試合中は所持品がFMIC固定プリセットに置き換わります。",
+  "message.moveearth_addtional.pvp.fixed_preset": "PvPに参加しました。試合中は所持品が固定プリセットに置き換わります。",
   "message.moveearth_addtional.pvp.loadout_joined": "%sプリセットでPvPへ参加しました。",
   "message.moveearth_addtional.pvp.loadout_updated": "PvPプリセットを%sへ変更しました。",
   "screen.moveearth_addtional.pvp.title": "KOTH LOADOUT SELECT",

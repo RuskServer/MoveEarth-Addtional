@@ -1,5 +1,23 @@
 # Unreleased
 
+# v2.2
+
+## PvP Loadouts and Combat Balance
+
+- Replaced the FMIC PvP presets with TaCZ standard modern firearms: SCAR-L, MP5A5, AA12, and the semi-auto-only SKS Tactical, with a P320 sidearm for every role.
+- Retuned close-range body-shot damage for full Protection IV iron armor, 20 health, 1.5x headshots, and zero armor penetration. Target TTK is approximately 343-400 ms depending on weapon cadence.
+- Kept standard magazine capacities and installed only compatible sights and lasers; AA12 and SKS Tactical use sights without lasers.
+
+## TPA
+
+- Explicitly declared permission level 0 on the player-facing `/tpa`, `/tpaccept`, `/tpdeny`, and `/tpcancel` command roots, matching `/stats` for hybrid server command-permission compatibility. The previous `/tpacancel` spelling remains as an alias, and `/tpa admin` remains restricted to permission level 2.
+- Added the collision-resistant `/moveearthtpa` command tree with `request`, `accept`, `deny`, `cancel`, and `status` operations, and changed player-facing target arguments to online player names so they do not depend on privileged entity selectors.
+
+## Compatibility
+
+- Updated the mod version to `2.2` while keeping the network protocol at `2.0-jobs1` because no packet schema changed.
+- Kept v2.2 network-compatible with v2.0 and v2.1 clients. Older clients continue to display the previous FMIC preset names, while the v2.2 server authoritatively issues the new TaCZ loadouts.
+
 # v2.1
 
 ## GunPack Distribution and Setup
