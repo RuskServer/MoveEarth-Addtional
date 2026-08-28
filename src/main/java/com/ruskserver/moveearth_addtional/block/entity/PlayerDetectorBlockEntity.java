@@ -247,8 +247,8 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                 return;
             }
 
-            // 所有者の最新ホワイトリストを取得
-            Set<String> whitelist = PlayerWhitelistSavedData.get(serverLevel).getWhitelist(blockEntity.ownerUUID);
+            // 所有者の最新ホワイトリストデータを取得
+            PlayerWhitelistSavedData whitelistData = PlayerWhitelistSavedData.get(serverLevel);
 
             // 周囲100ブロック以内のプレイヤーをスキャン
             double range = DETECTION_RANGE;
@@ -261,7 +261,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     String targetName = player.getScoreboardName();
 
                     // 所有者およびホワイトリストに入っているプレイヤーは除外
-                    if (player.getUUID().equals(blockEntity.ownerUUID) || whitelist.contains(targetName)) {
+                    if (player.getUUID().equals(blockEntity.ownerUUID) || whitelistData.isWhitelisted(blockEntity.ownerUUID, player.getUUID())) {
                         blockEntity.sendGlowingPacket(player, false); // 発光を解除
                         continue;
                     }
@@ -271,8 +271,10 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     String warningMsg = String.format("【警告】侵入者を検知しました！ プレイヤー: %s (距離: %.1fm)", targetName, dist);
                     Component chatMessage = Component.literal(warningMsg);
 
-                    Set<String> alertRecipients = new HashSet<>(whitelist);
-                    alertRecipients.add(blockEntity.ownerName);
+                    Set<String> alertRecipients = new HashSet<>(whitelistData.getMemberNamesForDisplay(blockEntity.ownerUUID));
+                    if (blockEntity.ownerName != null) {
+                        alertRecipients.add(blockEntity.ownerName);
+                    }
 
                     for (ServerPlayer onlinePlayer : serverLevel.getServer().getPlayerList().getPlayers()) {
                         if (alertRecipients.contains(onlinePlayer.getScoreboardName())) {

@@ -85,8 +85,7 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
                     if (player instanceof ServerPlayer serverPlayer) {
                         // 所有者のホワイトリストを取得
                         ServerLevel serverLevel = (ServerLevel) level;
-                        Set<String> whitelistSet = PlayerWhitelistSavedData.get(serverLevel).getWhitelist(player.getUUID());
-                        List<String> whitelist = new ArrayList<>(whitelistSet);
+                        List<String> whitelist = PlayerWhitelistSavedData.get(serverLevel).getMemberNamesForDisplay(player.getUUID());
 
                         // 現在オンラインのプレイヤー一覧を取得
                         List<String> onlinePlayers = new ArrayList<>();

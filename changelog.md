@@ -1,5 +1,13 @@
 # Unreleased
 
+## Player Analytics (Phase 0: Identity & Group Foundation)
+
+- Migrated `PlayerWhitelistSavedData` from player names to UUID-based storage unified in the overworld `SavedData`, ensuring consistent group membership across all dimensions.
+- Added legacy NBT backwards compatibility for loading existing string-based whitelists, retaining unresolvable names as unresolved entries without data loss, and attempting automatic resolution via profile cache on player login.
+- Added pure Java `WhitelistRegistry` for isolated in-memory operations and unit testing.
+- Added `AnalyticsConfig`, `ActivityCategory`, and `PlayerActivityTracker` to manage 30s sampling intervals, 5m aggregation windows, 32x32 spatial cells, and 5-minute AFK thresholds (movement threshold: 2.0 blocks).
+- Added `DetectorGroupService` and `GroupRelation` enum (`MEMBER`, `OUTSIDER`, `WILDERNESS`) for resolving player affiliations to detector block owner groups and territory boundaries without forcing chunk loads.
+
 ## Jobs Compatibility
 
 - Added optional Farmer's Delight 1.3.3 support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.

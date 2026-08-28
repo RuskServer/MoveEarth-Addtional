@@ -54,18 +54,22 @@ public record C2S_UpdateWhitelistPacket(String playerName, boolean isAdd) implem
                 }
 
                 if (isAdd) {
-                    if (data.getWhitelist(player.getUUID()).size() >= MAX_WHITELIST_SIZE
-                            && !data.getWhitelist(player.getUUID()).contains(playerName)) {
+                    if (data.getMemberNamesForDisplay(player.getUUID()).size() >= MAX_WHITELIST_SIZE
+                            && !data.getMemberNamesForDisplay(player.getUUID()).contains(playerName)) {
                         return;
                     }
-                    data.addToWhitelist(player.getUUID(), playerName);
+                    ServerPlayer targetPlayer = level.getServer().getPlayerList().getPlayerByName(playerName);
+                    if (targetPlayer != null) {
+                        data.addToWhitelist(player.getUUID(), targetPlayer.getUUID(), targetPlayer.getScoreboardName());
+                    } else {
+                        data.addByNameFallback(player.getUUID(), playerName, null);
+                    }
                 } else {
-                    data.removeFromWhitelist(player.getUUID(), playerName);
+                    data.removeFromWhitelistByName(player.getUUID(), playerName);
                 }
 
-                // 更新された最新のホワイトリストとオンラインプレイヤー一覧を返信する
-                Set<String> whitelistSet = data.getWhitelist(player.getUUID());
-                List<String> whitelist = new ArrayList<>(whitelistSet);
+                // 更新された最新のホワイトリスト（表示名）とオンラインプレイヤー一覧を返信する
+                List<String> whitelist = data.getMemberNamesForDisplay(player.getUUID());
 
                 List<String> onlinePlayers = new ArrayList<>();
                 for (ServerPlayer onlinePlayer : level.getServer().getPlayerList().getPlayers()) {

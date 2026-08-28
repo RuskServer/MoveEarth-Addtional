@@ -41,8 +41,7 @@ public final class DetectorTeleportAccess {
         if (host.getUUID().equals(detector.getOwnerUUID())) {
             return true;
         }
-        Set<String> whitelist = whitelists.getWhitelist(detector.getOwnerUUID());
-        return whitelist.contains(host.getScoreboardName());
+        return whitelists.isWhitelisted(detector.getOwnerUUID(), host.getUUID());
     }
 
     public record Access(ServerLevel level, BlockPos detectorPos) {
