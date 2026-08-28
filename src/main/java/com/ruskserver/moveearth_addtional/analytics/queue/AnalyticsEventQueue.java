@@ -118,6 +118,7 @@ public class AnalyticsEventQueue {
     /**
      * イベントをキューへ投入（サーバースレッドをブロックしない非ブロッキング処理）
      * 負荷逼迫時（容量の90%以上）はLOW優先度の空間イベントを能動的に破棄して重要イベントを保護
+     * キュー満杯時にもHIGH優先度イベント（セッション開始・終了等）は既存要素を追い出して確実に格納
      *
      * @return 正常にキューへ追加された場合は true、破棄された場合は false
      */
@@ -132,8 +133,19 @@ public class AnalyticsEventQueue {
 
         boolean offered = queue.offer(event);
         if (!offered) {
-            // キューが満杯の場合は破棄し、欠損件数を記録
-            droppedEvents.incrementAndGet();
+            // キュー満杯時: HIGH優先度イベントなら既存の要素を1件追い出してスロットを確保
+            if (event.getPriority() == EventPriority.HIGH) {
+                AnalyticsEvent evicted = queue.poll();
+                if (evicted != null) {
+                    droppedEvents.incrementAndGet(); // 追い出された要素をドロップカウント
+                    offered = queue.offer(event);
+                }
+            }
+
+            if (!offered) {
+                // それでも入らなかった場合、またはLOW/NORMALイベントは破棄
+                droppedEvents.incrementAndGet();
+            }
         }
         return offered;
     }

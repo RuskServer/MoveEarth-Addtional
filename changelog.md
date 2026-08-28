@@ -1,15 +1,17 @@
 # Unreleased
 
-## Player Analytics (Phase 4: Visualization, Web Dashboard & Critical Hardening)
+## Player Analytics (Phase 4: Visualization, Web Dashboard & Comprehensive Hardening)
 
-- **Security & Token Authentication**: Restricted `AnalyticsWebServer` binding to `127.0.0.1` (loopback only), enforced token authentication (`Authorization: Bearer <token>` / `?token=<token>`) for all REST API endpoints and file exports, restricted CORS to loopback origins, and added `/analytics token [regenerate]` management commands.
-- **Server Overview KPI Endpoint**: Added `/api/overview` endpoint and `OverviewSummaryDto` aggregating true server-wide unique players, active time, block breaks/places, jobs XP, and combat statistics via hybrid multi-table queries.
-- **Dimensional Activity Attribution**: Refactored in-memory bucket accumulators to partition by `(playerUuid, dimension, groupOwnerUuid)` ensuring cross-dimension transitions correctly attribute mining, jobs, and movement to each world.
-- **Hybrid Multi-Tier Query Engine**: Integrated `player_activity_5m` (realtime/intra-day) with `player_activity_daily` (historical) using non-duplicative `UNION ALL` queries to preserve complete 365-day `all_time` statistics even after 90-day 5m purging.
-- **Multi-Dimension Whitelist Migration**: Added automatic startup scanning and merging of legacy `player_whitelist.dat` files across all server dimensions into the overworld canonical storage.
-- **Async Maintenance & Health Telemetry**: Offloaded 24,000-tick daily aggregation and retention purging to `AnalyticsStorageWorker` background intervals, eliminating tick lag on the server thread, and implemented 60-second automatic `HealthMetricEvent` persistence.
-- **Distance & Spatial Group Key Fixes**: Fixed distance measurement tracking via `updatePositionAndGetDistance`, upgraded SQLite schema to Version 2 including `group_owner_uuid` in `spatial_activity_5m` primary keys, and implemented dynamic priority-based queue eviction under high load.
-- **Server Thread Safety**: Enforced server-thread dispatch (`source.getServer().execute(...)`) for all asynchronous command response rendering in `AnalyticsCommand`.
+- **Safe SQLite Table Migration (v1 -> v2)**: Implemented full table rebuild migration (`ALTER TABLE ... RENAME TO _old`, create table with 4-column composite primary key, `INSERT INTO ... SELECT ... FROM _old`, and `DROP TABLE _old`) ensuring seamless schema upgrades from v1 without unique constraint or column errors.
+- **Worker Error Recovery**: Wrapped batch writes in `try-finally` blocks within `AnalyticsStorageWorker` to guarantee `batch.clear()` on failures, preventing unbounded memory growth and retry loops.
+- **Realtime Online Activity Reflection**: Unified active time, block breaks/places, jobs XP, and distance metrics to pull from `player_activity_5m` and `player_activity_daily`, ensuring online players' active time is immediately visible in player summaries and overview KPIs without waiting for logout session flushes.
+- **Strict Active Player Definition (>= 10 Minutes)**: Updated `activeDays` and `activeUniquePlayers` aggregation queries to require `HAVING SUM(active_seconds) >= 600` (10 minutes) per day/window, filtering out brief transient visits and adhering to the open-day active specification.
+- **Precise Window Boundary Slicing**: Refined 7d/30d queries so historical tables only contribute complete past days (`date_epoch_day >= startDay + 1 AND date_epoch_day < todayDay`), while boundary days and current intra-day records are sliced from `player_activity_5m` at exact second granularity to prevent up to 24-hour overcounting.
+- **Comprehensive Group Summaries**: Added `queryAllGroupSummaries` and `/api/groups` aggregation directly querying `detector_activity_5m` to display all active detector groups regardless of top-player rankings.
+- **Teleportation & Dimension Distance Exclusion**: Added dimension tracking and 100-meter single-sample jump threshold in `PlayerActivityTracker` to exclude Nether/End portals, TPA, respawns, and teleports from walking distance metrics.
+- **High-Priority Queue Eviction Protection**: Enhanced `AnalyticsEventQueue` to actively evict and drop `LOW/NORMAL` events when full to guarantee slots for `HIGH`-priority session start/end events.
+- **Rate Limiting & Parameter Clamping**: Implemented sliding-window rate limiting (20 req/sec per IP/token) returning HTTP 429 and clamped API `limit` parameters to `[1, 100]` to prevent DB worker starvation.
+- **Dimension-Aware Whitelist Migration**: Replaced static migration flags with per-dimension tracking in `PlayerWhitelistSavedData`, ensuring failed dimensions log errors and retry safely on subsequent server loads.
 
 ## Player Analytics (Phase 3: Aggregation & Query Engine)
 

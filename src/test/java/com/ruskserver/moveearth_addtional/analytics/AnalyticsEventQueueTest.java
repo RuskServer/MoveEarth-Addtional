@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,26 +42,56 @@ public class AnalyticsEventQueueTest {
     }
 
     @Test
-    public void testQueueOverflowDropsAndCounts() {
-        AnalyticsEventQueue.SessionStartEvent event1 = new AnalyticsEventQueue.SessionStartEvent(
-                UUID.randomUUID(), UUID.randomUUID(), "Player1", 1000L);
-        AnalyticsEventQueue.SessionStartEvent event2 = new AnalyticsEventQueue.SessionStartEvent(
-                UUID.randomUUID(), UUID.randomUUID(), "Player2", 1001L);
-        AnalyticsEventQueue.SessionStartEvent event3 = new AnalyticsEventQueue.SessionStartEvent(
-                UUID.randomUUID(), UUID.randomUUID(), "Player3", 1002L);
-        AnalyticsEventQueue.SessionStartEvent event4 = new AnalyticsEventQueue.SessionStartEvent(
-                UUID.randomUUID(), UUID.randomUUID(), "Player4", 1003L);
+    public void testLowPriorityDroppedAtHighCapacity() {
+        // 容量3のキューで2件入ると 66% >= 90% (3 * 0.9 = 2.7 -> size >= 2.7 つまり3でLOWは破棄)
+        AnalyticsEventQueue q10 = new AnalyticsEventQueue(10);
+        // 9件NORMALを投入 (90%)
+        for (int i = 0; i < 9; i++) {
+            assertTrue(q10.enqueue(new AnalyticsEventQueue.PlayerActivityFlushEvent(Collections.emptyList())));
+        }
+        assertEquals(9, q10.size());
+        assertEquals(0, q10.getDroppedEventsCount());
 
-        assertTrue(queue.enqueue(event1));
-        assertTrue(queue.enqueue(event2));
-        assertTrue(queue.enqueue(event3));
+        // 10件目にLOW（空間サンプル）を投入すると、90%以上のため破棄される
+        assertFalse(q10.enqueue(new AnalyticsEventQueue.SpatialActivityFlushEvent(Collections.emptyList())));
+        assertEquals(9, q10.size());
+        assertEquals(1, q10.getDroppedEventsCount());
+
+        // NORMALは投入できる
+        assertTrue(q10.enqueue(new AnalyticsEventQueue.PlayerActivityFlushEvent(Collections.emptyList())));
+        assertEquals(10, q10.size());
+    }
+
+    @Test
+    public void testHighPriorityEvictsWhenFull() {
+        // NORMALイベントで満杯にする
+        AnalyticsEventQueue.PlayerActivityFlushEvent normal1 = new AnalyticsEventQueue.PlayerActivityFlushEvent(Collections.emptyList());
+        AnalyticsEventQueue.PlayerActivityFlushEvent normal2 = new AnalyticsEventQueue.PlayerActivityFlushEvent(Collections.emptyList());
+        AnalyticsEventQueue.PlayerActivityFlushEvent normal3 = new AnalyticsEventQueue.PlayerActivityFlushEvent(Collections.emptyList());
+
+        assertTrue(queue.enqueue(normal1));
+        assertTrue(queue.enqueue(normal2));
+        assertTrue(queue.enqueue(normal3));
         assertEquals(3, queue.size());
         assertEquals(0, queue.getDroppedEventsCount());
 
-        // 4件目は上限超過で破棄される
-        assertFalse(queue.enqueue(event4));
+        // 満杯時にNORMALを投入すると破棄される
+        AnalyticsEventQueue.PlayerActivityFlushEvent normal4 = new AnalyticsEventQueue.PlayerActivityFlushEvent(Collections.emptyList());
+        assertFalse(queue.enqueue(normal4));
         assertEquals(3, queue.size());
         assertEquals(1, queue.getDroppedEventsCount());
+
+        // 満杯時にHIGH（セッション開始）を投入すると、先頭のnormal1が追い出されて格納される
+        AnalyticsEventQueue.SessionStartEvent highEvent = new AnalyticsEventQueue.SessionStartEvent(
+                UUID.randomUUID(), UUID.randomUUID(), "ImportantPlayer", 2000L);
+        assertTrue(queue.enqueue(highEvent));
+        assertEquals(3, queue.size());
+        assertEquals(2, queue.getDroppedEventsCount()); // normal4と追い出されたnormal1で合計2
+
+        // キューの中身は normal2, normal3, highEvent
+        assertEquals(normal2, queue.poll());
+        assertEquals(normal3, queue.poll());
+        assertEquals(highEvent, queue.poll());
     }
 
     @Test

@@ -51,10 +51,13 @@ public class AnalyticsStorageWorker implements Runnable {
 
                 if (count > 0) {
                     long startMs = System.currentTimeMillis();
-                    storageEngine.writeBatch(batch);
-                    lastFlushDurationMs = System.currentTimeMillis() - startMs;
-                    lastFlushTimeMs = System.currentTimeMillis();
-                    batch.clear();
+                    try {
+                        storageEngine.writeBatch(batch);
+                        lastFlushDurationMs = System.currentTimeMillis() - startMs;
+                        lastFlushTimeMs = System.currentTimeMillis();
+                    } finally {
+                        batch.clear();
+                    }
                 } else {
                     Thread.sleep(100);
                 }

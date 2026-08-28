@@ -147,6 +147,26 @@ public class AnalyticsQueryService {
     }
 
     /**
+     * 全検知グループ（拠点）のサマリー一覧を非同期で取得
+     */
+    public CompletableFuture<List<GroupSummaryDto>> getAllGroupSummariesAsync(TimeWindow window) {
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) {
+                return Collections.emptyList();
+            }
+
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                return engine.queryAllGroupSummaries(window, nowSec);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    /**
      * 空間ヒートマップ集計を非同期で取得
      */
     public CompletableFuture<List<SpatialHeatmapCellDto>> getSpatialHeatmapAsync(String dimension, TimeWindow window, int limit) {

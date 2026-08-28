@@ -20,11 +20,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * プレイヤー分析WebダッシュボードおよびREST APIを提供する軽量内蔵HTTPサーバー
- * (127.0.0.1限定バインド・トークン認証・CORS制限)
+ * (127.0.0.1限定バインド・トークン認証・レート制限・CORS制限)
  */
 public class AnalyticsWebServer {
 
@@ -32,6 +34,24 @@ public class AnalyticsWebServer {
 
     private static final Gson GSON = new GsonBuilder().create();
     private HttpServer server;
+
+    // --- レート制限（1秒間に最大20リクエスト） ---
+    private static final int MAX_REQUESTS_PER_SECOND = 20;
+    private static final Map<String, RateLimitTracker> rateLimitMap = new ConcurrentHashMap<>();
+
+    private static class RateLimitTracker {
+        long currentSecond = 0L;
+        AtomicInteger count = new AtomicInteger(0);
+
+        synchronized boolean allowRequest(long nowSec) {
+            if (nowSec != currentSecond) {
+                currentSecond = nowSec;
+                count.set(1);
+                return true;
+            }
+            return count.incrementAndGet() <= MAX_REQUESTS_PER_SECOND;
+        }
+    }
 
     public AnalyticsWebServer() {
     }
@@ -75,6 +95,7 @@ public class AnalyticsWebServer {
         if (server != null) {
             server.stop(1);
             server = null;
+            rateLimitMap.clear();
             System.out.println("[MoveEarth] プレイヤー分析Webダッシュボードを停止しました。");
         }
     }
@@ -83,9 +104,20 @@ public class AnalyticsWebServer {
         return server != null;
     }
 
-    // --- 認証チェック ---
+    // --- 認証およびレート制限チェック ---
 
-    private static boolean checkAuth(HttpExchange exchange) throws IOException {
+    private static boolean checkAuthAndRateLimit(HttpExchange exchange) throws IOException {
+        String clientKey = exchange.getRemoteAddress() != null
+                ? exchange.getRemoteAddress().getAddress().getHostAddress()
+                : "unknown";
+
+        long nowSec = System.currentTimeMillis() / 1000L;
+        RateLimitTracker tracker = rateLimitMap.computeIfAbsent(clientKey, k -> new RateLimitTracker());
+        if (!tracker.allowRequest(nowSec)) {
+            sendResponse(exchange, 429, "{\"error\":\"Too Many Requests. Rate limit exceeded (20 req/sec).\"}", "application/json; charset=UTF-8");
+            return false;
+        }
+
         if (!AnalyticsConfig.WEB_SERVER_REQUIRE_AUTH) {
             return true;
         }
@@ -146,7 +178,7 @@ public class AnalyticsWebServer {
     private static class OverviewApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             TimeWindow window = parseWindow(params.get("window"));
@@ -163,11 +195,11 @@ public class AnalyticsWebServer {
     private static class PlayersApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             TimeWindow window = parseWindow(params.get("window"));
-            int limit = parseInt(params.get("limit"), 100);
+            int limit = clampInt(params.get("limit"), 100, 1, 100);
 
             try {
                 var players = AnalyticsQueryService.INSTANCE.getTopActivePlayersAsync(window, limit).get();
@@ -182,7 +214,7 @@ public class AnalyticsWebServer {
     private static class PlayerDetailApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String uuidStr = params.get("uuid");
@@ -210,23 +242,13 @@ public class AnalyticsWebServer {
     private static class GroupsApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             TimeWindow window = parseWindow(params.get("window"));
 
             try {
-                var topPlayers = AnalyticsQueryService.INSTANCE.getTopActivePlayersAsync(window, 50).get();
-                List<Object> groups = new ArrayList<>();
-                Set<UUID> seenOwners = new HashSet<>();
-
-                for (var p : topPlayers) {
-                    if (p.primaryGroupOwnerUuid() != null && seenOwners.add(p.primaryGroupOwnerUuid())) {
-                        AnalyticsQueryService.INSTANCE.getGroupSummaryAsync(p.primaryGroupOwnerUuid(), window).get()
-                                .ifPresent(groups::add);
-                    }
-                }
-
+                var groups = AnalyticsQueryService.INSTANCE.getAllGroupSummariesAsync(window).get();
                 sendResponse(exchange, 200, GSON.toJson(groups), "application/json; charset=UTF-8");
             } catch (Exception e) {
                 sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}", "application/json; charset=UTF-8");
@@ -237,12 +259,12 @@ public class AnalyticsWebServer {
     private static class HeatmapApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String dim = params.getOrDefault("dimension", "minecraft:overworld");
             TimeWindow window = parseWindow(params.get("window"));
-            int limit = parseInt(params.get("limit"), 50);
+            int limit = clampInt(params.get("limit"), 50, 1, 100);
 
             try {
                 var cells = AnalyticsQueryService.INSTANCE.getSpatialHeatmapAsync(dim, window, limit).get();
@@ -256,7 +278,7 @@ public class AnalyticsWebServer {
     private static class HealthApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             try {
                 var health = AnalyticsQueryService.INSTANCE.getCollectorHealthAsync().get();
@@ -270,7 +292,7 @@ public class AnalyticsWebServer {
     private static class ExportApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!checkAuth(exchange)) return;
+            if (!checkAuthAndRateLimit(exchange)) return;
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String formatStr = params.getOrDefault("format", "csv").toLowerCase();
@@ -344,10 +366,11 @@ public class AnalyticsWebServer {
         };
     }
 
-    private static int parseInt(String val, int def) {
+    private static int clampInt(String val, int def, int min, int max) {
         if (val == null) return def;
         try {
-            return Integer.parseInt(val);
+            int parsed = Integer.parseInt(val);
+            return Math.max(min, Math.min(max, parsed));
         } catch (NumberFormatException e) {
             return def;
         }

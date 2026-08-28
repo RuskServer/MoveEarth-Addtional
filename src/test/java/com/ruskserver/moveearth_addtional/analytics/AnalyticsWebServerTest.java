@@ -122,4 +122,47 @@ public class AnalyticsWebServerTest {
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("queueDepth"));
     }
+
+    @Test
+    public void testLimitClampingAndGroupsApi() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        // 負数や巨大値のlimitを指定しても正常に200が返る
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:8080/api/players?window=7d&limit=-1&token=" + AnalyticsConfig.getAuthToken()))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+
+        // Groups API
+        HttpRequest groupReq = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:8080/api/groups?window=7d&token=" + AnalyticsConfig.getAuthToken()))
+                .GET()
+                .build();
+        HttpResponse<String> groupResp = client.send(groupReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, groupResp.statusCode());
+    }
+
+    @Test
+    public void testRateLimitExceeded() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        String token = AnalyticsConfig.getAuthToken();
+
+        boolean got429 = false;
+        // 25回連続リクエスト
+        for (int i = 0; i < 25; i++) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:8080/api/health?token=" + token))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 429) {
+                got429 = true;
+                assertTrue(response.body().contains("Too Many Requests"));
+                break;
+            }
+        }
+        assertTrue(got429, "20 req/sec を超えた場合に 429 Too Many Requests が返却されるべき");
+    }
 }

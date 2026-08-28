@@ -111,7 +111,7 @@ public class AnalyticsQueryServiceTest {
         assertEquals("PlayerOne", dto.lastKnownName());
         assertEquals(1, dto.sessionCount());
         assertEquals(6000, dto.totalOnlineSeconds());
-        assertEquals(4500, dto.totalActiveSeconds());
+        assertEquals(550, dto.totalActiveSeconds()); // 300 + 250 (5mバケット集計)
         assertEquals(1500, dto.totalAfkSeconds());
         assertEquals(35, dto.totalBreaks()); // 20 + 15
         assertEquals(15, dto.totalPlaces()); // 10 + 5
@@ -160,7 +160,7 @@ public class AnalyticsQueryServiceTest {
         assertEquals("minecraft:overworld", cell.dimension());
         assertEquals(10, cell.cellX());
         assertEquals(20, cell.cellZ());
-        assertEquals(YBand.SURFACE.getId(), cell.yBand());
+        assertEquals(YBand.SURFACE.name(), cell.yBand());
         assertEquals(groupOwnerUuid, cell.groupOwnerUuid());
         assertEquals(80, cell.totalActiveSamples()); // 50 + 30
         assertEquals(3, cell.maxUniquePlayers());
@@ -185,9 +185,8 @@ public class AnalyticsQueryServiceTest {
         Optional<PlayerSummaryDto> pResult = queryService.getPlayerSummaryAsync(unknownUuid, TimeWindow.DAYS_7).get();
         assertTrue(pResult.isEmpty());
 
-        // 存在しないグループ (空DTOが返る)
+        // 存在しないグループ (存在しない場合は空Option)
         Optional<GroupSummaryDto> gResult = queryService.getGroupSummaryAsync(unknownUuid, TimeWindow.DAYS_7).get();
-        assertTrue(gResult.isPresent());
-        assertEquals(0, gResult.get().detectorCount());
+        assertTrue(gResult.isEmpty());
     }
 }

@@ -153,6 +153,8 @@ public class PlayerWhitelistSavedData extends SavedData {
         this.setDirty();
     }
 
+    private final Set<String> migratedDimensions = new HashSet<>();
+
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         ListTag list = new ListTag();
@@ -189,6 +191,14 @@ public class PlayerWhitelistSavedData extends SavedData {
             list.add(entryTag);
         }
         tag.put("PlayerWhitelists", list);
+
+        // 移行済みディメンション記録
+        ListTag migList = new ListTag();
+        for (String dim : migratedDimensions) {
+            migList.add(StringTag.valueOf(dim));
+        }
+        tag.put("MigratedDimensions", migList);
+
         return tag;
     }
 
@@ -238,6 +248,14 @@ public class PlayerWhitelistSavedData extends SavedData {
                 }
             }
         }
+
+        if (tag.contains("MigratedDimensions", Tag.TAG_LIST)) {
+            ListTag migList = tag.getList("MigratedDimensions", Tag.TAG_STRING);
+            for (int i = 0; i < migList.size(); i++) {
+                data.migratedDimensions.add(migList.getString(i));
+            }
+        }
+
         return data;
     }
 
@@ -247,8 +265,6 @@ public class PlayerWhitelistSavedData extends SavedData {
     public static PlayerWhitelistSavedData get(ServerLevel level) {
         return get(level.getServer());
     }
-
-    private static volatile boolean migratedFromOtherDimensions = false;
 
     /**
      * MinecraftServerインスタンスから共通のPlayerWhitelistSavedDataを取得
@@ -264,22 +280,19 @@ public class PlayerWhitelistSavedData extends SavedData {
                 "player_whitelist"
         );
 
-        if (!migratedFromOtherDimensions) {
-            synchronized (PlayerWhitelistSavedData.class) {
-                if (!migratedFromOtherDimensions) {
-                    migrateFromOtherDimensions(server, overworldData);
-                    migratedFromOtherDimensions = true;
-                }
-            }
-        }
-
+        overworldData.migrateFromOtherDimensions(server);
         return overworldData;
     }
 
-    private static void migrateFromOtherDimensions(MinecraftServer server, PlayerWhitelistSavedData overworldData) {
+    private void migrateFromOtherDimensions(MinecraftServer server) {
         for (ServerLevel level : server.getAllLevels()) {
             if (level == server.overworld()) {
                 continue;
+            }
+
+            String dimKey = level.dimension().location().toString();
+            if (migratedDimensions.contains(dimKey)) {
+                continue; // 移行済み
             }
 
             try {
@@ -296,20 +309,23 @@ public class PlayerWhitelistSavedData extends SavedData {
                     boolean merged = false;
                     for (UUID owner : otherData.getRegistry().getAllOwners()) {
                         for (Map.Entry<UUID, String> memberEntry : otherData.getMembers(owner).entrySet()) {
-                            overworldData.addToWhitelist(owner, memberEntry.getKey(), memberEntry.getValue());
+                            this.addToWhitelist(owner, memberEntry.getKey(), memberEntry.getValue());
                             merged = true;
                         }
                         for (String unresolved : otherData.getUnresolvedNames(owner)) {
-                            overworldData.addByNameFallback(owner, unresolved, null);
+                            this.addByNameFallback(owner, unresolved, null);
                             merged = true;
                         }
                     }
                     if (merged) {
-                        overworldData.setDirty();
+                        this.setDirty();
                     }
                 }
+                // 成功したディメンションを記録
+                migratedDimensions.add(dimKey);
+                this.setDirty();
             } catch (Exception e) {
-                // 他ディメンションにデータが存在しない場合は通常スキップ
+                System.err.println("[MoveEarth] ディメンション " + dimKey + " からのホワイトリスト移行に失敗しました (次回再試行): " + e.getMessage());
             }
         }
     }

@@ -11,28 +11,32 @@ import java.sql.*;
 import java.util.*;
 
 /**
- * SQLite WALモードを用いた高スループット・ACID保証の分析ストレージエンジン
+ * SQLite WALモードによるプレイヤー分析データストレージエンジン
  */
 public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
 
+    private Path dbPath;
     private Connection connection;
-    private Path dbFilePath;
 
     public SqliteAnalyticsStorageEngine() {
     }
 
     @Override
-    public synchronized void initialize(Path dbPath) throws Exception {
-        this.dbFilePath = dbPath;
-        if (dbPath.getParent() != null) {
-            Files.createDirectories(dbPath.getParent());
+    public synchronized void initialize(Path dbPath) throws SQLException {
+        this.dbPath = dbPath;
+        try {
+            if (dbPath.getParent() != null) {
+                Files.createDirectories(dbPath.getParent());
+            }
+        } catch (Exception e) {
+            throw new SQLException("Failed to create parent directories for analytics database", e);
         }
 
-        String url = "jdbc:sqlite:" + dbPath.toAbsolutePath().toString().replace("\\", "/");
-        connection = DriverManager.getConnection(url);
+        String jdbcUrl = "jdbc:sqlite:" + dbPath.toAbsolutePath();
+        this.connection = DriverManager.getConnection(jdbcUrl);
 
         try (Statement stmt = connection.createStatement()) {
-            // WALモード & パフォーマンスPRAGMA設定
+            // WALモードおよび高スループット設定
             stmt.execute("PRAGMA journal_mode = WAL;");
             stmt.execute("PRAGMA synchronous = NORMAL;");
             stmt.execute("PRAGMA busy_timeout = 5000;");
@@ -52,8 +56,13 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 }
             }
 
-            if (currentVersion < 2) {
+            if (currentVersion == 0) {
                 applySchemaVersion2(stmt);
+                stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (2, " + (System.currentTimeMillis() / 1000L) + ");");
+            } else if (currentVersion == 1) {
+                applySchemaVersion2(stmt);
+                migrateV1ToV2(stmt);
+                stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (2, " + (System.currentTimeMillis() / 1000L) + ");");
             }
         }
     }
@@ -156,110 +165,151 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 PRIMARY KEY (date_epoch_day, player_uuid, dimension, group_owner_uuid)
             );
         """);
-        stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_daily_player ON player_activity_daily(player_uuid, date_epoch_day);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_daily_player ON player_activity_daily(player_uuid, date_epoch_day);");
 
         stmt.execute("""
             CREATE TABLE IF NOT EXISTS collector_health (
                 recorded_at INTEGER NOT NULL,
                 queue_depth INTEGER NOT NULL,
                 dropped_events INTEGER NOT NULL,
-                flush_ms INTEGER NOT NULL,
-                db_bytes INTEGER NOT NULL
+                last_flush_duration_ms INTEGER NOT NULL,
+                database_size_bytes INTEGER NOT NULL,
+                PRIMARY KEY (recorded_at)
             );
         """);
-        stmt.execute("CREATE INDEX IF NOT EXISTS idx_health_recorded ON collector_health(recorded_at);");
+    }
 
-        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (2, " + (System.currentTimeMillis() / 1000L) + ");");
+    private void migrateV1ToV2(Statement stmt) throws SQLException {
+        // 1. player_activity_5m 再構築マイグレーション
+        stmt.execute("ALTER TABLE player_activity_5m RENAME TO _old_player_activity_5m;");
+        stmt.execute("""
+            CREATE TABLE player_activity_5m (
+                bucket_at INTEGER NOT NULL,
+                player_uuid TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                group_owner_uuid TEXT NOT NULL DEFAULT '',
+                active_seconds INTEGER NOT NULL,
+                distance_blocks REAL NOT NULL,
+                breaks INTEGER NOT NULL,
+                places INTEGER NOT NULL,
+                crafts INTEGER NOT NULL,
+                pve_kills INTEGER NOT NULL,
+                pvp_kills INTEGER NOT NULL,
+                deaths INTEGER NOT NULL,
+                jobs_xp REAL NOT NULL,
+                tpa_successes INTEGER NOT NULL,
+                PRIMARY KEY (bucket_at, player_uuid, dimension, group_owner_uuid)
+            );
+        """);
+        stmt.execute("""
+            INSERT OR IGNORE INTO player_activity_5m (
+                bucket_at, player_uuid, dimension, group_owner_uuid, active_seconds, distance_blocks,
+                breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
+            )
+            SELECT
+                bucket_at, player_uuid, dimension,
+                '',
+                active_seconds, distance_blocks,
+                breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
+            FROM _old_player_activity_5m;
+        """);
+        stmt.execute("DROP TABLE _old_player_activity_5m;");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_player ON player_activity_5m(player_uuid, bucket_at);");
+
+        // 2. spatial_activity_5m 再構築マイグレーション
+        stmt.execute("ALTER TABLE spatial_activity_5m RENAME TO _old_spatial_activity_5m;");
+        stmt.execute("""
+            CREATE TABLE spatial_activity_5m (
+                bucket_at INTEGER NOT NULL,
+                dimension TEXT NOT NULL,
+                cell_x INTEGER NOT NULL,
+                cell_z INTEGER NOT NULL,
+                y_band TEXT NOT NULL,
+                group_owner_uuid TEXT NOT NULL DEFAULT '',
+                relation TEXT NOT NULL,
+                active_samples INTEGER NOT NULL,
+                unique_players INTEGER NOT NULL,
+                PRIMARY KEY (bucket_at, dimension, cell_x, cell_z, y_band, group_owner_uuid, relation)
+            );
+        """);
+        stmt.execute("""
+            INSERT OR IGNORE INTO spatial_activity_5m (
+                bucket_at, dimension, cell_x, cell_z, y_band, group_owner_uuid, relation, active_samples, unique_players
+            )
+            SELECT
+                bucket_at, dimension, cell_x, cell_z, y_band,
+                '',
+                relation, active_samples, unique_players
+            FROM _old_spatial_activity_5m;
+        """);
+        stmt.execute("DROP TABLE _old_spatial_activity_5m;");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_spatial_bucket ON spatial_activity_5m(bucket_at, dimension);");
+
+        // 3. player_activity_daily 再構築マイグレーション
+        stmt.execute("ALTER TABLE player_activity_daily RENAME TO _old_player_activity_daily;");
+        stmt.execute("""
+            CREATE TABLE player_activity_daily (
+                date_epoch_day INTEGER NOT NULL,
+                player_uuid TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                group_owner_uuid TEXT NOT NULL DEFAULT '',
+                active_seconds INTEGER NOT NULL,
+                distance_blocks REAL NOT NULL,
+                breaks INTEGER NOT NULL,
+                places INTEGER NOT NULL,
+                crafts INTEGER NOT NULL,
+                pve_kills INTEGER NOT NULL,
+                pvp_kills INTEGER NOT NULL,
+                deaths INTEGER NOT NULL,
+                jobs_xp REAL NOT NULL,
+                tpa_successes INTEGER NOT NULL,
+                PRIMARY KEY (date_epoch_day, player_uuid, dimension, group_owner_uuid)
+            );
+        """);
+        stmt.execute("""
+            INSERT OR IGNORE INTO player_activity_daily (
+                date_epoch_day, player_uuid, dimension, group_owner_uuid, active_seconds, distance_blocks,
+                breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
+            )
+            SELECT
+                date_epoch_day, player_uuid, dimension,
+                '',
+                active_seconds, distance_blocks,
+                breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
+            FROM _old_player_activity_daily;
+        """);
+        stmt.execute("DROP TABLE _old_player_activity_daily;");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_daily_player ON player_activity_daily(player_uuid, date_epoch_day);");
     }
 
     @Override
-    public synchronized void writeBatch(List<AnalyticsEventQueue.AnalyticsEvent> events) throws Exception {
-        if (events == null || events.isEmpty() || connection == null || connection.isClosed()) {
+    public synchronized void writeBatch(List<AnalyticsEventQueue.AnalyticsEvent> events) throws SQLException {
+        if (connection == null || connection.isClosed() || events.isEmpty()) {
             return;
         }
 
         boolean autoCommit = connection.getAutoCommit();
-        try {
-            connection.setAutoCommit(false);
+        connection.setAutoCommit(false);
 
-            for (AnalyticsEventQueue.AnalyticsEvent event : events) {
-                if (event instanceof AnalyticsEventQueue.SessionStartEvent e) {
-                    writeSessionStart(e);
-                } else if (event instanceof AnalyticsEventQueue.SessionEndEvent e) {
-                    writeSessionEnd(e);
-                } else if (event instanceof AnalyticsEventQueue.PlayerActivityFlushEvent e) {
-                    writePlayerActivity(e.records());
-                } else if (event instanceof AnalyticsEventQueue.SpatialActivityFlushEvent e) {
-                    writeSpatialActivity(e.records());
-                } else if (event instanceof AnalyticsEventQueue.DetectorActivityFlushEvent e) {
-                    writeDetectorActivity(e.records());
-                } else if (event instanceof AnalyticsEventQueue.HealthMetricEvent e) {
-                    writeHealthMetric(e);
-                }
-            }
-
-            connection.commit();
-        } catch (Exception ex) {
-            connection.rollback();
-            throw ex;
-        } finally {
-            connection.setAutoCommit(autoCommit);
-        }
-    }
-
-    private void writeSessionStart(AnalyticsEventQueue.SessionStartEvent event) throws SQLException {
-        String sql = """
+        String sqlIdentityUpsert = """
             INSERT INTO player_identity (player_uuid, last_known_name, first_seen_at, last_seen_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(player_uuid) DO UPDATE SET
                 last_known_name = excluded.last_known_name,
                 last_seen_at = excluded.last_seen_at;
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, event.playerUuid().toString());
-            ps.setString(2, event.playerName());
-            ps.setLong(3, event.joinedAtEpochSec());
-            ps.setLong(4, event.joinedAtEpochSec());
-            ps.executeUpdate();
-        }
-    }
 
-    private void writeSessionEnd(AnalyticsEventQueue.SessionEndEvent event) throws SQLException {
-        SessionRecord r = event.sessionRecord();
-        String sql = """
+        String sqlSessionInsert = """
             INSERT OR REPLACE INTO player_session (
                 session_id, player_uuid, last_known_name, joined_at, left_at,
                 online_seconds, active_seconds, afk_seconds
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setString(1, r.sessionId().toString());
-            ps.setString(2, r.playerUuid().toString());
-            ps.setString(3, r.lastKnownName());
-            ps.setLong(4, r.joinedAtEpochSec());
-            ps.setLong(5, r.leftAtEpochSec());
-            ps.setInt(6, r.onlineSeconds());
-            ps.setInt(7, r.activeSeconds());
-            ps.setInt(8, r.afkSeconds());
-            ps.executeUpdate();
-        }
 
-        String idSql = "UPDATE player_identity SET last_seen_at = MAX(last_seen_at, ?) WHERE player_uuid = ?";
-        try (PreparedStatement ps = connection.prepareStatement(idSql)) {
-            ps.setLong(1, r.leftAtEpochSec());
-            ps.setString(2, r.playerUuid().toString());
-            ps.executeUpdate();
-        }
-    }
-
-    private void writePlayerActivity(List<PlayerActivityBucket> records) throws SQLException {
-        if (records == null || records.isEmpty()) return;
-
-        String sql = """
+        String sqlPlayerActivity = """
             INSERT INTO player_activity_5m (
-                bucket_at, player_uuid, dimension, group_owner_uuid,
-                active_seconds, distance_blocks, breaks, places, crafts,
-                pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
+                bucket_at, player_uuid, dimension, group_owner_uuid, active_seconds, distance_blocks,
+                breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(bucket_at, player_uuid, dimension, group_owner_uuid) DO UPDATE SET
                 active_seconds = active_seconds + excluded.active_seconds,
@@ -273,65 +323,20 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 jobs_xp = jobs_xp + excluded.jobs_xp,
                 tpa_successes = tpa_successes + excluded.tpa_successes;
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            for (PlayerActivityBucket r : records) {
-                ps.setLong(1, r.bucketAtEpochSec());
-                ps.setString(2, r.playerUuid().toString());
-                ps.setString(3, r.dimension());
-                ps.setString(4, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : "");
-                ps.setInt(5, r.activeSeconds());
-                ps.setDouble(6, r.distanceBlocks());
-                ps.setInt(7, r.breaks());
-                ps.setInt(8, r.places());
-                ps.setInt(9, r.crafts());
-                ps.setInt(10, r.pveKills());
-                ps.setInt(11, r.pvpKills());
-                ps.setInt(12, r.deaths());
-                ps.setDouble(13, r.jobsXp());
-                ps.setInt(14, r.tpaSuccesses());
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        }
-    }
 
-    private void writeSpatialActivity(List<SpatialActivityBucket> records) throws SQLException {
-        if (records == null || records.isEmpty()) return;
-
-        String sql = """
+        String sqlSpatialActivity = """
             INSERT INTO spatial_activity_5m (
-                bucket_at, dimension, cell_x, cell_z, y_band,
-                group_owner_uuid, relation, active_samples, unique_players
+                bucket_at, dimension, cell_x, cell_z, y_band, group_owner_uuid, relation, active_samples, unique_players
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(bucket_at, dimension, cell_x, cell_z, y_band, group_owner_uuid, relation) DO UPDATE SET
                 active_samples = active_samples + excluded.active_samples,
                 unique_players = MAX(unique_players, excluded.unique_players);
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            for (SpatialActivityBucket r : records) {
-                ps.setLong(1, r.bucketAtEpochSec());
-                ps.setString(2, r.dimension());
-                ps.setInt(3, r.cellX());
-                ps.setInt(4, r.cellZ());
-                ps.setString(5, r.yBand().getId());
-                ps.setString(6, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : "");
-                ps.setString(7, r.relation().getId());
-                ps.setInt(8, r.activeSamples());
-                ps.setInt(9, r.uniquePlayers());
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        }
-    }
 
-    private void writeDetectorActivity(List<DetectorActivityBucket> records) throws SQLException {
-        if (records == null || records.isEmpty()) return;
-
-        String sql = """
+        String sqlDetectorActivity = """
             INSERT INTO detector_activity_5m (
                 bucket_at, dimension, detector_pos_hash, group_owner_uuid,
-                member_minutes, visitor_minutes, intrusion_sessions,
-                distinct_members, distinct_visitors
+                member_minutes, visitor_minutes, intrusion_sessions, distinct_members, distinct_visitors
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(bucket_at, dimension, detector_pos_hash) DO UPDATE SET
                 member_minutes = member_minutes + excluded.member_minutes,
@@ -340,35 +345,111 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 distinct_members = MAX(distinct_members, excluded.distinct_members),
                 distinct_visitors = MAX(distinct_visitors, excluded.distinct_visitors);
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            for (DetectorActivityBucket r : records) {
-                ps.setLong(1, r.bucketAtEpochSec());
-                ps.setString(2, r.dimension());
-                ps.setString(3, r.detectorPosHash());
-                ps.setString(4, r.groupOwnerUuid() != null ? r.groupOwnerUuid().toString() : null);
-                ps.setDouble(5, r.memberMinutes());
-                ps.setDouble(6, r.visitorMinutes());
-                ps.setInt(7, r.intrusionSessions());
-                ps.setInt(8, r.distinctMembers());
-                ps.setInt(9, r.distinctVisitors());
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        }
-    }
 
-    private void writeHealthMetric(AnalyticsEventQueue.HealthMetricEvent event) throws SQLException {
-        String sql = """
-            INSERT INTO collector_health (recorded_at, queue_depth, dropped_events, flush_ms, db_bytes)
-            VALUES (?, ?, ?, ?, ?);
+        String sqlHealthMetric = """
+            INSERT OR REPLACE INTO collector_health (
+                recorded_at, queue_depth, dropped_events, last_flush_duration_ms, database_size_bytes
+            ) VALUES (?, ?, ?, ?, ?);
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setLong(1, event.recordedAtEpochSec());
-            ps.setInt(2, event.queueDepth());
-            ps.setLong(3, event.droppedEvents());
-            ps.setLong(4, event.flushMs());
-            ps.setLong(5, event.dbBytes());
-            ps.executeUpdate();
+
+        try (PreparedStatement psIdentity = connection.prepareStatement(sqlIdentityUpsert);
+             PreparedStatement psSession = connection.prepareStatement(sqlSessionInsert);
+             PreparedStatement psPlayer = connection.prepareStatement(sqlPlayerActivity);
+             PreparedStatement psSpatial = connection.prepareStatement(sqlSpatialActivity);
+             PreparedStatement psDetector = connection.prepareStatement(sqlDetectorActivity);
+             PreparedStatement psHealth = connection.prepareStatement(sqlHealthMetric)) {
+
+            for (AnalyticsEventQueue.AnalyticsEvent event : events) {
+                if (event instanceof AnalyticsEventQueue.SessionStartEvent s) {
+                    psIdentity.setString(1, s.playerUuid().toString());
+                    psIdentity.setString(2, s.playerName());
+                    psIdentity.setLong(3, s.joinedAtEpochSec());
+                    psIdentity.setLong(4, s.joinedAtEpochSec());
+                    psIdentity.addBatch();
+                } else if (event instanceof AnalyticsEventQueue.SessionEndEvent e) {
+                    SessionRecord r = e.sessionRecord();
+                    psIdentity.setString(1, r.playerUuid().toString());
+                    psIdentity.setString(2, r.lastKnownName());
+                    psIdentity.setLong(3, r.joinedAtEpochSec());
+                    psIdentity.setLong(4, r.leftAtEpochSec());
+                    psIdentity.addBatch();
+
+                    psSession.setString(1, r.sessionId().toString());
+                    psSession.setString(2, r.playerUuid().toString());
+                    psSession.setString(3, r.lastKnownName());
+                    psSession.setLong(4, r.joinedAtEpochSec());
+                    psSession.setLong(5, r.leftAtEpochSec());
+                    psSession.setInt(6, r.onlineSeconds());
+                    psSession.setInt(7, r.activeSeconds());
+                    psSession.setInt(8, r.afkSeconds());
+                    psSession.addBatch();
+                } else if (event instanceof AnalyticsEventQueue.PlayerActivityFlushEvent f) {
+                    for (PlayerActivityBucket b : f.records()) {
+                        psPlayer.setLong(1, b.bucketAtEpochSec());
+                        psPlayer.setString(2, b.playerUuid().toString());
+                        psPlayer.setString(3, b.dimension());
+                        psPlayer.setString(4, b.groupOwnerUuid() != null ? b.groupOwnerUuid().toString() : "");
+                        psPlayer.setInt(5, b.activeSeconds());
+                        psPlayer.setDouble(6, b.distanceBlocks());
+                        psPlayer.setInt(7, b.breaks());
+                        psPlayer.setInt(8, b.places());
+                        psPlayer.setInt(9, b.crafts());
+                        psPlayer.setInt(10, b.pveKills());
+                        psPlayer.setInt(11, b.pvpKills());
+                        psPlayer.setInt(12, b.deaths());
+                        psPlayer.setDouble(13, b.jobsXp());
+                        psPlayer.setInt(14, b.tpaSuccesses());
+                        psPlayer.addBatch();
+                    }
+                } else if (event instanceof AnalyticsEventQueue.SpatialActivityFlushEvent f) {
+                    for (SpatialActivityBucket b : f.records()) {
+                        psSpatial.setLong(1, b.bucketAtEpochSec());
+                        psSpatial.setString(2, b.dimension());
+                        psSpatial.setInt(3, b.cellX());
+                        psSpatial.setInt(4, b.cellZ());
+                        psSpatial.setString(5, b.yBand().name());
+                        psSpatial.setString(6, b.groupOwnerUuid() != null ? b.groupOwnerUuid().toString() : "");
+                        psSpatial.setString(7, b.relation().name());
+                        psSpatial.setInt(8, b.activeSamples());
+                        psSpatial.setInt(9, b.uniquePlayers());
+                        psSpatial.addBatch();
+                    }
+                } else if (event instanceof AnalyticsEventQueue.DetectorActivityFlushEvent f) {
+                    for (DetectorActivityBucket b : f.records()) {
+                        psDetector.setLong(1, b.bucketAtEpochSec());
+                        psDetector.setString(2, b.dimension());
+                        psDetector.setString(3, b.detectorPosHash());
+                        psDetector.setString(4, b.groupOwnerUuid() != null ? b.groupOwnerUuid().toString() : null);
+                        psDetector.setDouble(5, b.memberMinutes());
+                        psDetector.setDouble(6, b.visitorMinutes());
+                        psDetector.setInt(7, b.intrusionSessions());
+                        psDetector.setInt(8, b.distinctMembers());
+                        psDetector.setInt(9, b.distinctVisitors());
+                        psDetector.addBatch();
+                    }
+                } else if (event instanceof AnalyticsEventQueue.HealthMetricEvent h) {
+                    psHealth.setLong(1, h.recordedAtEpochSec());
+                    psHealth.setInt(2, h.queueDepth());
+                    psHealth.setLong(3, h.droppedEvents());
+                    psHealth.setLong(4, h.flushMs());
+                    psHealth.setLong(5, h.dbBytes());
+                    psHealth.addBatch();
+                }
+            }
+
+            psIdentity.executeBatch();
+            psSession.executeBatch();
+            psPlayer.executeBatch();
+            psSpatial.executeBatch();
+            psDetector.executeBatch();
+            psHealth.executeBatch();
+
+            connection.commit();
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            connection.setAutoCommit(autoCommit);
         }
     }
 
@@ -378,9 +459,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
 
         String sql = """
             INSERT INTO player_activity_daily (
-                date_epoch_day, player_uuid, dimension, group_owner_uuid,
-                active_seconds, distance_blocks, breaks, places, crafts,
-                pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
+                date_epoch_day, player_uuid, dimension, group_owner_uuid, active_seconds, distance_blocks,
+                breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
             )
             SELECT
                 (bucket_at / 86400) AS date_epoch_day,
@@ -399,18 +479,18 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 SUM(tpa_successes)
             FROM player_activity_5m
             WHERE bucket_at < ?
-            GROUP BY date_epoch_day, player_uuid, dimension, group_owner_uuid
+            GROUP BY (bucket_at / 86400), player_uuid, dimension, group_owner_uuid
             ON CONFLICT(date_epoch_day, player_uuid, dimension, group_owner_uuid) DO UPDATE SET
-                active_seconds = excluded.active_seconds,
-                distance_blocks = excluded.distance_blocks,
-                breaks = excluded.breaks,
-                places = excluded.places,
-                crafts = excluded.crafts,
-                pve_kills = excluded.pve_kills,
-                pvp_kills = excluded.pvp_kills,
-                deaths = excluded.deaths,
-                jobs_xp = excluded.jobs_xp,
-                tpa_successes = excluded.tpa_successes;
+                active_seconds = active_seconds + excluded.active_seconds,
+                distance_blocks = distance_blocks + excluded.distance_blocks,
+                breaks = breaks + excluded.breaks,
+                places = places + excluded.places,
+                crafts = crafts + excluded.crafts,
+                pve_kills = pve_kills + excluded.pve_kills,
+                pvp_kills = pvp_kills + excluded.pvp_kills,
+                deaths = deaths + excluded.deaths,
+                jobs_xp = jobs_xp + excluded.jobs_xp,
+                tpa_successes = tpa_successes + excluded.tpa_successes;
         """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -423,66 +503,32 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
     public synchronized void purgeOldRecords(long cutoff5mEpochSec, long cutoffDailyEpochSec, long cutoffSessionEpochSec) throws SQLException {
         if (connection == null || connection.isClosed()) return;
 
-        boolean autoCommit = connection.getAutoCommit();
-        try {
-            connection.setAutoCommit(false);
-
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_activity_5m WHERE bucket_at < ?")) {
-                ps.setLong(1, cutoff5mEpochSec);
-                ps.executeUpdate();
+        if (cutoff5mEpochSec > 0) {
+            try (PreparedStatement ps1 = connection.prepareStatement("DELETE FROM player_activity_5m WHERE bucket_at < ?");
+                 PreparedStatement ps2 = connection.prepareStatement("DELETE FROM spatial_activity_5m WHERE bucket_at < ?");
+                 PreparedStatement ps3 = connection.prepareStatement("DELETE FROM detector_activity_5m WHERE bucket_at < ?")) {
+                ps1.setLong(1, cutoff5mEpochSec);
+                ps1.executeUpdate();
+                ps2.setLong(1, cutoff5mEpochSec);
+                ps2.executeUpdate();
+                ps3.setLong(1, cutoff5mEpochSec);
+                ps3.executeUpdate();
             }
+        }
 
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM spatial_activity_5m WHERE bucket_at < ?")) {
-                ps.setLong(1, cutoff5mEpochSec);
-                ps.executeUpdate();
-            }
-
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM detector_activity_5m WHERE bucket_at < ?")) {
-                ps.setLong(1, cutoff5mEpochSec);
-                ps.executeUpdate();
-            }
-
+        if (cutoffDailyEpochSec > 0) {
+            long cutoffDay = cutoffDailyEpochSec / 86400L;
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_activity_daily WHERE date_epoch_day < ?")) {
-                ps.setLong(1, cutoffDailyEpochSec / 86400);
+                ps.setLong(1, cutoffDay);
                 ps.executeUpdate();
             }
+        }
 
+        if (cutoffSessionEpochSec > 0) {
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_session WHERE left_at < ?")) {
                 ps.setLong(1, cutoffSessionEpochSec);
                 ps.executeUpdate();
             }
-
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM collector_health WHERE recorded_at < ?")) {
-                ps.setLong(1, cutoff5mEpochSec);
-                ps.executeUpdate();
-            }
-
-            connection.commit();
-        } catch (Exception e) {
-            connection.rollback();
-            throw e;
-        } finally {
-            connection.setAutoCommit(autoCommit);
-        }
-    }
-
-    @Override
-    public long getDatabaseSizeBytes() {
-        if (dbFilePath != null) {
-            File f = dbFilePath.toFile();
-            if (f.exists()) {
-                return f.length();
-            }
-        }
-        return 0L;
-    }
-
-    @Override
-    public boolean isOpen() {
-        try {
-            return connection != null && !connection.isClosed();
-        } catch (SQLException e) {
-            return false;
         }
     }
 
@@ -491,177 +537,222 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (connection == null || connection.isClosed()) return Optional.empty();
 
         long startEpochSec = window.getStartEpochSec(currentEpochSec);
-        long todayStartEpochSec = (currentEpochSec / 86400L) * 86400L;
+        long todayDay = currentEpochSec / 86400L;
+        long todayStartEpochSec = todayDay * 86400L;
         long startDay = startEpochSec / 86400L;
-        long todayDay = todayStartEpochSec / 86400L;
 
-        String name = null;
-        long firstSeen = 0L;
-        long lastSeen = 0L;
-
-        // 1. Identity
-        String idSql = "SELECT last_known_name, first_seen_at, last_seen_at FROM player_identity WHERE player_uuid = ?";
-        try (PreparedStatement ps = connection.prepareStatement(idSql)) {
+        // 1. 名前と最終ログイン
+        String lastKnownName = "Unknown";
+        long lastSeenAt = 0L;
+        String sqlIdentity = "SELECT last_known_name, last_seen_at FROM player_identity WHERE player_uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sqlIdentity)) {
             ps.setString(1, playerUuid.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    name = rs.getString("last_known_name");
-                    firstSeen = rs.getLong("first_seen_at");
-                    lastSeen = rs.getLong("last_seen_at");
-                } else {
-                    return Optional.empty();
+                    lastKnownName = rs.getString("last_known_name");
+                    lastSeenAt = rs.getLong("last_seen_at");
                 }
             }
         }
 
-        // 2. Sessions (窓期間内)
+        // 2. セッション統計 (player_session から取得)
         int sessionCount = 0;
-        long totalOnlineSec = 0L;
-        long totalActiveSec = 0L;
-        long totalAfkSec = 0L;
-        long avgSessionSec = 0L;
-
-        String sessSql = """
-            SELECT COUNT(*), SUM(online_seconds), SUM(active_seconds), SUM(afk_seconds), AVG(online_seconds)
+        int sessionOnlineSec = 0;
+        int sessionAfkSec = 0;
+        String sqlSession = """
+            SELECT COUNT(*) as session_count,
+                   COALESCE(SUM(online_seconds), 0) as total_online,
+                   COALESCE(SUM(afk_seconds), 0) as total_afk
             FROM player_session
-            WHERE player_uuid = ? AND joined_at >= ?;
+            WHERE player_uuid = ? AND joined_at >= ?
         """;
-        try (PreparedStatement ps = connection.prepareStatement(sessSql)) {
+        try (PreparedStatement ps = connection.prepareStatement(sqlSession)) {
             ps.setString(1, playerUuid.toString());
             ps.setLong(2, startEpochSec);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    sessionCount = rs.getInt(1);
-                    totalOnlineSec = rs.getLong(2);
-                    totalActiveSec = rs.getLong(3);
-                    totalAfkSec = rs.getLong(4);
-                    avgSessionSec = Math.round(rs.getDouble(5));
+                    sessionCount = rs.getInt("session_count");
+                    sessionOnlineSec = rs.getInt("total_online");
+                    sessionAfkSec = rs.getInt("total_afk");
                 }
             }
         }
 
-        // 3. Activity 5m + Daily ハイブリッド統合クエリ
-        int activeDays = 0;
-        long breaks = 0L;
-        long places = 0L;
-        long crafts = 0L;
-        long pveKills = 0L;
-        long pvpKills = 0L;
-        long deaths = 0L;
-        double jobsXp = 0.0;
-        int tpaSuccesses = 0;
-        double distance = 0.0;
-        long hybridActiveSec = 0L;
-
-        String actSql = """
+        // 3. ハイブリッド活動統計 (player_activity_5m + player_activity_daily)
+        String sqlActivityHybrid = """
             SELECT
-                COUNT(DISTINCT date_day),
-                SUM(breaks), SUM(places), SUM(crafts),
-                SUM(pve_kills), SUM(pvp_kills), SUM(deaths),
-                SUM(jobs_xp), SUM(tpa_successes), SUM(distance_blocks),
-                SUM(active_seconds)
+                COALESCE(SUM(active_seconds), 0) as total_active,
+                COALESCE(SUM(distance_blocks), 0.0) as total_distance,
+                COALESCE(SUM(breaks), 0) as total_breaks,
+                COALESCE(SUM(places), 0) as total_places,
+                COALESCE(SUM(crafts), 0) as total_crafts,
+                COALESCE(SUM(pve_kills), 0) as total_pve,
+                COALESCE(SUM(pvp_kills), 0) as total_pvp,
+                COALESCE(SUM(deaths), 0) as total_deaths,
+                COALESCE(SUM(jobs_xp), 0.0) as total_jobs,
+                COALESCE(SUM(tpa_successes), 0) as total_tpa
             FROM (
-                SELECT
-                    (bucket_at / 86400) AS date_day,
-                    breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes, distance_blocks, active_seconds
+                SELECT active_seconds, distance_blocks, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
                 FROM player_activity_5m
-                WHERE player_uuid = ? AND bucket_at >= ?
+                WHERE player_uuid = ? AND bucket_at >= ? AND (bucket_at >= ? OR bucket_at < ?)
                 UNION ALL
-                SELECT
-                    date_epoch_day AS date_day,
-                    breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes, distance_blocks, active_seconds
+                SELECT active_seconds, distance_blocks, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
                 FROM player_activity_daily
                 WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ?
-            );
+            )
         """;
-        try (PreparedStatement ps = connection.prepareStatement(actSql)) {
-            ps.setString(1, playerUuid.toString());
-            ps.setLong(2, todayStartEpochSec);
-            ps.setString(3, playerUuid.toString());
-            ps.setLong(4, startDay);
-            ps.setLong(5, todayDay);
 
+        int totalActiveSec = 0;
+        double totalDistance = 0.0;
+        int totalBreaks = 0;
+        int totalPlaces = 0;
+        int totalCrafts = 0;
+        int totalPveKills = 0;
+        int totalPvpKills = 0;
+        int totalDeaths = 0;
+        double totalJobsXp = 0.0;
+        int totalTpa = 0;
+
+        try (PreparedStatement ps = connection.prepareStatement(sqlActivityHybrid)) {
+            // 5m: bucket_at >= startEpochSec AND (bucket_at >= todayStartEpochSec OR bucket_at < (startDay + 1) * 86400L)
+            ps.setString(1, playerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            ps.setLong(3, todayStartEpochSec);
+            ps.setLong(4, (startDay + 1) * 86400L);
+
+            // daily: date_epoch_day >= (startDay + 1) AND date_epoch_day < todayDay
+            ps.setString(5, playerUuid.toString());
+            ps.setLong(6, startDay + 1);
+            ps.setLong(7, todayDay);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    totalActiveSec = rs.getInt("total_active");
+                    totalDistance = rs.getDouble("total_distance");
+                    totalBreaks = rs.getInt("total_breaks");
+                    totalPlaces = rs.getInt("total_places");
+                    totalCrafts = rs.getInt("total_crafts");
+                    totalPveKills = rs.getInt("total_pve");
+                    totalPvpKills = rs.getInt("total_pvp");
+                    totalDeaths = rs.getInt("total_deaths");
+                    totalJobsXp = rs.getDouble("total_jobs");
+                    totalTpa = rs.getInt("total_tpa");
+                }
+            }
+        }
+
+        // 活動履歴もセッションもない場合は空
+        if (sessionCount == 0 && totalActiveSec == 0 && totalBreaks == 0 && totalPlaces == 0 && "Unknown".equals(lastKnownName)) {
+            return Optional.empty();
+        }
+
+        // オンライン秒数の補正（セッション履歴がない/プレイ中の場合は活動秒数以上を担保）
+        int finalOnlineSec = Math.max(sessionOnlineSec, totalActiveSec + sessionAfkSec);
+        int avgSessionDuration = sessionCount > 0 ? (sessionOnlineSec / sessionCount) : totalActiveSec;
+
+        // 4. 開放日アクティブ日数（1日あたり 600秒/10分以上 活動した日数）
+        String sqlActiveDays = """
+            SELECT COUNT(*) FROM (
+                SELECT day_idx, SUM(active_seconds) as day_active
+                FROM (
+                    SELECT (bucket_at / 86400) as day_idx, active_seconds
+                    FROM player_activity_5m
+                    WHERE player_uuid = ? AND bucket_at >= ? AND (bucket_at >= ? OR bucket_at < ?)
+                    UNION ALL
+                    SELECT date_epoch_day as day_idx, active_seconds
+                    FROM player_activity_daily
+                    WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ?
+                )
+                GROUP BY day_idx
+                HAVING day_active >= 600
+            )
+        """;
+        int activeDays = 0;
+        try (PreparedStatement ps = connection.prepareStatement(sqlActiveDays)) {
+            ps.setString(1, playerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            ps.setLong(3, todayStartEpochSec);
+            ps.setLong(4, (startDay + 1) * 86400L);
+            ps.setString(5, playerUuid.toString());
+            ps.setLong(6, startDay + 1);
+            ps.setLong(7, todayDay);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     activeDays = rs.getInt(1);
-                    breaks = rs.getLong(2);
-                    places = rs.getLong(3);
-                    crafts = rs.getLong(4);
-                    pveKills = rs.getLong(5);
-                    pvpKills = rs.getLong(6);
-                    deaths = rs.getLong(7);
-                    jobsXp = rs.getDouble(8);
-                    tpaSuccesses = rs.getInt(9);
-                    distance = rs.getDouble(10);
-                    hybridActiveSec = rs.getLong(11);
                 }
             }
         }
 
-        if (totalActiveSec == 0 && hybridActiveSec > 0) {
-            totalActiveSec = hybridActiveSec;
-        }
-
-        // 4. Primary Dimension & Group
-        String primaryDim = "minecraft:overworld";
-        UUID primaryGroup = null;
-
-        String dimSql = """
-            SELECT dimension, SUM(active_seconds) as total_sec
+        // 5. 主活動ディメンションおよび主拠点グループ
+        String primaryDimension = "minecraft:overworld";
+        String sqlDim = """
+            SELECT dimension, SUM(active_seconds) as s
             FROM (
                 SELECT dimension, active_seconds FROM player_activity_5m WHERE player_uuid = ? AND bucket_at >= ?
                 UNION ALL
-                SELECT dimension, active_seconds FROM player_activity_daily WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ?
+                SELECT dimension, active_seconds FROM player_activity_daily WHERE player_uuid = ? AND date_epoch_day >= ?
             )
-            GROUP BY dimension
-            ORDER BY total_sec DESC
-            LIMIT 1;
+            GROUP BY dimension ORDER BY s DESC LIMIT 1
         """;
-        try (PreparedStatement ps = connection.prepareStatement(dimSql)) {
+        try (PreparedStatement ps = connection.prepareStatement(sqlDim)) {
             ps.setString(1, playerUuid.toString());
-            ps.setLong(2, todayStartEpochSec);
+            ps.setLong(2, startEpochSec);
             ps.setString(3, playerUuid.toString());
             ps.setLong(4, startDay);
-            ps.setLong(5, todayDay);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getString(1) != null) {
-                    primaryDim = rs.getString(1);
+                if (rs.next() && rs.getString("dimension") != null) {
+                    primaryDimension = rs.getString("dimension");
                 }
             }
         }
 
-        String grpSql = """
-            SELECT group_owner_uuid, SUM(active_seconds) as total_sec
+        UUID primaryGroupOwner = null;
+        String sqlGroup = """
+            SELECT group_owner_uuid, SUM(active_seconds) as s
             FROM (
                 SELECT group_owner_uuid, active_seconds FROM player_activity_5m WHERE player_uuid = ? AND bucket_at >= ? AND group_owner_uuid != ''
                 UNION ALL
-                SELECT group_owner_uuid, active_seconds FROM player_activity_daily WHERE player_uuid = ? AND date_epoch_day >= ? AND date_epoch_day < ? AND group_owner_uuid != ''
+                SELECT group_owner_uuid, active_seconds FROM player_activity_daily WHERE player_uuid = ? AND date_epoch_day >= ? AND group_owner_uuid != ''
             )
-            GROUP BY group_owner_uuid
-            ORDER BY total_sec DESC
-            LIMIT 1;
+            GROUP BY group_owner_uuid ORDER BY s DESC LIMIT 1
         """;
-        try (PreparedStatement ps = connection.prepareStatement(grpSql)) {
+        try (PreparedStatement ps = connection.prepareStatement(sqlGroup)) {
             ps.setString(1, playerUuid.toString());
-            ps.setLong(2, todayStartEpochSec);
+            ps.setLong(2, startEpochSec);
             ps.setString(3, playerUuid.toString());
             ps.setLong(4, startDay);
-            ps.setLong(5, todayDay);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    String gStr = rs.getString(1);
+                    String gStr = rs.getString("group_owner_uuid");
                     if (gStr != null && !gStr.isEmpty()) {
-                        primaryGroup = UUID.fromString(gStr);
+                        primaryGroupOwner = UUID.fromString(gStr);
                     }
                 }
             }
         }
 
         return Optional.of(new PlayerSummaryDto(
-                playerUuid, name, firstSeen, lastSeen,
-                sessionCount, totalOnlineSec, totalActiveSec, totalAfkSec, avgSessionSec, activeDays,
-                breaks, places, crafts, pveKills, pvpKills, deaths, jobsXp, tpaSuccesses, distance,
-                primaryDim, primaryGroup
+                playerUuid,
+                lastKnownName,
+                0L,
+                lastSeenAt,
+                sessionCount,
+                (long) finalOnlineSec,
+                (long) totalActiveSec,
+                (long) sessionAfkSec,
+                (long) avgSessionDuration,
+                activeDays,
+                (long) totalBreaks,
+                (long) totalPlaces,
+                (long) totalCrafts,
+                (long) totalPveKills,
+                (long) totalPvpKills,
+                (long) totalDeaths,
+                totalJobsXp,
+                totalTpa,
+                totalDistance,
+                primaryDimension,
+                primaryGroupOwner
         ));
     }
 
@@ -670,28 +761,32 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (connection == null || connection.isClosed()) return Collections.emptyList();
 
         long startEpochSec = window.getStartEpochSec(currentEpochSec);
-        long todayStartEpochSec = (currentEpochSec / 86400L) * 86400L;
+        long todayDay = currentEpochSec / 86400L;
+        long todayStartEpochSec = todayDay * 86400L;
         long startDay = startEpochSec / 86400L;
-        long todayDay = todayStartEpochSec / 86400L;
 
-        String topSql = """
-            SELECT player_uuid, SUM(active_seconds) as total_act
+        String sql = """
+            SELECT player_uuid, SUM(active_seconds) as total_active
             FROM (
-                SELECT player_uuid, active_seconds FROM player_activity_5m WHERE bucket_at >= ?
+                SELECT player_uuid, active_seconds FROM player_activity_5m
+                WHERE bucket_at >= ? AND (bucket_at >= ? OR bucket_at < ?)
                 UNION ALL
-                SELECT player_uuid, active_seconds FROM player_activity_daily WHERE date_epoch_day >= ? AND date_epoch_day < ?
+                SELECT player_uuid, active_seconds FROM player_activity_daily
+                WHERE date_epoch_day >= ? AND date_epoch_day < ?
             )
             GROUP BY player_uuid
-            ORDER BY total_act DESC
+            ORDER BY total_active DESC
             LIMIT ?;
         """;
 
         List<UUID> topUuids = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(topSql)) {
-            ps.setLong(1, todayStartEpochSec);
-            ps.setLong(2, startDay);
-            ps.setLong(3, todayDay);
-            ps.setInt(4, limit);
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, startEpochSec);
+            ps.setLong(2, todayStartEpochSec);
+            ps.setLong(3, (startDay + 1) * 86400L);
+            ps.setLong(4, startDay + 1);
+            ps.setLong(5, todayDay);
+            ps.setInt(6, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     topUuids.add(UUID.fromString(rs.getString("player_uuid")));
@@ -700,8 +795,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         }
 
         List<PlayerSummaryDto> result = new ArrayList<>();
-        for (UUID u : topUuids) {
-            queryPlayerSummary(u, window, currentEpochSec).ifPresent(result::add);
+        for (UUID uuid : topUuids) {
+            queryPlayerSummary(uuid, window, currentEpochSec).ifPresent(result::add);
         }
         return result;
     }
@@ -711,96 +806,128 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (connection == null || connection.isClosed()) return OverviewSummaryDto.empty();
 
         long startEpochSec = window.getStartEpochSec(currentEpochSec);
-        long todayStartEpochSec = (currentEpochSec / 86400L) * 86400L;
+        long todayDay = currentEpochSec / 86400L;
+        long todayStartEpochSec = todayDay * 86400L;
         long startDay = startEpochSec / 86400L;
-        long todayDay = todayStartEpochSec / 86400L;
 
-        // 1. セッション集計
-        long totalOnline = 0L;
-        long totalSessionActive = 0L;
-        long totalAfk = 0L;
+        // 1. 開放日アクティブ人数（期間内実アクティブ秒が 600秒/10分以上 のユニークプレイヤー数）
+        String sqlActivePlayers = """
+            SELECT COUNT(*) FROM (
+                SELECT player_uuid, SUM(active_seconds) as player_active
+                FROM (
+                    SELECT player_uuid, active_seconds FROM player_activity_5m
+                    WHERE bucket_at >= ? AND (bucket_at >= ? OR bucket_at < ?)
+                    UNION ALL
+                    SELECT player_uuid, active_seconds FROM player_activity_daily
+                    WHERE date_epoch_day >= ? AND date_epoch_day < ?
+                )
+                GROUP BY player_uuid
+                HAVING player_active >= 600
+            )
+        """;
+        int activeUniquePlayers = 0;
+        try (PreparedStatement ps = connection.prepareStatement(sqlActivePlayers)) {
+            ps.setLong(1, startEpochSec);
+            ps.setLong(2, todayStartEpochSec);
+            ps.setLong(3, (startDay + 1) * 86400L);
+            ps.setLong(4, startDay + 1);
+            ps.setLong(5, todayDay);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    activeUniquePlayers = rs.getInt(1);
+                }
+            }
+        }
 
-        String sessSql = "SELECT SUM(online_seconds), SUM(active_seconds), SUM(afk_seconds) FROM player_session WHERE joined_at >= ?";
-        try (PreparedStatement ps = connection.prepareStatement(sessSql)) {
+        // 2. セッション合計（完了セッション履歴）
+        int totalSessionCount = 0;
+        int totalOnlineSeconds = 0;
+        String sqlSession = """
+            SELECT COUNT(*) as sc, COALESCE(SUM(online_seconds), 0) as so
+            FROM player_session
+            WHERE joined_at >= ?;
+        """;
+        try (PreparedStatement ps = connection.prepareStatement(sqlSession)) {
             ps.setLong(1, startEpochSec);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    totalOnline = rs.getLong(1);
-                    totalSessionActive = rs.getLong(2);
-                    totalAfk = rs.getLong(3);
+                    totalSessionCount = rs.getInt("sc");
+                    totalOnlineSeconds = rs.getInt("so");
                 }
             }
         }
 
-        // 2. 活動総合集約
-        int uniquePlayers = 0;
-        long hybridActiveSec = 0L;
-        long breaks = 0L;
-        long places = 0L;
-        long crafts = 0L;
-        long pveKills = 0L;
-        long pvpKills = 0L;
-        long deaths = 0L;
-        double jobsXp = 0.0;
-        double distance = 0.0;
-
-        String actSql = """
+        // 3. ハイブリッド活動量集約（5m + daily）
+        String sqlActivity = """
             SELECT
-                COUNT(DISTINCT player_uuid),
-                SUM(active_seconds),
-                SUM(breaks),
-                SUM(places),
-                SUM(crafts),
-                SUM(pve_kills),
-                SUM(pvp_kills),
-                SUM(deaths),
-                SUM(jobs_xp),
-                SUM(distance_blocks)
+                COALESCE(SUM(active_seconds), 0) as total_active,
+                COALESCE(SUM(breaks), 0) as total_breaks,
+                COALESCE(SUM(places), 0) as total_places,
+                COALESCE(SUM(crafts), 0) as total_crafts,
+                COALESCE(SUM(pve_kills), 0) as total_pve,
+                COALESCE(SUM(pvp_kills), 0) as total_pvp,
+                COALESCE(SUM(deaths), 0) as total_deaths,
+                COALESCE(SUM(jobs_xp), 0.0) as total_jobs,
+                COALESCE(SUM(distance_blocks), 0.0) as total_distance
             FROM (
-                SELECT player_uuid, active_seconds, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, distance_blocks
+                SELECT active_seconds, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, distance_blocks
                 FROM player_activity_5m
-                WHERE bucket_at >= ?
+                WHERE bucket_at >= ? AND (bucket_at >= ? OR bucket_at < ?)
                 UNION ALL
-                SELECT player_uuid, active_seconds, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, distance_blocks
+                SELECT active_seconds, breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, distance_blocks
                 FROM player_activity_daily
                 WHERE date_epoch_day >= ? AND date_epoch_day < ?
-            );
+            )
         """;
-        try (PreparedStatement ps = connection.prepareStatement(actSql)) {
-            ps.setLong(1, todayStartEpochSec);
-            ps.setLong(2, startDay);
-            ps.setLong(3, todayDay);
+
+        long totalActiveSeconds = 0;
+        long totalBreaks = 0;
+        long totalPlaces = 0;
+        long totalCrafts = 0;
+        long totalPveKills = 0;
+        long totalPvpKills = 0;
+        long totalDeaths = 0;
+        double totalJobsXp = 0.0;
+        double totalDistanceBlocks = 0.0;
+
+        try (PreparedStatement ps = connection.prepareStatement(sqlActivity)) {
+            ps.setLong(1, startEpochSec);
+            ps.setLong(2, todayStartEpochSec);
+            ps.setLong(3, (startDay + 1) * 86400L);
+            ps.setLong(4, startDay + 1);
+            ps.setLong(5, todayDay);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    uniquePlayers = rs.getInt(1);
-                    hybridActiveSec = rs.getLong(2);
-                    breaks = rs.getLong(3);
-                    places = rs.getLong(4);
-                    crafts = rs.getLong(5);
-                    pveKills = rs.getLong(6);
-                    pvpKills = rs.getLong(7);
-                    deaths = rs.getLong(8);
-                    jobsXp = rs.getDouble(9);
-                    distance = rs.getDouble(10);
+                    totalActiveSeconds = rs.getLong("total_active");
+                    totalBreaks = rs.getLong("total_breaks");
+                    totalPlaces = rs.getLong("total_places");
+                    totalCrafts = rs.getLong("total_crafts");
+                    totalPveKills = rs.getLong("total_pve");
+                    totalPvpKills = rs.getLong("total_pvp");
+                    totalDeaths = rs.getLong("total_deaths");
+                    totalJobsXp = rs.getDouble("total_jobs");
+                    totalDistanceBlocks = rs.getDouble("total_distance");
                 }
             }
         }
 
-        long finalActiveSec = totalSessionActive > 0 ? totalSessionActive : hybridActiveSec;
+        // オンライン秒数は実アクティブ秒数以上を担保
+        totalOnlineSeconds = Math.max(totalOnlineSeconds, (int) totalActiveSeconds);
+        long totalAfkSeconds = Math.max(0L, totalOnlineSeconds - totalActiveSeconds);
 
         return new OverviewSummaryDto(
-                uniquePlayers,
-                finalActiveSec,
-                totalOnline,
-                totalAfk,
-                breaks,
-                places,
-                crafts,
-                pveKills,
-                pvpKills,
-                deaths,
-                jobsXp,
-                distance
+                activeUniquePlayers,
+                totalActiveSeconds,
+                (long) totalOnlineSeconds,
+                totalAfkSeconds,
+                totalBreaks,
+                totalPlaces,
+                totalCrafts,
+                totalPveKills,
+                totalPvpKills,
+                totalDeaths,
+                totalJobsXp,
+                totalDistanceBlocks
         );
     }
 
@@ -809,52 +936,93 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (connection == null || connection.isClosed()) return Optional.empty();
 
         long startEpochSec = window.getStartEpochSec(currentEpochSec);
-        String ownerName = null;
 
-        String idSql = "SELECT last_known_name FROM player_identity WHERE player_uuid = ?";
-        try (PreparedStatement ps = connection.prepareStatement(idSql)) {
+        // オーナー名
+        String ownerName = "Unknown";
+        String sqlOwner = "SELECT last_known_name FROM player_identity WHERE player_uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sqlOwner)) {
             ps.setString(1, groupOwnerUuid.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    ownerName = rs.getString(1);
-                } else {
-                    ownerName = groupOwnerUuid.toString().substring(0, 8);
+                    ownerName = rs.getString("last_known_name");
                 }
             }
         }
 
-        String detSql = """
+        String sql = """
             SELECT
-                COUNT(DISTINCT detector_pos_hash),
-                SUM(member_minutes),
-                SUM(visitor_minutes),
-                SUM(intrusion_sessions),
-                MAX(distinct_members),
-                MAX(distinct_visitors)
+                COUNT(DISTINCT detector_pos_hash) as detector_count,
+                COALESCE(SUM(member_minutes), 0.0) as total_member_min,
+                COALESCE(SUM(visitor_minutes), 0.0) as total_visitor_min,
+                COALESCE(SUM(intrusion_sessions), 0) as total_intrusions,
+                COALESCE(MAX(distinct_members), 0) as max_members,
+                COALESCE(MAX(distinct_visitors), 0) as max_visitors
             FROM detector_activity_5m
             WHERE group_owner_uuid = ? AND bucket_at >= ?;
         """;
 
-        try (PreparedStatement ps = connection.prepareStatement(detSql)) {
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, groupOwnerUuid.toString());
             ps.setLong(2, startEpochSec);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next() && rs.getInt(1) > 0) {
+                if (rs.next()) {
+                    int detectorCount = rs.getInt("detector_count");
+                    double totalMemberMin = rs.getDouble("total_member_min");
+                    double totalVisitorMin = rs.getDouble("total_visitor_min");
+                    int totalIntrusions = rs.getInt("total_intrusions");
+                    int maxMembers = rs.getInt("max_members");
+                    int maxVisitors = rs.getInt("max_visitors");
+
+                    if (detectorCount == 0 && "Unknown".equals(ownerName)) {
+                        return Optional.empty();
+                    }
+
                     return Optional.of(new GroupSummaryDto(
                             groupOwnerUuid,
                             ownerName,
-                            rs.getInt(1),
-                            rs.getDouble(2),
-                            rs.getDouble(3),
-                            rs.getInt(4),
-                            rs.getInt(5),
-                            rs.getInt(6)
+                            detectorCount,
+                            totalMemberMin,
+                            totalVisitorMin,
+                            totalIntrusions,
+                            maxMembers,
+                            maxVisitors
                     ));
                 }
             }
         }
+        return Optional.empty();
+    }
 
-        return Optional.of(new GroupSummaryDto(groupOwnerUuid, ownerName, 0, 0.0, 0.0, 0, 0, 0));
+    @Override
+    public synchronized List<GroupSummaryDto> queryAllGroupSummaries(TimeWindow window, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        String sql = """
+            SELECT DISTINCT group_owner_uuid
+            FROM detector_activity_5m
+            WHERE group_owner_uuid IS NOT NULL AND group_owner_uuid != '' AND bucket_at >= ?;
+        """;
+
+        List<UUID> owners = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String gStr = rs.getString("group_owner_uuid");
+                    try {
+                        owners.add(UUID.fromString(gStr));
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+
+        List<GroupSummaryDto> list = new ArrayList<>();
+        for (UUID owner : owners) {
+            queryGroupSummary(owner, window, currentEpochSec).ifPresent(list::add);
+        }
+        return list;
     }
 
     @Override
@@ -903,29 +1071,46 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             return CollectorHealthDto.empty();
         }
 
-        long dbBytes = getDatabaseSizeBytes();
-        String sql = "SELECT recorded_at, queue_depth, dropped_events, flush_ms FROM collector_health ORDER BY recorded_at DESC LIMIT 1;";
-        try (PreparedStatement ps = connection.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+        String sql = "SELECT * FROM collector_health ORDER BY recorded_at DESC LIMIT 1;";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) {
                 return new CollectorHealthDto(
                         rs.getLong("recorded_at"),
                         rs.getInt("queue_depth"),
                         rs.getLong("dropped_events"),
-                        rs.getLong("flush_ms"),
-                        dbBytes
+                        rs.getLong("last_flush_duration_ms"),
+                        rs.getLong("database_size_bytes")
                 );
             }
         }
+        return new CollectorHealthDto(System.currentTimeMillis() / 1000L, 0, 0L, 0L, getDatabaseSizeBytes());
+    }
 
-        return new CollectorHealthDto(System.currentTimeMillis() / 1000L, 0, 0L, 0L, dbBytes);
+    @Override
+    public long getDatabaseSizeBytes() {
+        if (dbPath != null) {
+            File f = dbPath.toFile();
+            if (f.exists()) {
+                return f.length();
+            }
+        }
+        return 0L;
+    }
+
+    @Override
+    public boolean isOpen() {
+        try {
+            return connection != null && !connection.isClosed();
+        } catch (SQLException e) {
+            return false;
+        }
     }
 
     @Override
     public synchronized void close() throws Exception {
         if (connection != null && !connection.isClosed()) {
             connection.close();
-            connection = null;
         }
     }
 }

@@ -117,16 +117,16 @@ public class AnalyticsCollectorManager {
         double z = player.getZ();
         String dimension = player.serverLevel().dimension().location().toString();
 
-        // 2ブロック以上の有効移動判定および移動距離計測
-        double distance = PlayerActivityTracker.INSTANCE.updatePositionAndGetDistance(uuid, x, y, z, currentTimeMs);
-
-        // AFK判定
-        boolean isAfk = PlayerActivityTracker.INSTANCE.isAfk(uuid, currentTimeMs);
-
         // PvPアリーナ判定
         boolean inPvpArena = PvpMatchManager.INSTANCE.isActive(player)
                 || player.serverLevel().dimension().equals(PvpMatchManager.ARENA);
         final String effectiveDimension = inPvpArena ? "pvp_arena" : dimension;
+
+        // 2ブロック以上の有効移動判定および移動距離計測 (異世界移動・テレポート除外)
+        double distance = PlayerActivityTracker.INSTANCE.updatePositionAndGetDistance(uuid, x, y, z, effectiveDimension, currentTimeMs);
+
+        // AFK判定
+        boolean isAfk = PlayerActivityTracker.INSTANCE.isAfk(uuid, currentTimeMs);
 
         // 検知グループおよび立場の解決
         BlockPos blockPos = player.blockPosition();
@@ -160,8 +160,9 @@ public class AnalyticsCollectorManager {
         double x = player.getX();
         double y = player.getY();
         double z = player.getZ();
+        String dimension = player.serverLevel().dimension().location().toString();
 
-        PlayerActivityTracker.INSTANCE.onPlayerLogin(uuid, x, y, z, currentTimeMs);
+        PlayerActivityTracker.INSTANCE.onPlayerLogin(uuid, x, y, z, dimension, currentTimeMs);
         SessionTracker.ActiveSession session = SessionTracker.INSTANCE.onLogin(uuid, name, currentTimeMs);
 
         AnalyticsEventQueue.INSTANCE.enqueue(new AnalyticsEventQueue.SessionStartEvent(
