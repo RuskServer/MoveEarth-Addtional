@@ -549,7 +549,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         }
 
         if (cutoffDailyEpochSec > 0) {
-            long cutoffDay = cutoffDailyEpochSec / 86400L;
+            long cutoffDay = (cutoffDailyEpochSec - 36000L) / 86400L;
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_activity_daily WHERE date_epoch_day < ?")) {
                 ps.setLong(1, cutoffDay);
                 ps.executeUpdate();

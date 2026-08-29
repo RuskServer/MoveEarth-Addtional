@@ -302,18 +302,30 @@ public class AnalyticsWebServer {
                     ? AnalyticsExportService.ExportFormat.JSONL
                     : AnalyticsExportService.ExportFormat.CSV;
 
+            Path tempExportDir = null;
+            Path exportFile = null;
             try {
-                Path tempExportDir = Files.createTempDirectory("me_analytics_web_export");
-                Path exportFile = AnalyticsExportService.INSTANCE.exportPlayersToDirAsync(tempExportDir, format, window).get();
+                tempExportDir = Files.createTempDirectory("me_analytics_web_export");
+                exportFile = AnalyticsExportService.INSTANCE.exportPlayersToDirAsync(tempExportDir, format, window).get();
 
                 byte[] data = Files.readAllBytes(exportFile);
                 exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + exportFile.getFileName() + "\"");
                 sendBinaryResponse(exchange, 200, data, "application/octet-stream");
-
-                Files.deleteIfExists(exportFile);
-                Files.deleteIfExists(tempExportDir);
             } catch (Exception e) {
                 sendResponse(exchange, 500, "Export failed: " + e.getMessage(), "text/plain; charset=UTF-8");
+            } finally {
+                if (exportFile != null) {
+                    try {
+                        Files.deleteIfExists(exportFile);
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (tempExportDir != null) {
+                    try {
+                        Files.deleteIfExists(tempExportDir);
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         }
     }

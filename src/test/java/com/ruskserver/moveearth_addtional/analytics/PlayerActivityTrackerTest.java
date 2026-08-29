@@ -59,15 +59,19 @@ public class PlayerActivityTrackerTest {
         double dist2 = tracker.updatePositionAndGetDistance(playerUuid, 5.0, 0.0, 0.0, "minecraft:overworld", startTime + 2000L);
         assertEquals(5.0, dist2, 0.001);
 
-        // 3. テレポート移動（1000mジャンプ）-> 距離 0.0 (除外)
-        double dist3 = tracker.updatePositionAndGetDistance(playerUuid, 1005.0, 0.0, 0.0, "minecraft:overworld", startTime + 3000L);
+        // 3. エリトラ等の高速滑空移動（500m）-> 距離 500.0m (正常に加算)
+        double dist3a = tracker.updatePositionAndGetDistance(playerUuid, 505.0, 0.0, 0.0, "minecraft:overworld", startTime + 2500L);
+        assertEquals(500.0, dist3a, 0.001);
+
+        // 4. 急激なテレポート移動（3000mジャンプ > 1500m）-> 距離 0.0 (除外)
+        double dist3 = tracker.updatePositionAndGetDistance(playerUuid, 3505.0, 0.0, 0.0, "minecraft:overworld", startTime + 3000L);
         assertEquals(0.0, dist3);
 
-        // 4. 異ディメンション移動（Overworld -> Nether）-> 距離 0.0 (除外)
+        // 5. 異ディメンション移動（Overworld -> Nether）-> 距離 0.0 (除外)
         double dist4 = tracker.updatePositionAndGetDistance(playerUuid, 10.0, 64.0, 10.0, "minecraft:the_nether", startTime + 4000L);
         assertEquals(0.0, dist4);
 
-        // 5. Nether内での通常移動（10m）-> 距離 10.0m
+        // 6. Nether内での通常移動（10m）-> 距離 10.0m
         double dist5 = tracker.updatePositionAndGetDistance(playerUuid, 20.0, 64.0, 10.0, "minecraft:the_nether", startTime + 5000L);
         assertEquals(10.0, dist5, 0.001);
     }

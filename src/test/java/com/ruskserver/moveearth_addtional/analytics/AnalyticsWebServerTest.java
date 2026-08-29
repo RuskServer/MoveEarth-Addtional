@@ -150,8 +150,8 @@ public class AnalyticsWebServerTest {
         String token = AnalyticsConfig.getAuthToken();
 
         boolean got429 = false;
-        // 25回連続リクエスト
-        for (int i = 0; i < 25; i++) {
+        // 40回連続リクエスト（秒跨ぎがあっても確実に20req/secを超過させる）
+        for (int i = 0; i < 40; i++) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://127.0.0.1:8080/api/health?token=" + token))
                     .GET()

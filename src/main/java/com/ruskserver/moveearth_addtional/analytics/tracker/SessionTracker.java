@@ -20,9 +20,9 @@ public class SessionTracker {
         private final UUID playerUuid;
         private final String playerName;
         private final long loginTimeMs;
-        private long lastAccountingTimeMs;
-        private int activeSeconds = 0;
-        private int afkSeconds = 0;
+        private volatile long lastAccountingTimeMs;
+        private volatile int activeSeconds = 0;
+        private volatile int afkSeconds = 0;
 
         public ActiveSession(UUID sessionId, UUID playerUuid, String playerName, long loginTimeMs) {
             this.sessionId = sessionId;
@@ -60,7 +60,7 @@ public class SessionTracker {
             return (int) Math.max(0L, (currentTimeMs - loginTimeMs) / 1000L);
         }
 
-        public void updateAccounting(boolean isAfk, long currentTimeMs) {
+        public synchronized void updateAccounting(boolean isAfk, long currentTimeMs) {
             long elapsedMs = Math.max(0L, currentTimeMs - lastAccountingTimeMs);
             int elapsedSec = (int) (elapsedMs / 1000L);
             if (elapsedSec > 0) {

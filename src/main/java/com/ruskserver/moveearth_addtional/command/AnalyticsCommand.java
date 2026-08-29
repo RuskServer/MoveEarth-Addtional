@@ -1,8 +1,10 @@
 package com.ruskserver.moveearth_addtional.command;
 
+import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
@@ -14,6 +16,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -22,6 +25,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
+import java.util.Collection;
 import java.util.UUID;
 
 /**
@@ -54,11 +58,11 @@ public final class AnalyticsCommand {
                         .executes(ctx -> showHealth(ctx.getSource())))
                 // /analytics player <target> [window]
                 .then(Commands.literal("player")
-                        .then(Commands.argument("player", EntityArgument.player())
-                                .executes(ctx -> showPlayer(ctx.getSource(), EntityArgument.getPlayer(ctx, "player").getUUID(), TimeWindow.DAYS_7))
+                        .then(Commands.argument("player", GameProfileArgument.gameProfile())
+                                .executes(ctx -> showPlayer(ctx.getSource(), getProfileUuid(ctx, "player"), TimeWindow.DAYS_7))
                                 .then(Commands.argument("window", StringArgumentType.word())
                                         .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"7d", "30d", "all"}, b))
-                                        .executes(ctx -> showPlayer(ctx.getSource(), EntityArgument.getPlayer(ctx, "player").getUUID(), parseWindow(StringArgumentType.getString(ctx, "window")))))))
+                                        .executes(ctx -> showPlayer(ctx.getSource(), getProfileUuid(ctx, "player"), parseWindow(StringArgumentType.getString(ctx, "window")))))))
                 // /analytics ranking [window] [limit]
                 .then(Commands.literal("ranking")
                         .executes(ctx -> showRanking(ctx.getSource(), TimeWindow.DAYS_7, 5))
@@ -69,11 +73,11 @@ public final class AnalyticsCommand {
                                         .executes(ctx -> showRanking(ctx.getSource(), parseWindow(StringArgumentType.getString(ctx, "window")), IntegerArgumentType.getInteger(ctx, "limit"))))))
                 // /analytics group <target_owner> [window]
                 .then(Commands.literal("group")
-                        .then(Commands.argument("owner", EntityArgument.player())
-                                .executes(ctx -> showGroup(ctx.getSource(), EntityArgument.getPlayer(ctx, "owner").getUUID(), TimeWindow.DAYS_7))
+                        .then(Commands.argument("owner", GameProfileArgument.gameProfile())
+                                .executes(ctx -> showGroup(ctx.getSource(), getProfileUuid(ctx, "owner"), TimeWindow.DAYS_7))
                                 .then(Commands.argument("window", StringArgumentType.word())
                                         .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"7d", "30d", "all"}, b))
-                                        .executes(ctx -> showGroup(ctx.getSource(), EntityArgument.getPlayer(ctx, "owner").getUUID(), parseWindow(StringArgumentType.getString(ctx, "window")))))))
+                                        .executes(ctx -> showGroup(ctx.getSource(), getProfileUuid(ctx, "owner"), parseWindow(StringArgumentType.getString(ctx, "window")))))))
                 // /analytics heatmap [dimension] [window] [limit]
                 .then(Commands.literal("heatmap")
                         .executes(ctx -> showHeatmap(ctx.getSource(), "minecraft:overworld", TimeWindow.DAYS_7, 10))
@@ -213,5 +217,13 @@ public final class AnalyticsCommand {
             case "all", "all_time" -> TimeWindow.ALL_TIME;
             default -> TimeWindow.DAYS_7;
         };
+    }
+
+    private static UUID getProfileUuid(CommandContext<CommandSourceStack> ctx, String argName) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(ctx, argName);
+        if (profiles.isEmpty()) {
+            throw new IllegalArgumentException("No player profile found for argument: " + argName);
+        }
+        return profiles.iterator().next().getId();
     }
 }

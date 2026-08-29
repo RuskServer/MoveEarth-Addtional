@@ -25,6 +25,7 @@ public class AnalyticsQueryService {
     private final AnalyticsQueryCache<String, PlayerSummaryDto> playerCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, List<PlayerSummaryDto>> topPlayersCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, GroupSummaryDto> groupCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
+    private final AnalyticsQueryCache<String, List<GroupSummaryDto>> allGroupsCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, List<SpatialHeatmapCellDto>> heatmapCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, CollectorHealthDto> healthCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, OverviewSummaryDto> overviewCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
@@ -150,6 +151,12 @@ public class AnalyticsQueryService {
      * 全検知グループ（拠点）のサマリー一覧を非同期で取得
      */
     public CompletableFuture<List<GroupSummaryDto>> getAllGroupSummariesAsync(TimeWindow window) {
+        String cacheKey = "all_groups:" + window.getId();
+        Optional<List<GroupSummaryDto>> cached = allGroupsCache.get(cacheKey);
+        if (cached.isPresent()) {
+            return CompletableFuture.completedFuture(cached.get());
+        }
+
         return CompletableFuture.supplyAsync(() -> {
             AnalyticsStorageEngine engine = getStorageEngine();
             if (engine == null || !engine.isOpen()) {
@@ -158,7 +165,9 @@ public class AnalyticsQueryService {
 
             try {
                 long nowSec = System.currentTimeMillis() / 1000L;
-                return engine.queryAllGroupSummaries(window, nowSec);
+                List<GroupSummaryDto> result = engine.queryAllGroupSummaries(window, nowSec);
+                allGroupsCache.put(cacheKey, result);
+                return result;
             } catch (Exception e) {
                 e.printStackTrace();
                 return Collections.emptyList();
@@ -257,6 +266,7 @@ public class AnalyticsQueryService {
         playerCache.clear();
         topPlayersCache.clear();
         groupCache.clear();
+        allGroupsCache.clear();
         heatmapCache.clear();
         healthCache.clear();
         overviewCache.clear();

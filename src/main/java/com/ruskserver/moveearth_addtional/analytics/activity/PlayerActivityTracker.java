@@ -14,8 +14,9 @@ public class PlayerActivityTracker {
 
     public static final PlayerActivityTracker INSTANCE = new PlayerActivityTracker();
 
-    /** 1サンプリング（30秒）での最大有効徒歩・走行移動距離（これ以上はテレポート等とみなす） */
-    public static final double MAX_WALKING_DISTANCE_PER_SAMPLE = 100.0D;
+    /** 1サンプリング（30秒）での最大有効移動距離（エリトラ滑空・高速ボート・ウマ等を含む。これを超える急激なジャンプはテレポート等とみなす） */
+    public static final double MAX_SAMPLE_DISTANCE = 1500.0D;
+    public static final double MAX_WALKING_DISTANCE_PER_SAMPLE = MAX_SAMPLE_DISTANCE;
 
     public static class PlayerState {
         private final long sessionStartTimeMs;

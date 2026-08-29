@@ -2,6 +2,12 @@
 
 ## Player Analytics (Phase 4: Visualization, Web Dashboard & Complete Schema/Cycle Hardening)
 
+- **Temporary Export Resource Guarding**: Wrapped web export generation in `try-finally` blocks within `AnalyticsWebServer` to guarantee prompt deletion of temporary files and directories on any HTTP or compression errors.
+- **Realistic Flight/Vehicle Distance Threshold**: Adjusted `MAX_SAMPLE_DISTANCE` in `PlayerActivityTracker` to 1,500m per 30-second window, accommodating Elytra flight, fast boats, and horses while retaining strict exclusion for teleports and respawns.
+- **Multithreading Visibility in Session Accounting**: Added `volatile` modifiers and synchronization to `ActiveSession` fields in `SessionTracker`, ensuring live online/AFK time queries from async web worker threads always read consistent state.
+- **Offline Player Analytics Commands**: Replaced `EntityArgument.player()` with `GameProfileArgument.gameProfile()` in `AnalyticsCommand`, allowing operators to inspect historical activity for offline players and base owners.
+- **Full Group Summary TTL Caching**: Added `allGroupsCache` in `AnalyticsQueryService` to eliminate redundant database queries on repeated `/api/groups` web dashboard requests.
+- **JST 19:00 Daily Purge Consistency**: Aligned `purgeOldRecords` in `SqliteAnalyticsStorageEngine` to use the JST 19:00 cycle index `(cutoff - 36000) / 86400`.
 - **Idempotent Daily Aggregation**: Overhauled `aggregateDaily` using `DO UPDATE SET active_seconds = excluded.active_seconds...` (assignment overwrite) to eliminate duplication on repeated executions.
 - **Dynamic Schema Inspection & Auto-Healing**: Added dynamic `PRAGMA table_info` introspection in `checkAndMigrateSchema` upgrading schema to Version 3, repairing legacy column names in `collector_health`, and preserving `group_owner_uuid` values across all tables.
 - **Worker Write Retries & Accurate Drop Accounting**: Added 3-attempt exponential backoff retries in `AnalyticsStorageWorker` on transient database locks/errors, recording dropped batches to `droppedEvents` only upon final failure.
