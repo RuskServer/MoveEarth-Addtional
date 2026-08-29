@@ -101,8 +101,13 @@ public final class AnalyticsCommand {
     }
 
     private static int showWebUrl(CommandSourceStack source) {
-        String host = AnalyticsConfig.WEB_SERVER_HOST;
-        int port = AnalyticsConfig.WEB_SERVER_PORT;
+        if (!AnalyticsConfig.isWebServerEnabled()) {
+            source.sendFailure(Component.literal("[MoveEarth] Webダッシュボードサーバーは config/moveearth_analytics.properties により無効化されています。"));
+            return 1;
+        }
+
+        String host = AnalyticsConfig.getWebServerHost();
+        int port = AnalyticsConfig.getWebServerPort();
         String token = AnalyticsConfig.getAuthToken();
         String url = "http://" + host + ":" + port + "/?token=" + token;
 

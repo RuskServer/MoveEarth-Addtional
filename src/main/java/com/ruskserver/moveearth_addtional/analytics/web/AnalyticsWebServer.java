@@ -57,16 +57,16 @@ public class AnalyticsWebServer {
     }
 
     public synchronized void start() {
-        start(AnalyticsConfig.WEB_SERVER_PORT);
+        start(AnalyticsConfig.getWebServerPort());
     }
 
     public synchronized void start(int port) {
-        if (!AnalyticsConfig.WEB_SERVER_ENABLED || server != null) {
+        if (!AnalyticsConfig.isWebServerEnabled() || server != null) {
             return;
         }
 
         try {
-            String host = AnalyticsConfig.WEB_SERVER_HOST;
+            String host = AnalyticsConfig.getWebServerHost();
             server = HttpServer.create(new InetSocketAddress(host, port), 0);
 
             server.createContext("/", new StaticDashboardHandler());
@@ -118,7 +118,7 @@ public class AnalyticsWebServer {
             return false;
         }
 
-        if (!AnalyticsConfig.WEB_SERVER_REQUIRE_AUTH) {
+        if (!AnalyticsConfig.isWebServerRequireAuth()) {
             return true;
         }
 

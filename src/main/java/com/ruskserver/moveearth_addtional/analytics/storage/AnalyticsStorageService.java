@@ -29,6 +29,22 @@ public class AnalyticsStorageService {
         }
 
         try {
+            // 1. 設定ファイルのロード
+            Path configDir = null;
+            try {
+                configDir = net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
+            } catch (Throwable ignored) {
+                // 単体テスト等でのフォールバック
+                configDir = server.getServerDirectory().resolve("config");
+            }
+            AnalyticsConfig.loadConfig(configDir);
+
+            // 2. 専用サーバー限定チェック
+            if (AnalyticsConfig.isDedicatedServerOnly() && !server.isDedicatedServer()) {
+                System.out.println("[MoveEarth-Analytics] Analytics system is disabled for non-dedicated server (integrated/singleplayer).");
+                return;
+            }
+
             Path worldDir = server.getWorldPath(LevelResource.ROOT);
             Path dbPath = worldDir.resolve("moveearth/analytics/analytics.db");
 
@@ -40,10 +56,16 @@ public class AnalyticsStorageService {
             this.storageWorker.start();
 
             // Webダッシュボードサーバーの起動
-            com.ruskserver.moveearth_addtional.analytics.web.AnalyticsWebServer.INSTANCE.start();
+            if (AnalyticsConfig.isWebServerEnabled()) {
+                com.ruskserver.moveearth_addtional.analytics.web.AnalyticsWebServer.INSTANCE.start();
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    public synchronized boolean isRunning() {
+        return storageWorker != null && storageWorker.isRunning();
     }
 
     /**

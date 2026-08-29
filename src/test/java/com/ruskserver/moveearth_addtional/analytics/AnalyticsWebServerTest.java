@@ -52,6 +52,7 @@ public class AnalyticsWebServerTest {
     @AfterEach
     public void tearDown() throws Exception {
         AnalyticsWebServer.INSTANCE.stop();
+        AnalyticsConfig.resetToDefaults();
         if (engine != null && engine.isOpen()) {
             engine.close();
         }

@@ -27,6 +27,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         if (event.getEntity() instanceof ServerPlayer player) {
             AnalyticsCollectorManager.INSTANCE.onPlayerLogin(player, System.currentTimeMillis());
         }
@@ -34,6 +35,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         if (event.getEntity() instanceof ServerPlayer player) {
             AnalyticsCollectorManager.INSTANCE.onPlayerLogout(player, System.currentTimeMillis());
         }
@@ -41,6 +43,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         if (!event.isCanceled() && event.getPlayer() instanceof ServerPlayer player) {
             AnalyticsCollectorManager.INSTANCE.recordBlockBreak(player);
         }
@@ -48,6 +51,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         if (!event.isCanceled() && event.getEntity() instanceof ServerPlayer player) {
             AnalyticsCollectorManager.INSTANCE.recordBlockPlace(player);
         }
@@ -55,6 +59,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         if (event.getEntity() instanceof ServerPlayer player) {
             AnalyticsCollectorManager.INSTANCE.recordCraft(player);
         }
@@ -62,6 +67,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onLivingDeath(LivingDeathEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         if (event.isCanceled()) {
             return;
         }
@@ -80,12 +86,14 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerTick(ServerTickEvent.Post event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         long gameTime = event.getServer().overworld().getGameTime();
         AnalyticsCollectorManager.INSTANCE.onServerTick(event.getServer(), gameTime);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerStopping(ServerStoppingEvent event) {
+        if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         long now = System.currentTimeMillis();
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
             AnalyticsCollectorManager.INSTANCE.onPlayerLogout(player, now);
