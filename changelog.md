@@ -2,6 +2,10 @@
 
 ## Player Analytics (Phase 4: Visualization, Web Dashboard & Complete Schema/Cycle Hardening)
 
+- **Graceful Shutdown Online Session Preservation**: Enforced proactive logout handling on all connected players inside `ServerStoppingEvent` prior to stopping the analytics storage engine, guaranteeing zero session data loss on server restarts.
+- **Robust Web Dashboard Modal Invocation**: Replaced inline JSON stringification with UUID-keyed lookup (`openPlayerModalByUuid`) in `index.html` to eliminate JavaScript parse and syntax errors caused by special characters in player identities.
+- **Detector Group Index Optimization**: Added `idx_detector_group ON detector_activity_5m(group_owner_uuid, bucket_at)` in `SqliteAnalyticsStorageEngine` for fast indexed lookups during base analytics queries.
+- **Detector Lifecycle State Cleanup**: Added `removeDetector` lifecycle hook in `IntrusionTracker` triggered on `PlayerDetectorBlockEntity` removal to prevent unbounded memory growth over long server uptimes.
 - **Temporary Export Resource Guarding**: Wrapped web export generation in `try-finally` blocks within `AnalyticsWebServer` to guarantee prompt deletion of temporary files and directories on any HTTP or compression errors.
 - **Realistic Flight/Vehicle Distance Threshold**: Adjusted `MAX_SAMPLE_DISTANCE` in `PlayerActivityTracker` to 1,500m per 30-second window, accommodating Elytra flight, fast boats, and horses while retaining strict exclusion for teleports and respawns.
 - **Multithreading Visibility in Session Accounting**: Added `volatile` modifiers and synchronization to `ActiveSession` fields in `SessionTracker`, ensuring live online/AFK time queries from async web worker threads always read consistent state.

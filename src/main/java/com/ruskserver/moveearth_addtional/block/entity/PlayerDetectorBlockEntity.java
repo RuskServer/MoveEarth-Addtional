@@ -484,6 +484,20 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public void onDestroy(ServerLevel level) {
         removeDummyEntity(level);
+        if (this.worldPosition != null) {
+            String posHash = Integer.toHexString(Objects.hash(level.dimension().location().toString(), this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()));
+            com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.removeDetector(posHash);
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (this.level instanceof ServerLevel serverLevel && this.worldPosition != null) {
+            removeDummyEntity(serverLevel);
+            String posHash = Integer.toHexString(Objects.hash(serverLevel.dimension().location().toString(), this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()));
+            com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.removeDetector(posHash);
+        }
     }
 
     private void sendGlowingPacket(ServerPlayer player, boolean isGlowing) {

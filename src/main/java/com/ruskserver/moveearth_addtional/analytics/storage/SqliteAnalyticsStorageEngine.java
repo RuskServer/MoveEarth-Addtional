@@ -157,6 +157,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             );
         """);
         stmt.execute("CREATE INDEX IF NOT EXISTS idx_detector_bucket ON detector_activity_5m(bucket_at, dimension);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_detector_group ON detector_activity_5m(group_owner_uuid, bucket_at);");
 
         stmt.execute("""
             CREATE TABLE IF NOT EXISTS player_activity_daily (

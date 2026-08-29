@@ -138,6 +138,12 @@ public class IntrusionTracker {
         return buckets;
     }
 
+    public synchronized void removeDetector(String detectorPosHash) {
+        if (detectorPosHash != null) {
+            detectorStates.remove(detectorPosHash);
+        }
+    }
+
     public synchronized void clear() {
         detectorStates.clear();
     }

@@ -787,7 +787,7 @@
                         <td>${formatNumber(p.totalBreaks)} / ${formatNumber(p.totalPlaces)}</td>
                         <td>${p.totalPveKills} / ${p.totalDeaths}</td>
                         <td>${p.totalJobsXp.toFixed(1)}</td>
-                        <td><button class="refresh-btn" style="padding:0.25rem 0.6rem; font-size:0.8rem;" onclick='openPlayerModal(${JSON.stringify(p)})'>詳細</button></td>
+                        <td><button class="refresh-btn" style="padding:0.25rem 0.6rem; font-size:0.8rem;" onclick="openPlayerModalByUuid('${p.playerUuid}')">詳細</button></td>
                     </tr>
                 `;
             }).join('');
@@ -868,6 +868,13 @@
             const token = getAuthToken();
             const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
             window.location.href = `/api/export?format=${format}&window=${windowVal}${tokenQuery}`;
+        }
+
+        function openPlayerModalByUuid(uuid) {
+            const p = cachedPlayers.find(x => x.playerUuid === uuid);
+            if (p) {
+                openPlayerModal(p);
+            }
         }
 
         function openPlayerModal(p) {

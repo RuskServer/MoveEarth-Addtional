@@ -86,6 +86,10 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerStopping(ServerStoppingEvent event) {
+        long now = System.currentTimeMillis();
+        for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+            AnalyticsCollectorManager.INSTANCE.onPlayerLogout(player, now);
+        }
         AnalyticsCollectorManager.INSTANCE.onServerStopping(event.getServer());
         AnalyticsStorageService.INSTANCE.stop(5000L); // 5秒タイムアウトでフラッシュ・クローズ
     }
