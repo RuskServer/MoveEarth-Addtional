@@ -264,7 +264,7 @@ public class AnalyticsWebServer {
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String dim = params.getOrDefault("dimension", "minecraft:overworld");
             TimeWindow window = parseWindow(params.get("window"));
-            int limit = clampInt(params.get("limit"), 50, 1, 100);
+            int limit = clampInt(params.get("limit"), 100, 1, 500);
 
             try {
                 var cells = AnalyticsQueryService.INSTANCE.getSpatialHeatmapAsync(dim, window, limit).get();
