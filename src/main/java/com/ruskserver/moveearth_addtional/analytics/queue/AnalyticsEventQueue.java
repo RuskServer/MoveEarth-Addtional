@@ -133,12 +133,37 @@ public class AnalyticsEventQueue {
 
         boolean offered = queue.offer(event);
         if (!offered) {
-            // キュー満杯時: HIGH優先度イベントなら既存の要素を1件追い出してスロットを確保
+            // キュー満杯時: HIGH優先度イベントなら既存のLOW -> NORMAL要素を優先して1件追い出し、なければ先頭を追い出してスロットを確保
             if (event.getPriority() == EventPriority.HIGH) {
-                AnalyticsEvent evicted = queue.poll();
-                if (evicted != null) {
-                    droppedEvents.incrementAndGet(); // 追い出された要素をドロップカウント
+                AnalyticsEvent target = null;
+                // 1. LOW優先度を探索
+                for (AnalyticsEvent e : queue) {
+                    if (e.getPriority() == EventPriority.LOW) {
+                        target = e;
+                        break;
+                    }
+                }
+                // 2. なければNORMAL優先度を探索
+                if (target == null) {
+                    for (AnalyticsEvent e : queue) {
+                        if (e.getPriority() == EventPriority.NORMAL) {
+                            target = e;
+                            break;
+                        }
+                    }
+                }
+
+                if (target != null) {
+                    queue.remove(target);
+                    droppedEvents.incrementAndGet();
                     offered = queue.offer(event);
+                } else {
+                    // 全てがHIGHの場合は先頭を追い出し
+                    AnalyticsEvent evicted = queue.poll();
+                    if (evicted != null) {
+                        droppedEvents.incrementAndGet();
+                        offered = queue.offer(event);
+                    }
                 }
             }
 
@@ -148,6 +173,15 @@ public class AnalyticsEventQueue {
             }
         }
         return offered;
+    }
+
+    /**
+     * ドロップされたイベント数を外部（ワーカースレッド等）から加算
+     */
+    public void recordDropped(long count) {
+        if (count > 0) {
+            droppedEvents.addAndGet(count);
+        }
     }
 
     /**

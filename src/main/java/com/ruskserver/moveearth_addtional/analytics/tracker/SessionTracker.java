@@ -132,6 +132,10 @@ public class SessionTracker {
         return sessions.get(playerUuid);
     }
 
+    public Map<UUID, ActiveSession> getAllActiveSessions() {
+        return java.util.Collections.unmodifiableMap(sessions);
+    }
+
     public void clear() {
         sessions.clear();
     }

@@ -51,13 +51,32 @@ public class AnalyticsStorageWorker implements Runnable {
 
                 if (count > 0) {
                     long startMs = System.currentTimeMillis();
-                    try {
-                        storageEngine.writeBatch(batch);
-                        lastFlushDurationMs = System.currentTimeMillis() - startMs;
-                        lastFlushTimeMs = System.currentTimeMillis();
-                    } finally {
-                        batch.clear();
+                    boolean written = false;
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        try {
+                            storageEngine.writeBatch(batch);
+                            lastFlushDurationMs = System.currentTimeMillis() - startMs;
+                            lastFlushTimeMs = System.currentTimeMillis();
+                            written = true;
+                            break;
+                        } catch (Exception e) {
+                            if (attempt < 3) {
+                                try {
+                                    Thread.sleep(attempt * 50L);
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    break;
+                                }
+                            } else {
+                                e.printStackTrace();
+                            }
+                        }
                     }
+                    if (!written) {
+                        // 3回リトライしても失敗した場合はドロップ数に計上
+                        queue.recordDropped(batch.size());
+                    }
+                    batch.clear();
                 } else {
                     Thread.sleep(100);
                 }

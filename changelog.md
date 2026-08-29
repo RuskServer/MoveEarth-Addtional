@@ -1,17 +1,15 @@
 # Unreleased
 
-## Player Analytics (Phase 4: Visualization, Web Dashboard & Comprehensive Hardening)
+## Player Analytics (Phase 4: Visualization, Web Dashboard & Complete Schema/Cycle Hardening)
 
-- **Safe SQLite Table Migration (v1 -> v2)**: Implemented full table rebuild migration (`ALTER TABLE ... RENAME TO _old`, create table with 4-column composite primary key, `INSERT INTO ... SELECT ... FROM _old`, and `DROP TABLE _old`) ensuring seamless schema upgrades from v1 without unique constraint or column errors.
-- **Worker Error Recovery**: Wrapped batch writes in `try-finally` blocks within `AnalyticsStorageWorker` to guarantee `batch.clear()` on failures, preventing unbounded memory growth and retry loops.
-- **Realtime Online Activity Reflection**: Unified active time, block breaks/places, jobs XP, and distance metrics to pull from `player_activity_5m` and `player_activity_daily`, ensuring online players' active time is immediately visible in player summaries and overview KPIs without waiting for logout session flushes.
-- **Strict Active Player Definition (>= 10 Minutes)**: Updated `activeDays` and `activeUniquePlayers` aggregation queries to require `HAVING SUM(active_seconds) >= 600` (10 minutes) per day/window, filtering out brief transient visits and adhering to the open-day active specification.
-- **Precise Window Boundary Slicing**: Refined 7d/30d queries so historical tables only contribute complete past days (`date_epoch_day >= startDay + 1 AND date_epoch_day < todayDay`), while boundary days and current intra-day records are sliced from `player_activity_5m` at exact second granularity to prevent up to 24-hour overcounting.
-- **Comprehensive Group Summaries**: Added `queryAllGroupSummaries` and `/api/groups` aggregation directly querying `detector_activity_5m` to display all active detector groups regardless of top-player rankings.
-- **Teleportation & Dimension Distance Exclusion**: Added dimension tracking and 100-meter single-sample jump threshold in `PlayerActivityTracker` to exclude Nether/End portals, TPA, respawns, and teleports from walking distance metrics.
-- **High-Priority Queue Eviction Protection**: Enhanced `AnalyticsEventQueue` to actively evict and drop `LOW/NORMAL` events when full to guarantee slots for `HIGH`-priority session start/end events.
-- **Rate Limiting & Parameter Clamping**: Implemented sliding-window rate limiting (20 req/sec per IP/token) returning HTTP 429 and clamped API `limit` parameters to `[1, 100]` to prevent DB worker starvation.
-- **Dimension-Aware Whitelist Migration**: Replaced static migration flags with per-dimension tracking in `PlayerWhitelistSavedData`, ensuring failed dimensions log errors and retry safely on subsequent server loads.
+- **Idempotent Daily Aggregation**: Overhauled `aggregateDaily` using `DO UPDATE SET active_seconds = excluded.active_seconds...` (assignment overwrite) to eliminate duplication on repeated executions.
+- **Dynamic Schema Inspection & Auto-Healing**: Added dynamic `PRAGMA table_info` introspection in `checkAndMigrateSchema` upgrading schema to Version 3, repairing legacy column names in `collector_health`, and preserving `group_owner_uuid` values across all tables.
+- **Worker Write Retries & Accurate Drop Accounting**: Added 3-attempt exponential backoff retries in `AnalyticsStorageWorker` on transient database locks/errors, recording dropped batches to `droppedEvents` only upon final failure.
+- **JST 19:00 Open Day Cycle Alignment**: Aligned all open day window indexing to JST 19:00 (`(bucket_at - 36000) / 86400`) and enforced per-open-day 10-minute active thresholds (`HAVING SUM(active_seconds) >= 600`) for both individual `activeDays` and server-wide `activeUniquePlayers`.
+- **Ongoing Session Realtime Combination**: Integrated `SessionTracker.getAllActiveSessions()` snapshots into `queryPlayerSummary` and `queryOverviewSummary`, ensuring online players' live online seconds, AFK time, and active session counts are instantly visible.
+- **Strict Low/Normal Eviction**: Updated `AnalyticsEventQueue` to search and evict `LOW` (spatial samples) and `NORMAL` events first during queue saturation, strictly protecting other concurrent `HIGH`-priority events (such as session termination).
+- **First Seen Timestamp Retrieval**: Fixed `queryPlayerSummary` to correctly select and populate `first_seen_at` from `player_identity`.
+- **Seamless 5m-Daily Boundary Slicing**: Refined hybrid aggregation queries to pull intra-90d history directly from `player_activity_5m` with historical daily data backfilling pre-purge periods without gaps or overlaps.
 
 ## Player Analytics (Phase 3: Aggregation & Query Engine)
 

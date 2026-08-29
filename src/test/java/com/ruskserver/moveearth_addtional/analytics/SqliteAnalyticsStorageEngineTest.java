@@ -50,7 +50,7 @@ public class SqliteAnalyticsStorageEngineTest {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT version FROM schema_version")) {
             assertTrue(rs.next());
-            assertEquals(2, rs.getInt("version"));
+            assertEquals(3, rs.getInt("version"));
         }
     }
 
@@ -96,9 +96,9 @@ public class SqliteAnalyticsStorageEngineTest {
         UUID groupOwner = UUID.randomUUID();
         String dim = "minecraft:overworld";
 
-        // Day 1: 2つの5分バケット
-        long bucket1 = 86400L * 10 + 300L;
-        long bucket2 = 86400L * 10 + 600L;
+        // Day 10 (JST 19:00基準): 2つの5分バケット
+        long bucket1 = 36000L + 86400L * 10 + 300L;
+        long bucket2 = 36000L + 86400L * 10 + 600L;
 
         PlayerActivityBucket p1 = new PlayerActivityBucket(
                 bucket1, playerUuid, dim, groupOwner, 180, 50.0, 10, 5, 2, 3, 1, 0, 150.0, 1);
@@ -115,8 +115,8 @@ public class SqliteAnalyticsStorageEngineTest {
             assertEquals(2, rs.getInt(1));
         }
 
-        // 日次集約の実行
-        engine.aggregateDaily(86400L * 11);
+        // 日次集約の実行 (Day 11 開始前まで)
+        engine.aggregateDaily(36000L + 86400L * 11);
 
         // 日次データの検証 (Day 10)
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
@@ -265,6 +265,7 @@ public class SqliteAnalyticsStorageEngineTest {
                     cell_x INTEGER NOT NULL,
                     cell_z INTEGER NOT NULL,
                     y_band TEXT NOT NULL,
+                    group_owner_uuid TEXT,
                     relation TEXT NOT NULL,
                     active_samples INTEGER NOT NULL,
                     unique_players INTEGER NOT NULL,
@@ -276,6 +277,7 @@ public class SqliteAnalyticsStorageEngineTest {
                     date_epoch_day INTEGER NOT NULL,
                     player_uuid TEXT NOT NULL,
                     dimension TEXT NOT NULL,
+                    group_owner_uuid TEXT,
                     active_seconds INTEGER NOT NULL,
                     distance_blocks REAL NOT NULL,
                     breaks INTEGER NOT NULL,
@@ -289,15 +291,31 @@ public class SqliteAnalyticsStorageEngineTest {
                     PRIMARY KEY (date_epoch_day, player_uuid, dimension)
                 );
             """);
+            stmt.execute("""
+                CREATE TABLE collector_health (
+                    recorded_at INTEGER NOT NULL,
+                    queue_depth INTEGER NOT NULL,
+                    dropped_events INTEGER NOT NULL,
+                    flush_ms INTEGER NOT NULL,
+                    db_bytes INTEGER NOT NULL,
+                    PRIMARY KEY (recorded_at)
+                );
+            """);
 
             UUID pOld = UUID.randomUUID();
+            UUID gOld = UUID.randomUUID();
             stmt.execute("INSERT INTO player_activity_5m VALUES (1000, '" + pOld + "', 'minecraft:overworld', 120, 10.0, 5, 2, 0, 0, 0, 0, 10.0, 0);");
+            stmt.execute("INSERT INTO player_activity_daily VALUES (10, '" + pOld + "', 'minecraft:overworld', '" + gOld + "', 600, 50.0, 10, 5, 0, 0, 0, 0, 50.0, 0);");
+            stmt.execute("INSERT INTO collector_health VALUES (1000, 2, 0, 15, 1024);");
         }
 
-        // v2エンジンで初期化してマイグレーション実行
+        // v3エンジンで初期化して自動修復マイグレーション実行
         SqliteAnalyticsStorageEngine v2Engine = new SqliteAnalyticsStorageEngine();
         v2Engine.initialize(v1DbPath);
         assertTrue(v2Engine.isOpen());
+
+        // 旧データのグループ帰属が維持されているか確認
+        var oldSummary = v2Engine.queryPlayerSummary(UUID.fromString("00000000-0000-0000-0000-000000000000"), com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.ALL_TIME, 2000000L);
 
         // マイグレーション後に新4列主キー形式でデータ追加できるか検証
         UUID pNew = UUID.randomUUID();
@@ -314,39 +332,96 @@ public class SqliteAnalyticsStorageEngineTest {
     }
 
     @Test
-    public void testActiveDaysAndOnlinePlayerPreserved() throws Exception {
-        UUID onlinePlayer = UUID.randomUUID();
-        UUID shortStayPlayer = UUID.randomUUID();
-        long now = 86400L * 5 + 3600L; // Day 5, 1:00
+    public void testAggregateDailyIdempotent() throws Exception {
+        UUID player = UUID.randomUUID();
+        long t1 = 36000L + 1000L; // 開放日 0 の 1000秒後
+        long t2 = 36000L + 2000L; // 開放日 0 の 2000秒後
 
-        // 1. shortStayPlayer: 1分（60秒）だけ活動 (10分未満)
-        PlayerActivityBucket shortBucket = new PlayerActivityBucket(
-                now, shortStayPlayer, "minecraft:overworld", null, 60, 10.0, 1, 1, 0, 0, 0, 0, 5.0, 0);
+        PlayerActivityBucket b1 = new PlayerActivityBucket(
+                t1, player, "minecraft:overworld", null, 300, 10.0, 10, 5, 0, 0, 0, 0, 10.0, 0);
+        PlayerActivityBucket b2 = new PlayerActivityBucket(
+                t2, player, "minecraft:overworld", null, 300, 20.0, 20, 10, 0, 0, 0, 0, 20.0, 0);
 
-        // 2. onlinePlayer: 15分（900秒）活動 (10分以上) - ログアウト前（セッション未記録）
-        PlayerActivityBucket onlineBucket = new PlayerActivityBucket(
-                now, onlinePlayer, "minecraft:overworld", null, 900, 200.0, 50, 30, 5, 2, 0, 0, 150.0, 1);
+        engine.writeBatch(List.of(new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b1, b2))));
 
-        engine.writeBatch(List.of(
-                new AnalyticsEventQueue.SessionStartEvent(UUID.randomUUID(), onlinePlayer, "OnlinePlayer", now - 900L),
-                new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(shortBucket, onlineBucket))
-        ));
+        // 日次集約を 3 回連続実行
+        for (int i = 0; i < 3; i++) {
+            engine.aggregateDaily(36000L + 86400L);
+        }
 
-        // ログアウト前でも onlinePlayer の活動時間が正しく取得できる
-        var pSummary = engine.queryPlayerSummary(onlinePlayer, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
-        assertTrue(pSummary.isPresent());
-        assertEquals(900, pSummary.get().totalActiveSeconds());
-        assertEquals(1, pSummary.get().activeDays()); // 10分以上なので1日
+        // 3回実行しても重複加算されず、合計値（300+300=600秒, breaks=30, places=15）が正確に維持される
+        var summary = engine.queryPlayerSummary(player, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.ALL_TIME, 36000L + 86400L + 100L);
+        assertTrue(summary.isPresent());
+        assertEquals(600, summary.get().totalActiveSeconds());
+        assertEquals(30, summary.get().totalBreaks());
+        assertEquals(15, summary.get().totalPlaces());
+    }
 
-        // shortStayPlayer は 10分未満なので activeDays = 0
-        var shortSummary = engine.queryPlayerSummary(shortStayPlayer, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
-        assertTrue(shortSummary.isPresent());
-        assertEquals(60, shortSummary.get().totalActiveSeconds());
-        assertEquals(0, shortSummary.get().activeDays()); // 10分未満なので0日
+    @Test
+    public void testJstOpenDay10MinCriteria() throws Exception {
+        UUID transientPlayer = UUID.randomUUID(); // 毎日2分だけ活動 (7日で14分だが各日10分未満)
+        UUID activePlayer = UUID.randomUUID();    // 1日だけ15分活動 (10分以上)
 
-        // 概要KPI: activeUniquePlayers は 10分以上の 1 人（onlinePlayer のみ）
+        long baseJst19 = 36000L; // JST 19:00
+
+        // 1. transientPlayer: 7日間にわたり毎日 120秒（2分）ずつ活動 (合計 840秒 = 14分)
+        for (int day = 0; day < 7; day++) {
+            long t = baseJst19 + day * 86400L + 1800L;
+            PlayerActivityBucket b = new PlayerActivityBucket(
+                    t, transientPlayer, "minecraft:overworld", null, 120, 10.0, 1, 1, 0, 0, 0, 0, 5.0, 0);
+            engine.writeBatch(List.of(new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b))));
+        }
+
+        // 2. activePlayer: Day 1 に 900秒（15分）活動 (10分以上)
+        PlayerActivityBucket bActive = new PlayerActivityBucket(
+                baseJst19 + 86400L + 1800L, activePlayer, "minecraft:overworld", null, 900, 100.0, 20, 10, 0, 0, 0, 0, 50.0, 0);
+        engine.writeBatch(List.of(new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(bActive))));
+
+        // now は Day 6（7日目）の 20:00 JST (baseJst19 + 6 * 86400L + 3600L)
+        long now = baseJst19 + 6 * 86400L + 3600L;
+
+        // transientPlayer: 7日間合算で14分あるが、1日あたり10分未満なので activeDays = 0
+        var tSummary = engine.queryPlayerSummary(transientPlayer, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
+        assertTrue(tSummary.isPresent());
+        assertEquals(840, tSummary.get().totalActiveSeconds());
+        assertEquals(0, tSummary.get().activeDays());
+
+        // activePlayer: Day 1 が10分以上なので activeDays = 1
+        var aSummary = engine.queryPlayerSummary(activePlayer, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
+        assertTrue(aSummary.isPresent());
+        assertEquals(900, aSummary.get().totalActiveSeconds());
+        assertEquals(1, aSummary.get().activeDays());
+
+        // 概要KPI: activeUniquePlayers は「いずれかの開放日で10分以上活動した」1人（activePlayer のみ）
         var overview = engine.queryOverviewSummary(com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
         assertEquals(1, overview.activeUniquePlayers());
-        assertEquals(960L, overview.totalActiveSeconds()); // 900 + 60 は合計活動時間として正しく加算
+        assertEquals(1740L, overview.totalActiveSeconds()); // 840 + 900
+    }
+
+    @Test
+    public void testFirstSeenAtAndOngoingSession() throws Exception {
+        UUID onlinePlayer = UUID.randomUUID();
+        long now = 36000L + 7200L;
+        long firstSeen = 36000L;
+
+        // 1. player_identity に first_seen_at を登録
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.SessionStartEvent(UUID.randomUUID(), onlinePlayer, "OnlinePlayer", firstSeen)
+        ));
+
+        // 2. SessionTracker に進行中セッションを登録
+        com.ruskserver.moveearth_addtional.analytics.tracker.SessionTracker.INSTANCE.onLogin(onlinePlayer, "OnlinePlayer", now * 1000L - 1800000L); // 30分前ログイン
+
+        PlayerActivityBucket b = new PlayerActivityBucket(
+                now, onlinePlayer, "minecraft:overworld", null, 600, 50.0, 10, 5, 0, 0, 0, 0, 20.0, 0);
+        engine.writeBatch(List.of(new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b))));
+
+        var summary = engine.queryPlayerSummary(onlinePlayer, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
+        assertTrue(summary.isPresent());
+        assertEquals(firstSeen, summary.get().firstSeenAtEpochSec());
+        assertEquals(1, summary.get().sessionCount()); // 進行中セッションが合算
+        assertTrue(summary.get().totalOnlineSeconds() >= 1800); // 30分以上のオンライン時間が合算
+
+        com.ruskserver.moveearth_addtional.analytics.tracker.SessionTracker.INSTANCE.clear();
     }
 }

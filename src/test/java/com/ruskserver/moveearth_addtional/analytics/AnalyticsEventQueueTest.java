@@ -95,6 +95,33 @@ public class AnalyticsEventQueueTest {
     }
 
     @Test
+    public void testHighPriorityProtectsOtherHighEvents() {
+        // 容量3のキューで HIGH1, LOW1, HIGH2 の順に格納
+        AnalyticsEventQueue.SessionStartEvent high1 = new AnalyticsEventQueue.SessionStartEvent(
+                UUID.randomUUID(), UUID.randomUUID(), "High1", 1000L);
+        AnalyticsEventQueue.SpatialActivityFlushEvent low1 = new AnalyticsEventQueue.SpatialActivityFlushEvent(Collections.emptyList());
+        AnalyticsEventQueue.SessionStartEvent high2 = new AnalyticsEventQueue.SessionStartEvent(
+                UUID.randomUUID(), UUID.randomUUID(), "High2", 2000L);
+
+        AnalyticsEventQueue q3 = new AnalyticsEventQueue(3);
+        assertTrue(q3.enqueue(high1));
+        assertTrue(q3.enqueue(low1));
+        assertTrue(q3.enqueue(high2));
+        assertEquals(3, q3.size());
+
+        // 満杯時に新しい HIGH3 を投入すると、先頭の high1 ではなく、間にある low1 が追い出される
+        AnalyticsEventQueue.SessionStartEvent high3 = new AnalyticsEventQueue.SessionStartEvent(
+                UUID.randomUUID(), UUID.randomUUID(), "High3", 3000L);
+        assertTrue(q3.enqueue(high3));
+        assertEquals(3, q3.size());
+
+        // キューの中身は high1, high2, high3（high1が保護され、low1が破棄された）
+        assertEquals(high1, q3.poll());
+        assertEquals(high2, q3.poll());
+        assertEquals(high3, q3.poll());
+    }
+
+    @Test
     public void testDrainTo() {
         AnalyticsEventQueue.SessionStartEvent event1 = new AnalyticsEventQueue.SessionStartEvent(
                 UUID.randomUUID(), UUID.randomUUID(), "Player1", 1000L);
