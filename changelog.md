@@ -1,69 +1,26 @@
-# Unreleased
+# v2.2
 
-## Player Analytics (Phase 4: Visualization, Web Dashboard & Complete Schema/Cycle Hardening)
+## Entity Occlusion Culling (SubChunk VisGraph)
+
+- **SubChunk VisGraph Packet Control**: Integrated a sub-chunk (16×16×16) visibility graph and view frustum culling engine into `ChunkMap$TrackedEntity` via Mixin. Dynamically pauses packet broadcasting (`ItemEntity` and `ExperienceOrb`) for occluded or out-of-view entities, eliminating ESP exploitation and drastically reducing client-server network traffic.
+- **Ultra-Low Overhead & O(1) Evaluation**: Pre-calculates 6-face inter-connectivity bitmasks per section on block changes, allowing BFS exploration and entity visibility checks to execute in constant $O(1)$ set lookup time without ticking voxel raycasts.
+- **Pop-in Prevention & Near-Distance Bypass**: Enforced an unconditional 3.5m near-distance bypass around players and a +30-degree FOV margin to guarantee zero pop-in latency upon turning corners and preserve full compatibility with item magnet / auto-collector mods.
+- **Broad Mod Compatibility & Fail-Safe**: Leveraged vanilla `BlockState.canOcclude()` and `isSolidRender()` to automatically recognize third-party mod blocks (pipes, machines, glass, fences) while failing safe to visible upon unrendered or exceptional states.
+- **Configurable Control Engine**: Added `SubChunkOcclusionConfig` with toggles for feature enablement, bypass radius, FOV margin, search depth, tick intervals, and entity type filters.
+
+## Player Analytics & Web Dashboard
 
 - **Interactive 2D Spatial Heatmap Canvas Viewer**: Integrated a rich HTML5 Canvas 2D grid map into the web dashboard featuring pan/drag, mouse wheel zooming, origin centering, data autofit, dynamic coordinate/axis rendering, thermographic density coloration, hover inspection tooltips, altitude (YBand) / relationship (Relation) filtering, and bidirectional focus synchronization with the top density ranking table.
-- **Extended Spatial Heatmap API Limit**: Expanded `/api/heatmap` query parameter limit clamp in `AnalyticsWebServer` from 100 to 500 cells to support comprehensive wide-area map rendering.
-- **Dedicated Server Restriction & Lifecycle Bypassing**: Restricted the analytics engine to dedicated servers by default (`dedicated_server_only=true`), completely bypassing collection hooks, SQLite persistence, and web daemon instantiation on singleplayer / integrated servers.
-- **External Configuration Engine**: Added `config/moveearth_analytics.properties` auto-generation and dynamic loading in `AnalyticsConfig`, enabling operators to configure `web_server_host`, `web_server_port`, `web_server_enabled`, `web_server_require_auth`, and `dedicated_server_only`.
-- **Graceful Shutdown Online Session Preservation**: Enforced proactive logout handling on all connected players inside `ServerStoppingEvent` prior to stopping the analytics storage engine, guaranteeing zero session data loss on server restarts.
-- **Robust Web Dashboard Modal Invocation**: Replaced inline JSON stringification with UUID-keyed lookup (`openPlayerModalByUuid`) in `index.html` to eliminate JavaScript parse and syntax errors caused by special characters in player identities.
-- **Detector Group Index Optimization**: Added `idx_detector_group ON detector_activity_5m(group_owner_uuid, bucket_at)` in `SqliteAnalyticsStorageEngine` for fast indexed lookups during base analytics queries.
-- **Detector Lifecycle State Cleanup**: Added `removeDetector` lifecycle hook in `IntrusionTracker` triggered on `PlayerDetectorBlockEntity` removal to prevent unbounded memory growth over long server uptimes.
-- **Temporary Export Resource Guarding**: Wrapped web export generation in `try-finally` blocks within `AnalyticsWebServer` to guarantee prompt deletion of temporary files and directories on any HTTP or compression errors.
-- **Realistic Flight/Vehicle Distance Threshold**: Adjusted `MAX_SAMPLE_DISTANCE` in `PlayerActivityTracker` to 1,500m per 30-second window, accommodating Elytra flight, fast boats, and horses while retaining strict exclusion for teleports and respawns.
-- **Multithreading Visibility in Session Accounting**: Added `volatile` modifiers and synchronization to `ActiveSession` fields in `SessionTracker`, ensuring live online/AFK time queries from async web worker threads always read consistent state.
-- **Offline Player Analytics Commands**: Replaced `EntityArgument.player()` with `GameProfileArgument.gameProfile()` in `AnalyticsCommand`, allowing operators to inspect historical activity for offline players and base owners.
-- **Full Group Summary TTL Caching**: Added `allGroupsCache` in `AnalyticsQueryService` to eliminate redundant database queries on repeated `/api/groups` web dashboard requests.
-- **JST 19:00 Daily Purge Consistency**: Aligned `purgeOldRecords` in `SqliteAnalyticsStorageEngine` to use the JST 19:00 cycle index `(cutoff - 36000) / 86400`.
-- **Idempotent Daily Aggregation**: Overhauled `aggregateDaily` using `DO UPDATE SET active_seconds = excluded.active_seconds...` (assignment overwrite) to eliminate duplication on repeated executions.
-- **Dynamic Schema Inspection & Auto-Healing**: Added dynamic `PRAGMA table_info` introspection in `checkAndMigrateSchema` upgrading schema to Version 3, repairing legacy column names in `collector_health`, and preserving `group_owner_uuid` values across all tables.
-- **Worker Write Retries & Accurate Drop Accounting**: Added 3-attempt exponential backoff retries in `AnalyticsStorageWorker` on transient database locks/errors, recording dropped batches to `droppedEvents` only upon final failure.
-- **JST 19:00 Open Day Cycle Alignment**: Aligned all open day window indexing to JST 19:00 (`(bucket_at - 36000) / 86400`) and enforced per-open-day 10-minute active thresholds (`HAVING SUM(active_seconds) >= 600`) for both individual `activeDays` and server-wide `activeUniquePlayers`.
-- **Ongoing Session Realtime Combination**: Integrated `SessionTracker.getAllActiveSessions()` snapshots into `queryPlayerSummary` and `queryOverviewSummary`, ensuring online players' live online seconds, AFK time, and active session counts are instantly visible.
-- **Strict Low/Normal Eviction**: Updated `AnalyticsEventQueue` to search and evict `LOW` (spatial samples) and `NORMAL` events first during queue saturation, strictly protecting other concurrent `HIGH`-priority events (such as session termination).
-- **First Seen Timestamp Retrieval**: Fixed `queryPlayerSummary` to correctly select and populate `first_seen_at` from `player_identity`.
-- **Seamless 5m-Daily Boundary Slicing**: Refined hybrid aggregation queries to pull intra-90d history directly from `player_activity_5m` with historical daily data backfilling pre-purge periods without gaps or overlaps.
-
-## Player Analytics (Phase 3: Aggregation & Query Engine)
-
-- Added query DTOs: `TimeWindow` (`DAYS_7`, `DAYS_30`, `ALL_TIME`), `PlayerSummaryDto`, `GroupSummaryDto`, `SpatialHeatmapCellDto`, and `CollectorHealthDto`.
-- Added analytical query methods to `AnalyticsStorageEngine` and `SqliteAnalyticsStorageEngine` supporting multi-window aggregation for player KPI breakdowns, top active players, detector group utilization, spatial 32x32 heatmaps, and system health metrics.
-- Implemented `AnalyticsQueryCache` with configurable TTL expiration (60 seconds) to prevent redundant database access.
-- Implemented `AnalyticsQueryService` providing non-blocking `CompletableFuture` queries offloaded to a dedicated worker pool with safe fallback defaults for nonexistent players or groups.
-
-## Player Analytics (Phase 2: Storage & Aggregation)
-
-- Added SQLite JDBC driver (`org.xerial:sqlite-jdbc:3.46.1.3`) under Apache-2.0 with license notice in `THIRD_PARTY_NOTICES.md`.
-- Implemented `SqliteAnalyticsStorageEngine` operating in SQLite WAL mode (`PRAGMA journal_mode = WAL`, `synchronous = NORMAL`, `busy_timeout = 5000`) for high-throughput ACID persistence under `<world>/moveearth/analytics/analytics.db`.
-- Created schema version 1 migrations for `player_identity`, `player_session`, `player_activity_5m`, `spatial_activity_5m`, `detector_activity_5m`, `player_activity_daily`, and `collector_health`.
-- Implemented `AnalyticsStorageWorker` background daemon thread for periodic non-blocking batch transaction commits and deterministic shutdown flushing with safe interrupt recovery.
-- Implemented daily roll-up aggregation (`aggregateDaily`) from 5-minute buckets into `player_activity_daily` and automated retention purge (`purgeOldRecords`) for 90-day 5-minute data, 365-day daily data, and 365-day session history.
-- Integrated `AnalyticsStorageService` with `ServerStartingEvent`, server tick maintenance (every 24,000 ticks), and `ServerStoppingEvent`.
-
-## Player Analytics (Phase 1: Telemetry Collection Engine)
-
-- Implemented `AnalyticsCollectorManager` to orchestrate 30-second position sampling distributed across server ticks by player UUID hash, excluding spectators and tagging PvP arena participants.
-- Added 5-minute memory aggregation for `PlayerActivityBucket` and `SpatialActivityBucket` (32x32 cells, Y-bands) to prevent high-frequency raw coordinate storage.
-- Added `IntrusionTracker` to consolidate 5-second detector scans into persistent entry-to-exit intrusion sessions and track distinct visitor/member duration.
-- Added bounded non-blocking `AnalyticsEventQueue` (capacity 10,000) to isolate server thread execution from storage I/O, safely dropping low-priority spatial samples on overflow while tracking dropped event metrics.
-- Added `SessionTracker` to measure true active vs. AFK seconds across player sessions.
-- Added telemetry event hooks in `AnalyticsGameEvents`, `JobService` (Jobs XP), `TpaRequestManager` (TPA success), and `PlayerDetectorBlockEntity` (detector scans).
-
-## Player Analytics (Phase 0: Identity & Group Foundation)
-
-- Migrated `PlayerWhitelistSavedData` from player names to UUID-based storage unified in the overworld `SavedData`, ensuring consistent group membership across all dimensions.
-- Added legacy NBT backwards compatibility for loading existing string-based whitelists, retaining unresolvable names as unresolved entries without data loss, and attempting automatic resolution via profile cache on player login.
-- Added pure Java `WhitelistRegistry` for isolated in-memory operations and unit testing.
-- Added `AnalyticsConfig`, `ActivityCategory`, and `PlayerActivityTracker` to manage 30s sampling intervals, 5m aggregation windows, 32x32 spatial cells, and 5-minute AFK thresholds (movement threshold: 2.0 blocks).
-- Added `DetectorGroupService` and `GroupRelation` enum (`MEMBER`, `OUTSIDER`, `WILDERNESS`) for resolving player affiliations to detector block owner groups and territory boundaries without forcing chunk loads.
+- **Web Dashboard & REST API**: Provided `/api/summary`, `/api/heatmap`, `/api/top-players`, `/api/groups`, `/api/health`, and single-player inspection endpoints, with export archiving and configurable authentication (`config/moveearth_analytics.properties`).
+- **High-Throughput SQLite Storage Engine**: Implemented `SqliteAnalyticsStorageEngine` operating in SQLite WAL mode (`PRAGMA journal_mode = WAL`) under `<world>/moveearth/analytics/analytics.db` with background daemon transaction batching, automated retention purges, and auto-healing schema migrations (Version 3).
+- **JST 19:00 Open Day Cycle Alignment**: Aligned all retention and aggregation windows to JST 19:00 (`(bucket_at - 36000) / 86400`) and enforced per-open-day 10-minute active thresholds (`HAVING SUM(active_seconds) >= 600`) for individual `activeDays` and server-wide `activeUniquePlayers`.
+- **Realtime Session & Intrusion Tracking**: Integrated non-blocking `SessionTracker` measuring active vs. AFK duration, combining online player states into realtime queries, alongside `IntrusionTracker` for detector block entry-to-exit intrusion sessions.
+- **Offline Player Analytics Commands**: Replaced `EntityArgument.player()` with `GameProfileArgument.gameProfile()` in `/analytics` command to inspect historical activity for offline players and base owners.
 
 ## Jobs Compatibility
 
-- Added optional Farmer's Delight 1.3.3 support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.
-- Added verified right-click harvest rewards for crops such as tomatoes. XP is awarded only after the server confirms that the same mature crop was reset to an immature state.
-
-# v2.2
+- **Farmer's Delight 1.3.3 Support**: Added optional Farmer's Delight support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.
+- **Verified Right-Click Harvest Rewards**: XP is awarded only after the server confirms that the mature crop was successfully harvested and reset to an immature state.
 
 ## PvP Loadouts and Combat Balance
 

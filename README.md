@@ -11,10 +11,12 @@ MoveEarth-Addtionalは、RuskServer向けにゲーム進行、PvP、プレイヤ
 
 - TaCZ標準の現代銃を使用したプリセット式PvPとチーム識別、戦績表示、勝敗演出
 - 必須TaCZ GunPackの不足検知と、公式配布ページからのドラッグ＆ドロップ導入画面
+- サブチャンク透過グラフ（VisGraph）を用いた視界外エンティティ（ドロップアイテム等）パケット制御（Anti-ESP・通信削減）
+- Webダッシュボード（2D空間ヒートマップ）付きプレイヤー行動分析・アクティビティ集約システム
 - プレイ時間8時間未満のプレイヤーを対象とする初心者装備
 - プレイヤー検知ブロックと連携した、開放日ごとに回数制限のあるTPA
 - 投票報酬、管理通知、ランダムスポーンなどのサーバー運営機能
-- Stonecutter、LocalizedChat、PlayerReviveなどとの互換処理
+- Stonecutter、LocalizedChat、PlayerRevive、Farmer's Delightなどとの互換処理
 
 詳しい変更内容は[変更履歴](changelog.md)を参照してください。
 
