@@ -151,11 +151,11 @@ public final class PvpScreen extends Screen {
         int accent = def.color();
 
         graphics.fill(x, y, x + cardWidth, y + cardHeight,
-                chosen ? 0xFF263542 : hovered && !active ? CARD_HOVER : CARD);
+                chosen ? 0xFF263542 : hovered ? CARD_HOVER : CARD);
         graphics.fill(x, y, x + (chosen ? 4 : 2), y + cardHeight,
                 chosen ? accent : 0xFF354150);
         drawBorder(graphics, x, y, cardWidth, cardHeight,
-                chosen ? accent : hovered && !active ? 0xFF536173 : 0xFF28323E);
+                chosen ? accent : hovered ? 0xFF536173 : 0xFF28323E);
 
         ItemStack icon = displayGuns.computeIfAbsent(def.id(), k -> createDisplayGun(def));
         if (!icon.isEmpty()) {
@@ -217,12 +217,12 @@ public final class PvpScreen extends Screen {
         }
 
         boolean selectionChanged = !selectedId.equals(serverSelectionId);
-        boolean actionEnabled = !active && hosting && (!joined || selectionChanged);
+        boolean actionEnabled = hosting && (!joined || selectionChanged);
         boolean actionHovered = inside(mouseX, mouseY, footer.actionX, layout.footerY, footer.actionWidth, 28);
-        Component actionText = active
-                ? Component.translatable("screen.moveearth_addtional.pvp.in_match")
-                : !hosting
+        Component actionText = !hosting
                 ? Component.translatable("screen.moveearth_addtional.pvp.closed")
+                : active && !selectionChanged
+                ? Component.translatable("screen.moveearth_addtional.pvp.in_match")
                 : joined && !selectionChanged
                 ? Component.translatable("screen.moveearth_addtional.pvp.registered")
                 : joined
@@ -264,18 +264,16 @@ public final class PvpScreen extends Screen {
         int gridHeight = 155;
 
         if (mouseX >= gridX && mouseX <= gridX + gridWidth && mouseY >= gridY && mouseY <= gridY + gridHeight) {
-            if (!active) {
-                int cardWidth = (gridWidth - 8) / 2;
-                int cardHeight = 72;
-                for (int i = 0; i < loadouts.size(); i++) {
-                    int col = i % 2;
-                    int row = i / 2;
-                    int cx = gridX + col * (cardWidth + 8);
-                    int cy = gridY + row * (cardHeight + 6) - scrollOffset;
-                    if (inside(mouseX, mouseY, cx, cy, cardWidth, cardHeight)) {
-                        selectedId = loadouts.get(i).id();
-                        return true;
-                    }
+            int cardWidth = (gridWidth - 8) / 2;
+            int cardHeight = 72;
+            for (int i = 0; i < loadouts.size(); i++) {
+                int col = i % 2;
+                int row = i / 2;
+                int cx = gridX + col * (cardWidth + 8);
+                int cy = gridY + row * (cardHeight + 6) - scrollOffset;
+                if (inside(mouseX, mouseY, cx, cy, cardWidth, cardHeight)) {
+                    selectedId = loadouts.get(i).id();
+                    return true;
                 }
             }
         }
@@ -298,7 +296,7 @@ public final class PvpScreen extends Screen {
             return true;
         }
         if (inside(mouseX, mouseY, footer.actionX, layout.footerY, footer.actionWidth, 28)) {
-            if (!active && hosting && (!joined || !selectedId.equals(serverSelectionId))) {
+            if (hosting && (!joined || !selectedId.equals(serverSelectionId))) {
                 PacketDistributor.sendToServer(new C2S_PvpActionPacket(true, selectedId));
                 onClose();
             }
