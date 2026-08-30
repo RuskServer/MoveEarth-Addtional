@@ -83,5 +83,10 @@
   "screen.moveearth_addtional.gunpack.already_installed": "その必須GunPackはすでに導入済みです。",
   "screen.moveearth_addtional.gunpack.rejected": "ドロップしたファイルを拒否しました: %s",
   "screen.moveearth_addtional.gunpack.still_missing": "必須GunPackがあと%s個不足しています。",
-  "screen.moveearth_addtional.gunpack.folder_error": "GunPackフォルダを開けませんでした: %s"
+  "screen.moveearth_addtional.gunpack.folder_error": "GunPackフォルダを開けませんでした: %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.title": "◆ HARDPOINT",
+  "overlay.moveearth_addtional.pvp.hardpoint.neutral": "エリアを確保  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.red": "RED 制圧中  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.blue": "BLUE 制圧中  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.contested": "争奪中  •  RED %s  BLUE %s"
 }

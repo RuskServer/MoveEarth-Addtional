@@ -83,5 +83,10 @@
   "screen.moveearth_addtional.gunpack.already_installed": "That required GunPack is already installed.",
   "screen.moveearth_addtional.gunpack.rejected": "The dropped file was rejected: %s",
   "screen.moveearth_addtional.gunpack.still_missing": "%s required GunPack(s) are still missing.",
-  "screen.moveearth_addtional.gunpack.folder_error": "Could not open the GunPack folder: %s"
+  "screen.moveearth_addtional.gunpack.folder_error": "Could not open the GunPack folder: %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.title": "◆ HARDPOINT",
+  "overlay.moveearth_addtional.pvp.hardpoint.neutral": "SECURE THE AREA  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.red": "RED CONTROL  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.blue": "BLUE CONTROL  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.contested": "CONTESTED  •  RED %s  BLUE %s"
 }

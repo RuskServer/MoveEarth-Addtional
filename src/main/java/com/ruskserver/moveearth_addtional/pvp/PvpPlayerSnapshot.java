@@ -16,6 +16,7 @@ import net.minecraft.world.level.Level;
 
 final class PvpPlayerSnapshot {
     final ListTag inventory;
+    final ListTag curiosInventory;
     final ResourceKey<Level> dimension;
     final double x, y, z;
     final float yaw, pitch;
@@ -33,6 +34,7 @@ final class PvpPlayerSnapshot {
 
     PvpPlayerSnapshot(ServerPlayer player) {
         inventory = player.getInventory().save(new ListTag());
+        curiosInventory = PvpCuriosInventoryCompat.capture(player);
         dimension = player.level().dimension();
         x = player.getX();
         y = player.getY();
@@ -57,6 +59,9 @@ final class PvpPlayerSnapshot {
 
     private PvpPlayerSnapshot(CompoundTag tag) {
         inventory = tag.getList("Inventory", Tag.TAG_COMPOUND);
+        curiosInventory = tag.contains("CuriosInventory", Tag.TAG_LIST)
+                ? tag.getList("CuriosInventory", Tag.TAG_COMPOUND)
+                : null;
         dimension = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString("Dimension")));
         x = tag.getDouble("X");
         y = tag.getDouble("Y");
@@ -79,6 +84,7 @@ final class PvpPlayerSnapshot {
     CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.put("Inventory", inventory.copy());
+        if (curiosInventory != null) tag.put("CuriosInventory", curiosInventory.copy());
         tag.putString("Dimension", dimension.location().toString());
         tag.putDouble("X", x);
         tag.putDouble("Y", y);
@@ -103,10 +109,16 @@ final class PvpPlayerSnapshot {
         return new PvpPlayerSnapshot(tag);
     }
 
+    void enterIsolatedState(ServerPlayer player) {
+        // Only clear when capture succeeded; leaking equipment is safer than destroying uncaptured items.
+        if (curiosInventory != null) PvpCuriosInventoryCompat.clear(player);
+    }
+
     void restoreState(ServerPlayer player) {
         player.getInventory().clearContent();
         player.getInventory().load(inventory);
         player.getInventory().selected = selected;
+        PvpCuriosInventoryCompat.restore(player, curiosInventory);
         player.getFoodData().readAdditionalSaveData(food);
         player.experienceLevel = experienceLevel;
         player.totalExperience = totalExperience;

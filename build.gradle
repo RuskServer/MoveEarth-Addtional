@@ -16,6 +16,13 @@ repositories {
         url = "https://maven.firstdark.dev/releases"
     }
     maven {
+        name = "Illusive Soulworks Maven"
+        url = "https://maven.theillusivec4.top/"
+        content {
+            includeGroup "top.theillusivec4.curios"
+        }
+    }
+    maven {
         url = "https://cursemaven.com"
         content {
             includeGroup "curse.maven"
@@ -148,6 +155,9 @@ dependencies {
     // Sable is supplied by the target server; only its API is needed while compiling this mod.
     compileOnly 'dev.ryanhcode.sable:sable-common-1.21.1:2.0.3'
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+
+    // Optional Curios integration: the target modpack supplies the full runtime mod.
+    compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1:api'
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'

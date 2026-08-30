@@ -39,6 +39,10 @@ public class ClientPacketHandler {
         PvpClientState.updateHud(packet);
     }
 
+    public static void handlePvpZone(com.ruskserver.moveearth_addtional.network.S2C_PvpZonePacket packet) {
+        PvpHardpointClientState.update(packet);
+    }
+
     public static void handlePvpTeam(com.ruskserver.moveearth_addtional.network.S2C_PvpTeamPacket packet) {
         PvpClientState.updateAllies(packet.allies());
     }

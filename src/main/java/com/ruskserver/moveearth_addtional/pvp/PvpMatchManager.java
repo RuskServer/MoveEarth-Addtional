@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.network.S2C_PvpEntryStatePacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PvpTeamPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PvpZonePacket;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.TimelessAPI;
@@ -84,6 +85,9 @@ public final class PvpMatchManager {
     private boolean firstBloodAnnounced;
     private boolean finalStandAnnounced;
     private PvpTeam announcedZoneController;
+    private PvpZoneState zoneState = PvpZoneState.NEUTRAL;
+    private int zoneRedPlayers;
+    private int zoneBluePlayers;
 
     private PvpMatchManager() {}
 
@@ -177,8 +181,6 @@ public final class PvpMatchManager {
             sessions.put(player.getUUID(), snapshot);
             matchStats.put(player.getUUID(), new MatchStats());
         }
-        // Persist both the original vanilla player data and our recovery copy before replacing any inventory.
-        server.saveEverything(false, true, false);
 
         for (ServerPlayer player : participants(server, true)) activateParticipant(player, arena, arenaData);
         phase = PvpPhase.RUNNING;
@@ -187,9 +189,12 @@ public final class PvpMatchManager {
         syncTicker = 0;
         matchResultsRecorded = false;
         resetAnnouncerState();
+        zoneState = PvpZoneState.NEUTRAL;
+        zoneRedPlayers = zoneBluePlayers = 0;
         cleanupArenaMobs(arena);
         syncTeams(server);
         syncHud(server, "争奪中");
+        syncZone(server, arenaData);
         syncEntryState(server);
         playToAllParticipants(server, ModSounds.WARLORD_START);
         broadcastToParticipants(server, Component.literal("PvP試合開始！ 丘を占領して180ポイントを獲得してください。"));
@@ -218,14 +223,13 @@ public final class PvpMatchManager {
         snapshots.put(id, snapshot);
         matchStats.put(id, new MatchStats());
         PvpSessionSavedData.get(server).put(id, snapshot);
-        // Make the recovery copy durable before replacing the late entrant's inventory.
-        server.saveEverything(false, true, false);
 
         activateParticipant(player, arena, arenaData);
         syncTeams(server);
         syncEntryState(server);
         PacketDistributor.sendToPlayer(player,
                 new S2C_PvpHudPacket(true, redScore, blueScore, WIN_SCORE, ticksLeft, "途中参加"));
+        sendZone(player, arenaData);
         broadcastToParticipants(server, Component.literal(
                 player.getGameProfile().getName() + " が " + assigned.name() + " チームへ途中参加しました"));
         return true;
@@ -233,6 +237,8 @@ public final class PvpMatchManager {
 
     private void activateParticipant(ServerPlayer player, ServerLevel arena, PvpArenaSavedData arenaData) {
         player.closeContainer();
+        PvpPlayerSnapshot snapshot = snapshots.get(player.getUUID());
+        if (snapshot != null) snapshot.enterIsolatedState(player);
         player.getInventory().clearContent();
         player.getInventory().selected = 0;
         player.removeAllEffects();
@@ -296,6 +302,9 @@ public final class PvpMatchManager {
             }
         }
         String status = red > 0 && blue > 0 ? "争奪中" : red > 0 ? "RED 制圧中" : blue > 0 ? "BLUE 制圧中" : "無人";
+        zoneState = PvpZoneState.fromCounts(red, blue);
+        zoneRedPlayers = red;
+        zoneBluePlayers = blue;
         PvpTeam exclusiveController = red > 0 && blue == 0 ? PvpTeam.RED
                 : blue > 0 && red == 0 ? PvpTeam.BLUE : null;
         if (exclusiveController != null && exclusiveController != announcedZoneController) {
@@ -320,6 +329,7 @@ public final class PvpMatchManager {
         if (++syncTicker >= 10) {
             syncTicker = 0;
             syncHud(server, status);
+            syncZone(server, data);
         }
         if (server.getTickCount() % 200 == 0) {
             ServerLevel arena = server.getLevel(ARENA);
@@ -793,6 +803,20 @@ public final class PvpMatchManager {
         forEachPlayer(server, true, player -> PacketDistributor.sendToPlayer(player, packet));
     }
 
+    private void syncZone(MinecraftServer server, PvpArenaSavedData data) {
+        S2C_PvpZonePacket packet = zonePacket(data);
+        forEachPlayer(server, true, player -> PacketDistributor.sendToPlayer(player, packet));
+    }
+
+    private void sendZone(ServerPlayer player, PvpArenaSavedData data) {
+        PacketDistributor.sendToPlayer(player, zonePacket(data));
+    }
+
+    private S2C_PvpZonePacket zonePacket(PvpArenaSavedData data) {
+        return new S2C_PvpZonePacket(true, ARENA.location(), data.hillMin(), data.hillMax(),
+                zoneState, zoneRedPlayers, zoneBluePlayers);
+    }
+
     private static void assignScoreboardTeam(ServerPlayer player, PvpTeam side) {
         Scoreboard scoreboard = player.server.getScoreboard();
         String name = side == PvpTeam.RED ? "mea_pvp_red" : "mea_pvp_blue";
@@ -837,6 +861,7 @@ public final class PvpMatchManager {
 
     private void clearClientState(ServerPlayer player) {
         PacketDistributor.sendToPlayer(player, S2C_PvpHudPacket.inactive());
+        PacketDistributor.sendToPlayer(player, S2C_PvpZonePacket.inactive());
         PacketDistributor.sendToPlayer(player, new S2C_PvpTeamPacket(List.of()));
         PacketDistributor.sendToPlayer(player, S2C_PvpResultPacket.clear());
     }
@@ -939,6 +964,8 @@ public final class PvpMatchManager {
     private void resetRuntime() {
         phase = PvpPhase.IDLE;
         redScore = blueScore = ticksLeft = syncTicker = 0;
+        zoneState = PvpZoneState.NEUTRAL;
+        zoneRedPlayers = zoneBluePlayers = 0;
         teams.clear();
         loadoutSelections.clear();
         snapshots.clear();
