@@ -18,6 +18,8 @@ public class DelayedChunkCacheManager {
 
     private static final Map<UUID, PlayerDelayedChunkCache> PLAYER_CACHES = new ConcurrentHashMap<>();
 
+    private static final ThreadLocal<Boolean> IS_FLUSHING = ThreadLocal.withInitial(() -> false);
+
     /**
      * プレイヤーがチャンクの視界外に出た際に、即時アンロードを保留（DCCに格納）すべきか判定します。
      *
@@ -26,7 +28,7 @@ public class DelayedChunkCacheManager {
      * @return 即時アンロードを保留する場合 true（バニラの忘却パケット送信をキャンセル）
      */
     public static boolean shouldDelayChunkDrop(ServerPlayer player, ChunkPos chunkPos) {
-        if (!DelayedChunkCacheConfig.enabled) {
+        if (!DelayedChunkCacheConfig.enabled || IS_FLUSHING.get()) {
             return false;
         }
 
@@ -50,7 +52,7 @@ public class DelayedChunkCacheManager {
      * @return キャッシュヒット（再送信スキップ）の場合 true
      */
     public static boolean consumeDelayedChunk(ServerPlayer player, ChunkPos chunkPos) {
-        if (!DelayedChunkCacheConfig.enabled) {
+        if (!DelayedChunkCacheConfig.enabled || IS_FLUSHING.get()) {
             return false;
         }
 
@@ -101,7 +103,12 @@ public class DelayedChunkCacheManager {
 
     private static void sendForgetPacket(ServerPlayer player, ChunkPos chunkPos) {
         if (player.connection != null) {
-            player.connection.send(new ClientboundForgetLevelChunkPacket(chunkPos));
+            IS_FLUSHING.set(true);
+            try {
+                player.connection.send(new ClientboundForgetLevelChunkPacket(chunkPos));
+            } finally {
+                IS_FLUSHING.set(false);
+            }
         }
     }
 
