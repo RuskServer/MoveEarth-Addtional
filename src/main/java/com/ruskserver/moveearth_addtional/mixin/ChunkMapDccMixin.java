@@ -19,33 +19,31 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ChunkMap.class)
 public abstract class ChunkMapDccMixin {
 
-    @Inject(
-            method = "updateChunkTracking",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private void moveearthAdditional$handleDelayedChunkTracking(
-            ServerPlayer player,
-            ChunkPos chunkPos,
-            MutableObject<ClientboundLevelChunkWithLightPacket> packetCache,
-            boolean wasTracked,
-            boolean isTracked,
-            CallbackInfo ci
-    ) {
-        if (isTracked == wasTracked) {
-            return;
-        }
-
-        if (!isTracked && wasTracked) {
-            // 視界外へ離脱した際：DCCが有効なら即時アンロードを保留
-            if (DelayedChunkCacheManager.shouldDelayChunkDrop(player, chunkPos)) {
-                ci.cancel();
-            }
-        } else if (isTracked && !wasTracked) {
-            // 視界内へ再侵入した際：DCCに保留されていたら完全なチャンクデータ再送信をスキップ
-            if (DelayedChunkCacheManager.consumeDelayedChunk(player, chunkPos)) {
-                ci.cancel();
-            }
-        }
-    }
+//    @Inject(
+//            method = "updateChunkTracking",
+//            at = @At("HEAD"),
+//            cancellable = true
+//    )
+//    private void moveearthAdditional$handleDelayedChunkTracking(
+//            ServerPlayer player,
+//            ChunkPos chunkPos,
+//            MutableObject<ClientboundLevelChunkWithLightPacket> packetCache,
+//            boolean wasTracked,
+//            boolean isTracked,
+//            CallbackInfo ci
+//    ) {
+//        if (isTracked == wasTracked) {
+//            return;
+//        }
+//
+//        if (!isTracked && wasTracked) {
+//            if (DelayedChunkCacheManager.shouldDelayChunkDrop(player, chunkPos)) {
+//                ci.cancel();
+//            }
+//        } else if (isTracked && !wasTracked) {
+//            if (DelayedChunkCacheManager.consumeDelayedChunk(player, chunkPos)) {
+//                ci.cancel();
+//            }
+//        }
+//    }
 }
