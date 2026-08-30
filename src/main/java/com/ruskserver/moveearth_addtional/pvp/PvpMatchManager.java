@@ -65,6 +65,7 @@ public final class PvpMatchManager {
     private final Map<UUID, PvpTeam> teams = new LinkedHashMap<>();
     private final Map<UUID, String> loadoutSelections = new HashMap<>();
     private final Map<UUID, PvpPlayerSnapshot> snapshots = new HashMap<>();
+    private final Map<UUID, Integer> lastDamageTicks = new HashMap<>();
     private final Map<UUID, RespawnState> respawns = new HashMap<>();
     private final Map<KillPair, Integer> rewardedKills = new HashMap<>();
     private final Map<UUID, MatchStats> matchStats = new HashMap<>();
@@ -115,7 +116,7 @@ public final class PvpMatchManager {
             player.sendSystemMessage(Component.literal("§c現在PvPイベントは開催されていません。"));
             return false;
         }
-        if (phase == PvpPhase.FINISHED || isActive(player)) {
+        if (phase == PvpPhase.FINISHED) {
             player.sendSystemMessage(Component.literal("§c現在はPvPへ参加できません。"));
             return false;
         }
@@ -123,6 +124,11 @@ public final class PvpMatchManager {
         if (loadout == null) {
             player.sendSystemMessage(Component.literal("§c選択されたPvPロードアウトは使用できません。"));
             return false;
+        }
+        if (isActive(player)) {
+            loadoutSelections.put(player.getUUID(), loadout.id());
+            player.sendSystemMessage(Component.literal("§aロードアウトを「" + loadout.displayName() + "」に変更しました。（次のリスポーン時から反映されます）"));
+            return true;
         }
         if (phase == PvpPhase.RUNNING && activeMap != null) {
             return joinRunningMatch(player, loadout);
@@ -304,6 +310,15 @@ public final class PvpMatchManager {
             }
             maintainCombatHunger(player);
             enforceLoadout(player, selectedLoadout(player));
+
+            if (player.getHealth() < PVP_MAX_HEALTH && !respawns.containsKey(player.getUUID())) {
+                int lastDamage = lastDamageTicks.getOrDefault(player.getUUID(), 0);
+                if (server.getTickCount() - lastDamage >= 100) {
+                    if (server.getTickCount() % 10 == 0) {
+                        player.heal(1.0F);
+                    }
+                }
+            }
         }
 
         if (phase == PvpPhase.FINISHED) {
@@ -464,9 +479,10 @@ public final class PvpMatchManager {
     }
 
     public void recordDamage(ServerPlayer attacker, ServerPlayer victim, float damage) {
-        if (phase != PvpPhase.RUNNING || !isActive(attacker) || !isActive(victim)
-                || respawns.containsKey(victim.getUUID()) || team(attacker) == team(victim)
-                || !Float.isFinite(damage) || damage <= 0.0F) return;
+        if (phase != PvpPhase.RUNNING || !isActive(victim) || respawns.containsKey(victim.getUUID())) return;
+        lastDamageTicks.put(victim.getUUID(), victim.server.getTickCount());
+        
+        if (!isActive(attacker) || team(attacker) == team(victim) || !Float.isFinite(damage) || damage <= 0.0F) return;
         float remainingHealth = Math.max(0.0F, victim.getHealth() + victim.getAbsorptionAmount());
         float appliedDamage = Math.min(damage, remainingHealth);
         if (appliedDamage <= 0.0F) return;
@@ -1050,6 +1066,7 @@ public final class PvpMatchManager {
         teams.clear();
         loadoutSelections.clear();
         snapshots.clear();
+        lastDamageTicks.clear();
         respawns.clear();
         rewardedKills.clear();
         matchStats.clear();
