@@ -701,23 +701,23 @@ public final class PvpMatchManager {
 
     private void giveKit(ServerPlayer player, PvpLoadoutDefinition loadout) {
         PvpTeam t = team(player);
-        player.setItemSlot(EquipmentSlot.HEAD, protectionFourArmor(player, Items.IRON_HELMET, t));
-        player.setItemSlot(EquipmentSlot.CHEST, protectionFourArmor(player, Items.LEATHER_CHESTPLATE, t));
-        player.setItemSlot(EquipmentSlot.LEGS, protectionFourArmor(player, Items.IRON_LEGGINGS, t));
-        player.setItemSlot(EquipmentSlot.FEET, protectionFourArmor(player, Items.IRON_BOOTS, t));
+        player.setItemSlot(EquipmentSlot.HEAD, createPvpArmor(player, Items.LEATHER_HELMET, t, 3));
+        player.setItemSlot(EquipmentSlot.CHEST, createPvpArmor(player, Items.LEATHER_CHESTPLATE, t, 3));
+        player.setItemSlot(EquipmentSlot.LEGS, createPvpArmor(player, Items.IRON_LEGGINGS, t, 4));
+        player.setItemSlot(EquipmentSlot.FEET, createPvpArmor(player, Items.IRON_BOOTS, t, 4));
         player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
         installLoadout(player, loadout);
         refillGuns(player, loadout);
     }
 
-    private ItemStack protectionFourArmor(ServerPlayer player, Item item, PvpTeam team) {
+    private ItemStack createPvpArmor(ServerPlayer player, Item item, PvpTeam team, int enchantLevel) {
         ItemStack stack = new ItemStack(item);
-        if (item == Items.LEATHER_CHESTPLATE && team != null) {
+        if ((item == Items.LEATHER_CHESTPLATE || item == Items.LEATHER_HELMET) && team != null) {
             int color = team == PvpTeam.RED ? 0xFF3333 : 0x3333FF;
             stack.set(net.minecraft.core.component.DataComponents.DYED_COLOR, new net.minecraft.world.item.component.DyedItemColor(color, true));
         }
         var protection = player.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.PROTECTION);
-        stack.enchant(protection, 4);
+        stack.enchant(protection, enchantLevel);
         return stack;
     }
 
@@ -760,18 +760,18 @@ public final class PvpMatchManager {
         }
 
         PvpTeam t = team(player);
-        ensureArmor(player, EquipmentSlot.HEAD, Items.IRON_HELMET, t);
-        ensureArmor(player, EquipmentSlot.CHEST, Items.LEATHER_CHESTPLATE, t);
-        ensureArmor(player, EquipmentSlot.LEGS, Items.IRON_LEGGINGS, t);
-        ensureArmor(player, EquipmentSlot.FEET, Items.IRON_BOOTS, t);
+        ensureArmor(player, EquipmentSlot.HEAD, Items.LEATHER_HELMET, t, 3);
+        ensureArmor(player, EquipmentSlot.CHEST, Items.LEATHER_CHESTPLATE, t, 3);
+        ensureArmor(player, EquipmentSlot.LEGS, Items.IRON_LEGGINGS, t, 4);
+        ensureArmor(player, EquipmentSlot.FEET, Items.IRON_BOOTS, t, 4);
         if (!player.getItemBySlot(EquipmentSlot.OFFHAND).isEmpty()) {
             player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
         }
     }
 
-    private void ensureArmor(ServerPlayer player, EquipmentSlot slot, Item expected, PvpTeam team) {
+    private void ensureArmor(ServerPlayer player, EquipmentSlot slot, Item expected, PvpTeam team, int enchantLevel) {
         if (!validArmor(player.getItemBySlot(slot), expected)) {
-            player.setItemSlot(slot, protectionFourArmor(player, expected, team));
+            player.setItemSlot(slot, createPvpArmor(player, expected, team, enchantLevel));
         }
     }
 
