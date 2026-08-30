@@ -109,10 +109,13 @@ public final class PvpTaskScreen extends Screen {
         String progress = task.progress() + " / " + task.target();
         graphics.drawString(font, progress, barX + barWidth + 7, barY - 1, TEXT, false);
 
-        ItemStack reward = new ItemStack(BuiltInRegistries.ITEM.get(task.itemReward()), task.itemCount());
+        var item = BuiltInRegistries.ITEM.get(task.itemReward());
+        ItemStack reward = item != null ? new ItemStack(item, task.itemCount()) : ItemStack.EMPTY;
         int itemX = x + width - 171;
-        graphics.renderItem(reward, itemX, y + height - 30);
-        graphics.renderItemDecorations(font, reward, itemX, y + height - 30);
+        if (!reward.isEmpty()) {
+            graphics.renderItem(reward, itemX, y + height - 30);
+            graphics.renderItemDecorations(font, reward, itemX, y + height - 30);
+        }
         graphics.drawString(font, "+" + task.pointReward() + "pt", itemX + 20, y + height - 23, 0xFFFFB454, false);
 
         int buttonColor = task.claimed() ? 0xFF20262E
@@ -124,7 +127,7 @@ public final class PvpTaskScreen extends Screen {
                 x + width - 54, y + height - 21,
                 task.complete() && !task.claimed() ? 0xFF68E09B : MUTED);
 
-        if (inside(mouseX, mouseY, itemX, y + height - 30, 18, 18)) {
+        if (!reward.isEmpty() && inside(mouseX, mouseY, itemX, y + height - 30, 18, 18)) {
             graphics.renderTooltip(font, reward, mouseX, mouseY);
         }
     }

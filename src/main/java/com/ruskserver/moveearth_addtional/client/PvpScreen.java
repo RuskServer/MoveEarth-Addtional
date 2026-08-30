@@ -3,16 +3,20 @@ package com.ruskserver.moveearth_addtional.client;
 import com.ruskserver.moveearth_addtional.network.C2S_ExchangeWeaponCratePacket;
 import com.ruskserver.moveearth_addtional.network.C2S_PvpActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestPvpTasksPacket;
-import com.ruskserver.moveearth_addtional.pvp.PvpLoadoutPreset;
+import com.ruskserver.moveearth_addtional.pvp.PvpLoadoutDefinition;
 import com.tacz.guns.api.item.IGun;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.EnumMap;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class PvpScreen extends Screen {
@@ -35,9 +39,11 @@ public final class PvpScreen extends Screen {
     private int entryCount;
     private final int points;
     private final String tasks;
-    private final PvpLoadoutPreset serverSelection;
-    private final Map<PvpLoadoutPreset, ItemStack> displayGuns = new EnumMap<>(PvpLoadoutPreset.class);
-    private PvpLoadoutPreset selected;
+    private final String serverSelectionId;
+    private final Map<String, ItemStack> displayGuns = new HashMap<>();
+    private final List<PvpLoadoutDefinition> loadouts = new ArrayList<>();
+    private String selectedId;
+    private int scrollOffset = 0;
 
     public PvpScreen(boolean joined, boolean active, boolean hosting, boolean matchRunning, int entryCount,
                      int points, String tasks,
@@ -50,9 +56,15 @@ public final class PvpScreen extends Screen {
         this.entryCount = Math.max(0, entryCount);
         this.points = points;
         this.tasks = tasks;
-        this.serverSelection = PvpLoadoutPreset.byId(selectedLoadoutId)
-                .orElse(PvpLoadoutPreset.defaultPreset());
-        this.selected = serverSelection;
+        this.serverSelectionId = selectedLoadoutId != null ? selectedLoadoutId : "assault";
+        this.selectedId = this.serverSelectionId;
+        this.loadouts.addAll(PvpClientState.getLoadouts());
+    }
+
+    public void updateLoadouts(List<PvpLoadoutDefinition> list) {
+        this.loadouts.clear();
+        this.loadouts.addAll(list);
+        this.displayGuns.clear();
     }
 
     public void updateEntryState(boolean joined, boolean active, boolean hosting, boolean matchRunning,
@@ -64,9 +76,15 @@ public final class PvpScreen extends Screen {
         this.entryCount = Math.max(0, entryCount);
     }
 
+    private PvpLoadoutDefinition getSelectedDefinition() {
+        for (PvpLoadoutDefinition def : loadouts) {
+            if (def.id().equals(selectedId)) return def;
+        }
+        return loadouts.isEmpty() ? null : loadouts.getFirst();
+    }
+
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // The screen renders its own opaque event panel over the game view.
     }
 
     @Override
@@ -87,60 +105,89 @@ public final class PvpScreen extends Screen {
         graphics.drawCenteredString(font, "×", layout.right() - 18, layout.top + 14,
                 closeHovered ? DANGER : MUTED);
 
-        PvpLoadoutPreset[] presets = PvpLoadoutPreset.values();
-        for (int index = 0; index < presets.length; index++) {
-            Card card = layout.card(index);
-            drawLoadoutCard(graphics, presets[index], card, inside(mouseX, mouseY, card.x, card.y, card.width, card.height));
-        }
+        // ロードアウト一覧カード（スクロール領域）
+        renderLoadoutGrid(graphics, layout, mouseX, mouseY);
 
         drawSelectionDetails(graphics, layout);
         drawFooter(graphics, layout, mouseX, mouseY);
     }
 
-    private void drawLoadoutCard(GuiGraphics graphics, PvpLoadoutPreset preset, Card card, boolean hovered) {
-        boolean chosen = preset == selected;
-        int accent = loadoutColor(preset);
-        graphics.fill(card.x, card.y, card.x + card.width, card.y + card.height,
+    private void renderLoadoutGrid(GuiGraphics graphics, Layout layout, int mouseX, int mouseY) {
+        int gridX = layout.contentLeft;
+        int gridY = layout.top + 46;
+        int gridWidth = layout.contentRight - layout.contentLeft;
+        int gridHeight = 155;
+
+        graphics.enableScissor(gridX, gridY, gridX + gridWidth, gridY + gridHeight);
+
+        int cardWidth = (gridWidth - 8) / 2;
+        int cardHeight = 72;
+
+        for (int i = 0; i < loadouts.size(); i++) {
+            PvpLoadoutDefinition def = loadouts.get(i);
+            int col = i % 2;
+            int row = i / 2;
+            int cx = gridX + col * (cardWidth + 8);
+            int cy = gridY + row * (cardHeight + 6) - scrollOffset;
+
+            if (cy + cardHeight < gridY || cy > gridY + gridHeight) {
+                continue;
+            }
+
+            boolean isHovered = inside(mouseX, mouseY, cx, cy, cardWidth, cardHeight);
+            drawLoadoutCard(graphics, def, cx, cy, cardWidth, cardHeight, isHovered);
+        }
+
+        graphics.disableScissor();
+    }
+
+    private void drawLoadoutCard(GuiGraphics graphics, PvpLoadoutDefinition def, int x, int y, int cardWidth, int cardHeight, boolean hovered) {
+        boolean chosen = def.id().equals(selectedId);
+        int accent = def.color();
+
+        graphics.fill(x, y, x + cardWidth, y + cardHeight,
                 chosen ? 0xFF263542 : hovered && !active ? CARD_HOVER : CARD);
-        graphics.fill(card.x, card.y, card.x + (chosen ? 4 : 2), card.y + card.height,
+        graphics.fill(x, y, x + (chosen ? 4 : 2), y + cardHeight,
                 chosen ? accent : 0xFF354150);
-        drawBorder(graphics, card.x, card.y, card.width, card.height,
+        drawBorder(graphics, x, y, cardWidth, cardHeight,
                 chosen ? accent : hovered && !active ? 0xFF536173 : 0xFF28323E);
 
-        ItemStack icon = displayGuns.computeIfAbsent(preset, this::createDisplayGun);
+        ItemStack icon = displayGuns.computeIfAbsent(def.id(), k -> createDisplayGun(def));
         if (!icon.isEmpty()) {
             graphics.pose().pushPose();
-            graphics.pose().translate(card.x + 13, card.y + 23, 0);
+            graphics.pose().translate(x + 13, y + 23, 0);
             graphics.pose().scale(1.35F, 1.35F, 1.0F);
             graphics.renderItem(icon, 0, 0);
             graphics.pose().popPose();
         }
 
-        int textX = card.x + 43;
-        graphics.drawString(font, Component.translatable(preset.translationKey()), textX, card.y + 9, accent, false);
-        graphics.drawString(font, preset.weaponSummary(), textX, card.y + 25, TEXT, false);
-        String metrics = Component.translatable("screen.moveearth_addtional.pvp.metrics",
-                preset.bodyTtk(), Component.translatable(preset.rangeKey())).getString();
-        graphics.drawString(font, metrics, textX, card.y + 41, MUTED, false);
-        if (card.height >= 74) {
-            graphics.drawString(font, preset.attachmentSummary(), textX, card.y + 57, 0xFFB5C6D8, false);
+        int textX = x + 43;
+        graphics.drawString(font, def.displayName(), textX, y + 9, accent, false);
+        graphics.drawString(font, font.plainSubstrByWidth(def.weaponSummary(), cardWidth - 52), textX, y + 25, TEXT, false);
+        String metrics = "TTK: " + def.bodyTtk();
+        graphics.drawString(font, metrics, textX, y + 41, MUTED, false);
+        if (!def.attachmentSummary().isEmpty()) {
+            graphics.drawString(font, font.plainSubstrByWidth(def.attachmentSummary(), cardWidth - 52), textX, y + 55, 0xFFB5C6D8, false);
         }
         if (chosen) {
-            graphics.drawString(font, "✓", card.x + card.width - 17, card.y + 9, accent, false);
+            graphics.drawString(font, "✓", x + cardWidth - 17, y + 9, accent, false);
         }
     }
 
     private void drawSelectionDetails(GuiGraphics graphics, Layout layout) {
+        PvpLoadoutDefinition selected = getSelectedDefinition();
+        if (selected == null) return;
+
         int y = layout.detailsTop;
         if (y + 18 >= layout.footerY) return;
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.pvp.selected"),
                 layout.contentLeft, y, MUTED, false);
-        Component name = Component.translatable(selected.translationKey());
-        graphics.drawString(font, name, layout.contentLeft + 62, y, loadoutColor(selected), false);
+        graphics.drawString(font, selected.displayName(), layout.contentLeft + 62, y, selected.color(), false);
 
         int descriptionWidth = layout.contentRight - layout.contentLeft;
         int lineY = y + 14;
-        for (FormattedCharSequence line : font.split(Component.translatable(selected.descriptionKey()), descriptionWidth)) {
+        String desc = selected.description().isEmpty() ? selected.weaponSummary() : selected.description();
+        for (FormattedCharSequence line : font.split(Component.literal(desc), descriptionWidth)) {
             if (lineY + 9 >= layout.footerY - 14) break;
             graphics.drawString(font, line, layout.contentLeft, lineY, TEXT, false);
             lineY += 10;
@@ -164,7 +211,7 @@ public final class PvpScreen extends Screen {
                     Component.translatable("screen.moveearth_addtional.pvp.leave"), leaveHovered, true);
         }
 
-        boolean selectionChanged = selected != serverSelection;
+        boolean selectionChanged = !selectedId.equals(serverSelectionId);
         boolean actionEnabled = !active && hosting && (!joined || selectionChanged);
         boolean actionHovered = inside(mouseX, mouseY, footer.actionX, layout.footerY, footer.actionWidth, 28);
         Component actionText = active
@@ -205,13 +252,25 @@ public final class PvpScreen extends Screen {
             return true;
         }
 
-        if (!active) {
-            PvpLoadoutPreset[] presets = PvpLoadoutPreset.values();
-            for (int index = 0; index < presets.length; index++) {
-                Card card = layout.card(index);
-                if (inside(mouseX, mouseY, card.x, card.y, card.width, card.height)) {
-                    selected = presets[index];
-                    return true;
+        // カードクリック判定
+        int gridX = layout.contentLeft;
+        int gridY = layout.top + 46;
+        int gridWidth = layout.contentRight - layout.contentLeft;
+        int gridHeight = 155;
+
+        if (mouseX >= gridX && mouseX <= gridX + gridWidth && mouseY >= gridY && mouseY <= gridY + gridHeight) {
+            if (!active) {
+                int cardWidth = (gridWidth - 8) / 2;
+                int cardHeight = 72;
+                for (int i = 0; i < loadouts.size(); i++) {
+                    int col = i % 2;
+                    int row = i / 2;
+                    int cx = gridX + col * (cardWidth + 8);
+                    int cy = gridY + row * (cardHeight + 6) - scrollOffset;
+                    if (inside(mouseX, mouseY, cx, cy, cardWidth, cardHeight)) {
+                        selectedId = loadouts.get(i).id();
+                        return true;
+                    }
                 }
             }
         }
@@ -229,13 +288,13 @@ public final class PvpScreen extends Screen {
             return true;
         }
         if (joined && inside(mouseX, mouseY, footer.leaveX, layout.footerY, footer.leaveWidth, 28)) {
-            PacketDistributor.sendToServer(new C2S_PvpActionPacket(false, selected.id()));
+            PacketDistributor.sendToServer(new C2S_PvpActionPacket(false, selectedId));
             onClose();
             return true;
         }
         if (inside(mouseX, mouseY, footer.actionX, layout.footerY, footer.actionWidth, 28)) {
-            if (!active && hosting && (!joined || selected != serverSelection)) {
-                PacketDistributor.sendToServer(new C2S_PvpActionPacket(true, selected.id()));
+            if (!active && hosting && (!joined || !selectedId.equals(serverSelectionId))) {
+                PacketDistributor.sendToServer(new C2S_PvpActionPacket(true, selectedId));
                 onClose();
             }
             return true;
@@ -243,103 +302,77 @@ public final class PvpScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    private ItemStack createDisplayGun(PvpLoadoutPreset preset) {
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        int rows = (loadouts.size() + 1) / 2;
+        int totalHeight = rows * 78;
+        int maxScroll = Math.max(0, totalHeight - 155);
+        scrollOffset = Mth.clamp(scrollOffset - (int) (scrollY * 24), 0, maxScroll);
+        return true;
+    }
+
+    private ItemStack createDisplayGun(PvpLoadoutDefinition def) {
+        if (def.primary() == null) return ItemStack.EMPTY;
         ItemStack stack = new ItemStack(com.tacz.guns.init.ModItems.MODERN_KINETIC_GUN.get());
         IGun gun = IGun.getIGunOrNull(stack);
         if (gun == null) return ItemStack.EMPTY;
-        gun.setGunId(stack, preset.primary().gunId());
+        gun.setGunId(stack, def.primary().gunId());
         return stack;
     }
 
     private Component stateText() {
         if (active) return Component.translatable("screen.moveearth_addtional.pvp.state.active");
-        if (joined) return Component.translatable("screen.moveearth_addtional.pvp.state.queued");
-        if (hosting && matchRunning) return Component.translatable("screen.moveearth_addtional.pvp.state.join_running");
-        if (hosting) return Component.translatable("screen.moveearth_addtional.pvp.state.open");
+        if (hosting) return Component.translatable("screen.moveearth_addtional.pvp.state.hosting");
         return Component.translatable("screen.moveearth_addtional.pvp.state.closed");
     }
 
     private int stateColor() {
-        if (active || joined) return SUCCESS;
-        return hosting ? ACCENT : DANGER;
+        if (active) return ACCENT;
+        if (hosting) return SUCCESS;
+        return DANGER;
+    }
+
+    private static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
+        return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+    }
+
+    private static void drawBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {
+        graphics.fill(x, y, x + width, y + 1, color);
+        graphics.fill(x, y + height - 1, x + width, y + height, color);
+        graphics.fill(x, y, x + 1, y + height, color);
+        graphics.fill(x + width - 1, y, x + width, y + height, color);
     }
 
     private Layout layout() {
-        int panelWidth = Math.min(PANEL_WIDTH, width - 12);
-        int panelHeight = Math.min(PANEL_HEIGHT, height - 12);
-        int left = (width - panelWidth) / 2;
-        int top = (height - panelHeight) / 2;
-        int contentLeft = left + 16;
-        int contentRight = left + panelWidth - 16;
-        int gridTop = top + 52;
-        int footerY = top + panelHeight - 40;
-        int gap = 8;
-        int cardWidth = (contentRight - contentLeft - gap) / 2;
-        int cardHeight = Math.max(38, (footerY - gridTop - gap - 48) / 2);
-        int detailsTop = gridTop + cardHeight * 2 + gap + 6;
-        return new Layout(left, top, panelWidth, panelHeight, contentLeft, contentRight,
-                gridTop, footerY, gap, cardWidth, cardHeight, detailsTop);
+        int left = (width - PANEL_WIDTH) / 2;
+        int top = (height - PANEL_HEIGHT) / 2;
+        int contentLeft = left + 18;
+        int contentRight = left + PANEL_WIDTH - 18;
+        int detailsTop = top + 210;
+        int footerY = top + PANEL_HEIGHT - 44;
+        return new Layout(left, top, PANEL_WIDTH, PANEL_HEIGHT, contentLeft, contentRight, detailsTop, footerY);
     }
-
-    private static int loadoutColor(PvpLoadoutPreset preset) {
-        return switch (preset) {
-            case ASSAULT -> 0xFF5DCBFF;
-            case RUSHER -> 0xFFFFB454;
-            case BREACHER -> 0xFFFF766D;
-            case MARKSMAN -> 0xFFB38CFF;
-        };
-    }
-
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int areaWidth, int areaHeight) {
-        return mouseX >= x && mouseX < x + areaWidth && mouseY >= y && mouseY < y + areaHeight;
-    }
-
-    private static void drawBorder(GuiGraphics graphics, int x, int y, int areaWidth, int areaHeight, int color) {
-        graphics.fill(x, y, x + areaWidth, y + 1, color);
-        graphics.fill(x, y + areaHeight - 1, x + areaWidth, y + areaHeight, color);
-        graphics.fill(x, y, x + 1, y + areaHeight, color);
-        graphics.fill(x + areaWidth - 1, y, x + areaWidth, y + areaHeight, color);
-    }
-
-    @Override
-    public boolean isPauseScreen() {
-        return false;
-    }
-
-    private record Card(int x, int y, int width, int height) {}
-
-    private record Footer(int tasksX, int tasksWidth, int crateX, int crateWidth,
-                          int leaveX, int leaveWidth, int actionX, int actionWidth) {}
 
     private record Layout(int left, int top, int panelWidth, int panelHeight, int contentLeft, int contentRight,
-                          int gridTop, int footerY, int gap, int cardWidth, int cardHeight, int detailsTop) {
-        int right() {
-            return left + panelWidth;
-        }
-
-        int bottom() {
-            return top + panelHeight;
-        }
-
-        Card card(int index) {
-            int column = index % 2;
-            int row = index / 2;
-            return new Card(contentLeft + column * (cardWidth + gap), gridTop + row * (cardHeight + gap),
-                    cardWidth, cardHeight);
-        }
+                          int detailsTop, int footerY) {
+        int right() { return left + panelWidth; }
+        int bottom() { return top + panelHeight; }
 
         Footer footer(boolean joined) {
-            int actionWidth = Math.min(178, Math.max(128, (contentRight - contentLeft) / 3));
-            int actionX = contentRight - actionWidth;
-            int leaveWidth = joined ? 58 : 0;
-            int leaveX = actionX - (joined ? leaveWidth + gap : 0);
-            int utilityRight = joined ? leaveX - gap : actionX - gap;
-            int utilityWidth = Math.max(100, utilityRight - contentLeft);
-            int tasksWidth = Math.min(76, utilityWidth / 3);
-            int crateX = contentLeft + tasksWidth + gap;
-            int crateWidth = Math.max(16, utilityRight - crateX);
-            return new Footer(contentLeft, tasksWidth, crateX, crateWidth,
-                    leaveX, leaveWidth, actionX, actionWidth);
+            int gap = 8;
+            int tasksWidth = 84;
+            int crateWidth = 98;
+            int leaveWidth = joined ? 74 : 0;
+            int reserved = tasksWidth + crateWidth + (joined ? leaveWidth + gap : 0) + gap * 2;
+            int actionWidth = contentRight - contentLeft - reserved;
+            int tasksX = contentLeft;
+            int crateX = tasksX + tasksWidth + gap;
+            int leaveX = crateX + crateWidth + gap;
+            int actionX = joined ? leaveX + leaveWidth + gap : crateX + crateWidth + gap;
+            return new Footer(tasksX, tasksWidth, crateX, crateWidth, leaveX, leaveWidth, actionX, actionWidth);
         }
     }
+
+    private record Footer(int tasksX, int tasksWidth, int crateX, int crateWidth, int leaveX, int leaveWidth,
+                          int actionX, int actionWidth) {}
 }

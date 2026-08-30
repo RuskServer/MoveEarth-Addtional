@@ -64,6 +64,9 @@ public class ModMessages {
         registrar.playToClient(S2C_PvpTeamPacket.TYPE, S2C_PvpTeamPacket.STREAM_CODEC, S2C_PvpTeamPacket::handle);
         registrar.playToClient(S2C_PvpKillcamPacket.TYPE, S2C_PvpKillcamPacket.STREAM_CODEC, S2C_PvpKillcamPacket::handle);
         registrar.playToClient(S2C_PvpResultPacket.TYPE, S2C_PvpResultPacket.STREAM_CODEC, S2C_PvpResultPacket::handle);
+        registrar.playToClient(S2C_PvpTeamPacket.TYPE, S2C_PvpTeamPacket.STREAM_CODEC, S2C_PvpTeamPacket::handle);
+        registrar.playToClient(S2C_PvpKillcamPacket.TYPE, S2C_PvpKillcamPacket.STREAM_CODEC, S2C_PvpKillcamPacket::handle);
+        registrar.playToClient(S2C_PvpResultPacket.TYPE, S2C_PvpResultPacket.STREAM_CODEC, S2C_PvpResultPacket::handle);
         registrar.playToClient(S2C_OpenPvpTasksPacket.TYPE, S2C_OpenPvpTasksPacket.STREAM_CODEC, S2C_OpenPvpTasksPacket::handle);
         registrar.playToServer(C2S_RequestPvpTasksPacket.TYPE, C2S_RequestPvpTasksPacket.STREAM_CODEC, C2S_RequestPvpTasksPacket::handle);
         registrar.playToServer(C2S_ClaimPvpTaskPacket.TYPE, C2S_ClaimPvpTaskPacket.STREAM_CODEC, C2S_ClaimPvpTaskPacket::handle);
@@ -72,5 +75,14 @@ public class ModMessages {
         registrar.playToClient(S2C_JobShopPacket.TYPE, S2C_JobShopPacket.STREAM_CODEC, S2C_JobShopPacket::handle);
         registrar.playToServer(C2S_JobsActionPacket.TYPE, C2S_JobsActionPacket.STREAM_CODEC, C2S_JobsActionPacket::handle);
         registrar.playToServer(C2S_JobShopActionPacket.TYPE, C2S_JobShopActionPacket.STREAM_CODEC, C2S_JobShopActionPacket::handle);
+        registrar.playToClient(S2C_SyncLoadoutsPacket.TYPE, S2C_SyncLoadoutsPacket.STREAM_CODEC, S2C_SyncLoadoutsPacket::handle);
+        registrar.playToClient(S2C_OpenLoadoutEditorPacket.TYPE, S2C_OpenLoadoutEditorPacket.STREAM_CODEC, S2C_OpenLoadoutEditorPacket::handle);
+        registrar.playToServer(C2S_SaveLoadoutPacket.TYPE, C2S_SaveLoadoutPacket.STREAM_CODEC, C2S_SaveLoadoutPacket::handle);
+        registrar.playToServer(C2S_DeleteLoadoutPacket.TYPE, C2S_DeleteLoadoutPacket.STREAM_CODEC, C2S_DeleteLoadoutPacket::handle);
+        registrar.playToServer(C2S_ReorderLoadoutsPacket.TYPE, C2S_ReorderLoadoutsPacket.STREAM_CODEC, C2S_ReorderLoadoutsPacket::handle);
+        registrar.playToClient(S2C_StartMapVotePacket.TYPE, S2C_StartMapVotePacket.STREAM_CODEC, S2C_StartMapVotePacket::handle);
+        registrar.playToClient(S2C_UpdateMapVotePacket.TYPE, S2C_UpdateMapVotePacket.STREAM_CODEC, S2C_UpdateMapVotePacket::handle);
+        registrar.playToServer(C2S_VoteMapPacket.TYPE, C2S_VoteMapPacket.STREAM_CODEC, C2S_VoteMapPacket::handle);
+        registrar.playToClient(S2C_KillcamReplayPacket.TYPE, S2C_KillcamReplayPacket.STREAM_CODEC, S2C_KillcamReplayPacket::handle);
     }
 }

@@ -1,5 +1,5 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
 public enum PvpPhase {
-    IDLE, WAITING, COUNTDOWN, RUNNING, FINISHED
+    IDLE, WAITING, VOTING, COUNTDOWN, RUNNING, FINISHED
 }

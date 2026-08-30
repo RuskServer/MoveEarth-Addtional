@@ -54,7 +54,7 @@ public final class PvpRewardData extends SavedData {
 
     public boolean claim(ServerPlayer player, String taskId) {
         if (PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal("試合中はタスク報酬を受け取れません。"));
+            player.sendSystemMessage(Component.literal("§c試合中はタスク報酬を受け取れません。"));
             return false;
         }
         PvpTaskDefinition definition = PvpTaskDefinition.BY_ID.get(taskId);
@@ -65,19 +65,19 @@ public final class PvpRewardData extends SavedData {
 
         ItemStack itemReward = new ItemStack(definition.itemReward(), definition.itemRewardCount());
         if (!canFullyAdd(player, itemReward)) {
-            player.sendSystemMessage(Component.literal("素材報酬を受け取るためのインベントリ空きがありません。"));
+            player.sendSystemMessage(Component.literal("§c素材報酬を受け取るためのインベントリ空きがありません。"));
             return false;
         }
 
         if (!player.getInventory().add(itemReward)) {
-            player.sendSystemMessage(Component.literal("素材報酬をインベントリへ追加できませんでした。"));
-            return false;
+            player.drop(itemReward, false);
         }
+        player.inventoryMenu.broadcastChanges();
         playerProgress.points += definition.pointReward();
         task.claimed = true;
         setDirty();
-        player.sendSystemMessage(Component.literal(definition.title() + "の報酬を受け取りました："
-                + definition.pointReward() + "pt ＋ " + itemReward.getHoverName().getString()
+        player.sendSystemMessage(Component.literal("§a" + definition.title() + " の報酬を受け取りました: §6+"
+                + definition.pointReward() + "pt §f＆ §b" + itemReward.getHoverName().getString()
                 + " ×" + definition.itemRewardCount()));
         return true;
     }
@@ -112,13 +112,16 @@ public final class PvpRewardData extends SavedData {
 
     public boolean exchangeCrate(ServerPlayer player) {
         if (PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal("試合中は武器箱を交換できません。"));
+            player.sendSystemMessage(Component.literal("§c試合中は武器箱を交換できません。"));
             return false;
         }
         PlayerProgress progress = progress(player.getUUID());
         if (progress.points < CRATE_COST) return false;
         ItemStack crate = new ItemStack(ModItems.WEAPON_CRATE.get());
-        if (!player.getInventory().add(crate)) return false;
+        if (!player.getInventory().add(crate)) {
+            player.drop(crate, false);
+        }
+        player.inventoryMenu.broadcastChanges();
         progress.points -= CRATE_COST;
         setDirty();
         return true;

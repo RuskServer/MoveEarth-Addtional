@@ -30,6 +30,23 @@
 - **Farmer's Delight 1.3.3 Support**: Added optional Farmer's Delight support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.
 - **Verified Right-Click Harvest Rewards**: XP is awarded only after the server confirms that the mature crop was successfully harvested and reset to an immature state.
 
+## PvP Dynamic Loadouts, Multi-Map Support & Voting System
+
+- **Cinematic Killcam Replay System (`PvpReplayTracker` & `PvpReplayManager`)**: Implemented a true Call of Duty-style death replay engine. Servers record a 60-tick (3-second) circular trajectory ring buffer for all combatants; upon elimination, the victim's POV rewinds to the killer's exact position and perspective, replaying their movement, aim, and final shots with slow-motion impact and rich killer info cards (weapon, distance, HP, streak, HS badge, and `[SPACE]` skip).
+- **Multi-Map Management Engine (`PvpMapSavedData` & `PvpMapDefinition`)**: Migrated fixed single-arena coordinates into a data-driven multi-map storage system (`moveearth_pvp_maps.dat`), supporting an arbitrary number of maps with individual RED/BLUE spawns, capture hills, custom descriptions, and UI accent colors.
+- **Dynamic Multi-Respawn & Smart Spawn Selector (`PvpSpawnSelector`)**: Added support for optional multiple respawn points per team (`addredspawn` / `addbluespawn`). Implemented a real-time situational scoring engine that evaluates proximity to enemies (spawn-kill prevention penalty), proximity to living allies (reinforcement bonus), distance to the hill, and recent spawn history to dynamically select the safest and most strategic respawn location.
+- **Real-Time Map Voting Phase (`PvpMapVoteManager` & `PvpMapVoteScreen`)**: When 2 or more configured maps are available, match initiation enters a 15-second map voting phase with a sleek pop-up GUI, allowing all participants to cast/switch votes with live tally synchronization.
+- **Administrative Map Commands (`/pvp admin map ...`)**: Added comprehensive commands for map creation (`create`), coordinate setup (`setredspawn`, `setbluespawn`, `addredspawn`, `addbluespawn`, `clearspawns`, `info`, `sethill1`, `sethill2`), descriptions (`setdesc`), preview teleportation (`tp`), list inspection (`list`), and deletion (`delete`).
+- **In-Game Loadout Editor GUI (`/pvp admin loadout`)**: Added an intuitive, full-featured in-game editor screen for administrators (permission level 2+) to create, duplicate, modify, reorder, and delete PvP loadouts dynamically at runtime.
+- **One-Click Inventory Gun & Attachment Capture**: Integrated an automatic hotbar analyzer button into the editor. Administrators can configure custom TaCZ weapons and attachments in their inventory and capture them into the loadout definition with a single click without manual ID entry.
+- **Dynamic Loadout Storage (`PvpLoadoutSavedData`)**: Migrated fixed preset enums into a World `SavedData` persistence engine (`moveearth_pvp_loadouts.dat`), supporting arbitrary numbers of loadouts beyond the initial 4 templates.
+- **Dynamic Scrollable Grid UI (`PvpScreen`)**: Redesigned the player-facing `/pvp` selection screen into a scrollable 2-column card grid, seamlessly supporting 5, 10, or more loadout presets with real-time server synchronization.
+- **Administrative Command Enhancements**: Added `/pvp admin loadout`, `/pvp admin loadout editor`, `/pvp admin loadout list`, and `/pvp admin loadout reset` commands.
+- **PvP Reward & Weapon Crate Air Bug Fix**:
+  - Filtered out internal/dummy IDs (`tacz:dummy` and unrendered gun indices) from `WeaponCrateItem` random rewards to prevent generating invisible/air weapons.
+  - Upgraded `PvpPlayerSnapshot` to safely preserve full item Data Components in memory and through `HolderLookup.Provider` serialization, preventing previous inventory corruption/air-loss upon match restoration.
+  - Enforced client-side inventory synchronization (`player.inventoryMenu.broadcastChanges()`) across task claiming and crate unboxing.
+
 ## PvP Loadouts and Combat Balance
 
 - Replaced the FMIC PvP presets with TaCZ standard modern firearms: SCAR-L, MP5A5, AA12, and the semi-auto-only SKS Tactical, with a P320 sidearm for every role.

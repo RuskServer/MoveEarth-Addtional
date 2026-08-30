@@ -1,5 +1,7 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -11,11 +13,12 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 
 final class PvpPlayerSnapshot {
-    final ListTag inventory;
+    final NonNullList<ItemStack> items;
     final ListTag curiosInventory;
     final ResourceKey<Level> dimension;
     final double x, y, z;
@@ -33,7 +36,11 @@ final class PvpPlayerSnapshot {
     final String scoreboardTeam;
 
     PvpPlayerSnapshot(ServerPlayer player) {
-        inventory = player.getInventory().save(new ListTag());
+        int invSize = player.getInventory().getContainerSize();
+        items = NonNullList.withSize(invSize, ItemStack.EMPTY);
+        for (int i = 0; i < invSize; i++) {
+            items.set(i, player.getInventory().getItem(i).copy());
+        }
         curiosInventory = PvpCuriosInventoryCompat.capture(player);
         dimension = player.level().dimension();
         x = player.getX();
@@ -57,8 +64,21 @@ final class PvpPlayerSnapshot {
         scoreboardTeam = player.getTeam() == null ? "" : player.getTeam().getName();
     }
 
-    private PvpPlayerSnapshot(CompoundTag tag) {
-        inventory = tag.getList("Inventory", Tag.TAG_COMPOUND);
+    private PvpPlayerSnapshot(CompoundTag tag, HolderLookup.Provider registries) {
+        ListTag itemsTag = tag.getList("Items", Tag.TAG_COMPOUND);
+        int invSize = Math.max(36 + 4 + 1, tag.getInt("InvSize"));
+        items = NonNullList.withSize(invSize, ItemStack.EMPTY);
+        for (int i = 0; i < itemsTag.size(); i++) {
+            CompoundTag slotTag = itemsTag.getCompound(i);
+            int slot = slotTag.getInt("Slot");
+            if (slot >= 0 && slot < invSize) {
+                if (slotTag.contains("Item", Tag.TAG_COMPOUND)) {
+                    ItemStack parsed = ItemStack.parse(registries, slotTag.getCompound("Item")).orElse(ItemStack.EMPTY);
+                    items.set(slot, parsed);
+                }
+            }
+        }
+
         curiosInventory = tag.contains("CuriosInventory", Tag.TAG_LIST)
                 ? tag.getList("CuriosInventory", Tag.TAG_COMPOUND)
                 : null;
@@ -81,9 +101,20 @@ final class PvpPlayerSnapshot {
         scoreboardTeam = tag.getString("ScoreboardTeam");
     }
 
-    CompoundTag save() {
+    CompoundTag save(HolderLookup.Provider registries) {
         CompoundTag tag = new CompoundTag();
-        tag.put("Inventory", inventory.copy());
+        ListTag itemsTag = new ListTag();
+        for (int i = 0; i < items.size(); i++) {
+            ItemStack stack = items.get(i);
+            if (!stack.isEmpty()) {
+                CompoundTag slotTag = new CompoundTag();
+                slotTag.putInt("Slot", i);
+                slotTag.put("Item", stack.save(registries));
+                itemsTag.add(slotTag);
+            }
+        }
+        tag.put("Items", itemsTag);
+        tag.putInt("InvSize", items.size());
         if (curiosInventory != null) tag.put("CuriosInventory", curiosInventory.copy());
         tag.putString("Dimension", dimension.location().toString());
         tag.putDouble("X", x);
@@ -105,8 +136,8 @@ final class PvpPlayerSnapshot {
         return tag;
     }
 
-    static PvpPlayerSnapshot load(CompoundTag tag) {
-        return new PvpPlayerSnapshot(tag);
+    static PvpPlayerSnapshot load(CompoundTag tag, HolderLookup.Provider registries) {
+        return new PvpPlayerSnapshot(tag, registries);
     }
 
     void enterIsolatedState(ServerPlayer player) {
@@ -116,7 +147,10 @@ final class PvpPlayerSnapshot {
 
     void restoreState(ServerPlayer player) {
         player.getInventory().clearContent();
-        player.getInventory().load(inventory);
+        int invSize = player.getInventory().getContainerSize();
+        for (int i = 0; i < Math.min(invSize, items.size()); i++) {
+            player.getInventory().setItem(i, items.get(i).copy());
+        }
         player.getInventory().selected = selected;
         PvpCuriosInventoryCompat.restore(player, curiosInventory);
         player.getFoodData().readAdditionalSaveData(food);
@@ -132,5 +166,6 @@ final class PvpPlayerSnapshot {
         }
         player.setHealth(Mth.clamp(health, 1.0F, player.getMaxHealth()));
         player.setAbsorptionAmount(Math.max(0.0F, absorption));
+        player.inventoryMenu.broadcastChanges();
     }
 }
