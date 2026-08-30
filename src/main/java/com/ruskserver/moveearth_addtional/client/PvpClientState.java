@@ -131,19 +131,12 @@ public final class PvpClientState {
 
         if (PvpReplayManager.INSTANCE.isActive()) {
             PvpReplayManager.INSTANCE.tick();
-        } else if (killcam != null && killcamTicks-- > 0 && mc.player != null) {
-            double dx = killcam.x() - mc.player.getX();
-            double dy = killcam.y() - mc.player.getEyeY();
-            double dz = killcam.z() - mc.player.getZ();
-            double horizontal = Math.sqrt(dx * dx + dz * dz);
-            float targetYaw = (float)(Mth.atan2(dz, dx) * 180.0 / Math.PI) - 90.0F;
-            float targetPitch = (float)-(Mth.atan2(dy, horizontal) * 180.0 / Math.PI);
-            mc.player.setYRot(Mth.rotLerp(0.18F, mc.player.getYRot(), targetYaw));
-            mc.player.setXRot(Mth.lerp(0.18F, mc.player.getXRot(), targetPitch));
         } else if (killcamTicks <= 0) {
             clearKillerHighlight();
             killcam = null;
             activeReplay = null;
+        } else if (killcam != null && killcamTicks > 0) {
+            killcamTicks--;
         }
 
         if (matchResult != null && --resultTicks <= 0) {

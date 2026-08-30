@@ -16,6 +16,7 @@ public final class PvpReplayManager {
     private float currentFrame;
     private int totalFrames;
     private boolean slowMotion;
+    private net.minecraft.world.entity.Entity dummyCamera;
 
     private PvpReplayManager() {}
 
@@ -38,8 +39,14 @@ public final class PvpReplayManager {
         this.currentFrame = 0.0F;
         this.totalFrames = replayPacket.killerFrames().size();
         this.slowMotion = false;
-
-        if (totalFrames <= 0) {
+        
+        Minecraft mc = Minecraft.getInstance();
+        if (totalFrames > 0 && mc.level != null) {
+            dummyCamera = new net.minecraft.world.entity.decoration.ArmorStand(mc.level, 0, 0, 0);
+            dummyCamera.setInvisible(true);
+            dummyCamera.setNoGravity(true);
+            mc.setCameraEntity(dummyCamera);
+        } else {
             this.active = false;
         }
     }
@@ -50,10 +57,16 @@ public final class PvpReplayManager {
         this.currentFrame = 0.0F;
         this.totalFrames = 0;
         this.slowMotion = false;
+        
+        Minecraft mc = Minecraft.getInstance();
+        if (dummyCamera != null && mc.getCameraEntity() == dummyCamera) {
+            mc.setCameraEntity(mc.player);
+        }
+        dummyCamera = null;
     }
 
     public void tick() {
-        if (!active || packet == null) return;
+        if (!active || packet == null || dummyCamera == null) return;
         Minecraft mc = Minecraft.getInstance();
 
         // スペースキー押下によるスキップ判定
@@ -67,18 +80,14 @@ public final class PvpReplayManager {
         currentFrame += speed;
 
         if (currentFrame >= totalFrames - 1) {
-            // リプレイ再生完了
             stopReplay();
             return;
         }
 
-        // カメラ視点の上書き
-        if (mc.player != null) {
-            applyCameraFrame(mc.player);
-        }
+        updateDummyCamera();
     }
 
-    private void applyCameraFrame(net.minecraft.world.entity.player.Player player) {
+    private void updateDummyCamera() {
         List<PvpReplayFrame> frames = packet.killerFrames();
         if (frames.isEmpty()) return;
 
@@ -96,14 +105,15 @@ public final class PvpReplayManager {
         float yaw = Mth.rotLerp(alpha, frameA.yaw(), frameB.yaw());
         float pitch = Mth.lerp(alpha, frameA.pitch(), frameB.pitch());
 
-        player.xo = player.getX();
-        player.yo = player.getY();
-        player.zo = player.getZ();
-        player.yRotO = player.getYRot();
-        player.xRotO = player.getXRot();
+        dummyCamera.xo = dummyCamera.getX();
+        dummyCamera.yo = dummyCamera.getY();
+        dummyCamera.zo = dummyCamera.getZ();
+        dummyCamera.yRotO = dummyCamera.getYRot();
+        dummyCamera.xRotO = dummyCamera.getXRot();
 
-        player.setPos(x, y, z);
-        player.setYRot(yaw);
-        player.setXRot(pitch);
+        dummyCamera.setPos(x, y, z);
+        dummyCamera.setYRot(yaw);
+        dummyCamera.setXRot(pitch);
+        dummyCamera.setYHeadRot(yaw);
     }
 }
