@@ -257,8 +257,14 @@ public final class PvpLoadoutEditorScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // 独自背景を描画するため、Minecraft標準の背景ブラーは適用しない。
+    }
+
+    @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
+        graphics.fillGradient(0, 0, width, height, 0xD0080B10, 0xE010151D);
         int left = (width - PANEL_WIDTH) / 2;
         int top = (height - PANEL_HEIGHT) / 2;
 
