@@ -7,8 +7,7 @@
     "StonecutterMenuMixin",
     "PvpFloatingCheckMixin",
     "ChunkMapTrackedEntityMixin",
-    "ServerGamePacketListenerImplDccMixin",
-    "PlayerReplayMixin"
+    "ServerGamePacketListenerImplDccMixin"
   ],
   "client": [],
   "injectors": {
