@@ -28,8 +28,8 @@ public abstract class ChunkMapDccMixin {
             ServerPlayer player,
             ChunkPos chunkPos,
             MutableObject<ClientboundLevelChunkWithLightPacket> packetCache,
-            boolean isTracked,
             boolean wasTracked,
+            boolean isTracked,
             CallbackInfo ci
     ) {
         if (isTracked == wasTracked) {
