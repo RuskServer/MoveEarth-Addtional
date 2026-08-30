@@ -257,6 +257,11 @@ public final class PvpLoadoutEditorScreen extends Screen {
     }
 
     @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // 独自背景を描画するため、Minecraft標準の背景ブラーは適用しない。
     }
