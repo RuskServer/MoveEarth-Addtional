@@ -702,9 +702,9 @@ public final class PvpMatchManager {
     private void giveKit(ServerPlayer player, PvpLoadoutDefinition loadout) {
         PvpTeam t = team(player);
         player.setItemSlot(EquipmentSlot.HEAD, createPvpArmor(player, Items.LEATHER_HELMET, t, 3));
-        player.setItemSlot(EquipmentSlot.CHEST, createPvpArmor(player, Items.LEATHER_CHESTPLATE, t, 3));
-        player.setItemSlot(EquipmentSlot.LEGS, createPvpArmor(player, Items.IRON_LEGGINGS, t, 4));
-        player.setItemSlot(EquipmentSlot.FEET, createPvpArmor(player, Items.IRON_BOOTS, t, 4));
+        player.setItemSlot(EquipmentSlot.CHEST, createPvpArmor(player, Items.LEATHER_CHESTPLATE, t, 2));
+        player.setItemSlot(EquipmentSlot.LEGS, createPvpArmor(player, Items.IRON_LEGGINGS, t, 3));
+        player.setItemSlot(EquipmentSlot.FEET, createPvpArmor(player, Items.IRON_BOOTS, t, 3));
         player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
         installLoadout(player, loadout);
         refillGuns(player, loadout);
@@ -761,9 +761,9 @@ public final class PvpMatchManager {
 
         PvpTeam t = team(player);
         ensureArmor(player, EquipmentSlot.HEAD, Items.LEATHER_HELMET, t, 3);
-        ensureArmor(player, EquipmentSlot.CHEST, Items.LEATHER_CHESTPLATE, t, 3);
-        ensureArmor(player, EquipmentSlot.LEGS, Items.IRON_LEGGINGS, t, 4);
-        ensureArmor(player, EquipmentSlot.FEET, Items.IRON_BOOTS, t, 4);
+        ensureArmor(player, EquipmentSlot.CHEST, Items.LEATHER_CHESTPLATE, t, 2);
+        ensureArmor(player, EquipmentSlot.LEGS, Items.IRON_LEGGINGS, t, 3);
+        ensureArmor(player, EquipmentSlot.FEET, Items.IRON_BOOTS, t, 3);
         if (!player.getItemBySlot(EquipmentSlot.OFFHAND).isEmpty()) {
             player.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
         }
