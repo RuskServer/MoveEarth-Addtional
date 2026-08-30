@@ -30,8 +30,11 @@
 - **Farmer's Delight 1.3.3 Support**: Added optional Farmer's Delight support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.
 - **Verified Right-Click Harvest Rewards**: XP is awarded only after the server confirms that the mature crop was successfully harvested and reset to an immature state.
 
+# v2.3
+
 ## PvP Dynamic Loadouts, Multi-Map Support & Voting System
 
+- **PvP HUD Upgrade (Hardpoint Zone Control)**: Added visual zone capture states ("RED 占領中", "争奪中", etc.) to the `S2C_PvpHudPacket` and `PvpClientState` rendering.
 - **Cinematic Killcam Replay System (`PvpReplayTracker` & `PvpReplayManager`)**: Implemented a true Call of Duty-style death replay engine. Servers record a 60-tick (3-second) circular trajectory ring buffer for all combatants; upon elimination, the victim's POV rewinds to the killer's exact position and perspective, replaying their movement, aim, and final shots with slow-motion impact and rich killer info cards (weapon, distance, HP, streak, HS badge, and `[SPACE]` skip).
 - **Multi-Map Management Engine (`PvpMapSavedData` & `PvpMapDefinition`)**: Migrated fixed single-arena coordinates into a data-driven multi-map storage system (`moveearth_pvp_maps.dat`), supporting an arbitrary number of maps with individual RED/BLUE spawns, capture hills, custom descriptions, and UI accent colors.
 - **Dynamic Multi-Respawn & Smart Spawn Selector (`PvpSpawnSelector`)**: Added support for optional multiple respawn points per team (`addredspawn` / `addbluespawn`). Implemented a real-time situational scoring engine that evaluates proximity to enemies (spawn-kill prevention penalty), proximity to living allies (reinforcement bonus), distance to the hill, and recent spawn history to dynamically select the safest and most strategic respawn location.
