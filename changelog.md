@@ -1,5 +1,13 @@
 # v2.2
 
+## Delayed Chunk Cache (DCC / Bandwidth Optimization)
+
+- **Delayed Chunk Unload Buffering**: Integrated the Delayed Chunk Cache (DCC) mechanism inspired by NotEnoughBandwidth into `ChunkMap` via Mixin. Temporarily buffers departing chunk unload packets (`ClientboundForgetLevelChunkPacket`) when players exit chunk view distance, avoiding immediate client-side chunk deallocation.
+- **Redundant Resend Suppression**: When a player moves back into a recently departed chunk before cache expiry, DCC recognizes the client-side cached state and skips resending the full `ClientboundLevelChunkWithLightPacket`, drastically reducing bandwidth consumption during back-and-forth movement.
+- **3-Dimensional Eviction Policy**: Enforced eviction triggers across **capacity limit** (default: 64 chunks/player LRU), **extra distance threshold** (default: View Distance + 2 chunks), and **timeout expiration** (default: 30 seconds).
+- **Full BandwidthOptimizer Compatibility**: Seamlessly interoperates with BandwidthOptimizer (Zstd streaming and packet templating) since DCC operates on server-authoritative chunk delivery decisions without altering network transport layers.
+- **Configurable Settings**: Added `DelayedChunkCacheConfig` to customize `sizeLimit`, `extraDistance`, `timeoutSeconds`, and `checkIntervalTicks`.
+
 ## Entity Occlusion Culling (SubChunk VisGraph)
 
 - **SubChunk VisGraph Packet Control**: Integrated a sub-chunk (16×16×16) visibility graph and view frustum culling engine into `ChunkMap$TrackedEntity` via Mixin. Dynamically pauses packet broadcasting (`ItemEntity` and `ExperienceOrb`) for occluded or out-of-view entities, eliminating ESP exploitation and drastically reducing client-server network traffic.
