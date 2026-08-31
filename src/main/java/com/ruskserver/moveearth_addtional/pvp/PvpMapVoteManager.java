@@ -59,6 +59,13 @@ public final class PvpMapVoteManager {
         if (!valid) return;
         votes.put(player.getUUID(), mapId);
         broadcastVoteUpdate(player.server);
+        
+        // 参加者全員が投票を完了したら、残り時間を3秒に短縮
+        if (votes.size() >= voterUuids.size()) {
+            if (ticksLeft > 60) {
+                ticksLeft = 60;
+            }
+        }
     }
 
     public void tick(MinecraftServer server) {
