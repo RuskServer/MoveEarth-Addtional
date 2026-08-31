@@ -2,10 +2,10 @@
 
 ## Delayed Chunk Cache (DCC / Bandwidth Optimization)
 
-- **Delayed Chunk Unload Buffering**: Integrated the Delayed Chunk Cache (DCC) mechanism inspired by NotEnoughBandwidth into `ChunkMap` via Mixin. Temporarily buffers departing chunk unload packets (`ClientboundForgetLevelChunkPacket`) when players exit chunk view distance, avoiding immediate client-side chunk deallocation.
+- **Authoritative Delayed Chunk Tracking**: Reworked DCC around a `ChunkTrackingView` that is the union of the normal player view and recently departed chunks, following NotEnoughBandwidth's current design. Chunk load/unload decisions, block and light updates, entity tracking, and NeoForge watch events now share the same source of truth.
 - **Redundant Resend Suppression**: When a player moves back into a recently departed chunk before cache expiry, DCC recognizes the client-side cached state and skips resending the full `ClientboundLevelChunkWithLightPacket`, drastically reducing bandwidth consumption during back-and-forth movement.
-- **3-Dimensional Eviction Policy**: Enforced eviction triggers across **capacity limit** (default: 64 chunks/player LRU), **extra distance threshold** (default: View Distance + 2 chunks), and **timeout expiration** (default: 30 seconds).
-- **Full BandwidthOptimizer Compatibility**: Seamlessly interoperates with BandwidthOptimizer (Zstd streaming and packet templating) since DCC operates on server-authoritative chunk delivery decisions without altering network transport layers.
+- **3-Dimensional Eviction Policy**: Enforced eviction triggers across **capacity limit** (default: 64 chunks/player, oldest first), **extra distance threshold** (default: View Distance + 2 chunks), and **timeout expiration** (default: 30 seconds, including while stationary).
+- **Transport-Layer Independence**: DCC makes server-authoritative chunk delivery decisions without intercepting or rewriting packet transport, allowing packet compression and templating mods to operate at their own layer.
 - **Configurable Settings**: Added `DelayedChunkCacheConfig` to customize `sizeLimit`, `extraDistance`, `timeoutSeconds`, and `checkIntervalTicks`.
 
 ## Entity Occlusion Culling (SubChunk VisGraph)
