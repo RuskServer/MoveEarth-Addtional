@@ -1039,7 +1039,6 @@ public final class PvpMatchManager {
 
     private static boolean inside(BlockPos position, BlockPos first, BlockPos second) {
         return position.getX() >= Math.min(first.getX(), second.getX()) && position.getX() <= Math.max(first.getX(), second.getX())
-                && position.getY() >= Math.min(first.getY(), second.getY()) && position.getY() <= Math.max(first.getY(), second.getY())
                 && position.getZ() >= Math.min(first.getZ(), second.getZ()) && position.getZ() <= Math.max(first.getZ(), second.getZ());
     }
 

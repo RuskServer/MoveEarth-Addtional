@@ -144,6 +144,20 @@ public final class PvpScreen extends Screen {
         }
 
         graphics.disableScissor();
+
+        int rows = (loadouts.size() + 1) / 2;
+        int totalHeight = rows * 78;
+        int maxScroll = Math.max(0, totalHeight - 155);
+        if (maxScroll > 0) {
+            int scrollBarX = gridX + gridWidth + 2;
+            int scrollBarY = gridY;
+            int scrollBarHeight = gridHeight;
+            int thumbHeight = Math.max(20, (int) ((float) gridHeight / totalHeight * gridHeight));
+            int thumbY = gridY + (int) ((float) scrollOffset / maxScroll * (gridHeight - thumbHeight));
+
+            graphics.fill(scrollBarX, scrollBarY, scrollBarX + 4, scrollBarY + scrollBarHeight, 0xFF202832);
+            graphics.fill(scrollBarX, thumbY, scrollBarX + 4, thumbY + thumbHeight, 0xFF536173);
+        }
     }
 
     private void drawLoadoutCard(GuiGraphics graphics, PvpLoadoutDefinition def, int x, int y, int cardWidth, int cardHeight, boolean hovered) {
