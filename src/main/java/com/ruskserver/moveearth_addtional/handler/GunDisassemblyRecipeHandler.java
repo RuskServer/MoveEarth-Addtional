@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -213,7 +214,7 @@ public class GunDisassemblyRecipeHandler {
 
         valuesMethod.setAccessible(true);
         @SuppressWarnings("unchecked")
-        Iterable<RecipeHolder<?>> existingRecipes = (Iterable<RecipeHolder<?>>) valuesMethod.invoke(recipeMap);
+        Iterable<RecipeHolder<?>> existingRecipes = (Iterable<RecipeHolder<?>>) (Object) valuesMethod.invoke(recipeMap);
 
         // 既存の全レシピと新しいレシピを合わせたリストを作成
         List<RecipeHolder<?>> allRecipes = new ArrayList<>();
@@ -237,7 +238,7 @@ public class GunDisassemblyRecipeHandler {
         }
 
         replaceRecipesMethod.setAccessible(true);
-        replaceRecipesMethod.invoke(recipeManager, allRecipes);
+        replaceRecipesMethod.invoke(recipeManager, (Object) allRecipes);
         
         LOGGER.info("[MoveEarth] TaCZ 銃解体レシピを含め、全 {} 件のレシピを RecipeManager に再登録しました。", allRecipes.size());
     }
