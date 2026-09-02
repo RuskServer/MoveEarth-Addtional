@@ -1,0 +1,23 @@
+{
+  "type": "create:crushing",
+  "ingredients": [
+    {
+      "type": "neoforge:components",
+      "item": "tacz:modern_kinetic_gun",
+      "components": {
+        "tacz:gun_id": "cbcmodernwarfare:aa12"
+      }
+    }
+  ],
+  "results": [
+    {
+      "item": "minecraft:iron_ingot",
+      "count": 7
+    },
+    {
+      "item": "minecraft:iron_ingot",
+      "chance": 0.2
+    }
+  ],
+  "processingTime": 200
+}
