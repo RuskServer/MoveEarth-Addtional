@@ -5,17 +5,18 @@ import com.simibubi.create.AllRecipeTypes;
 import com.simibubi.create.content.kinetics.crusher.CrushingRecipe;
 import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipeParams;
-import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.crafting.GunSmithTableIngredient;
 import com.tacz.guns.crafting.GunSmithTableRecipe;
+import com.tacz.guns.crafting.GunSmithTableSerializer;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,9 +27,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * サーバー起動直前に TaCZ のガンスミスレシピを動的に読み取り、
+ * サーバー完全起動後に TaCZ のガンスミスレシピを動的に読み取り、
  * Create の粉砕ホイールレシピとして自動注入するハンドラー。
  * 銃の素材を 60% 還元し、端数は確率ドロップとして処理する。
+ * ServerStartedEvent を使用することで、TaCZ の GunPack ロード完了後に処理を行う。
  */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID)
 public class GunDisassemblyRecipeHandler {
@@ -37,7 +39,7 @@ public class GunDisassemblyRecipeHandler {
     private static final double RETURN_RATE = 0.6;
 
     @SubscribeEvent
-    public static void onServerAboutToStart(ServerAboutToStartEvent event) {
+    public static void onServerStarted(ServerStartedEvent event) {
         try {
             injectCrushingRecipes(event.getServer().getRecipeManager());
         } catch (Exception e) {
@@ -46,18 +48,32 @@ public class GunDisassemblyRecipeHandler {
     }
 
     private static void injectCrushingRecipes(RecipeManager recipeManager) throws Exception {
-        Map<ResourceLocation, GunSmithTableRecipe> gunRecipes = TimelessAPI.getAllRecipes();
+        // TimelessAPI.getAllRecipes() の代わりに、RecipeManager に登録済みの GunSmithTableRecipe を直接取得する
+        // TaCZ はデータパックリロード経由でレシピを RecipeManager に登録するため、
+        // ServerStarted 時点では確実にロードが完了している
+        List<RecipeHolder<GunSmithTableRecipe>> gunRecipeHolders;
+        try {
+            RecipeType<GunSmithTableRecipe> gunRecipeType = getGunSmithTableRecipeType();
+            if (gunRecipeType == null) {
+                LOGGER.warn("[MoveEarth] GunSmithTableRecipe の RecipeType が見つかりませんでした。");
+                return;
+            }
+            gunRecipeHolders = recipeManager.getAllRecipesFor(gunRecipeType);
+        } catch (Exception e) {
+            LOGGER.warn("[MoveEarth] GunSmithTableRecipe の取得に失敗しました: {}", e.getMessage());
+            return;
+        }
 
-        if (gunRecipes == null || gunRecipes.isEmpty()) {
-            LOGGER.warn("[MoveEarth] TaCZ の銃レシピが見つかりませんでした。動的解体レシピの生成をスキップします。");
+        if (gunRecipeHolders == null || gunRecipeHolders.isEmpty()) {
+            LOGGER.warn("[MoveEarth] TaCZ の銃レシピが RecipeManager に見つかりませんでした。TaCZ の GunPack がロードされているか確認してください。");
             return;
         }
 
         List<RecipeHolder<?>> newRecipes = new ArrayList<>();
 
-        for (Map.Entry<ResourceLocation, GunSmithTableRecipe> entry : gunRecipes.entrySet()) {
-            ResourceLocation gunId = entry.getKey();
-            GunSmithTableRecipe gunRecipe = entry.getValue();
+        for (RecipeHolder<GunSmithTableRecipe> holder : gunRecipeHolders) {
+            ResourceLocation gunId = holder.id();
+            GunSmithTableRecipe gunRecipe = holder.value();
 
             // 結果が銃アイテムではないレシピ（弾薬・アタッチメントなど）は除外
             if (gunRecipe.getResult() == null || gunRecipe.getResult().getResult() == null
@@ -218,5 +234,37 @@ public class GunDisassemblyRecipeHandler {
         var itemsB = b.getItems();
         if (itemsA.length == 0 || itemsB.length == 0) return false;
         return itemsA[0].getItem() == itemsB[0].getItem();
+    }
+
+    /**
+     * GunSmithTableRecipe の RecipeType を取得する。
+     * GunSmithTableRecipe 自身の getType() からインスタンスを一つ生成して取得する。
+     */
+    @SuppressWarnings("unchecked")
+    private static RecipeType<GunSmithTableRecipe> getGunSmithTableRecipeType() {
+        try {
+            // GunSmithTableSerializer からダミーインスタンスを作れないため、
+            // RecipeType の static フィールドをリフレクションで探す
+            for (Field f : GunSmithTableSerializer.class.getDeclaredFields()) {
+                f.setAccessible(true);
+                Object val = f.get(null);
+                if (val instanceof RecipeType<?>) {
+                    return (RecipeType<GunSmithTableRecipe>) val;
+                }
+            }
+            // GunSmithTableRecipe 自身からも探す
+            for (Field f : GunSmithTableRecipe.class.getDeclaredFields()) {
+                f.setAccessible(true);
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    Object val = f.get(null);
+                    if (val instanceof RecipeType<?>) {
+                        return (RecipeType<GunSmithTableRecipe>) val;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.warn("[MoveEarth] GunSmithTableRecipeType の取得中にエラーが発生: {}", e.getMessage());
+        }
+        return null;
     }
 }
