@@ -180,50 +180,66 @@ public class GunDisassemblyRecipeHandler {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void injectIntoRecipeManager(RecipeManager recipeManager, List<RecipeHolder<?>> newRecipes) throws Exception {
-        // NeoForge 21.1.x の RecipeManager は `byName` (LinkedHashMap) と
-        // `byType` (Map<RecipeType, List<RecipeHolder>>) を内部に持つ
-        Field byNameField = null;
+        // RecipeManager の recipes (RecipeMap) フィールドを探す
+        Field recipeMapField = null;
         for (Field f : RecipeManager.class.getDeclaredFields()) {
-            if (f.getType().equals(Map.class) && f.getName().contains("byName") || f.getName().contains("recipes")) {
-                byNameField = f;
+            if (f.getType().getSimpleName().equals("RecipeMap")) {
+                recipeMapField = f;
                 break;
             }
         }
 
-        if (byNameField == null) {
-            // フィールド名で確実にとる（obfuscated 環境では SRG 名 f_44132_ 等になる場合あり）
-            Field[] fields = RecipeManager.class.getDeclaredFields();
-            for (Field f : fields) {
-                f.setAccessible(true);
-                Object val = f.get(recipeManager);
-                if (val instanceof Map) {
-                    byNameField = f;
-                    break;
-                }
-            }
-        }
-
-        if (byNameField == null) {
-            LOGGER.error("[MoveEarth] RecipeManager の内部マップフィールドが見つかりませんでした。");
+        if (recipeMapField == null) {
+            LOGGER.error("[MoveEarth] RecipeManager の RecipeMap フィールドが見つかりませんでした。");
             return;
         }
 
-        byNameField.setAccessible(true);
-        Map<ResourceLocation, RecipeHolder<?>> byName = (Map<ResourceLocation, RecipeHolder<?>>) byNameField.get(recipeManager);
+        recipeMapField.setAccessible(true);
+        Object recipeMap = recipeMapField.get(recipeManager);
 
-        // 変更可能な Map にラップされている場合は直接追加、不可の場合はコピーして差し替え
-        try {
-            for (RecipeHolder<?> holder : newRecipes) {
-                byName.put(holder.id(), holder);
+        // RecipeMap.values() メソッドを探す
+        Method valuesMethod = null;
+        for (Method m : recipeMap.getClass().getDeclaredMethods()) {
+            if (m.getName().equals("values") && m.getParameterCount() == 0) {
+                valuesMethod = m;
+                break;
             }
-        } catch (UnsupportedOperationException e) {
-            // ImmutableMap の場合はコピーして差し替え
-            Map<ResourceLocation, RecipeHolder<?>> mutable = new HashMap<>(byName);
-            for (RecipeHolder<?> holder : newRecipes) {
-                mutable.put(holder.id(), holder);
-            }
-            byNameField.set(recipeManager, mutable);
         }
+
+        if (valuesMethod == null) {
+            LOGGER.error("[MoveEarth] RecipeMap の values メソッドが見つかりませんでした。");
+            return;
+        }
+
+        valuesMethod.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        Iterable<RecipeHolder<?>> existingRecipes = (Iterable<RecipeHolder<?>>) valuesMethod.invoke(recipeMap);
+
+        // 既存の全レシピと新しいレシピを合わせたリストを作成
+        List<RecipeHolder<?>> allRecipes = new ArrayList<>();
+        for (RecipeHolder<?> holder : existingRecipes) {
+            allRecipes.add(holder);
+        }
+        allRecipes.addAll(newRecipes);
+
+        // RecipeManager.replaceRecipes(Iterable) を呼び出して更新
+        Method replaceRecipesMethod = null;
+        for (Method m : RecipeManager.class.getDeclaredMethods()) {
+            if (m.getName().equals("replaceRecipes") && m.getParameterCount() == 1) {
+                replaceRecipesMethod = m;
+                break;
+            }
+        }
+
+        if (replaceRecipesMethod == null) {
+            LOGGER.error("[MoveEarth] RecipeManager の replaceRecipes メソッドが見つかりませんでした。");
+            return;
+        }
+
+        replaceRecipesMethod.setAccessible(true);
+        replaceRecipesMethod.invoke(recipeManager, allRecipes);
+        
+        LOGGER.info("[MoveEarth] TaCZ 銃解体レシピを含め、全 {} 件のレシピを RecipeManager に再登録しました。", allRecipes.size());
     }
 
     /**
