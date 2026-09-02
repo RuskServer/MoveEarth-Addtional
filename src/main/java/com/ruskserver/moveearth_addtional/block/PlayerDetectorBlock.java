@@ -31,6 +31,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 public class PlayerDetectorBlock extends Block implements EntityBlock {
 
@@ -80,59 +81,67 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
 
         BlockEntity blockEntity = level.getBlockEntity(pos);
         if (blockEntity instanceof PlayerDetectorBlockEntity detectorEntity) {
-            if (detectorEntity.getOwnerUUID() != null) {
-                if (detectorEntity.getOwnerUUID().equals(player.getUUID())) {
-                    if (player instanceof ServerPlayer serverPlayer) {
-                        // 所有者のホワイトリストを取得
-                        ServerLevel serverLevel = (ServerLevel) level;
-                        List<String> whitelist = PlayerWhitelistSavedData.get(serverLevel).getMemberNamesForDisplay(player.getUUID());
-
-                        // 現在オンラインのプレイヤー一覧を取得
-                        List<String> onlinePlayers = new ArrayList<>();
-                        for (ServerPlayer onlinePlayer : serverLevel.getServer().getPlayerList().getPlayers()) {
-                            onlinePlayers.add(onlinePlayer.getScoreboardName());
-                        }
-
-                        // クライアントへGUI表示パケットを送信
-                        PacketDistributor.sendToPlayer(serverPlayer, new S2C_OpenDetectorScreenPacket(detectorEntity.getOwnerName(), whitelist, onlinePlayers));
-                        
-                        // 新規追加：決済データも取得して送信
-                        List<BankReference> availableAccounts = new ArrayList<>();
-                        List<String> availableAccountNames = new ArrayList<>();
-                        for (BankReference ref : BankAPI.getApi().GetAllBankReferences(false)) {
-                            try {
-                                if (ref != null && ref.isValid() && ref.allowedAccess(player)) {
-                                    IBankAccount account = ref.get();
-                                    if (account != null) {
-                                        availableAccounts.add(ref);
-                                        availableAccountNames.add(account.getName().getString());
-                                    }
-                                }
-                            } catch (RuntimeException ignored) {
-                                // Skip stale or otherwise unresolvable account references.
-                            }
-                        }
-                        PacketDistributor.sendToPlayer(serverPlayer, new S2C_SyncDetectorPaymentPacket(
-                                pos,
-                                detectorEntity.isActive(),
-                                detectorEntity.getNextPaymentTime(),
-                                detectorEntity.getPlacedTime(),
-                                detectorEntity.getBankReference(),
-                                availableAccounts,
-                                availableAccountNames
-                        ));
-                    }
-                    return InteractionResult.SUCCESS;
-                } else {
-                    player.sendSystemMessage(Component.literal("この検知ブロックの所有者ではありません。設定を変更することはできません。"));
-                    return InteractionResult.CONSUME;
-                }
-            } else {
+            if (detectorEntity.getOwnerUUID() == null) {
                 // 所有者がいない場合は、最初に右クリックしたプレイヤーを所有者にする
                 detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
                 player.sendSystemMessage(Component.literal("このブロックの所有者として登録されました。もう一度右クリックして設定を開いてください。"));
                 return InteractionResult.SUCCESS;
             }
+
+            if (!(player instanceof ServerPlayer serverPlayer)) {
+                return InteractionResult.CONSUME;
+            }
+            ServerLevel serverLevel = (ServerLevel) level;
+            UUID ownerUuid = detectorEntity.getOwnerUUID();
+            PlayerWhitelistSavedData accessData = PlayerWhitelistSavedData.get(serverLevel);
+            boolean ownerAccess = ownerUuid.equals(player.getUUID());
+            if (!ownerAccess && !accessData.isManager(ownerUuid, player.getUUID())) {
+                player.sendSystemMessage(Component.literal("この検知ブロックを管理する権限がありません。"));
+                return InteractionResult.CONSUME;
+            }
+
+            List<String> onlinePlayers = new ArrayList<>();
+            for (ServerPlayer onlinePlayer : serverLevel.getServer().getPlayerList().getPlayers()) {
+                onlinePlayers.add(onlinePlayer.getScoreboardName());
+            }
+            PacketDistributor.sendToPlayer(serverPlayer, new S2C_OpenDetectorScreenPacket(
+                    pos,
+                    detectorEntity.getDetectorName(),
+                    detectorEntity.getOwnerName(),
+                    ownerAccess,
+                    accessData.getMemberNamesForDisplay(ownerUuid),
+                    ownerAccess ? accessData.getManagerNamesForDisplay(ownerUuid) : List.of(),
+                    onlinePlayers
+            ));
+
+            // 名称・決済・権限委任は所有者専用。管理者にはホワイトリスト画面だけを同期する。
+            if (ownerAccess) {
+                List<BankReference> availableAccounts = new ArrayList<>();
+                List<String> availableAccountNames = new ArrayList<>();
+                for (BankReference ref : BankAPI.getApi().GetAllBankReferences(false)) {
+                    try {
+                        if (ref != null && ref.isValid() && ref.allowedAccess(player)) {
+                            IBankAccount account = ref.get();
+                            if (account != null) {
+                                availableAccounts.add(ref);
+                                availableAccountNames.add(account.getName().getString());
+                            }
+                        }
+                    } catch (RuntimeException ignored) {
+                        // Skip stale or otherwise unresolvable account references.
+                    }
+                }
+                PacketDistributor.sendToPlayer(serverPlayer, new S2C_SyncDetectorPaymentPacket(
+                        pos,
+                        detectorEntity.isActive(),
+                        detectorEntity.getNextPaymentTime(),
+                        detectorEntity.getPlacedTime(),
+                        detectorEntity.getBankReference(),
+                        availableAccounts,
+                        availableAccountNames
+                ));
+            }
+            return InteractionResult.SUCCESS;
         }
 
         return InteractionResult.PASS;
@@ -149,7 +158,7 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
     public void appendHoverText(ItemStack stack, net.minecraft.world.item.Item.TooltipContext context, List<Component> tooltip, net.minecraft.world.item.TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltip, flag);
         tooltip.add(Component.literal("§7周囲100ブロックに侵入したプレイヤーを検知します。"));
-        tooltip.add(Component.literal("§7右クリックでホワイトリストの設定画面を開きます。"));
+        tooltip.add(Component.literal("§7所有者または拠点管理者が右クリックで設定画面を開けます。"));
         tooltip.add(Component.literal("§c※ 半径3チャンク以内に重複して設置することはできません。"));
     }
 

@@ -147,6 +147,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 bucket_at INTEGER NOT NULL,
                 dimension TEXT NOT NULL,
                 detector_pos_hash TEXT NOT NULL,
+                detector_name TEXT NOT NULL DEFAULT '名称未設定',
                 group_owner_uuid TEXT,
                 member_minutes REAL NOT NULL,
                 visitor_minutes REAL NOT NULL,
@@ -312,7 +313,13 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             }
         }
 
-        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (3, " + (System.currentTimeMillis() / 1000L) + ");");
+        // 5. detector_activity_5m に表示名称を追加（座標ハッシュの主キーは維持）
+        if (tableExists(stmt, "detector_activity_5m")
+                && !hasColumn(stmt, "detector_activity_5m", "detector_name")) {
+            stmt.execute("ALTER TABLE detector_activity_5m ADD COLUMN detector_name TEXT NOT NULL DEFAULT '名称未設定';");
+        }
+
+        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (4, " + (System.currentTimeMillis() / 1000L) + ");");
     }
 
     @Override
@@ -368,10 +375,11 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
 
         String sqlDetectorActivity = """
             INSERT INTO detector_activity_5m (
-                bucket_at, dimension, detector_pos_hash, group_owner_uuid,
+                bucket_at, dimension, detector_pos_hash, detector_name, group_owner_uuid,
                 member_minutes, visitor_minutes, intrusion_sessions, distinct_members, distinct_visitors
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(bucket_at, dimension, detector_pos_hash) DO UPDATE SET
+                detector_name = excluded.detector_name,
                 member_minutes = member_minutes + excluded.member_minutes,
                 visitor_minutes = visitor_minutes + excluded.visitor_minutes,
                 intrusion_sessions = intrusion_sessions + excluded.intrusion_sessions,
@@ -452,12 +460,13 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                         psDetector.setLong(1, b.bucketAtEpochSec());
                         psDetector.setString(2, b.dimension());
                         psDetector.setString(3, b.detectorPosHash());
-                        psDetector.setString(4, b.groupOwnerUuid() != null ? b.groupOwnerUuid().toString() : null);
-                        psDetector.setDouble(5, b.memberMinutes());
-                        psDetector.setDouble(6, b.visitorMinutes());
-                        psDetector.setInt(7, b.intrusionSessions());
-                        psDetector.setInt(8, b.distinctMembers());
-                        psDetector.setInt(9, b.distinctVisitors());
+                        psDetector.setString(4, b.detectorName());
+                        psDetector.setString(5, b.groupOwnerUuid() != null ? b.groupOwnerUuid().toString() : null);
+                        psDetector.setDouble(6, b.memberMinutes());
+                        psDetector.setDouble(7, b.visitorMinutes());
+                        psDetector.setInt(8, b.intrusionSessions());
+                        psDetector.setInt(9, b.distinctMembers());
+                        psDetector.setInt(10, b.distinctVisitors());
                         psDetector.addBatch();
                     }
                 } else if (event instanceof AnalyticsEventQueue.HealthMetricEvent h) {
@@ -1091,6 +1100,71 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         List<GroupSummaryDto> list = new ArrayList<>();
         for (UUID owner : owners) {
             queryGroupSummary(owner, window, currentEpochSec).ifPresent(list::add);
+        }
+        return list;
+    }
+
+    @Override
+    public synchronized List<DetectorSummaryDto> queryDetectorSummaries(
+            UUID groupOwnerUuid,
+            TimeWindow window,
+            long currentEpochSec
+    ) throws SQLException {
+        if (connection == null || connection.isClosed() || groupOwnerUuid == null) {
+            return Collections.emptyList();
+        }
+
+        long startEpochSec = window.getStartEpochSec(currentEpochSec);
+        String sql = """
+            WITH ranked AS (
+                SELECT
+                    dimension,
+                    detector_pos_hash,
+                    detector_name,
+                    member_minutes,
+                    visitor_minutes,
+                    intrusion_sessions,
+                    distinct_members,
+                    distinct_visitors,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY dimension, detector_pos_hash
+                        ORDER BY bucket_at DESC
+                    ) AS name_rank
+                FROM detector_activity_5m
+                WHERE group_owner_uuid = ? AND bucket_at >= ?
+            )
+            SELECT
+                dimension,
+                detector_pos_hash,
+                COALESCE(MAX(CASE WHEN name_rank = 1 THEN detector_name END), '名称未設定') AS detector_name,
+                COALESCE(SUM(member_minutes), 0.0) AS total_member_min,
+                COALESCE(SUM(visitor_minutes), 0.0) AS total_visitor_min,
+                COALESCE(SUM(intrusion_sessions), 0) AS total_intrusions,
+                COALESCE(MAX(distinct_members), 0) AS max_members,
+                COALESCE(MAX(distinct_visitors), 0) AS max_visitors
+            FROM ranked
+            GROUP BY dimension, detector_pos_hash
+            ORDER BY total_intrusions DESC, detector_name COLLATE NOCASE ASC;
+        """;
+
+        List<DetectorSummaryDto> list = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, groupOwnerUuid.toString());
+            ps.setLong(2, startEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new DetectorSummaryDto(
+                            rs.getString("detector_pos_hash"),
+                            rs.getString("detector_name"),
+                            rs.getString("dimension"),
+                            rs.getDouble("total_member_min"),
+                            rs.getDouble("total_visitor_min"),
+                            rs.getInt("total_intrusions"),
+                            rs.getInt("max_members"),
+                            rs.getInt("max_visitors")
+                    ));
+                }
+            }
         }
         return list;
     }

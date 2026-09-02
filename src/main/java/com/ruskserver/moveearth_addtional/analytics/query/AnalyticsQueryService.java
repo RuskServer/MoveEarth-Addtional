@@ -26,6 +26,7 @@ public class AnalyticsQueryService {
     private final AnalyticsQueryCache<String, List<PlayerSummaryDto>> topPlayersCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, GroupSummaryDto> groupCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, List<GroupSummaryDto>> allGroupsCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
+    private final AnalyticsQueryCache<String, List<DetectorSummaryDto>> detectorCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, List<SpatialHeatmapCellDto>> heatmapCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, CollectorHealthDto> healthCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, OverviewSummaryDto> overviewCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
@@ -176,6 +177,39 @@ public class AnalyticsQueryService {
     }
 
     /**
+     * 指定した拠点所有者の検知器別サマリーを非同期で取得
+     */
+    public CompletableFuture<List<DetectorSummaryDto>> getDetectorSummariesAsync(
+            UUID groupOwnerUuid,
+            TimeWindow window
+    ) {
+        if (groupOwnerUuid == null) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+        String cacheKey = groupOwnerUuid + ":" + window.getId();
+        Optional<List<DetectorSummaryDto>> cached = detectorCache.get(cacheKey);
+        if (cached.isPresent()) {
+            return CompletableFuture.completedFuture(cached.get());
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) {
+                return Collections.emptyList();
+            }
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                List<DetectorSummaryDto> result = engine.queryDetectorSummaries(groupOwnerUuid, window, nowSec);
+                detectorCache.put(cacheKey, result);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    /**
      * 空間ヒートマップ集計を非同期で取得
      */
     public CompletableFuture<List<SpatialHeatmapCellDto>> getSpatialHeatmapAsync(String dimension, TimeWindow window, int limit) {
@@ -267,6 +301,7 @@ public class AnalyticsQueryService {
         topPlayersCache.clear();
         groupCache.clear();
         allGroupsCache.clear();
+        detectorCache.clear();
         heatmapCache.clear();
         healthCache.clear();
         overviewCache.clear();

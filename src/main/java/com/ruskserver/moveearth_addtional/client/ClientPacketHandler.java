@@ -74,8 +74,12 @@ public class ClientPacketHandler {
     public static void handleOpenDetectorScreen(S2C_OpenDetectorScreenPacket packet) {
         Minecraft.getInstance().setScreen(new PlayerDetectorScreen(
                 Component.literal("プレイヤー検知ブロック設定"),
+                packet.pos(),
+                packet.detectorName(),
                 packet.ownerName(),
+                packet.ownerAccess(),
                 packet.whitelist(),
+                packet.managers(),
                 packet.onlinePlayers()
         ));
     }
@@ -83,7 +87,14 @@ public class ClientPacketHandler {
     public static void handleSyncWhitelist(S2C_SyncWhitelistPacket packet) {
         Screen screen = Minecraft.getInstance().screen;
         if (screen instanceof PlayerDetectorScreen detectorScreen) {
-            detectorScreen.updateData(packet.whitelist(), packet.onlinePlayers());
+            detectorScreen.updateData(packet.pos(), packet.whitelist(), packet.onlinePlayers());
+        }
+    }
+
+    public static void handleSyncDetectorManagers(S2C_SyncDetectorManagersPacket packet) {
+        Screen screen = Minecraft.getInstance().screen;
+        if (screen instanceof PlayerDetectorScreen detectorScreen) {
+            detectorScreen.updateManagers(packet.pos(), packet.managers(), packet.success(), packet.message());
         }
     }
 
@@ -98,6 +109,18 @@ public class ClientPacketHandler {
                     packet.currentReference(),
                     packet.availableAccounts(),
                     packet.availableAccountNames()
+            );
+        }
+    }
+
+    public static void handleSyncDetectorName(S2C_SyncDetectorNamePacket packet) {
+        Screen screen = Minecraft.getInstance().screen;
+        if (screen instanceof PlayerDetectorScreen detectorScreen) {
+            detectorScreen.updateDetectorName(
+                    packet.pos(),
+                    packet.success(),
+                    packet.detectorName(),
+                    packet.message()
             );
         }
     }

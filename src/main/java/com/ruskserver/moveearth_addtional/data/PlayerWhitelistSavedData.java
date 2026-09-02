@@ -22,12 +22,49 @@ import java.util.*;
 public class PlayerWhitelistSavedData extends SavedData {
 
     private final WhitelistRegistry registry = new WhitelistRegistry();
+    private final DetectorAccessRegistry accessRegistry = new DetectorAccessRegistry();
 
     public PlayerWhitelistSavedData() {
     }
 
     public WhitelistRegistry getRegistry() {
         return registry;
+    }
+
+    public DetectorAccessRegistry getAccessRegistry() {
+        return accessRegistry;
+    }
+
+    public Map<UUID, String> getManagers(UUID owner) {
+        return accessRegistry.getManagers(owner);
+    }
+
+    public List<String> getManagerNamesForDisplay(UUID owner) {
+        return accessRegistry.getManagerNamesForDisplay(owner);
+    }
+
+    public boolean isManager(UUID owner, UUID playerUuid) {
+        return accessRegistry.isManager(owner, playerUuid);
+    }
+
+    public boolean canEditWhitelist(UUID owner, UUID playerUuid) {
+        return accessRegistry.canEditWhitelist(owner, playerUuid);
+    }
+
+    public boolean addManager(UUID owner, UUID managerUuid, @Nullable String managerName) {
+        boolean changed = accessRegistry.addManager(owner, managerUuid, managerName);
+        if (changed) {
+            this.setDirty();
+        }
+        return changed;
+    }
+
+    public boolean removeManagerByName(UUID owner, String managerName) {
+        boolean changed = accessRegistry.removeManagerByName(owner, managerName);
+        if (changed) {
+            this.setDirty();
+        }
+        return changed;
     }
 
     /**
@@ -113,7 +150,9 @@ public class PlayerWhitelistSavedData extends SavedData {
         GameProfileCache profileCache = server.getProfileCache();
         boolean changed = false;
 
-        for (UUID owner : registry.getAllOwners()) {
+        Set<UUID> owners = new HashSet<>(registry.getAllOwners());
+        owners.addAll(accessRegistry.getAllOwners());
+        for (UUID owner : owners) {
             Set<String> names = new HashSet<>(registry.getUnresolvedNames(owner));
             for (String name : names) {
                 UUID resolvedUuid = null;
@@ -159,7 +198,9 @@ public class PlayerWhitelistSavedData extends SavedData {
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         ListTag list = new ListTag();
 
-        for (UUID owner : registry.getAllOwners()) {
+        Set<UUID> owners = new HashSet<>(registry.getAllOwners());
+        owners.addAll(accessRegistry.getAllOwners());
+        for (UUID owner : owners) {
             CompoundTag entryTag = new CompoundTag();
             entryTag.putUUID("OwnerUUID", owner);
 
@@ -186,6 +227,18 @@ public class PlayerWhitelistSavedData extends SavedData {
                     unresolvedList.add(StringTag.valueOf(name));
                 }
                 entryTag.put("UnresolvedNames", unresolvedList);
+            }
+
+            Map<UUID, String> managers = accessRegistry.getManagers(owner);
+            if (!managers.isEmpty()) {
+                ListTag managerList = new ListTag();
+                for (Map.Entry<UUID, String> managerEntry : managers.entrySet()) {
+                    CompoundTag managerTag = new CompoundTag();
+                    managerTag.putUUID("UUID", managerEntry.getKey());
+                    managerTag.putString("Name", managerEntry.getValue());
+                    managerList.add(managerTag);
+                }
+                entryTag.put("Managers", managerList);
             }
 
             list.add(entryTag);
@@ -229,6 +282,20 @@ public class PlayerWhitelistSavedData extends SavedData {
                         ListTag unresolvedList = entryTag.getList("UnresolvedNames", Tag.TAG_STRING);
                         for (int j = 0; j < unresolvedList.size(); j++) {
                             data.registry.addByNameFallback(owner, unresolvedList.getString(j), null);
+                        }
+                    }
+
+                    if (entryTag.contains("Managers", Tag.TAG_LIST)) {
+                        ListTag managerList = entryTag.getList("Managers", Tag.TAG_COMPOUND);
+                        for (int j = 0; j < managerList.size(); j++) {
+                            CompoundTag managerTag = managerList.getCompound(j);
+                            if (managerTag.hasUUID("UUID")) {
+                                UUID managerUuid = managerTag.getUUID("UUID");
+                                String managerName = managerTag.contains("Name")
+                                        ? managerTag.getString("Name")
+                                        : managerUuid.toString();
+                                data.accessRegistry.addManager(owner, managerUuid, managerName);
+                            }
                         }
                     }
 
@@ -314,6 +381,12 @@ public class PlayerWhitelistSavedData extends SavedData {
                         }
                         for (String unresolved : otherData.getUnresolvedNames(owner)) {
                             this.addByNameFallback(owner, unresolved, null);
+                            merged = true;
+                        }
+                    }
+                    for (UUID owner : otherData.getAccessRegistry().getAllOwners()) {
+                        for (Map.Entry<UUID, String> manager : otherData.getManagers(owner).entrySet()) {
+                            this.addManager(owner, manager.getKey(), manager.getValue());
                             merged = true;
                         }
                     }

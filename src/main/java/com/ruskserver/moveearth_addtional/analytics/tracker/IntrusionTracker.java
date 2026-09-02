@@ -17,6 +17,7 @@ public class IntrusionTracker {
     private static class DetectorState {
         final String dimension;
         final String detectorPosHash;
+        String detectorName;
         @Nullable final UUID groupOwnerUuid;
 
         // 進行中の侵入者UUIDセット (退域検知用)
@@ -31,9 +32,10 @@ public class IntrusionTracker {
 
         long lastScanTimeMs = 0L;
 
-        DetectorState(String dimension, String detectorPosHash, @Nullable UUID groupOwnerUuid) {
+        DetectorState(String dimension, String detectorPosHash, String detectorName, @Nullable UUID groupOwnerUuid) {
             this.dimension = dimension;
             this.detectorPosHash = detectorPosHash;
+            this.detectorName = detectorName;
             this.groupOwnerUuid = groupOwnerUuid;
         }
     }
@@ -48,6 +50,7 @@ public class IntrusionTracker {
      *
      * @param dimension ディメンション識別子
      * @param detectorPosHash 検知ブロックの座標ハッシュ
+     * @param detectorName 検知ブロックの表示名称
      * @param groupOwnerUuid グループ所有者UUID
      * @param currentMembers 現在検知範囲内にいるグループメンバーUUID一覧
      * @param currentVisitors 現在検知範囲内にいる友好的訪問者UUID一覧
@@ -57,6 +60,7 @@ public class IntrusionTracker {
     public synchronized void recordScan(
             String dimension,
             String detectorPosHash,
+            String detectorName,
             @Nullable UUID groupOwnerUuid,
             Set<UUID> currentMembers,
             Set<UUID> currentVisitors,
@@ -64,7 +68,8 @@ public class IntrusionTracker {
             long currentTimeMs
     ) {
         DetectorState state = detectorStates.computeIfAbsent(detectorPosHash,
-                k -> new DetectorState(dimension, detectorPosHash, groupOwnerUuid));
+                k -> new DetectorState(dimension, detectorPosHash, detectorName, groupOwnerUuid));
+        state.detectorName = detectorName;
 
         double elapsedMinutes = 0.0;
         if (state.lastScanTimeMs > 0L) {
@@ -119,6 +124,7 @@ public class IntrusionTracker {
                         bucketAtEpochSec,
                         state.dimension,
                         state.detectorPosHash,
+                        state.detectorName,
                         state.groupOwnerUuid,
                         state.memberMinutes,
                         state.visitorMinutes,

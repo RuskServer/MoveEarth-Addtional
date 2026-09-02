@@ -79,7 +79,7 @@ public class AnalyticsQueryServiceTest {
 
         // Detector Activity 5m
         DetectorActivityBucket det1 = new DetectorActivityBucket(
-                now - 1000L, "minecraft:overworld", "hash123", groupOwnerUuid, 15.0, 5.0, 2, 3, 2);
+                now - 1000L, "minecraft:overworld", "hash123", "北門", groupOwnerUuid, 15.0, 5.0, 2, 3, 2);
 
         // Health Metric
         AnalyticsEventQueue.HealthMetricEvent health = new AnalyticsEventQueue.HealthMetricEvent(
@@ -149,6 +149,20 @@ public class AnalyticsQueryServiceTest {
         assertEquals(2, dto.totalIntrusionSessions());
         assertEquals(3, dto.maxDistinctMembers());
         assertEquals(2, dto.maxDistinctVisitors());
+    }
+
+    @Test
+    public void testDetectorSummariesExposeReadableName() throws Exception {
+        List<DetectorSummaryDto> detectors = queryService
+                .getDetectorSummariesAsync(groupOwnerUuid, TimeWindow.DAYS_7)
+                .get();
+
+        assertEquals(1, detectors.size());
+        DetectorSummaryDto detector = detectors.getFirst();
+        assertEquals("北門", detector.detectorName());
+        assertEquals("minecraft:overworld", detector.dimension());
+        assertEquals(2, detector.totalIntrusionSessions());
+        assertEquals(15.0, detector.totalMemberMinutes(), 0.001);
     }
 
     @Test

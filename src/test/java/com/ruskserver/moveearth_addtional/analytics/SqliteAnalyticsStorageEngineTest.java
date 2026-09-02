@@ -50,7 +50,7 @@ public class SqliteAnalyticsStorageEngineTest {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT version FROM schema_version")) {
             assertTrue(rs.next());
-            assertEquals(3, rs.getInt("version"));
+            assertEquals(4, rs.getInt("version"));
         }
     }
 
@@ -309,7 +309,7 @@ public class SqliteAnalyticsStorageEngineTest {
             stmt.execute("INSERT INTO collector_health VALUES (1000, 2, 0, 15, 1024);");
         }
 
-        // v3エンジンで初期化して自動修復マイグレーション実行
+        // 最新エンジンで初期化して自動修復マイグレーション実行
         SqliteAnalyticsStorageEngine v2Engine = new SqliteAnalyticsStorageEngine();
         v2Engine.initialize(v1DbPath);
         assertTrue(v2Engine.isOpen());
@@ -329,6 +329,45 @@ public class SqliteAnalyticsStorageEngineTest {
         assertEquals(10, pNewSummary.get().totalBreaks());
 
         v2Engine.close();
+    }
+
+    @Test
+    public void testDetectorNameMigrationFromV3PreservesHistory() throws Exception {
+        Path v3DbPath = tempDir.resolve("v3_detector_legacy.db");
+        UUID owner = UUID.randomUUID();
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + v3DbPath.toAbsolutePath());
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);");
+            stmt.execute("INSERT INTO schema_version VALUES (3, 1000);");
+            stmt.execute("""
+                CREATE TABLE detector_activity_5m (
+                    bucket_at INTEGER NOT NULL,
+                    dimension TEXT NOT NULL,
+                    detector_pos_hash TEXT NOT NULL,
+                    group_owner_uuid TEXT,
+                    member_minutes REAL NOT NULL,
+                    visitor_minutes REAL NOT NULL,
+                    intrusion_sessions INTEGER NOT NULL,
+                    distinct_members INTEGER NOT NULL,
+                    distinct_visitors INTEGER NOT NULL,
+                    PRIMARY KEY (bucket_at, dimension, detector_pos_hash)
+                );
+            """);
+            stmt.execute("INSERT INTO detector_activity_5m VALUES "
+                    + "(1000, 'minecraft:overworld', 'legacy_hash', '" + owner
+                    + "', 2.5, 1.5, 4, 2, 3);");
+        }
+
+        SqliteAnalyticsStorageEngine migrated = new SqliteAnalyticsStorageEngine();
+        migrated.initialize(v3DbPath);
+        try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + v3DbPath.toAbsolutePath());
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT detector_name, intrusion_sessions FROM detector_activity_5m WHERE detector_pos_hash = 'legacy_hash'")) {
+            assertTrue(rs.next());
+            assertEquals("名称未設定", rs.getString("detector_name"));
+            assertEquals(4, rs.getInt("intrusion_sessions"));
+        }
+        migrated.close();
     }
 
     @Test

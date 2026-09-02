@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.analytics;
 
 import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
 import com.ruskserver.moveearth_addtional.analytics.model.PlayerActivityBucket;
+import com.ruskserver.moveearth_addtional.analytics.model.DetectorActivityBucket;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
 import com.ruskserver.moveearth_addtional.analytics.storage.SqliteAnalyticsStorageEngine;
@@ -27,6 +28,7 @@ public class AnalyticsWebServerTest {
     Path tempDir;
 
     private SqliteAnalyticsStorageEngine engine;
+    private UUID groupOwnerUuid;
 
     @BeforeEach
     public void setUp() throws Exception {
@@ -39,12 +41,29 @@ public class AnalyticsWebServerTest {
 
         long now = System.currentTimeMillis() / 1000L;
         UUID p1 = UUID.randomUUID();
+        groupOwnerUuid = UUID.randomUUID();
         AnalyticsEventQueue.SessionStartEvent s1 = new AnalyticsEventQueue.SessionStartEvent(
                 UUID.randomUUID(), p1, "WebPlayer", now - 1000L);
         PlayerActivityBucket b1 = new PlayerActivityBucket(
                 now - 500L, p1, "minecraft:overworld", null, 300, 100.0, 10, 5, 2, 1, 0, 0, 100.0, 1);
+        DetectorActivityBucket detector = new DetectorActivityBucket(
+                now - 500L,
+                "minecraft:overworld",
+                "web_detector",
+                "北門<script>",
+                groupOwnerUuid,
+                3.0,
+                2.0,
+                1,
+                2,
+                1
+        );
 
-        engine.writeBatch(List.of(s1, new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b1))));
+        engine.writeBatch(List.of(
+                s1,
+                new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b1)),
+                new AnalyticsEventQueue.DetectorActivityFlushEvent(List.of(detector))
+        ));
 
         AnalyticsWebServer.INSTANCE.start();
     }
@@ -69,6 +88,7 @@ public class AnalyticsWebServerTest {
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, response.statusCode());
         assertTrue(response.body().contains("MoveEarth Analytics Dashboard"));
+        assertTrue(response.body().contains("escapeHtml(d.detectorName)"));
     }
 
     @Test
@@ -143,6 +163,27 @@ public class AnalyticsWebServerTest {
                 .build();
         HttpResponse<String> groupResp = client.send(groupReq, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, groupResp.statusCode());
+    }
+
+    @Test
+    public void testDetectorApiReturnsNamedDetectorAndRejectsInvalidUuid() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        String token = AnalyticsConfig.getAuthToken();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:8080/api/detectors?group="
+                        + groupOwnerUuid + "&window=7d&token=" + token))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("北門\\u003cscript\\u003e"));
+
+        HttpRequest invalid = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:8080/api/detectors?group=invalid&token=" + token))
+                .GET()
+                .build();
+        assertEquals(400, client.send(invalid, HttpResponse.BodyHandlers.ofString()).statusCode());
     }
 
     @Test

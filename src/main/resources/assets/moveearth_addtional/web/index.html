@@ -692,10 +692,11 @@
                                 <th>訪問者滞在</th>
                                 <th>侵入セッション数</th>
                                 <th>最大同時人数</th>
+                                <th>検知器別</th>
                             </tr>
                         </thead>
                         <tbody id="bases-table-body">
-                            <tr><td colspan="6" style="text-align:center;">データを読み込み中...</td></tr>
+                            <tr><td colspan="7" style="text-align:center;">データを読み込み中...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -877,6 +878,16 @@
             return sessionStorage.getItem('me_analytics_token') || '';
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[ch]);
+        }
+
         async function apiFetch(url) {
             const token = getAuthToken();
             const sep = url.includes('?') ? '&' : '?';
@@ -1033,21 +1044,70 @@
                 const bases = await res.json();
                 const tbody = document.getElementById('bases-table-body');
                 if (!bases || bases.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">拠点データがありません</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">拠点データがありません</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = bases.map(b => `
                     <tr>
-                        <td><strong style="color:var(--accent-amber);">${b.ownerName}</strong></td>
+                        <td><strong style="color:var(--accent-amber);">${escapeHtml(b.ownerName)}</strong></td>
                         <td>${b.detectorCount} 台</td>
                         <td style="color:var(--accent-emerald); font-weight:600;">${b.totalMemberMinutes.toFixed(1)} 分</td>
                         <td style="color:var(--accent-blue);">${b.totalVisitorMinutes.toFixed(1)} 分</td>
                         <td style="color:var(--accent-rose); font-weight:600;">${b.totalIntrusionSessions} 回</td>
                         <td>メンバー ${b.maxDistinctMembers}人 / 訪問者 ${b.maxDistinctVisitors}人</td>
+                        <td><button class="refresh-btn" style="padding:0.25rem 0.6rem; font-size:0.8rem;" onclick="toggleDetectors('${b.groupOwnerUuid}', this)">表示</button></td>
+                    </tr>
+                    <tr id="detectors-${b.groupOwnerUuid}" style="display:none;">
+                        <td colspan="7" style="padding:0.8rem 1.2rem; background:rgba(0,0,0,0.18);">読み込み中...</td>
                     </tr>
                 `).join('');
             } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleDetectors(ownerUuid, button) {
+            const detailRow = document.getElementById(`detectors-${ownerUuid}`);
+            if (!detailRow) return;
+            if (detailRow.style.display !== 'none') {
+                detailRow.style.display = 'none';
+                button.textContent = '表示';
+                return;
+            }
+
+            detailRow.style.display = 'table-row';
+            button.textContent = '閉じる';
+            const cell = detailRow.querySelector('td');
+            cell.textContent = '読み込み中...';
+            try {
+                const windowVal = document.getElementById('windowSelector').value;
+                const res = await apiFetch(`/api/detectors?group=${encodeURIComponent(ownerUuid)}&window=${windowVal}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const detectors = await res.json();
+                if (!detectors || detectors.length === 0) {
+                    cell.textContent = 'この期間の検知器データはありません。';
+                    return;
+                }
+                cell.innerHTML = `
+                    <table style="margin:0; width:100%;">
+                        <thead><tr>
+                            <th>検知器名称</th><th>ディメンション</th><th>侵入</th>
+                            <th>メンバー滞在</th><th>訪問者滞在</th><th>最大同時人数</th>
+                        </tr></thead>
+                        <tbody>${detectors.map(d => `
+                            <tr>
+                                <td><strong>${escapeHtml(d.detectorName)}</strong></td>
+                                <td>${escapeHtml(d.dimension)}</td>
+                                <td style="color:var(--accent-rose);">${d.totalIntrusionSessions} 回</td>
+                                <td>${d.totalMemberMinutes.toFixed(1)} 分</td>
+                                <td>${d.totalVisitorMinutes.toFixed(1)} 分</td>
+                                <td>メンバー ${d.maxDistinctMembers}人 / 訪問者 ${d.maxDistinctVisitors}人</td>
+                            </tr>
+                        `).join('')}</tbody>
+                    </table>`;
+            } catch (e) {
+                cell.textContent = '検知器データの取得に失敗しました。';
                 console.error(e);
             }
         }

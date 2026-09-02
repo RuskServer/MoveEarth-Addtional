@@ -1,6 +1,8 @@
 package com.ruskserver.moveearth_addtional.block.entity;
 
 import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
+import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
+import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
 import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
 import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
 import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
@@ -44,6 +46,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     private UUID ownerUUID;
     private String ownerName;
+    private String detectorName = "";
     private int tickCounter = 0;
 
     // 維持費支払い用データ
@@ -84,6 +87,23 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public String getOwnerName() {
         return this.ownerName;
+    }
+
+    public String getDetectorName() {
+        return this.detectorName;
+    }
+
+    public String getDetectorDisplayName() {
+        return this.detectorName.isBlank() ? "名称未設定" : this.detectorName;
+    }
+
+    public void setDetectorName(String detectorName) {
+        DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(detectorName);
+        if (!validation.valid()) {
+            throw new IllegalArgumentException(validation.errorMessage());
+        }
+        this.detectorName = validation.normalized();
+        this.setChanged();
     }
 
     public BankReference getBankReference() {
@@ -148,6 +168,10 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (tag.contains("OwnerName")) {
             this.ownerName = tag.getString("OwnerName");
         }
+        if (tag.contains("DetectorName")) {
+            DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(tag.getString("DetectorName"));
+            this.detectorName = validation.valid() ? validation.normalized() : "";
+        }
         if (tag.contains("BankReference")) {
             this.bankReference = BankReference.load(tag.getCompound("BankReference"));
         }
@@ -174,6 +198,9 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (this.ownerName != null) {
             tag.putString("OwnerName", this.ownerName);
         }
+        if (!this.detectorName.isEmpty()) {
+            tag.putString("DetectorName", this.detectorName);
+        }
         if (this.bankReference != null) {
             tag.put("BankReference", this.bankReference.save());
         }
@@ -185,15 +212,26 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         }
     }
 
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (this.level instanceof ServerLevel) {
+            LoadedDetectorRegistry.register(this);
+        }
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        LoadedDetectorRegistry.unregister(this);
+        super.onChunkUnloaded();
+    }
+
     public void tick(Level level, BlockPos pos, BlockState state, PlayerDetectorBlockEntity blockEntity) {
         if (level.isClientSide()) {
             return;
         }
 
         ServerLevel serverLevel = (ServerLevel) level;
-
-        // ダミーエンティティ（シュルカー）の同期管理
-        blockEntity.maintainDummyEntity(serverLevel, pos);
 
         blockEntity.tickCounter++;
         if (blockEntity.tickCounter >= 100) { // 5秒周期 (100 ticks)
@@ -277,7 +315,12 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
                     // 侵入者を検知
                     // 1. 警告メッセージの構築と送信
-                    String warningMsg = String.format("【警告】侵入者を検知しました！ プレイヤー: %s (距離: %.1fm)", targetName, dist);
+                    String warningMsg = String.format(
+                            "【侵入警告：%s】%sを検知しました（距離%.1fm）",
+                            blockEntity.getDetectorDisplayName(),
+                            targetName,
+                            dist
+                    );
                     Component chatMessage = Component.literal(warningMsg);
 
                     Set<String> alertRecipients = new HashSet<>(whitelistData.getMemberNamesForDisplay(blockEntity.ownerUUID));
@@ -308,6 +351,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.recordScan(
                     serverLevel.dimension().location().toString(),
                     posHash,
+                    blockEntity.getDetectorDisplayName(),
                     blockEntity.ownerUUID,
                     currentMembers,
                     currentVisitors,
@@ -492,6 +536,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     @Override
     public void setRemoved() {
+        LoadedDetectorRegistry.unregister(this);
         super.setRemoved();
         if (this.level instanceof ServerLevel serverLevel && this.worldPosition != null) {
             removeDummyEntity(serverLevel);
@@ -524,7 +569,8 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (blockEntity.ownerUUID != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(blockEntity.ownerUUID);
             if (player != null) {
-                player.sendSystemMessage(Component.literal("§c【警告】プレイヤー検知ブロックの維持費（5ゴールド）の引き落としに失敗したため、機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
+                player.sendSystemMessage(Component.literal("§c【" + blockEntity.getDetectorDisplayName()
+                        + "】維持費（5ゴールド）の引き落としに失敗したため、検知機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
             }
         }
     }

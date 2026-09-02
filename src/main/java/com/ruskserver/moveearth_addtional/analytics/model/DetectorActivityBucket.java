@@ -12,6 +12,7 @@ public record DetectorActivityBucket(
         long bucketAtEpochSec,
         String dimension,
         String detectorPosHash,
+        String detectorName,
         @Nullable UUID groupOwnerUuid,
         double memberMinutes,
         double visitorMinutes,
@@ -22,5 +23,6 @@ public record DetectorActivityBucket(
     public DetectorActivityBucket {
         Objects.requireNonNull(dimension, "dimension must not be null");
         Objects.requireNonNull(detectorPosHash, "detectorPosHash must not be null");
+        Objects.requireNonNull(detectorName, "detectorName must not be null");
     }
 }

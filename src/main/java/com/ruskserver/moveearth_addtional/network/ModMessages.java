@@ -10,13 +10,17 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("2.0-jobs1-hardpoint1");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1");
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);
+        registrar.playToServer(C2S_SetDetectorNamePacket.TYPE, C2S_SetDetectorNamePacket.STREAM_CODEC, C2S_SetDetectorNamePacket::handle);
+        registrar.playToClient(S2C_SyncDetectorNamePacket.TYPE, S2C_SyncDetectorNamePacket.STREAM_CODEC, S2C_SyncDetectorNamePacket::handle);
         registrar.playToClient(S2C_OpenStatsScreenPacket.TYPE, S2C_OpenStatsScreenPacket.STREAM_CODEC, S2C_OpenStatsScreenPacket::handle);
         registrar.playToServer(C2S_UpdateWhitelistPacket.TYPE, C2S_UpdateWhitelistPacket.STREAM_CODEC, C2S_UpdateWhitelistPacket::handle);
         registrar.playToClient(S2C_SyncWhitelistPacket.TYPE, S2C_SyncWhitelistPacket.STREAM_CODEC, S2C_SyncWhitelistPacket::handle);
+        registrar.playToServer(C2S_UpdateDetectorManagerPacket.TYPE, C2S_UpdateDetectorManagerPacket.STREAM_CODEC, C2S_UpdateDetectorManagerPacket::handle);
+        registrar.playToClient(S2C_SyncDetectorManagersPacket.TYPE, S2C_SyncDetectorManagersPacket.STREAM_CODEC, S2C_SyncDetectorManagersPacket::handle);
 
         registrar.playToClient(S2C_SyncDetectorPaymentPacket.TYPE, S2C_SyncDetectorPaymentPacket.STREAM_CODEC, S2C_SyncDetectorPaymentPacket::handle);
         registrar.playToServer(C2S_ConfigurePaymentPacket.TYPE, C2S_ConfigurePaymentPacket.STREAM_CODEC, C2S_ConfigurePaymentPacket::handle);

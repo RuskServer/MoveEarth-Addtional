@@ -72,6 +72,14 @@ public interface AnalyticsStorageEngine extends AutoCloseable {
             long currentEpochSec) throws Exception;
 
     /**
+     * 指定した拠点所有者の検知器別サマリーを取得
+     */
+    List<com.ruskserver.moveearth_addtional.analytics.query.dto.DetectorSummaryDto> queryDetectorSummaries(
+            java.util.UUID groupOwnerUuid,
+            com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow window,
+            long currentEpochSec) throws Exception;
+
+    /**
      * 指定ディメンションの空間ヒートマップ集計を取得
      */
     List<com.ruskserver.moveearth_addtional.analytics.query.dto.SpatialHeatmapCellDto> querySpatialHeatmap(

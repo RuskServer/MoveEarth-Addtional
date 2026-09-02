@@ -1,3 +1,32 @@
+# v3.0
+
+## TPA Travel Balance
+
+- **Role-Based Limits and Cooldowns**: Normal TPA is limited to two successful teleports per opening-day cycle. A success applies a persistent 60-minute cooldown to the traveler and a 15-minute receiving cooldown to the destination host, preventing relay-style mass transport. Cooldowns survive relogging and server restarts.
+- **Beginner Rendezvous Allowance**: Players below six hours of total play time receive three lifetime rendezvous teleports that bypass the normal daily use and traveler cooldown. The receiving host receives a shorter three-minute cooldown.
+- **Safer Warmup**: Increased warmup from 5 to 20 seconds. Either player moving, changing dimension, entering a vehicle, taking/dealing damage, or entering an invalid PvP state cancels the teleport without consuming uses or cooldowns.
+- **Configurable Balance**: Added `moveearth_addtional-tpa.toml` settings for both cooldowns, beginner eligibility and allowance, warmup duration, and combat lock duration.
+
+## Player Detector Names and GUI
+
+- **Per-Detector Names**: Owners can assign a persistent name of up to 32 characters to each player detector from a new GUI tab. Names are validated by the server and retained in block-entity NBT.
+- **Delegated Base Managers**: Owners can grant up to 20 UUID-backed base managers permission to edit the shared detector whitelist. Managers cannot rename detectors, configure payment accounts, or grant further permissions, and all whitelist changes are recorded in the server log.
+- **Readable Alerts Without Coordinates**: Intrusion and payment-failure messages identify the detector by its configured name without exposing block coordinates.
+- **Detector-Level Analytics**: SQLite schema version 4 stores the detector name while retaining the internal position hash as its stable identity. The web dashboard can expand each base into named detector summaries, with legacy databases migrated automatically.
+- **Unblurred Detector GUI**: Disabled the vanilla world-background blur for the detector screen while retaining its translucent backdrop, keeping the surrounding area visible during configuration.
+- **Loaded-Detector Tick Registry**: Replaced the every-tick scan and copy of every saved detector position with a lifecycle-managed registry of loaded detector block entities. Dummy maintenance now runs once at the end of each server tick instead of once in the block-entity tick and again in the global handler.
+
+## Compatibility
+
+- Updated the mod version to `3.0` and the network protocol to `3.0-detector-admin1` because detector GUI packets now carry block positions, configured names, and delegated access state.
+- v3.0 clients and servers must use the same network protocol; older clients are rejected cleanly instead of decoding the changed packet schema.
+
+## Non-Blocking Random Spawn
+
+- **Tick-Sliced Chunk Search**: Random spawn no longer calls synchronous `ServerLevel#getChunk` from login or respawn events. It requests at most two candidate chunks server-wide and polls completed chunks on later ticks, preventing chunk generation waits from blocking the server thread.
+- **Bounded Load and Cleanup**: Reduced each search to 24 candidates with a 20-second deadline. Search tickets are released after every candidate and on success, timeout, logout, replacement, or server shutdown; the ticket type also has a defensive automatic expiry.
+- **Safe Fallback Loading**: The best distance fallback is reloaded and revalidated asynchronously before teleporting, so fallback behavior cannot reintroduce a synchronous chunk wait.
+
 # v2.2
 
 ## Delayed Chunk Cache (DCC / Bandwidth Optimization)
@@ -63,8 +92,8 @@
 
 ## Compatibility
 
-- Updated the mod version to `2.2` while keeping the network protocol at `2.0-jobs1` because no packet schema changed.
-- Kept v2.2 network-compatible with v2.0 and v2.1 clients. Older clients continue to display the previous FMIC preset names, while the v2.2 server authoritatively issues the new TaCZ loadouts.
+- Updated the mod version to `2.3` and the network protocol to `2.0-jobs1-hardpoint1` for the expanded Hardpoint HUD packet schema.
+- v2.3 clients and servers must use the same network protocol; older clients are rejected cleanly instead of decoding the changed packet schema.
 
 # v2.1
 

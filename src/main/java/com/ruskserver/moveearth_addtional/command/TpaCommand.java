@@ -6,6 +6,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.tpa.TpaRequestManager;
 import com.ruskserver.moveearth_addtional.tpa.TpaUsageSavedData;
 import net.minecraft.commands.CommandSourceStack;
@@ -132,17 +133,26 @@ public final class TpaCommand {
 
     private static int inspect(CommandSourceStack source, ServerPlayer player) {
         TpaUsageSavedData usage = TpaUsageSavedData.get(source.getServer());
+        long now = System.currentTimeMillis();
         source.sendSuccess(() -> Component.literal(player.getScoreboardName()
                 + " のTPA利用回数: " + usage.used(player.getUUID())
-                + "/" + TpaUsageSavedData.DAILY_LIMIT), false);
+                + "/" + TpaUsageSavedData.DAILY_LIMIT
+                + "、初心者枠使用: " + usage.beginnerUsed(player.getUUID())
+                + "/" + TpaConfig.beginnerFreeTeleports()
+                + "、移動CD残り: " + formatSeconds(usage.travelerCooldownRemainingMillis(player.getUUID(), now))
+                + "、受入CD残り: " + formatSeconds(usage.hostCooldownRemainingMillis(player.getUUID(), now))), false);
         return 1;
     }
 
     private static int reset(CommandSourceStack source, ServerPlayer player) {
         TpaUsageSavedData.get(source.getServer()).reset(player.getUUID());
         source.sendSuccess(() -> Component.literal(player.getScoreboardName()
-                + " のTPA利用回数をリセットしました。"), true);
-        player.sendSystemMessage(Component.literal("管理者がTPA利用回数をリセットしました。"));
+                + " のTPA利用回数、初心者枠、クールダウンをリセットしました。"), true);
+        player.sendSystemMessage(Component.literal("管理者がTPA利用回数、初心者枠、クールダウンをリセットしました。"));
         return 1;
+    }
+
+    private static String formatSeconds(long millis) {
+        return Math.max(0L, (millis + 999L) / 1000L) + "秒";
     }
 }

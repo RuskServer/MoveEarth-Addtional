@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional;
 
 import com.mojang.logging.LogUtils;
 import com.ruskserver.moveearth_addtional.config.DelayedChunkCacheConfig;
+import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -19,6 +20,11 @@ public class Moveearth_addtional {
                 ModConfig.Type.SERVER,
                 DelayedChunkCacheConfig.SPEC,
                 "moveearth_addtional-dcc.toml"
+        );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                TpaConfig.SPEC,
+                "moveearth_addtional-tpa.toml"
         );
 
         // Register Sounds

@@ -74,6 +74,7 @@ public class AnalyticsWebServer {
             server.createContext("/api/players", new PlayersApiHandler());
             server.createContext("/api/player", new PlayerDetailApiHandler());
             server.createContext("/api/groups", new GroupsApiHandler());
+            server.createContext("/api/detectors", new DetectorsApiHandler());
             server.createContext("/api/heatmap", new HeatmapApiHandler());
             server.createContext("/api/health", new HealthApiHandler());
             server.createContext("/api/export", new ExportApiHandler());
@@ -250,6 +251,33 @@ public class AnalyticsWebServer {
             try {
                 var groups = AnalyticsQueryService.INSTANCE.getAllGroupSummariesAsync(window).get();
                 sendResponse(exchange, 200, GSON.toJson(groups), "application/json; charset=UTF-8");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}", "application/json; charset=UTF-8");
+            }
+        }
+    }
+
+    private static class DetectorsApiHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuthAndRateLimit(exchange)) return;
+
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI());
+            String group = params.get("group");
+            if (group == null) {
+                sendResponse(exchange, 400, "{\"error\":\"Missing group UUID\"}", "application/json; charset=UTF-8");
+                return;
+            }
+
+            try {
+                UUID groupOwnerUuid = UUID.fromString(group);
+                TimeWindow window = parseWindow(params.get("window"));
+                var detectors = AnalyticsQueryService.INSTANCE
+                        .getDetectorSummariesAsync(groupOwnerUuid, window)
+                        .get();
+                sendResponse(exchange, 200, GSON.toJson(detectors), "application/json; charset=UTF-8");
+            } catch (IllegalArgumentException e) {
+                sendResponse(exchange, 400, "{\"error\":\"Invalid group UUID\"}", "application/json; charset=UTF-8");
             } catch (Exception e) {
                 sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}", "application/json; charset=UTF-8");
             }

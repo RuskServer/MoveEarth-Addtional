@@ -4,9 +4,9 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.ModBlocks;
 import com.ruskserver.moveearth_addtional.block.entity.PlayerDetectorBlockEntity;
 import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
+import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.entity.player.Player;
@@ -18,6 +18,7 @@ import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
 
@@ -57,15 +58,12 @@ public class DetectorBlockHandler {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerTick(ServerTickEvent.Post event) {
-        MinecraftServer server = event.getServer();
-        for (ServerLevel level : server.getAllLevels()) {
-            for (BlockPos pos : DetectorBlockPositionSavedData.get(level).getPositions()) {
-                if (level.hasChunkAt(pos)
-                        && level.getBlockEntity(pos) instanceof PlayerDetectorBlockEntity detector) {
-                    detector.maintainDummyEntity(level, pos);
-                }
-            }
-        }
+        LoadedDetectorRegistry.maintainLoadedDetectors(event.getServer());
+    }
+
+    @SubscribeEvent
+    public static void onServerStopped(ServerStoppedEvent event) {
+        LoadedDetectorRegistry.clear(event.getServer());
     }
 
     @SubscribeEvent
