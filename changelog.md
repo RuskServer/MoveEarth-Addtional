@@ -27,6 +27,12 @@
 - **Bounded Load and Cleanup**: Reduced each search to 24 candidates with a 20-second deadline. Search tickets are released after every candidate and on success, timeout, logout, replacement, or server shutdown; the ticket type also has a defensive automatic expiry.
 - **Safe Fallback Loading**: The best distance fallback is reloaded and revalidated asynchronously before teleporting, so fallback behavior cannot reintroduce a synchronous chunk wait.
 
+## TaCZ Gun Disassembly
+
+- **Working 1.21.1 Recipe Injection**: Replaced the obsolete reflective `RecipeMap` lookup with the public `RecipeManager` replacement API, fixing the misleading state where hundreds of recipes were reported as injected although none were registered.
+- **Gun-Specific Crushing Inputs**: Generate recipes only for actual TaCZ gun outputs and match the partial `GunId` NBT value, allowing used or customized guns to work without treating every gun, ammunition item, and attachment as the same crushing input.
+- **Datapack Reload Support**: Regenerate disassembly recipes after a full datapack reload before recipes are synchronized to clients, while keeping injection idempotent by recipe ID.
+
 # v2.2
 
 ## Delayed Chunk Cache (DCC / Bandwidth Optimization)

@@ -1,29 +1,34 @@
 package com.ruskserver.moveearth_addtional.handler;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.simibubi.create.AllRecipeTypes;
 import com.simibubi.create.content.kinetics.crusher.CrushingRecipe;
 import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipeParams;
+import com.tacz.guns.api.item.IGun;
+import com.tacz.guns.api.item.nbt.GunItemDataAccessor;
 import com.tacz.guns.crafting.GunSmithTableIngredient;
 import com.tacz.guns.crafting.GunSmithTableRecipe;
+import com.tacz.guns.crafting.NBTIngredient;
 import com.tacz.guns.init.ModRecipe;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.NonNullList;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,6 +50,19 @@ public class GunDisassemblyRecipeHandler {
             injectCrushingRecipes(event.getServer().getRecipeManager());
         } catch (Exception e) {
             LOGGER.error("[MoveEarth] 銃解体レシピの動的注入に失敗しました", e);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onDatapackSync(OnDatapackSyncEvent event) {
+        // A null player means a full datapack reload. The vanilla reload creates
+        // fresh recipe maps, so regenerate the dynamic recipes before they are
+        // synchronized to every client. Joining one player needs no regeneration.
+        if (event.getPlayer() != null) return;
+        try {
+            injectCrushingRecipes(event.getPlayerList().getServer().getRecipeManager());
+        } catch (Exception e) {
+            LOGGER.error("[MoveEarth] データパック再読み込み後の銃解体レシピ注入に失敗しました", e);
         }
     }
 
@@ -70,17 +88,20 @@ public class GunDisassemblyRecipeHandler {
             return;
         }
 
-        List<RecipeHolder<?>> newRecipes = new ArrayList<>();
+        Map<ResourceLocation, RecipeHolder<?>> newRecipes = new LinkedHashMap<>();
 
         for (RecipeHolder<GunSmithTableRecipe> holder : gunRecipeHolders) {
-            ResourceLocation gunId = holder.id();
             GunSmithTableRecipe gunRecipe = holder.value();
 
-            // 結果が銃アイテムではないレシピ（弾薬・アタッチメントなど）は除外
-            if (gunRecipe.getResult() == null || gunRecipe.getResult().getResult() == null
-                    || gunRecipe.getResult().getResult().isEmpty()) {
-                continue;
-            }
+            // GunSmithTableRecipe also contains ammo and attachment recipes.
+            // Only a result recognized by TaCZ as an actual gun is eligible.
+            if (gunRecipe.getResult() == null) continue;
+            ItemStack gunStack = gunRecipe.getResult().getResult();
+            if (gunStack == null || gunStack.isEmpty()) continue;
+            IGun gunItem = IGun.getIGunOrNull(gunStack);
+            if (gunItem == null) continue;
+            ResourceLocation gunId = gunItem.getGunId(gunStack);
+            if (gunId == null) continue;
 
             // 素材の集計 (同じアイテムは合算)
             Map<Ingredient, Integer> materialMap = new HashMap<>();
@@ -144,11 +165,16 @@ public class GunDisassemblyRecipeHandler {
                 continue;
             }
 
-            // inputs フィールドに銃アイテムの Ingredient をセット
+            // Match only the GunId inside TaCZ custom data. Matching the item
+            // alone would make every TaCZ gun use whichever recipe is found first;
+            // matching all components would reject used guns with ammo or attachments.
             Field ingredientsField = ProcessingRecipeParams.class.getDeclaredField("ingredients");
             ingredientsField.setAccessible(true);
             NonNullList<Ingredient> ingredientList = NonNullList.create();
-            ingredientList.add(Ingredient.of(gunRecipe.getResult().getResult().getItem()));
+            CompoundTag gunIdTag = new CompoundTag();
+            gunIdTag.putString(GunItemDataAccessor.GUN_ID_TAG, gunId.toString());
+            ingredientList.add(new NBTIngredient(
+                    HolderSet.direct(gunStack.getItemHolder()), gunIdTag, true).toVanilla());
             ingredientsField.set(params, ingredientList);
 
             // results フィールドに出力アイテムをセット
@@ -166,7 +192,7 @@ public class GunDisassemblyRecipeHandler {
                     Moveearth_addtional.MODID,
                     "disassemble_" + gunId.getNamespace() + "_" + gunId.getPath()
             );
-            newRecipes.add(new RecipeHolder<>(recipeId, crushingRecipe));
+            newRecipes.put(recipeId, new RecipeHolder<>(recipeId, crushingRecipe));
         }
 
         if (newRecipes.isEmpty()) {
@@ -179,68 +205,27 @@ public class GunDisassemblyRecipeHandler {
         LOGGER.info("[MoveEarth] TaCZ 銃解体レシピを {} 件動的に注入しました。", newRecipes.size());
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static void injectIntoRecipeManager(RecipeManager recipeManager, List<RecipeHolder<?>> newRecipes) throws Exception {
-        // RecipeManager の recipes (RecipeMap) フィールドを探す
-        Field recipeMapField = null;
-        for (Field f : RecipeManager.class.getDeclaredFields()) {
-            if (f.getType().getSimpleName().equals("RecipeMap")) {
-                recipeMapField = f;
-                break;
+    private static void injectIntoRecipeManager(RecipeManager recipeManager,
+                                                Map<ResourceLocation, RecipeHolder<?>> newRecipes) {
+        // 1.21.1 exposes stable public accessors for this operation. Rebuild by
+        // recipe ID so startup/reload hooks are idempotent and cannot create
+        // duplicate-key failures if another synchronization happens.
+        Map<ResourceLocation, RecipeHolder<?>> allRecipes = new LinkedHashMap<>();
+        for (RecipeHolder<?> holder : recipeManager.getRecipes()) {
+            if (!isGeneratedDisassemblyRecipe(holder.id())) {
+                allRecipes.put(holder.id(), holder);
             }
         }
+        allRecipes.putAll(newRecipes);
+        recipeManager.replaceRecipes(allRecipes.values());
 
-        if (recipeMapField == null) {
-            LOGGER.error("[MoveEarth] RecipeManager の RecipeMap フィールドが見つかりませんでした。");
-            return;
-        }
+        LOGGER.info("[MoveEarth] 銃解体レシピを含め、全 {} 件のレシピを RecipeManager に登録しました。",
+                allRecipes.size());
+    }
 
-        recipeMapField.setAccessible(true);
-        Object recipeMap = recipeMapField.get(recipeManager);
-
-        // RecipeMap.values() メソッドを探す
-        Method valuesMethod = null;
-        for (Method m : recipeMap.getClass().getDeclaredMethods()) {
-            if (m.getName().equals("values") && m.getParameterCount() == 0) {
-                valuesMethod = m;
-                break;
-            }
-        }
-
-        if (valuesMethod == null) {
-            LOGGER.error("[MoveEarth] RecipeMap の values メソッドが見つかりませんでした。");
-            return;
-        }
-
-        valuesMethod.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Iterable<RecipeHolder<?>> existingRecipes = (Iterable<RecipeHolder<?>>) (Object) valuesMethod.invoke(recipeMap);
-
-        // 既存の全レシピと新しいレシピを合わせたリストを作成
-        List<RecipeHolder<?>> allRecipes = new ArrayList<>();
-        for (RecipeHolder<?> holder : existingRecipes) {
-            allRecipes.add(holder);
-        }
-        allRecipes.addAll(newRecipes);
-
-        // RecipeManager.replaceRecipes(Iterable) を呼び出して更新
-        Method replaceRecipesMethod = null;
-        for (Method m : RecipeManager.class.getDeclaredMethods()) {
-            if (m.getName().equals("replaceRecipes") && m.getParameterCount() == 1) {
-                replaceRecipesMethod = m;
-                break;
-            }
-        }
-
-        if (replaceRecipesMethod == null) {
-            LOGGER.error("[MoveEarth] RecipeManager の replaceRecipes メソッドが見つかりませんでした。");
-            return;
-        }
-
-        replaceRecipesMethod.setAccessible(true);
-        replaceRecipesMethod.invoke(recipeManager, (Object) allRecipes);
-        
-        LOGGER.info("[MoveEarth] TaCZ 銃解体レシピを含め、全 {} 件のレシピを RecipeManager に再登録しました。", allRecipes.size());
+    private static boolean isGeneratedDisassemblyRecipe(ResourceLocation id) {
+        return id.getNamespace().equals(Moveearth_addtional.MODID)
+                && id.getPath().startsWith("disassemble_");
     }
 
     /**
