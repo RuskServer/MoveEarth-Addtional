@@ -7,7 +7,7 @@ import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipeParams;
 import com.tacz.guns.crafting.GunSmithTableIngredient;
 import com.tacz.guns.crafting.GunSmithTableRecipe;
-import com.tacz.guns.crafting.GunSmithTableSerializer;
+import com.tacz.guns.init.ModRecipe;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -238,33 +238,15 @@ public class GunDisassemblyRecipeHandler {
 
     /**
      * GunSmithTableRecipe の RecipeType を取得する。
-     * GunSmithTableRecipe 自身の getType() からインスタンスを一つ生成して取得する。
+     * ModRecipe.GUN_SMITH_TABLE_CRAFTING から直接取得する。
      */
     @SuppressWarnings("unchecked")
     private static RecipeType<GunSmithTableRecipe> getGunSmithTableRecipeType() {
         try {
-            // GunSmithTableSerializer からダミーインスタンスを作れないため、
-            // RecipeType の static フィールドをリフレクションで探す
-            for (Field f : GunSmithTableSerializer.class.getDeclaredFields()) {
-                f.setAccessible(true);
-                Object val = f.get(null);
-                if (val instanceof RecipeType<?>) {
-                    return (RecipeType<GunSmithTableRecipe>) val;
-                }
-            }
-            // GunSmithTableRecipe 自身からも探す
-            for (Field f : GunSmithTableRecipe.class.getDeclaredFields()) {
-                f.setAccessible(true);
-                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                    Object val = f.get(null);
-                    if (val instanceof RecipeType<?>) {
-                        return (RecipeType<GunSmithTableRecipe>) val;
-                    }
-                }
-            }
+            return (RecipeType<GunSmithTableRecipe>) ModRecipe.GUN_SMITH_TABLE_CRAFTING.get();
         } catch (Exception e) {
-            LOGGER.warn("[MoveEarth] GunSmithTableRecipeType の取得中にエラーが発生: {}", e.getMessage());
+            LOGGER.warn("[MoveEarth] GunSmithTableRecipeType の取得に失敗: {}", e.getMessage());
+            return null;
         }
-        return null;
     }
 }
