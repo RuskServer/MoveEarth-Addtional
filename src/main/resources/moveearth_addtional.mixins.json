@@ -9,7 +9,8 @@
     "ChunkMapTrackedEntityMixin",
     "ChunkMapDccMixin",
     "GunSmithTableMenuMixin",
-    "CrushingWheelControllerBlockEntityMixin"
+    "CrushingWheelControllerBlockEntityMixin",
+    "EntityDataAccessorMixin"
   ],
   "client": [],
   "injectors": {

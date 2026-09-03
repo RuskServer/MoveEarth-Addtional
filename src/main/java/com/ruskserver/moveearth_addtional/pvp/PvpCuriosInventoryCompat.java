@@ -3,7 +3,6 @@ package com.ruskserver.moveearth_addtional.pvp;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.server.level.ServerPlayer;
-import top.theillusivec4.curios.api.CuriosApi;
 
 /** Optional Curios inventory isolation used by the server-authoritative PvP mode. */
 final class PvpCuriosInventoryCompat {
@@ -25,9 +24,7 @@ final class PvpCuriosInventoryCompat {
     static ListTag capture(ServerPlayer player) {
         if (!isAvailable()) return null;
         try {
-            return CuriosApi.getCuriosInventory(player)
-                    .map(handler -> handler.saveInventory(false).copy())
-                    .orElse(null);
+            return CuriosIntegration.capture(player);
         } catch (RuntimeException | LinkageError error) {
             Moveearth_addtional.LOGGER.error("Failed to capture Curios inventory before PvP for {}",
                     player.getGameProfile().getName(), error);
@@ -38,7 +35,7 @@ final class PvpCuriosInventoryCompat {
     static void clear(ServerPlayer player) {
         if (!isAvailable()) return;
         try {
-            CuriosApi.getCuriosInventory(player).ifPresent(handler -> handler.saveInventory(true));
+            CuriosIntegration.clear(player);
         } catch (RuntimeException | LinkageError error) {
             Moveearth_addtional.LOGGER.error("Failed to clear Curios inventory for PvP participant {}",
                     player.getGameProfile().getName(), error);
@@ -48,14 +45,27 @@ final class PvpCuriosInventoryCompat {
     static void restore(ServerPlayer player, ListTag inventory) {
         if (inventory == null || !isAvailable()) return;
         try {
-            CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
-                // Discard anything equipped during the event before restoring the original snapshot.
-                handler.saveInventory(true);
-                handler.loadInventory(inventory.copy());
-            });
+            CuriosIntegration.restore(player, inventory);
         } catch (RuntimeException | LinkageError error) {
             Moveearth_addtional.LOGGER.error("Failed to restore Curios inventory after PvP for {}",
                     player.getGameProfile().getName(), error);
+        }
+    }
+
+    private static final class CuriosIntegration {
+        private static ListTag capture(ServerPlayer player) {
+            return top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player)
+                    .map(handler -> handler.saveInventory(false).copy()).orElse(null);
+        }
+        private static void clear(ServerPlayer player) {
+            top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player)
+                    .ifPresent(handler -> handler.saveInventory(true));
+        }
+        private static void restore(ServerPlayer player, ListTag inventory) {
+            top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
+                handler.saveInventory(true);
+                handler.loadInventory(inventory.copy());
+            });
         }
     }
 }

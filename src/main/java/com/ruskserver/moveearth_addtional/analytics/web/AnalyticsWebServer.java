@@ -37,11 +37,14 @@ public class AnalyticsWebServer {
 
     // --- レート制限（1秒間に最大20リクエスト） ---
     private static final int MAX_REQUESTS_PER_SECOND = 20;
+    private static final int MAX_RATE_LIMIT_CLIENTS = 4096;
+    private static final long RATE_LIMIT_TTL_MILLIS = 10 * 60 * 1000L;
     private static final Map<String, RateLimitTracker> rateLimitMap = new ConcurrentHashMap<>();
 
     private static class RateLimitTracker {
         long currentSecond = 0L;
         AtomicInteger count = new AtomicInteger(0);
+        volatile long lastSeenMillis;
 
         synchronized boolean allowRequest(long nowSec) {
             if (nowSec != currentSecond) {
@@ -112,8 +115,15 @@ public class AnalyticsWebServer {
                 ? exchange.getRemoteAddress().getAddress().getHostAddress()
                 : "unknown";
 
-        long nowSec = System.currentTimeMillis() / 1000L;
+        long nowMillis = System.currentTimeMillis();
+        long nowSec = nowMillis / 1000L;
+        rateLimitMap.entrySet().removeIf(e -> nowMillis - e.getValue().lastSeenMillis > RATE_LIMIT_TTL_MILLIS);
+        if (rateLimitMap.size() >= MAX_RATE_LIMIT_CLIENTS && !rateLimitMap.containsKey(clientKey)) {
+            sendResponse(exchange, 429, "{\"error\":\"Too many clients\"}", "application/json; charset=UTF-8");
+            return false;
+        }
         RateLimitTracker tracker = rateLimitMap.computeIfAbsent(clientKey, k -> new RateLimitTracker());
+        tracker.lastSeenMillis = nowMillis;
         if (!tracker.allowRequest(nowSec)) {
             sendResponse(exchange, 429, "{\"error\":\"Too Many Requests. Rate limit exceeded (20 req/sec).\"}", "application/json; charset=UTF-8");
             return false;
@@ -336,9 +346,8 @@ public class AnalyticsWebServer {
                 tempExportDir = Files.createTempDirectory("me_analytics_web_export");
                 exportFile = AnalyticsExportService.INSTANCE.exportPlayersToDirAsync(tempExportDir, format, window).get();
 
-                byte[] data = Files.readAllBytes(exportFile);
                 exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + exportFile.getFileName() + "\"");
-                sendBinaryResponse(exchange, 200, data, "application/octet-stream");
+                sendFileResponse(exchange, 200, exportFile, "application/octet-stream");
             } catch (Exception e) {
                 sendResponse(exchange, 500, "Export failed: " + e.getMessage(), "text/plain; charset=UTF-8");
             } finally {
@@ -377,6 +386,14 @@ public class AnalyticsWebServer {
         exchange.sendResponseHeaders(statusCode, data.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(data);
+        }
+    }
+
+    private static void sendFileResponse(HttpExchange exchange, int statusCode, Path file, String contentType) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", contentType);
+        exchange.sendResponseHeaders(statusCode, Files.size(file));
+        try (OutputStream output = exchange.getResponseBody(); InputStream input = Files.newInputStream(file)) {
+            input.transferTo(output);
         }
     }
 

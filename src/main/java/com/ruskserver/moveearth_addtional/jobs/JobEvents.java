@@ -60,6 +60,7 @@ public final class JobEvents {
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         JobProgressBossBar.tick();
+        GunDisassemblyAttribution.purge(event.getServer());
         verifyPendingHarvests(event.getServer());
     }
 

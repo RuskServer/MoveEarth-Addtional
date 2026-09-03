@@ -26,6 +26,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
+import com.ruskserver.moveearth_addtional.mixin.EntityDataAccessorMixin;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -59,16 +60,8 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     private UUID dummyEntityUUID = null;
 
     // リフレクションによる protected な DATA_SHARED_FLAGS_ID 取得
-    private static net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS = null;
-    static {
-        try {
-            java.lang.reflect.Field field = net.minecraft.world.entity.Entity.class.getDeclaredField("DATA_SHARED_FLAGS_ID");
-            field.setAccessible(true);
-            DATA_SHARED_FLAGS = (net.minecraft.network.syncher.EntityDataAccessor<Byte>) field.get(null);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
+    private static final net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS =
+            EntityDataAccessorMixin.moveearth$getSharedFlagsId();
 
     public PlayerDetectorBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.PLAYER_DETECTOR.get(), pos, state);
