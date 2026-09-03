@@ -7,7 +7,9 @@
     "StonecutterMenuMixin",
     "PvpFloatingCheckMixin",
     "ChunkMapTrackedEntityMixin",
-    "ChunkMapDccMixin"
+    "ChunkMapDccMixin",
+    "GunSmithTableMenuMixin",
+    "CrushingWheelControllerBlockEntityMixin"
   ],
   "client": [],
   "injectors": {

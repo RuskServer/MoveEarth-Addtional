@@ -215,6 +215,7 @@ public final class JobEvents {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         JobService.INSTANCE.clearTransientState();
+        GunDisassemblyAttribution.clear();
         JobProgressBossBar.clear();
         PENDING_HARVESTS.clear();
     }

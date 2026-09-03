@@ -27,7 +27,10 @@ public record JobDefinition(
         List<BlockBreakReward> blockBreakRewards,
         List<EntityReward> entityKillRewards,
         List<EntityReward> entityBreedRewards,
-        List<ItemCraftReward> itemCraftRewards) {
+        List<ItemCraftReward> itemCraftRewards,
+        double gunCraftXp,
+        double attachmentCraftXp,
+        double gunDisassemblyXp) {
 
     public JobDefinition {
         blockBreakRewards = List.copyOf(blockBreakRewards);
@@ -75,6 +78,15 @@ public record JobDefinition(
             }
         }
         return reward;
+    }
+
+    public double gunCraftXp(ItemStack result) {
+        return gunCraftXp > 0 && com.tacz.guns.api.item.IGun.getIGunOrNull(result) != null ? gunCraftXp : 0.0D;
+    }
+
+    public double attachmentCraftXp(ItemStack result) {
+        return attachmentCraftXp > 0 && com.tacz.guns.api.item.IAttachment.getIAttachmentOrNull(result) != null
+                ? attachmentCraftXp : 0.0D;
     }
 
     private static double entityReward(List<EntityReward> rewards, EntityType<?> entityType) {
