@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.pvp;
 
 import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenPvpTasksPacket;
+import com.ruskserver.moveearth_addtional.tpa.OpenDayCycle;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -14,9 +15,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,7 +23,6 @@ import java.util.UUID;
 
 public final class PvpRewardData extends SavedData {
     public static final int CRATE_COST = 100;
-    private static final ZoneId JST = ZoneId.of("Asia/Tokyo");
     private final Map<UUID, PlayerProgress> players = new HashMap<>();
     private int eventCycle;
 
@@ -187,8 +184,7 @@ public final class PvpRewardData extends SavedData {
     }
 
     private static String currentDailyCycle() {
-        LocalDate date = ZonedDateTime.now(JST).minusHours(19).toLocalDate();
-        return date.toString();
+        return OpenDayCycle.currentId();
     }
 
     @Override

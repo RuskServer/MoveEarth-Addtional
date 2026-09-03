@@ -17,19 +17,18 @@ import java.util.ArrayList;
 public class TimeRestrictionHandler {
 
     private static final ZoneId JST = ZoneId.of("Asia/Tokyo");
-    private static final String KICK_MESSAGE = "サーバーの開放時間は日本時間の 19:00 から 01:00 までです。";
+    private static final String KICK_MESSAGE = "サーバーの開放時間は日本時間の 18:00 から 00:00 までです。";
     
     // 重複処理を防ぐための状態変数
     private static int lastNotifiedMinute = -1;
-    private static boolean hasKickedAtOne = false;
+    private static boolean hasKickedAtMidnight = false;
 
     /**
-     * サーバーが現在「開放時間」かどうかを判定する (19:00 〜 翌00:59)
+     * サーバーが現在「開放時間」かどうかを判定する (18:00 〜 23:59)
      */
     private static boolean isOpenTime(ZonedDateTime time) {
         int hour = time.getHour();
-        // 19時から23時、または0時(00:59)までがオープン
-        return (hour >= 19 || hour < 1);
+        return ServerSchedule.isOpenHour(hour);
     }
 
     /**
@@ -75,10 +74,10 @@ public class TimeRestrictionHandler {
         int hour = now.getHour();
         int minute = now.getMinute();
 
-        // クローズ時刻(01:00)の強制キック処理
-        if (hour == 1) {
-            if (!hasKickedAtOne) {
-                hasKickedAtOne = true; // 重複キック処理防止
+        // クローズ時刻(00:00)の強制キック処理
+        if (hour == ServerSchedule.CLOSE_HOUR) {
+            if (!hasKickedAtMidnight) {
+                hasKickedAtMidnight = true; // 重複キック処理防止
                 
                 // disconnect() can remove the player from PlayerList immediately. Iterate over
                 // a snapshot so the backing list is not modified while its iterator is active.
@@ -88,14 +87,11 @@ public class TimeRestrictionHandler {
                 }
             }
         } else {
-            // 1時台以外ならフラグをリセットしておく(翌日のため)
-            if (hour != 1) {
-                hasKickedAtOne = false;
-            }
+            hasKickedAtMidnight = false;
         }
 
-        // 閉鎖予告の通知処理 (00時台のみ)
-        if (hour == 0) {
+        // 閉鎖予告の通知処理 (23時台のみ)
+        if (hour == ServerSchedule.CLOSING_WARNING_HOUR) {
             // すでに通知した「分」ならスキップ
             if (lastNotifiedMinute == minute) {
                 return;
@@ -126,7 +122,7 @@ public class TimeRestrictionHandler {
                 );
             }
         } else {
-            // 0時台以外ならリセット
+            // 23時台以外ならリセット
             lastNotifiedMinute = -1;
         }
     }

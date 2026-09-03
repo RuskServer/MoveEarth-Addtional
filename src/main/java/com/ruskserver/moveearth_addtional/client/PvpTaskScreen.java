@@ -60,7 +60,7 @@ public final class PvpTaskScreen extends Screen {
         drawTab(graphics, mouseX, mouseY, left + 16, top + 37, 92, "DAILY", "デイリー");
         drawTab(graphics, mouseX, mouseY, left + 114, top + 37, 92, "EVENT", "イベント");
         if ("DAILY".equals(category)) {
-            graphics.drawString(font, "毎日19:00 (JST) 更新", left + 218, top + 46, MUTED, false);
+            graphics.drawString(font, "毎日18:00 (JST) 更新", left + 218, top + 46, MUTED, false);
         } else {
             graphics.drawString(font, "開催開始ごとに更新", left + 218, top + 46, MUTED, false);
         }

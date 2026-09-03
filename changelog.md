@@ -1,5 +1,15 @@
 # v3.0
 
+## Server Opening Schedule
+
+- **18:00–00:00 JST Opening Hours**: Shifted the dedicated-server login window to 18:00 through 23:59 JST. Closing notices now run at 23:30, 23:50, 23:55, and 23:59, followed by the normal-player disconnect at midnight.
+- **Aligned Opening-Day Resets**: TPA usage, PvP daily tasks, and analytics opening-day boundaries now roll over at 18:00 JST.
+
+## Voting Reward Variety
+
+- **Create Material Rewards**: Retained all six existing voting rewards and added equally weighted Andesite Alloy, Brass Ingot, Electron Tube, Copper Sheet, Precision Mechanism, and Sturdy Sheet rewards.
+- **Missing-Mod Fallback**: If a configured Create reward item is unavailable, that roll falls back to two Gold Coins instead of failing the reward command.
+
 ## TPA Travel Balance
 
 - **Role-Based Limits and Cooldowns**: Normal TPA is limited to two successful teleports per opening-day cycle. A success applies a persistent 60-minute cooldown to the traveler and a 15-minute receiving cooldown to the destination host, preventing relay-style mass transport. Cooldowns survive relogging and server restarts.
@@ -33,6 +43,11 @@
 - **Gun-Specific Crushing Inputs**: Generate recipes only for actual TaCZ gun outputs and match the partial `GunId` NBT value, allowing used or customized guns to work without treating every gun, ammunition item, and attachment as the same crushing input.
 - **Datapack Reload Support**: Regenerate disassembly recipes after a full datapack reload before recipes are synchronized to clients, while keeping injection idempotent by recipe ID.
 
+## Phantom Rest Protection
+
+- **Immediate Rest Credit**: A successful bed entry resets the player's insomnia timer immediately, without requiring the whole server to skip the night.
+- **Protected Target Cleanup**: A phantom that attempts to target a player who is not yet eligible for phantom spawning is discarded without drops or a death animation.
+
 # v2.2
 
 ## Delayed Chunk Cache (DCC / Bandwidth Optimization)
@@ -56,7 +71,7 @@
 - **Interactive 2D Spatial Heatmap Canvas Viewer**: Integrated a rich HTML5 Canvas 2D grid map into the web dashboard featuring pan/drag, mouse wheel zooming, origin centering, data autofit, dynamic coordinate/axis rendering, thermographic density coloration, hover inspection tooltips, altitude (YBand) / relationship (Relation) filtering, and bidirectional focus synchronization with the top density ranking table.
 - **Web Dashboard & REST API**: Provided `/api/summary`, `/api/heatmap`, `/api/top-players`, `/api/groups`, `/api/health`, and single-player inspection endpoints, with export archiving and configurable authentication (`config/moveearth_analytics.properties`).
 - **High-Throughput SQLite Storage Engine**: Implemented `SqliteAnalyticsStorageEngine` operating in SQLite WAL mode (`PRAGMA journal_mode = WAL`) under `<world>/moveearth/analytics/analytics.db` with background daemon transaction batching, automated retention purges, and auto-healing schema migrations (Version 3).
-- **JST 19:00 Open Day Cycle Alignment**: Aligned all retention and aggregation windows to JST 19:00 (`(bucket_at - 36000) / 86400`) and enforced per-open-day 10-minute active thresholds (`HAVING SUM(active_seconds) >= 600`) for individual `activeDays` and server-wide `activeUniquePlayers`.
+- **JST 18:00 Open Day Cycle Alignment**: Aligned all retention and aggregation windows to JST 18:00 (`(bucket_at - 32400) / 86400`) and enforced per-open-day 10-minute active thresholds (`HAVING SUM(active_seconds) >= 600`) for individual `activeDays` and server-wide `activeUniquePlayers`.
 - **Realtime Session & Intrusion Tracking**: Integrated non-blocking `SessionTracker` measuring active vs. AFK duration, combining online player states into realtime queries, alongside `IntrusionTracker` for detector block entry-to-exit intrusion sessions.
 - **Offline Player Analytics Commands**: Replaced `EntityArgument.player()` with `GameProfileArgument.gameProfile()` in `/analytics` command to inspect historical activity for offline players and base owners.
 

@@ -15,6 +15,9 @@ import java.util.*;
  */
 public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
 
+    /** UTC epoch offset for the JST 18:00 opening-day boundary (09:00 UTC). */
+    private static final long OPEN_DAY_OFFSET_SECONDS = 32_400L;
+
     private Path dbPath;
     private Connection connection;
 
@@ -505,7 +508,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 breaks, places, crafts, pve_kills, pvp_kills, deaths, jobs_xp, tpa_successes
             )
             SELECT
-                ((bucket_at - 36000) / 86400) AS date_epoch_day,
+                ((bucket_at - 32400) / 86400) AS date_epoch_day,
                 player_uuid,
                 dimension,
                 group_owner_uuid,
@@ -521,7 +524,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 SUM(tpa_successes)
             FROM player_activity_5m
             WHERE bucket_at < ?
-            GROUP BY ((bucket_at - 36000) / 86400), player_uuid, dimension, group_owner_uuid
+            GROUP BY ((bucket_at - 32400) / 86400), player_uuid, dimension, group_owner_uuid
             ON CONFLICT(date_epoch_day, player_uuid, dimension, group_owner_uuid) DO UPDATE SET
                 active_seconds = excluded.active_seconds,
                 distance_blocks = excluded.distance_blocks,
@@ -559,7 +562,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         }
 
         if (cutoffDailyEpochSec > 0) {
-            long cutoffDay = (cutoffDailyEpochSec - 36000L) / 86400L;
+            long cutoffDay = (cutoffDailyEpochSec - OPEN_DAY_OFFSET_SECONDS) / 86400L;
             try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_activity_daily WHERE date_epoch_day < ?")) {
                 ps.setLong(1, cutoffDay);
                 ps.executeUpdate();
@@ -641,8 +644,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 min5mEpoch = rs.getLong(1);
             }
         }
-        long min5mDay = (min5mEpoch - 36000L) / 86400L;
-        long startOpenDay = (startEpochSec - 36000L) / 86400L;
+        long min5mDay = (min5mEpoch - OPEN_DAY_OFFSET_SECONDS) / 86400L;
+        long startOpenDay = (startEpochSec - OPEN_DAY_OFFSET_SECONDS) / 86400L;
 
         String sqlActivityHybrid = """
             SELECT
@@ -710,18 +713,18 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         int finalOnlineSec = Math.max(sessionOnlineSec, totalActiveSec + sessionAfkSec);
         int avgSessionDuration = sessionCount > 0 ? (sessionOnlineSec / sessionCount) : totalActiveSec;
 
-        // 4. JST 19:00基準 開放日アクティブ日数（1開放日サイクルあたり 600秒/10分以上 活動した日数）
+        // 4. JST 18:00基準 開放日アクティブ日数（1開放日サイクルあたり 600秒/10分以上 活動した日数）
         String sqlActiveDays = """
             SELECT COUNT(*) FROM (
                 SELECT day_idx, SUM(active_seconds) as day_active
                 FROM (
-                    SELECT ((bucket_at - 36000) / 86400) as day_idx, active_seconds
+                    SELECT ((bucket_at - 32400) / 86400) as day_idx, active_seconds
                     FROM player_activity_5m
                     WHERE player_uuid = ? AND bucket_at >= ?
                     UNION ALL
                     SELECT date_epoch_day as day_idx, active_seconds
                     FROM player_activity_daily
-                    WHERE player_uuid = ? AND date_epoch_day >= ((? - 36000) / 86400)
+                    WHERE player_uuid = ? AND date_epoch_day >= ((? - 32400) / 86400)
                 )
                 GROUP BY day_idx
                 HAVING day_active >= 600
@@ -829,8 +832,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 min5mEpoch = rs.getLong(1);
             }
         }
-        long min5mDay = (min5mEpoch - 36000L) / 86400L;
-        long startOpenDay = (startEpochSec - 36000L) / 86400L;
+        long min5mDay = (min5mEpoch - OPEN_DAY_OFFSET_SECONDS) / 86400L;
+        long startOpenDay = (startEpochSec - OPEN_DAY_OFFSET_SECONDS) / 86400L;
 
         String sql = """
             SELECT player_uuid, SUM(active_seconds) as total_active
@@ -878,15 +881,15 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 min5mEpoch = rs.getLong(1);
             }
         }
-        long min5mDay = (min5mEpoch - 36000L) / 86400L;
-        long startOpenDay = (startEpochSec - 36000L) / 86400L;
+        long min5mDay = (min5mEpoch - OPEN_DAY_OFFSET_SECONDS) / 86400L;
+        long startOpenDay = (startEpochSec - OPEN_DAY_OFFSET_SECONDS) / 86400L;
 
-        // 1. JST 19:00基準 開放日アクティブ人数（いずれかの開放日サイクルで1日あたり 600秒/10分以上 活動したユニーク人数）
+        // 1. JST 18:00基準 開放日アクティブ人数（いずれかの開放日サイクルで1日あたり 600秒/10分以上 活動したユニーク人数）
         String sqlActivePlayers = """
             SELECT COUNT(DISTINCT player_uuid) FROM (
                 SELECT player_uuid, day_idx, SUM(active_seconds) as day_active
                 FROM (
-                    SELECT player_uuid, ((bucket_at - 36000) / 86400) as day_idx, active_seconds
+                    SELECT player_uuid, ((bucket_at - 32400) / 86400) as day_idx, active_seconds
                     FROM player_activity_5m
                     WHERE bucket_at >= ?
                     UNION ALL
