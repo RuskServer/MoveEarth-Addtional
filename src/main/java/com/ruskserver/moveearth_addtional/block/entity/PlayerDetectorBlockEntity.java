@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -58,6 +59,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     // 作動猶予・ダミーエンティティ用データ
     private long placedTime = 0L;
     private UUID dummyEntityUUID = null;
+    private boolean dummyEntitiesReconciled = false;
 
     // リフレクションによる protected な DATA_SHARED_FLAGS_ID 取得
     private static final net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS =
@@ -149,6 +151,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public void setDummyEntityUUID(UUID dummyEntityUUID) {
         this.dummyEntityUUID = dummyEntityUUID;
+        this.dummyEntitiesReconciled = false;
         this.setChanged();
     }
 
@@ -367,6 +370,15 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
      * by other mods is undone before the next client update.
      */
     public void maintainDummyEntity(ServerLevel level, BlockPos pos) {
+        // Block entities can be loaded before their entity section is visible.
+        // Spawning during that window makes ServerLevel#getEntity unable to find
+        // the new dummy on the following tick, causing one hidden shulker to be
+        // added every tick. Wait until the entity chunk is fully loaded and
+        // ticking before attempting any reconciliation or creation.
+        if (!level.areEntitiesLoaded(ChunkPos.asLong(pos)) || !level.isPositionEntityTicking(pos)) {
+            return;
+        }
+
         if (!this.isActive) {
             if (this.dummyEntityUUID != null) {
                 removeDummyEntity(level);
@@ -375,15 +387,31 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         }
 
         Entity entity = this.dummyEntityUUID == null ? null : findDummyEntity(level);
-        if (!(entity instanceof Shulker shulker) || !isDetectorDummy(shulker) || !shulker.isAlive()) {
+        Shulker preferred = entity instanceof Shulker shulker
+                && isDetectorDummy(shulker)
+                && shulker.isAlive()
+                && shulker.level() == level
+                && belongsToDetector(shulker, level, pos)
+                ? shulker
+                : null;
+
+        if (entity instanceof Shulker shulker && preferred == null
+                && isDetectorDummy(shulker) && belongsToDetector(shulker, level, pos)) {
+            shulker.discard();
+        }
+
+        Shulker shulker = preferred != null && this.dummyEntitiesReconciled
+                ? preferred
+                : reconcileDummyEntities(level, pos, preferred);
+        if (shulker == null) {
             spawnDummyEntity(level, pos);
             return;
         }
 
-        if (shulker.level() != level) {
-            shulker.discard();
-            spawnDummyEntity(level, pos);
-            return;
+        this.dummyEntitiesReconciled = true;
+        if (!shulker.getUUID().equals(this.dummyEntityUUID)) {
+            this.dummyEntityUUID = shulker.getUUID();
+            this.setChanged();
         }
 
         pinDummyEntity(level, pos, shulker);
@@ -448,6 +476,39 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         return null;
     }
 
+    private Shulker reconcileDummyEntities(ServerLevel level, BlockPos pos, Shulker preferred) {
+        Shulker canonical = preferred;
+        AABB searchBox = new AABB(pos).inflate(1.5D);
+        for (Shulker candidate : level.getEntitiesOfClass(Shulker.class, searchBox)) {
+            if (!candidate.isAlive() || !isDetectorDummy(candidate)
+                    || !belongsToDetector(candidate, level, pos)) {
+                continue;
+            }
+
+            if (canonical == null) {
+                canonical = candidate;
+            } else if (candidate != canonical) {
+                candidate.discard();
+            }
+        }
+        return canonical;
+    }
+
+    private static boolean belongsToDetector(Shulker shulker, ServerLevel level, BlockPos pos) {
+        CompoundTag data = shulker.getPersistentData();
+        if (data.contains(DUMMY_BLOCK_POS_TAG) && data.contains(DUMMY_DIMENSION_TAG)) {
+            return BlockPos.of(data.getLong(DUMMY_BLOCK_POS_TAG)).equals(pos)
+                    && level.dimension().location().toString().equals(data.getString(DUMMY_DIMENSION_TAG));
+        }
+
+        // Legacy dummies did not record their owner. They are safe to adopt only
+        // while still sitting exactly on the detector that created them.
+        return shulker.distanceToSqr(
+                pos.getX() + 0.5D,
+                pos.getY(),
+                pos.getZ() + 0.5D) <= 0.25D;
+    }
+
     private void pinDummyEntity(ServerLevel level, BlockPos pos, Shulker shulker) {
         double expectedX = pos.getX() + 0.5D;
         double expectedY = pos.getY();
@@ -485,9 +546,11 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             pinDummyEntity(level, pos, shulker);
 
             this.dummyEntityUUID = shulker.getUUID();
+            this.dummyEntitiesReconciled = true;
             this.setChanged();
             if (!level.addFreshEntity(shulker)) {
                 this.dummyEntityUUID = null;
+                this.dummyEntitiesReconciled = false;
                 this.setChanged();
             }
         }
@@ -495,11 +558,12 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     private void removeDummyEntity(ServerLevel level) {
         if (this.dummyEntityUUID != null) {
-            net.minecraft.world.entity.Entity entity = level.getEntity(this.dummyEntityUUID);
+            net.minecraft.world.entity.Entity entity = findDummyEntity(level);
             if (entity != null) {
                 entity.discard();
             }
             this.dummyEntityUUID = null;
+            this.dummyEntitiesReconciled = false;
             this.setChanged();
         }
         // 座標周囲の残留シュルカーを念のため全クリーンアップ（座標基準）

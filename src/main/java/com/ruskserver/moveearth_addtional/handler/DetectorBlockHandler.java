@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
 import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.entity.player.Player;
@@ -22,8 +23,15 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
 
+import java.util.Queue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public class DetectorBlockHandler {
+
+    private static final ConcurrentHashMap<MinecraftServer, Queue<PendingDummyValidation>> PENDING_DUMMY_VALIDATIONS =
+            new ConcurrentHashMap<>();
 
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -51,18 +59,22 @@ public class DetectorBlockHandler {
         if (event.getLevel() instanceof ServerLevel level
                 && event.getEntity() instanceof Shulker shulker
                 && PlayerDetectorBlockEntity.isDetectorDummy(shulker)) {
-            // Delay validation until block entities in a loading chunk are available.
-            level.getServer().execute(() -> PlayerDetectorBlockEntity.validateLoadedDummy(level, shulker));
+            MinecraftServer server = level.getServer();
+            PENDING_DUMMY_VALIDATIONS
+                    .computeIfAbsent(server, ignored -> new ConcurrentLinkedQueue<>())
+                    .add(new PendingDummyValidation(level, shulker, server.getTickCount() + 1));
         }
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerTick(ServerTickEvent.Post event) {
+        validatePendingDummies(event.getServer());
         LoadedDetectorRegistry.maintainLoadedDetectors(event.getServer());
     }
 
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
+        PENDING_DUMMY_VALIDATIONS.remove(event.getServer());
         LoadedDetectorRegistry.clear(event.getServer());
     }
 
@@ -89,5 +101,31 @@ public class DetectorBlockHandler {
                 }
             }
         }
+    }
+
+    private static void validatePendingDummies(MinecraftServer server) {
+        Queue<PendingDummyValidation> pending = PENDING_DUMMY_VALIDATIONS.get(server);
+        if (pending == null) return;
+
+        int entriesToCheck = pending.size();
+        int currentTick = server.getTickCount();
+        for (int i = 0; i < entriesToCheck; i++) {
+            PendingDummyValidation validation = pending.poll();
+            if (validation == null) break;
+            if (validation.validateAtTick() > currentTick) {
+                pending.add(validation);
+                continue;
+            }
+            if (!validation.shulker().isRemoved()) {
+                PlayerDetectorBlockEntity.validateLoadedDummy(validation.level(), validation.shulker());
+            }
+        }
+
+        if (pending.isEmpty()) {
+            PENDING_DUMMY_VALIDATIONS.remove(server, pending);
+        }
+    }
+
+    private record PendingDummyValidation(ServerLevel level, Shulker shulker, int validateAtTick) {
     }
 }
