@@ -9,6 +9,9 @@ public class OxygenClientState {
     public static boolean isDangerZone = false;
     public static boolean isExtremeZone = false;
     public static float consumptionRate = 1.0f;
+    public static boolean isSprinting = false;
+    public static boolean isMining = false;
+    public static boolean isCombat = false;
 
     public static void update(S2C_SyncOxygenPacket packet) {
         oxygenPercent = packet.oxygenPercent();
@@ -17,5 +20,8 @@ public class OxygenClientState {
         isDangerZone = packet.isDangerZone();
         isExtremeZone = packet.isExtremeZone();
         consumptionRate = packet.consumptionRate();
+        isSprinting = packet.isSprinting();
+        isMining = packet.isMining();
+        isCombat = packet.isCombat();
     }
 }

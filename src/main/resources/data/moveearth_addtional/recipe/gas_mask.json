@@ -15,7 +15,7 @@
       "item": "minecraft:copper_ingot"
     },
     "F": {
-      "item": "minecraft:charcoal"
+      "item": "moveearth_addtional:carbon_filter"
     }
   },
   "pattern": [

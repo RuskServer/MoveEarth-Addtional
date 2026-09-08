@@ -48,7 +48,7 @@ public class OxygenEventHandler {
 
     @SubscribeEvent
     public static void onLivingDamage(LivingDamageEvent.Post event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
+        if (event.getEntity() instanceof ServerPlayer player && event.getSource().getEntity() != null) {
             PlayerOxygenManager.markCombat(player);
         }
     }
@@ -63,7 +63,7 @@ public class OxygenEventHandler {
     @SubscribeEvent
     public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            PlayerOxygenManager.getOrCreate(player.getUUID()).oxygenTicks = OxygenConfig.OXYGEN_DEPLETION_TICKS.get();
+            PlayerOxygenManager.reset(player);
         }
     }
 
@@ -101,7 +101,7 @@ public class OxygenEventHandler {
                     level.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE, px, py, pz, 15, 0.1, 0.2, 0.1, 0.05);
                     level.sendParticles(ParticleTypes.SMOKE, px, py, pz, 10, 0.1, 0.2, 0.1, 0.02);
 
-                    // 手持ちの松明を1個消費し、木炭（消し炭）に変化
+                    // 設置を試みた松明を1個消費する。
                     ItemStack mainHand = player.getMainHandItem();
                     ItemStack offHand = player.getOffhandItem();
                     boolean isTorchInMain = mainHand.is(Items.TORCH) || mainHand.is(Items.SOUL_TORCH);
@@ -110,11 +110,6 @@ public class OxygenEventHandler {
                         mainHand.shrink(1);
                     } else if (offHand.is(Items.TORCH) || offHand.is(Items.SOUL_TORCH)) {
                         offHand.shrink(1);
-                    }
-
-                    ItemStack charcoal = new ItemStack(Items.CHARCOAL);
-                    if (!player.getInventory().add(charcoal)) {
-                        player.drop(charcoal, false);
                     }
 
                     // 警告メッセージ

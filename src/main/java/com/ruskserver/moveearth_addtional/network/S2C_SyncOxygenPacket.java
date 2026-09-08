@@ -12,7 +12,10 @@ public record S2C_SyncOxygenPacket(
         boolean hasGasMask,
         boolean isDangerZone,
         boolean isExtremeZone,
-        float consumptionRate
+        float consumptionRate,
+        boolean isSprinting,
+        boolean isMining,
+        boolean isCombat
 ) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<S2C_SyncOxygenPacket> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "sync_oxygen"));
@@ -29,7 +32,10 @@ public record S2C_SyncOxygenPacket(
                 buf.readBoolean(),
                 buf.readBoolean(),
                 buf.readBoolean(),
-                buf.readFloat()
+                buf.readFloat(),
+                buf.readBoolean(),
+                buf.readBoolean(),
+                buf.readBoolean()
         );
     }
 
@@ -40,6 +46,9 @@ public record S2C_SyncOxygenPacket(
         buf.writeBoolean(this.isDangerZone);
         buf.writeBoolean(this.isExtremeZone);
         buf.writeFloat(this.consumptionRate);
+        buf.writeBoolean(this.isSprinting);
+        buf.writeBoolean(this.isMining);
+        buf.writeBoolean(this.isCombat);
     }
 
     @Override

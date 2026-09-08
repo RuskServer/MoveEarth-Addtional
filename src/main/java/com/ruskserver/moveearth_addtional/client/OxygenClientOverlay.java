@@ -9,6 +9,10 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
 @EventBusSubscriber(value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
 public class OxygenClientOverlay {
 
@@ -148,21 +152,25 @@ public class OxygenClientOverlay {
         // 負荷レート表示
         int rateY = hudY + 38;
         float rate = OxygenClientState.consumptionRate;
-        String rateStr;
-        int rateColor;
-        if (rate >= 2.5f) {
-            rateStr = "RATE: x" + String.format("%.1f", rate) + " [COMBAT]";
-            rateColor = 0xFFFF3333;
-        } else if (rate >= 2.0f) {
-            rateStr = "RATE: x" + String.format("%.1f", rate) + " [MINING]";
-            rateColor = 0xFFFF8800;
-        } else if (rate >= 1.5f) {
-            rateStr = "RATE: x" + String.format("%.1f", rate) + " [SPRINT]";
-            rateColor = 0xFFFFFF55;
+        List<String> activeLoads = new ArrayList<>();
+        if (OxygenClientState.isExtremeZone) activeLoads.add("EXTREME");
+        if (OxygenClientState.isSprinting) activeLoads.add("SPRINT");
+        if (OxygenClientState.isMining) activeLoads.add("MINING");
+        if (OxygenClientState.isCombat) activeLoads.add("COMBAT");
+
+        String loadText;
+        if (activeLoads.isEmpty()) {
+            loadText = "IDLE";
         } else {
-            rateStr = "RATE: x1.0 [IDLE]";
-            rateColor = 0xFF888888;
+            loadText = activeLoads.getLast();
+            if (activeLoads.size() > 1) loadText += "+" + (activeLoads.size() - 1);
         }
+        String rateStr = String.format(Locale.ROOT, "RATE: x%.1f [%s]", rate, loadText);
+        int rateColor = OxygenClientState.isCombat ? 0xFFFF3333
+                : OxygenClientState.isMining ? 0xFFFF8800
+                : OxygenClientState.isSprinting ? 0xFFFFFF55
+                : OxygenClientState.isExtremeZone ? 0xFFFFAA00
+                : 0xFF888888;
         guiGraphics.drawString(font, rateStr, hudX + 8, rateY, rateColor, false);
     }
 }

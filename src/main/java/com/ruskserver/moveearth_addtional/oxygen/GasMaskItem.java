@@ -1,14 +1,16 @@
 package com.ruskserver.moveearth_addtional.oxygen;
 
+import com.ruskserver.moveearth_addtional.ModSounds;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ArmorMaterials;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.component.CustomData;
-import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.List;
@@ -19,6 +21,11 @@ public class GasMaskItem extends ArmorItem {
 
     public GasMaskItem(Properties properties) {
         super(ArmorMaterials.IRON, Type.HELMET, properties);
+    }
+
+    @Override
+    public Holder<SoundEvent> getEquipSound() {
+        return ModSounds.GAS_MASK_EQUIP;
     }
 
     public static int getMaxFilterTicks() {

@@ -7,7 +7,10 @@
     "StonecutterMenuMixin",
     "PvpFloatingCheckMixin"
   ],
-  "client": [],
+  "client": [
+    "client.CustomHeadLayerMixin",
+    "client.HumanoidArmorLayerMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

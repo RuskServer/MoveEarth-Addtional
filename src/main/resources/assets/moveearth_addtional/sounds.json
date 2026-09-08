@@ -32,10 +32,10 @@
   "warlord_revenge_kill": { "sounds": ["moveearth_addtional:pvp/warlord/revenge_kill"] },
   "warlord_target_secured": { "sounds": ["moveearth_addtional:pvp/warlord/target_secured"] },
   "warlord_game_over": { "sounds": ["moveearth_addtional:pvp/warlord/game_over"] },
-  "gas_mask_breathe": { "category": "player", "sounds": ["minecraft:item.armor.equip_turtle"] },
-  "gas_mask_equip": { "category": "player", "sounds": ["minecraft:item.armor.equip_leather"] },
-  "filter_replace": { "category": "player", "sounds": ["minecraft:block.iron_trapdoor.open"] },
-  "filter_warning": { "category": "player", "sounds": ["minecraft:block.note_block.bass"] },
-  "heartbeat_low_oxygen": { "category": "player", "sounds": ["minecraft:entity.warden.heartbeat"] },
-  "torch_extinguish": { "category": "block", "sounds": ["minecraft:block.fire.extinguish"] }
+  "gas_mask_breathe": { "sounds": [{ "name": "minecraft:item.armor.equip_turtle", "type": "event" }] },
+  "gas_mask_equip": { "sounds": [{ "name": "minecraft:item.armor.equip_leather", "type": "event" }] },
+  "filter_replace": { "sounds": [{ "name": "minecraft:block.iron_trapdoor.open", "type": "event" }] },
+  "filter_warning": { "sounds": [{ "name": "minecraft:block.note_block.bass", "type": "event" }] },
+  "heartbeat_low_oxygen": { "sounds": [{ "name": "minecraft:entity.warden.heartbeat", "type": "event" }] },
+  "torch_extinguish": { "sounds": [{ "name": "minecraft:block.fire.extinguish", "type": "event" }] }
 }
