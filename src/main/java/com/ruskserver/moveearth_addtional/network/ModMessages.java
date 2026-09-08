@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1");
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);
@@ -51,5 +51,6 @@ public class ModMessages {
         registrar.playToClient(S2C_UpdateMapVotePacket.TYPE, S2C_UpdateMapVotePacket.STREAM_CODEC, S2C_UpdateMapVotePacket::handle);
         registrar.playToServer(C2S_VoteMapPacket.TYPE, C2S_VoteMapPacket.STREAM_CODEC, C2S_VoteMapPacket::handle);
         registrar.playToClient(S2C_KillcamReplayPacket.TYPE, S2C_KillcamReplayPacket.STREAM_CODEC, S2C_KillcamReplayPacket::handle);
+        registrar.playToClient(S2C_SyncOxygenPacket.TYPE, S2C_SyncOxygenPacket.STREAM_CODEC, S2C_SyncOxygenPacket::handle);
     }
 }

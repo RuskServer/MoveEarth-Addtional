@@ -12,7 +12,10 @@
     "CrushingWheelControllerBlockEntityMixin",
     "EntityDataAccessorMixin"
   ],
-  "client": [],
+  "client": [
+    "client.CustomHeadLayerMixin",
+    "client.HumanoidArmorLayerMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

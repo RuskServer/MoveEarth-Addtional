@@ -18,6 +18,9 @@ public class ModCreativeModeTabs {
                     .icon(() -> new ItemStack(ModItems.PLAYER_DETECTOR.get()))
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.PLAYER_DETECTOR.get());
+                        output.accept(ModItems.WEAPON_CRATE.get());
+                        output.accept(ModItems.GAS_MASK.get());
+                        output.accept(ModItems.CARBON_FILTER.get());
                     })
                     .build());
 }

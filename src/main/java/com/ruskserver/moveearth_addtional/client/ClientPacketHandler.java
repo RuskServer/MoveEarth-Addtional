@@ -113,6 +113,10 @@ public class ClientPacketHandler {
         }
     }
 
+    public static void handleOxygenSync(S2C_SyncOxygenPacket packet) {
+        OxygenClientState.update(packet);
+    }
+
     public static void handleSyncDetectorName(S2C_SyncDetectorNamePacket packet) {
         Screen screen = Minecraft.getInstance().screen;
         if (screen instanceof PlayerDetectorScreen detectorScreen) {

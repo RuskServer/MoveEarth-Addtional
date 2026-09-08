@@ -36,5 +36,8 @@ public class Moveearth_addtional {
         com.ruskserver.moveearth_addtional.block.entity.ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);
         com.ruskserver.moveearth_addtional.item.ModCreativeModeTabs.CREATIVE_MODE_TABS.register(modEventBus);
         com.ruskserver.moveearth_addtional.entity.ModEntities.ENTITY_TYPES.register(modEventBus);
+
+        // Register Config
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.ruskserver.moveearth_addtional.oxygen.OxygenConfig.SPEC);
     }
 }
