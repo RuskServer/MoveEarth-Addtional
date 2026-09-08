@@ -1,6 +1,8 @@
 package com.ruskserver.moveearth_addtional.block.entity;
 
 import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
+import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
+import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
 import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
 import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
 import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
@@ -14,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -24,10 +27,12 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
+import com.ruskserver.moveearth_addtional.mixin.EntityDataAccessorMixin;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,6 +48,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     private UUID ownerUUID;
     private String ownerName;
+    private String detectorName = "";
     private int tickCounter = 0;
 
     // 維持費支払い用データ
@@ -53,18 +59,11 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     // 作動猶予・ダミーエンティティ用データ
     private long placedTime = 0L;
     private UUID dummyEntityUUID = null;
+    private boolean dummyEntitiesReconciled = false;
 
     // リフレクションによる protected な DATA_SHARED_FLAGS_ID 取得
-    private static net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS = null;
-    static {
-        try {
-            java.lang.reflect.Field field = net.minecraft.world.entity.Entity.class.getDeclaredField("DATA_SHARED_FLAGS_ID");
-            field.setAccessible(true);
-            DATA_SHARED_FLAGS = (net.minecraft.network.syncher.EntityDataAccessor<Byte>) field.get(null);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
+    private static final net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS =
+            EntityDataAccessorMixin.moveearth$getSharedFlagsId();
 
     public PlayerDetectorBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.PLAYER_DETECTOR.get(), pos, state);
@@ -83,6 +82,23 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public String getOwnerName() {
         return this.ownerName;
+    }
+
+    public String getDetectorName() {
+        return this.detectorName;
+    }
+
+    public String getDetectorDisplayName() {
+        return this.detectorName.isBlank() ? "名称未設定" : this.detectorName;
+    }
+
+    public void setDetectorName(String detectorName) {
+        DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(detectorName);
+        if (!validation.valid()) {
+            throw new IllegalArgumentException(validation.errorMessage());
+        }
+        this.detectorName = validation.normalized();
+        this.setChanged();
     }
 
     public BankReference getBankReference() {
@@ -135,6 +151,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public void setDummyEntityUUID(UUID dummyEntityUUID) {
         this.dummyEntityUUID = dummyEntityUUID;
+        this.dummyEntitiesReconciled = false;
         this.setChanged();
     }
 
@@ -146,6 +163,10 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         }
         if (tag.contains("OwnerName")) {
             this.ownerName = tag.getString("OwnerName");
+        }
+        if (tag.contains("DetectorName")) {
+            DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(tag.getString("DetectorName"));
+            this.detectorName = validation.valid() ? validation.normalized() : "";
         }
         if (tag.contains("BankReference")) {
             this.bankReference = BankReference.load(tag.getCompound("BankReference"));
@@ -173,6 +194,9 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (this.ownerName != null) {
             tag.putString("OwnerName", this.ownerName);
         }
+        if (!this.detectorName.isEmpty()) {
+            tag.putString("DetectorName", this.detectorName);
+        }
         if (this.bankReference != null) {
             tag.put("BankReference", this.bankReference.save());
         }
@@ -184,15 +208,26 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         }
     }
 
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (this.level instanceof ServerLevel) {
+            LoadedDetectorRegistry.register(this);
+        }
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        LoadedDetectorRegistry.unregister(this);
+        super.onChunkUnloaded();
+    }
+
     public void tick(Level level, BlockPos pos, BlockState state, PlayerDetectorBlockEntity blockEntity) {
         if (level.isClientSide()) {
             return;
         }
 
         ServerLevel serverLevel = (ServerLevel) level;
-
-        // ダミーエンティティ（シュルカー）の同期管理
-        blockEntity.maintainDummyEntity(serverLevel, pos);
 
         blockEntity.tickCounter++;
         if (blockEntity.tickCounter >= 100) { // 5秒周期 (100 ticks)
@@ -247,13 +282,17 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                 return;
             }
 
-            // 所有者の最新ホワイトリストを取得
-            Set<String> whitelist = PlayerWhitelistSavedData.get(serverLevel).getWhitelist(blockEntity.ownerUUID);
+            // 所有者の最新ホワイトリストデータを取得
+            PlayerWhitelistSavedData whitelistData = PlayerWhitelistSavedData.get(serverLevel);
 
             // 周囲100ブロック以内のプレイヤーをスキャン
             double range = DETECTION_RANGE;
             AABB aabb = new AABB(pos).inflate(range);
             List<ServerPlayer> players = level.getEntitiesOfClass(ServerPlayer.class, aabb);
+
+            Set<UUID> currentMembers = new HashSet<>();
+            Set<UUID> currentVisitors = new HashSet<>();
+            Set<UUID> currentIntruders = new HashSet<>();
 
             for (ServerPlayer player : players) {
                 double dist = player.position().distanceTo(Vec3.atCenterOf(pos));
@@ -261,18 +300,29 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     String targetName = player.getScoreboardName();
 
                     // 所有者およびホワイトリストに入っているプレイヤーは除外
-                    if (player.getUUID().equals(blockEntity.ownerUUID) || whitelist.contains(targetName)) {
+                    if (player.getUUID().equals(blockEntity.ownerUUID) || whitelistData.isWhitelisted(blockEntity.ownerUUID, player.getUUID())) {
+                        currentMembers.add(player.getUUID());
                         blockEntity.sendGlowingPacket(player, false); // 発光を解除
                         continue;
                     }
 
+                    // 侵入者を記録
+                    currentIntruders.add(player.getUUID());
+
                     // 侵入者を検知
                     // 1. 警告メッセージの構築と送信
-                    String warningMsg = String.format("【警告】侵入者を検知しました！ プレイヤー: %s (距離: %.1fm)", targetName, dist);
+                    String warningMsg = String.format(
+                            "【侵入警告：%s】%sを検知しました（距離%.1fm）",
+                            blockEntity.getDetectorDisplayName(),
+                            targetName,
+                            dist
+                    );
                     Component chatMessage = Component.literal(warningMsg);
 
-                    Set<String> alertRecipients = new HashSet<>(whitelist);
-                    alertRecipients.add(blockEntity.ownerName);
+                    Set<String> alertRecipients = new HashSet<>(whitelistData.getMemberNamesForDisplay(blockEntity.ownerUUID));
+                    if (blockEntity.ownerName != null) {
+                        alertRecipients.add(blockEntity.ownerName);
+                    }
 
                     for (ServerPlayer onlinePlayer : serverLevel.getServer().getPlayerList().getPlayers()) {
                         if (alertRecipients.contains(onlinePlayer.getScoreboardName())) {
@@ -291,6 +341,19 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     blockEntity.sendGlowingPacket(player, false);
                 }
             }
+
+            // 分析用侵入トラッカーへスキャン結果を記録
+            String posHash = Integer.toHexString(Objects.hash(serverLevel.dimension().location().toString(), pos.getX(), pos.getY(), pos.getZ()));
+            com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.recordScan(
+                    serverLevel.dimension().location().toString(),
+                    posHash,
+                    blockEntity.getDetectorDisplayName(),
+                    blockEntity.ownerUUID,
+                    currentMembers,
+                    currentVisitors,
+                    currentIntruders,
+                    currentTime
+            );
         }
     }
 
@@ -307,6 +370,15 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
      * by other mods is undone before the next client update.
      */
     public void maintainDummyEntity(ServerLevel level, BlockPos pos) {
+        // Block entities can be loaded before their entity section is visible.
+        // Spawning during that window makes ServerLevel#getEntity unable to find
+        // the new dummy on the following tick, causing one hidden shulker to be
+        // added every tick. Wait until the entity chunk is fully loaded and
+        // ticking before attempting any reconciliation or creation.
+        if (!level.areEntitiesLoaded(ChunkPos.asLong(pos)) || !level.isPositionEntityTicking(pos)) {
+            return;
+        }
+
         if (!this.isActive) {
             if (this.dummyEntityUUID != null) {
                 removeDummyEntity(level);
@@ -315,15 +387,31 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         }
 
         Entity entity = this.dummyEntityUUID == null ? null : findDummyEntity(level);
-        if (!(entity instanceof Shulker shulker) || !isDetectorDummy(shulker) || !shulker.isAlive()) {
+        Shulker preferred = entity instanceof Shulker shulker
+                && isDetectorDummy(shulker)
+                && shulker.isAlive()
+                && shulker.level() == level
+                && belongsToDetector(shulker, level, pos)
+                ? shulker
+                : null;
+
+        if (entity instanceof Shulker shulker && preferred == null
+                && isDetectorDummy(shulker) && belongsToDetector(shulker, level, pos)) {
+            shulker.discard();
+        }
+
+        Shulker shulker = preferred != null && this.dummyEntitiesReconciled
+                ? preferred
+                : reconcileDummyEntities(level, pos, preferred);
+        if (shulker == null) {
             spawnDummyEntity(level, pos);
             return;
         }
 
-        if (shulker.level() != level) {
-            shulker.discard();
-            spawnDummyEntity(level, pos);
-            return;
+        this.dummyEntitiesReconciled = true;
+        if (!shulker.getUUID().equals(this.dummyEntityUUID)) {
+            this.dummyEntityUUID = shulker.getUUID();
+            this.setChanged();
         }
 
         pinDummyEntity(level, pos, shulker);
@@ -388,6 +476,39 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         return null;
     }
 
+    private Shulker reconcileDummyEntities(ServerLevel level, BlockPos pos, Shulker preferred) {
+        Shulker canonical = preferred;
+        AABB searchBox = new AABB(pos).inflate(1.5D);
+        for (Shulker candidate : level.getEntitiesOfClass(Shulker.class, searchBox)) {
+            if (!candidate.isAlive() || !isDetectorDummy(candidate)
+                    || !belongsToDetector(candidate, level, pos)) {
+                continue;
+            }
+
+            if (canonical == null) {
+                canonical = candidate;
+            } else if (candidate != canonical) {
+                candidate.discard();
+            }
+        }
+        return canonical;
+    }
+
+    private static boolean belongsToDetector(Shulker shulker, ServerLevel level, BlockPos pos) {
+        CompoundTag data = shulker.getPersistentData();
+        if (data.contains(DUMMY_BLOCK_POS_TAG) && data.contains(DUMMY_DIMENSION_TAG)) {
+            return BlockPos.of(data.getLong(DUMMY_BLOCK_POS_TAG)).equals(pos)
+                    && level.dimension().location().toString().equals(data.getString(DUMMY_DIMENSION_TAG));
+        }
+
+        // Legacy dummies did not record their owner. They are safe to adopt only
+        // while still sitting exactly on the detector that created them.
+        return shulker.distanceToSqr(
+                pos.getX() + 0.5D,
+                pos.getY(),
+                pos.getZ() + 0.5D) <= 0.25D;
+    }
+
     private void pinDummyEntity(ServerLevel level, BlockPos pos, Shulker shulker) {
         double expectedX = pos.getX() + 0.5D;
         double expectedY = pos.getY();
@@ -425,9 +546,11 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             pinDummyEntity(level, pos, shulker);
 
             this.dummyEntityUUID = shulker.getUUID();
+            this.dummyEntitiesReconciled = true;
             this.setChanged();
             if (!level.addFreshEntity(shulker)) {
                 this.dummyEntityUUID = null;
+                this.dummyEntitiesReconciled = false;
                 this.setChanged();
             }
         }
@@ -435,11 +558,12 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     private void removeDummyEntity(ServerLevel level) {
         if (this.dummyEntityUUID != null) {
-            net.minecraft.world.entity.Entity entity = level.getEntity(this.dummyEntityUUID);
+            net.minecraft.world.entity.Entity entity = findDummyEntity(level);
             if (entity != null) {
                 entity.discard();
             }
             this.dummyEntityUUID = null;
+            this.dummyEntitiesReconciled = false;
             this.setChanged();
         }
         // 座標周囲の残留シュルカーを念のため全クリーンアップ（座標基準）
@@ -461,6 +585,21 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public void onDestroy(ServerLevel level) {
         removeDummyEntity(level);
+        if (this.worldPosition != null) {
+            String posHash = Integer.toHexString(Objects.hash(level.dimension().location().toString(), this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()));
+            com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.removeDetector(posHash);
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        LoadedDetectorRegistry.unregister(this);
+        super.setRemoved();
+        if (this.level instanceof ServerLevel serverLevel && this.worldPosition != null) {
+            removeDummyEntity(serverLevel);
+            String posHash = Integer.toHexString(Objects.hash(serverLevel.dimension().location().toString(), this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()));
+            com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.removeDetector(posHash);
+        }
     }
 
     private void sendGlowingPacket(ServerPlayer player, boolean isGlowing) {
@@ -487,7 +626,8 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (blockEntity.ownerUUID != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(blockEntity.ownerUUID);
             if (player != null) {
-                player.sendSystemMessage(Component.literal("§c【警告】プレイヤー検知ブロックの維持費（5ゴールド）の引き落としに失敗したため、機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
+                player.sendSystemMessage(Component.literal("§c【" + blockEntity.getDetectorDisplayName()
+                        + "】維持費（5ゴールド）の引き落としに失敗したため、検知機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
             }
         }
     }

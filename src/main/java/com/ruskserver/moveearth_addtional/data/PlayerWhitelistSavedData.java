@@ -1,51 +1,257 @@
 package com.ruskserver.moveearth_addtional.data;
 
+import com.mojang.authlib.GameProfile;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.GameProfileCache;
 import net.minecraft.world.level.saveddata.SavedData;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+/**
+ * プレイヤー検知ブロック用のホワイトリストを管理するSavedData。
+ * サーバー共通（オーバーワールド）に永続化され、メンバーはUUIDを主軸として保存される。
+ */
 public class PlayerWhitelistSavedData extends SavedData {
 
-    private final Map<UUID, Set<String>> whitelists = new HashMap<>();
+    private final WhitelistRegistry registry = new WhitelistRegistry();
+    private final DetectorAccessRegistry accessRegistry = new DetectorAccessRegistry();
 
     public PlayerWhitelistSavedData() {
     }
 
-    public Set<String> getWhitelist(UUID owner) {
-        return whitelists.computeIfAbsent(owner, k -> new HashSet<>());
+    public WhitelistRegistry getRegistry() {
+        return registry;
     }
 
-    public void addToWhitelist(UUID owner, String name) {
-        getWhitelist(owner).add(name);
+    public DetectorAccessRegistry getAccessRegistry() {
+        return accessRegistry;
+    }
+
+    public Map<UUID, String> getManagers(UUID owner) {
+        return accessRegistry.getManagers(owner);
+    }
+
+    public List<String> getManagerNamesForDisplay(UUID owner) {
+        return accessRegistry.getManagerNamesForDisplay(owner);
+    }
+
+    public boolean isManager(UUID owner, UUID playerUuid) {
+        return accessRegistry.isManager(owner, playerUuid);
+    }
+
+    public boolean canEditWhitelist(UUID owner, UUID playerUuid) {
+        return accessRegistry.canEditWhitelist(owner, playerUuid);
+    }
+
+    public boolean addManager(UUID owner, UUID managerUuid, @Nullable String managerName) {
+        boolean changed = accessRegistry.addManager(owner, managerUuid, managerName);
+        if (changed) {
+            this.setDirty();
+        }
+        return changed;
+    }
+
+    public boolean removeManagerByName(UUID owner, String managerName) {
+        boolean changed = accessRegistry.removeManagerByName(owner, managerName);
+        if (changed) {
+            this.setDirty();
+        }
+        return changed;
+    }
+
+    /**
+     * 指定したオーナーのホワイトリストに登録されている全メンバーUUIDを取得
+     */
+    public Set<UUID> getMemberUuids(UUID owner) {
+        return registry.getMemberUuids(owner);
+    }
+
+    /**
+     * 指定したオーナーのホワイトリストメンバー（UUID -> 表示名）のマップを取得
+     */
+    public Map<UUID, String> getMembers(UUID owner) {
+        return registry.getMembers(owner);
+    }
+
+    /**
+     * 指定したオーナーの未解決プレイヤー名一覧を取得
+     */
+    public Set<String> getUnresolvedNames(UUID owner) {
+        return registry.getUnresolvedNames(owner);
+    }
+
+    /**
+     * GUI表示およびクライアント同期用：登録済みメンバー名（表示名＋未解決名）の一覧を取得
+     */
+    public List<String> getMemberNamesForDisplay(UUID owner) {
+        return registry.getMemberNamesForDisplay(owner);
+    }
+
+    /**
+     * 指定したプレイヤーUUIDがオーナーのホワイトリストに含まれているかを判定
+     */
+    public boolean isWhitelisted(UUID owner, UUID playerUuid) {
+        return registry.isWhitelisted(owner, playerUuid);
+    }
+
+    /**
+     * 指定したプレイヤー（ServerPlayer）がオーナーのホワイトリストに含まれているかを判定
+     */
+    public boolean isWhitelisted(UUID owner, ServerPlayer player) {
+        return isWhitelisted(owner, player.getUUID());
+    }
+
+    /**
+     * メンバーをホワイトリストに追加
+     */
+    public void addToWhitelist(UUID owner, UUID memberUuid, @Nullable String memberName) {
+        registry.addToWhitelist(owner, memberUuid, memberName);
         this.setDirty();
     }
 
-    public void removeFromWhitelist(UUID owner, String name) {
-        getWhitelist(owner).remove(name);
+    /**
+     * メンバーをUUID指定でホワイトリストから削除
+     */
+    public boolean removeFromWhitelist(UUID owner, UUID memberUuid) {
+        boolean removed = registry.removeFromWhitelist(owner, memberUuid);
+        if (removed) {
+            this.setDirty();
+        }
+        return removed;
+    }
+
+    /**
+     * 名前指定でホワイトリスト（または未解決リスト）から削除
+     */
+    public boolean removeFromWhitelistByName(UUID owner, String memberName) {
+        boolean removed = registry.removeFromWhitelistByName(owner, memberName);
+        if (removed) {
+            this.setDirty();
+        }
+        return removed;
+    }
+
+    /**
+     * 未解決プレイヤー名の解決を試行
+     */
+    public void tryResolveUnresolved(@Nullable MinecraftServer server) {
+        if (server == null) {
+            return;
+        }
+
+        GameProfileCache profileCache = server.getProfileCache();
+        boolean changed = false;
+
+        Set<UUID> owners = new HashSet<>(registry.getAllOwners());
+        owners.addAll(accessRegistry.getAllOwners());
+        for (UUID owner : owners) {
+            Set<String> names = new HashSet<>(registry.getUnresolvedNames(owner));
+            for (String name : names) {
+                UUID resolvedUuid = null;
+                String finalName = name;
+
+                // 1. オンラインプレイヤーから検索
+                ServerPlayer onlinePlayer = server.getPlayerList().getPlayerByName(name);
+                if (onlinePlayer != null) {
+                    resolvedUuid = onlinePlayer.getUUID();
+                    finalName = onlinePlayer.getScoreboardName();
+                } else if (profileCache != null) {
+                    // 2. プロファイルキャッシュから検索
+                    Optional<GameProfile> profile = profileCache.get(name);
+                    if (profile.isPresent()) {
+                        resolvedUuid = profile.get().getId();
+                        finalName = profile.get().getName();
+                    }
+                }
+
+                if (resolvedUuid != null) {
+                    registry.addToWhitelist(owner, resolvedUuid, finalName);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            this.setDirty();
+        }
+    }
+
+    /**
+     * 後方互換性用ヘルパー：名前のみの追加（UUIDが即座に解決できない場合は未解決リストへ登録）
+     */
+    public void addByNameFallback(UUID owner, String name, @Nullable UUID knownUuid) {
+        registry.addByNameFallback(owner, name, knownUuid);
         this.setDirty();
     }
+
+    private final Set<String> migratedDimensions = new HashSet<>();
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         ListTag list = new ListTag();
-        for (Map.Entry<UUID, Set<String>> entry : whitelists.entrySet()) {
-            CompoundTag entryTag = new CompoundTag();
-            entryTag.putUUID("OwnerUUID", entry.getKey());
 
-            ListTag whitelistTag = new ListTag();
-            for (String name : entry.getValue()) {
-                whitelistTag.add(StringTag.valueOf(name));
+        Set<UUID> owners = new HashSet<>(registry.getAllOwners());
+        owners.addAll(accessRegistry.getAllOwners());
+        for (UUID owner : owners) {
+            CompoundTag entryTag = new CompoundTag();
+            entryTag.putUUID("OwnerUUID", owner);
+
+            // 解決済みメンバー (Members)
+            Map<UUID, String> members = registry.getMembers(owner);
+            if (!members.isEmpty()) {
+                ListTag memberList = new ListTag();
+                for (Map.Entry<UUID, String> memberEntry : members.entrySet()) {
+                    CompoundTag memberTag = new CompoundTag();
+                    memberTag.putUUID("UUID", memberEntry.getKey());
+                    if (memberEntry.getValue() != null) {
+                        memberTag.putString("Name", memberEntry.getValue());
+                    }
+                    memberList.add(memberTag);
+                }
+                entryTag.put("Members", memberList);
             }
-            entryTag.put("Whitelist", whitelistTag);
+
+            // 未解決メンバー (UnresolvedNames)
+            Set<String> unresolved = registry.getUnresolvedNames(owner);
+            if (!unresolved.isEmpty()) {
+                ListTag unresolvedList = new ListTag();
+                for (String name : unresolved) {
+                    unresolvedList.add(StringTag.valueOf(name));
+                }
+                entryTag.put("UnresolvedNames", unresolvedList);
+            }
+
+            Map<UUID, String> managers = accessRegistry.getManagers(owner);
+            if (!managers.isEmpty()) {
+                ListTag managerList = new ListTag();
+                for (Map.Entry<UUID, String> managerEntry : managers.entrySet()) {
+                    CompoundTag managerTag = new CompoundTag();
+                    managerTag.putUUID("UUID", managerEntry.getKey());
+                    managerTag.putString("Name", managerEntry.getValue());
+                    managerList.add(managerTag);
+                }
+                entryTag.put("Managers", managerList);
+            }
+
             list.add(entryTag);
         }
         tag.put("PlayerWhitelists", list);
+
+        // 移行済みディメンション記録
+        ListTag migList = new ListTag();
+        for (String dim : migratedDimensions) {
+            migList.add(StringTag.valueOf(dim));
+        }
+        tag.put("MigratedDimensions", migList);
+
         return tag;
     }
 
@@ -57,20 +263,82 @@ public class PlayerWhitelistSavedData extends SavedData {
                 CompoundTag entryTag = list.getCompound(i);
                 if (entryTag.hasUUID("OwnerUUID")) {
                     UUID owner = entryTag.getUUID("OwnerUUID");
-                    Set<String> whitelist = new HashSet<>();
-                    ListTag whitelistTag = entryTag.getList("Whitelist", Tag.TAG_STRING);
-                    for (int j = 0; j < whitelistTag.size(); j++) {
-                        whitelist.add(whitelistTag.getString(j));
+
+                    // 1. 新形式 Members タグの読み込み
+                    if (entryTag.contains("Members", Tag.TAG_LIST)) {
+                        ListTag membersList = entryTag.getList("Members", Tag.TAG_COMPOUND);
+                        for (int j = 0; j < membersList.size(); j++) {
+                            CompoundTag mTag = membersList.getCompound(j);
+                            if (mTag.hasUUID("UUID")) {
+                                UUID mUuid = mTag.getUUID("UUID");
+                                String mName = mTag.contains("Name") ? mTag.getString("Name") : mUuid.toString();
+                                data.registry.addToWhitelist(owner, mUuid, mName);
+                            }
+                        }
                     }
-                    data.whitelists.put(owner, whitelist);
+
+                    // 2. 新形式 UnresolvedNames タグの読み込み
+                    if (entryTag.contains("UnresolvedNames", Tag.TAG_LIST)) {
+                        ListTag unresolvedList = entryTag.getList("UnresolvedNames", Tag.TAG_STRING);
+                        for (int j = 0; j < unresolvedList.size(); j++) {
+                            data.registry.addByNameFallback(owner, unresolvedList.getString(j), null);
+                        }
+                    }
+
+                    if (entryTag.contains("Managers", Tag.TAG_LIST)) {
+                        ListTag managerList = entryTag.getList("Managers", Tag.TAG_COMPOUND);
+                        for (int j = 0; j < managerList.size(); j++) {
+                            CompoundTag managerTag = managerList.getCompound(j);
+                            if (managerTag.hasUUID("UUID")) {
+                                UUID managerUuid = managerTag.getUUID("UUID");
+                                String managerName = managerTag.contains("Name")
+                                        ? managerTag.getString("Name")
+                                        : managerUuid.toString();
+                                data.accessRegistry.addManager(owner, managerUuid, managerName);
+                            }
+                        }
+                    }
+
+                    // 3. 旧形式 Whitelist (文字列リスト) の後方互換読み込み
+                    if (entryTag.contains("Whitelist", Tag.TAG_LIST)) {
+                        ListTag legacyList = entryTag.getList("Whitelist", Tag.TAG_STRING);
+                        for (int j = 0; j < legacyList.size(); j++) {
+                            String nameOrUuid = legacyList.getString(j);
+                            try {
+                                UUID parsedUuid = UUID.fromString(nameOrUuid);
+                                data.registry.addToWhitelist(owner, parsedUuid, nameOrUuid);
+                            } catch (IllegalArgumentException ignored) {
+                                data.registry.addByNameFallback(owner, nameOrUuid, null);
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        if (tag.contains("MigratedDimensions", Tag.TAG_LIST)) {
+            ListTag migList = tag.getList("MigratedDimensions", Tag.TAG_STRING);
+            for (int i = 0; i < migList.size(); i++) {
+                data.migratedDimensions.add(migList.getString(i));
+            }
+        }
+
         return data;
     }
 
+    /**
+     * サーバー共通（オーバーワールド）のPlayerWhitelistSavedDataを取得
+     */
     public static PlayerWhitelistSavedData get(ServerLevel level) {
-        return level.getDataStorage().computeIfAbsent(
+        return get(level.getServer());
+    }
+
+    /**
+     * MinecraftServerインスタンスから共通のPlayerWhitelistSavedDataを取得
+     * 初回取得時に他ディメンション（Nether, End等）の旧SavedDataを走査・自動マージ
+     */
+    public static PlayerWhitelistSavedData get(MinecraftServer server) {
+        PlayerWhitelistSavedData overworldData = server.overworld().getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(
                         PlayerWhitelistSavedData::new,
                         PlayerWhitelistSavedData::load,
@@ -78,5 +346,60 @@ public class PlayerWhitelistSavedData extends SavedData {
                 ),
                 "player_whitelist"
         );
+
+        overworldData.migrateFromOtherDimensions(server);
+        return overworldData;
+    }
+
+    private void migrateFromOtherDimensions(MinecraftServer server) {
+        for (ServerLevel level : server.getAllLevels()) {
+            if (level == server.overworld()) {
+                continue;
+            }
+
+            String dimKey = level.dimension().location().toString();
+            if (migratedDimensions.contains(dimKey)) {
+                continue; // 移行済み
+            }
+
+            try {
+                PlayerWhitelistSavedData otherData = level.getDataStorage().get(
+                        new SavedData.Factory<>(
+                                PlayerWhitelistSavedData::new,
+                                PlayerWhitelistSavedData::load,
+                                null
+                        ),
+                        "player_whitelist"
+                );
+
+                if (otherData != null) {
+                    boolean merged = false;
+                    for (UUID owner : otherData.getRegistry().getAllOwners()) {
+                        for (Map.Entry<UUID, String> memberEntry : otherData.getMembers(owner).entrySet()) {
+                            this.addToWhitelist(owner, memberEntry.getKey(), memberEntry.getValue());
+                            merged = true;
+                        }
+                        for (String unresolved : otherData.getUnresolvedNames(owner)) {
+                            this.addByNameFallback(owner, unresolved, null);
+                            merged = true;
+                        }
+                    }
+                    for (UUID owner : otherData.getAccessRegistry().getAllOwners()) {
+                        for (Map.Entry<UUID, String> manager : otherData.getManagers(owner).entrySet()) {
+                            this.addManager(owner, manager.getKey(), manager.getValue());
+                            merged = true;
+                        }
+                    }
+                    if (merged) {
+                        this.setDirty();
+                    }
+                }
+                // 成功したディメンションを記録
+                migratedDimensions.add(dimKey);
+                this.setDirty();
+            } catch (Exception e) {
+                System.err.println("[MoveEarth] ディメンション " + dimKey + " からのホワイトリスト移行に失敗しました (次回再試行): " + e.getMessage());
+            }
+        }
     }
 }

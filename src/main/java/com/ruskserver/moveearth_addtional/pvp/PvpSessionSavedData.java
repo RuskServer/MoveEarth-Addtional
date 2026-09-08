@@ -33,7 +33,7 @@ public final class PvpSessionSavedData extends SavedData {
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         CompoundTag all = new CompoundTag();
-        snapshots.forEach((id, snapshot) -> all.put(id.toString(), snapshot.save()));
+        snapshots.forEach((id, snapshot) -> all.put(id.toString(), snapshot.save(registries)));
         tag.put("Snapshots", all);
         return tag;
     }
@@ -43,7 +43,7 @@ public final class PvpSessionSavedData extends SavedData {
         CompoundTag all = tag.getCompound("Snapshots");
         for (String key : all.getAllKeys()) {
             try {
-                data.snapshots.put(UUID.fromString(key), PvpPlayerSnapshot.load(all.getCompound(key)));
+                data.snapshots.put(UUID.fromString(key), PvpPlayerSnapshot.load(all.getCompound(key), registries));
             } catch (IllegalArgumentException ignored) {
             }
         }

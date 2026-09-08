@@ -10,56 +10,27 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("2.1-oxygen1");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1");
 
-        registrar.playToClient(
-                S2C_AnnouncementPacket.TYPE,
-                S2C_AnnouncementPacket.STREAM_CODEC,
-                S2C_AnnouncementPacket::handle
-        );
+        registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
+        registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);
+        registrar.playToServer(C2S_SetDetectorNamePacket.TYPE, C2S_SetDetectorNamePacket.STREAM_CODEC, C2S_SetDetectorNamePacket::handle);
+        registrar.playToClient(S2C_SyncDetectorNamePacket.TYPE, S2C_SyncDetectorNamePacket.STREAM_CODEC, S2C_SyncDetectorNamePacket::handle);
+        registrar.playToClient(S2C_OpenStatsScreenPacket.TYPE, S2C_OpenStatsScreenPacket.STREAM_CODEC, S2C_OpenStatsScreenPacket::handle);
+        registrar.playToServer(C2S_UpdateWhitelistPacket.TYPE, C2S_UpdateWhitelistPacket.STREAM_CODEC, C2S_UpdateWhitelistPacket::handle);
+        registrar.playToClient(S2C_SyncWhitelistPacket.TYPE, S2C_SyncWhitelistPacket.STREAM_CODEC, S2C_SyncWhitelistPacket::handle);
+        registrar.playToServer(C2S_UpdateDetectorManagerPacket.TYPE, C2S_UpdateDetectorManagerPacket.STREAM_CODEC, C2S_UpdateDetectorManagerPacket::handle);
+        registrar.playToClient(S2C_SyncDetectorManagersPacket.TYPE, S2C_SyncDetectorManagersPacket.STREAM_CODEC, S2C_SyncDetectorManagersPacket::handle);
 
-        registrar.playToClient(
-                S2C_OpenDetectorScreenPacket.TYPE,
-                S2C_OpenDetectorScreenPacket.STREAM_CODEC,
-                S2C_OpenDetectorScreenPacket::handle
-        );
-
-        registrar.playToClient(
-                S2C_OpenStatsScreenPacket.TYPE,
-                S2C_OpenStatsScreenPacket.STREAM_CODEC,
-                S2C_OpenStatsScreenPacket::handle
-        );
-
-        registrar.playToServer(
-                C2S_UpdateWhitelistPacket.TYPE,
-                C2S_UpdateWhitelistPacket.STREAM_CODEC,
-                C2S_UpdateWhitelistPacket::handle
-        );
-
-        registrar.playToClient(
-                S2C_SyncWhitelistPacket.TYPE,
-                S2C_SyncWhitelistPacket.STREAM_CODEC,
-                S2C_SyncWhitelistPacket::handle
-        );
-
-        // 新規追加：決済関連パケット
-        registrar.playToClient(
-                S2C_SyncDetectorPaymentPacket.TYPE,
-                S2C_SyncDetectorPaymentPacket.STREAM_CODEC,
-                S2C_SyncDetectorPaymentPacket::handle
-        );
-
-        registrar.playToServer(
-                C2S_ConfigurePaymentPacket.TYPE,
-                C2S_ConfigurePaymentPacket.STREAM_CODEC,
-                C2S_ConfigurePaymentPacket::handle
-        );
+        registrar.playToClient(S2C_SyncDetectorPaymentPacket.TYPE, S2C_SyncDetectorPaymentPacket.STREAM_CODEC, S2C_SyncDetectorPaymentPacket::handle);
+        registrar.playToServer(C2S_ConfigurePaymentPacket.TYPE, C2S_ConfigurePaymentPacket.STREAM_CODEC, C2S_ConfigurePaymentPacket::handle);
 
         registrar.playToClient(S2C_OpenPvpScreenPacket.TYPE, S2C_OpenPvpScreenPacket.STREAM_CODEC, S2C_OpenPvpScreenPacket::handle);
         registrar.playToClient(S2C_PvpEntryStatePacket.TYPE, S2C_PvpEntryStatePacket.STREAM_CODEC, S2C_PvpEntryStatePacket::handle);
         registrar.playToServer(C2S_PvpActionPacket.TYPE, C2S_PvpActionPacket.STREAM_CODEC, C2S_PvpActionPacket::handle);
         registrar.playToServer(C2S_ExchangeWeaponCratePacket.TYPE, C2S_ExchangeWeaponCratePacket.STREAM_CODEC, C2S_ExchangeWeaponCratePacket::handle);
         registrar.playToClient(S2C_PvpHudPacket.TYPE, S2C_PvpHudPacket.STREAM_CODEC, S2C_PvpHudPacket::handle);
+        registrar.playToClient(S2C_PvpZonePacket.TYPE, S2C_PvpZonePacket.STREAM_CODEC, S2C_PvpZonePacket::handle);
         registrar.playToClient(S2C_PvpTeamPacket.TYPE, S2C_PvpTeamPacket.STREAM_CODEC, S2C_PvpTeamPacket::handle);
         registrar.playToClient(S2C_PvpKillcamPacket.TYPE, S2C_PvpKillcamPacket.STREAM_CODEC, S2C_PvpKillcamPacket::handle);
         registrar.playToClient(S2C_PvpResultPacket.TYPE, S2C_PvpResultPacket.STREAM_CODEC, S2C_PvpResultPacket::handle);
@@ -71,8 +42,15 @@ public class ModMessages {
         registrar.playToClient(S2C_JobShopPacket.TYPE, S2C_JobShopPacket.STREAM_CODEC, S2C_JobShopPacket::handle);
         registrar.playToServer(C2S_JobsActionPacket.TYPE, C2S_JobsActionPacket.STREAM_CODEC, C2S_JobsActionPacket::handle);
         registrar.playToServer(C2S_JobShopActionPacket.TYPE, C2S_JobShopActionPacket.STREAM_CODEC, C2S_JobShopActionPacket::handle);
-
-        // 酸素システム同期パケット
+        registrar.playToClient(S2C_SyncLoadoutsPacket.TYPE, S2C_SyncLoadoutsPacket.STREAM_CODEC, S2C_SyncLoadoutsPacket::handle);
+        registrar.playToClient(S2C_OpenLoadoutEditorPacket.TYPE, S2C_OpenLoadoutEditorPacket.STREAM_CODEC, S2C_OpenLoadoutEditorPacket::handle);
+        registrar.playToServer(C2S_SaveLoadoutPacket.TYPE, C2S_SaveLoadoutPacket.STREAM_CODEC, C2S_SaveLoadoutPacket::handle);
+        registrar.playToServer(C2S_DeleteLoadoutPacket.TYPE, C2S_DeleteLoadoutPacket.STREAM_CODEC, C2S_DeleteLoadoutPacket::handle);
+        registrar.playToServer(C2S_ReorderLoadoutsPacket.TYPE, C2S_ReorderLoadoutsPacket.STREAM_CODEC, C2S_ReorderLoadoutsPacket::handle);
+        registrar.playToClient(S2C_StartMapVotePacket.TYPE, S2C_StartMapVotePacket.STREAM_CODEC, S2C_StartMapVotePacket::handle);
+        registrar.playToClient(S2C_UpdateMapVotePacket.TYPE, S2C_UpdateMapVotePacket.STREAM_CODEC, S2C_UpdateMapVotePacket::handle);
+        registrar.playToServer(C2S_VoteMapPacket.TYPE, C2S_VoteMapPacket.STREAM_CODEC, C2S_VoteMapPacket::handle);
+        registrar.playToClient(S2C_KillcamReplayPacket.TYPE, S2C_KillcamReplayPacket.STREAM_CODEC, S2C_KillcamReplayPacket::handle);
         registrar.playToClient(S2C_SyncOxygenPacket.TYPE, S2C_SyncOxygenPacket.STREAM_CODEC, S2C_SyncOxygenPacket::handle);
     }
 }

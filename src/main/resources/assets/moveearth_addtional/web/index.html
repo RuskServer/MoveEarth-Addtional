@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoveEarth Analytics Dashboard</title>
+    <style>
+        :root {
+            --bg-base: #090d16;
+            --bg-surface: rgba(18, 24, 38, 0.85);
+            --bg-card: rgba(30, 41, 59, 0.65);
+            --bg-card-hover: rgba(51, 65, 85, 0.75);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-focus: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-purple: #818cf8;
+            --accent-emerald: #34d399;
+            --accent-amber: #fbbf24;
+            --accent-rose: #fb7185;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-card: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(129, 140, 248, 0.1) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ヘッダー */
+        header {
+            background: var(--bg-surface);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .brand-logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #fff;
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+        }
+
+        .brand-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .window-selector {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .window-selector:focus {
+            border-color: var(--border-focus);
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(129, 140, 248, 0.2));
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            color: var(--accent-blue);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.35), rgba(129, 140, 248, 0.35));
+            transform: translateY(-1px);
+        }
+
+        /* ナビゲーションタブ */
+        nav {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 2rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            padding: 0.85rem 1.25rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-main);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-blue);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--accent-blue);
+            box-shadow: 0 0 8px var(--accent-blue);
+        }
+
+        /* メインコンテンツ */
+        main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .tab-pane {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* グリッドレイアウト */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            box-shadow: var(--shadow-card);
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .kpi-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .kpi-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .kpi-sub {
+            font-size: 0.8rem;
+            color: var(--accent-emerald);
+        }
+
+        /* カードセクション */
+        .section-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow-card);
+        }
+
+        .section-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* テーブル */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        tr:hover td {
+            background: var(--bg-card-hover);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-active {
+            background: rgba(52, 211, 153, 0.15);
+            color: var(--accent-emerald);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+
+        .badge-dim {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent-blue);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        /* プログレスバー */
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-emerald));
+            border-radius: 4px;
+        }
+
+        /* 検索ボックス */
+        .search-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            width: 260px;
+            outline: none;
+        }
+
+        .search-box:focus {
+            border-color: var(--border-focus);
+        }
+
+        /* エクスポートボタン群 */
+        .export-btn-group {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .export-btn {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border: none;
+            color: #fff;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3);
+        }
+
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+        }
+
+        /* モーダル */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .modal-backdrop.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 700px;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 2rem;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 1.25rem;
+            right: 1.25rem;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+        }
+
+        /* 空間ヒートマップ 2Dマップビューア */
+        .map-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow-card);
+        }
+
+        .map-container {
+            position: relative;
+            width: 100%;
+            height: 520px;
+            background: #050811;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            overflow: hidden;
+            user-select: none;
+            box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.8);
+        }
+
+        .map-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+        }
+
+        .map-canvas:active {
+            cursor: grabbing;
+        }
+
+        .map-top-bar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .map-filter-group {
+            display: flex;
+            gap: 8px;
+            background: rgba(10, 15, 29, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            pointer-events: auto;
+        }
+
+        .map-btn-group {
+            display: flex;
+            gap: 6px;
+            pointer-events: auto;
+        }
+
+        .map-control-btn {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .map-control-btn:hover {
+            border-color: var(--accent-blue);
+            background: rgba(56, 189, 248, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .map-legend {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(10, 15, 29, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            font-size: 0.75rem;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            color: var(--text-muted);
+        }
+
+        .legend-bar {
+            width: 140px;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #38bdf8, #34d399, #fbbf24, #f87171, #ef4444);
+        }
+
+        .map-coords-badge {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(10, 15, 29, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            font-size: 0.8rem;
+            font-family: monospace;
+            color: var(--accent-blue);
+            z-index: 10;
+        }
+
+        .map-tooltip {
+            position: absolute;
+            display: none;
+            pointer-events: none;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--accent-blue);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 0.85rem;
+            z-index: 20;
+            color: var(--text-main);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            min-width: 200px;
+        }
+
+        .map-tooltip-title {
+            font-weight: 700;
+            color: var(--accent-blue);
+            margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 4px;
+        }
+
+        .map-tooltip-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 3px;
+            font-size: 0.8rem;
+        }
+
+        .map-tooltip-val {
+            font-weight: 600;
+            color: var(--accent-emerald);
+        }
+
+        tr.table-row-selected {
+            background-color: rgba(56, 189, 248, 0.2) !important;
+            outline: 1px solid var(--accent-blue);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <div class="brand-logo">ME</div>
+            <div class="brand-title">MoveEarth Analytics</div>
+        </div>
+        <div class="header-controls">
+            <select id="windowSelector" class="window-selector" onchange="onWindowChange()">
+                <option value="7d" selected>過去7日間</option>
+                <option value="30d">過去30日間</option>
+                <option value="all">全期間</option>
+            </select>
+            <button class="refresh-btn" onclick="fetchCurrentTab()">🔄 更新</button>
+        </div>
+    </header>
+
+    <nav>
+        <button class="tab-btn active" onclick="switchTab('overview')">📊 概要</button>
+        <button class="tab-btn" onclick="switchTab('players')">👤 プレイヤー</button>
+        <button class="tab-btn" onclick="switchTab('bases')">🏰 拠点・防犯</button>
+        <button class="tab-btn" onclick="switchTab('heatmap')">🗺️ 空間ヒートマップ</button>
+        <button class="tab-btn" onclick="switchTab('system')">⚙️ システムヘルス</button>
+    </nav>
+
+    <main>
+        <!-- 1. 概要タブ -->
+        <div id="tab-overview" class="tab-pane active">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">アクティブプレイヤー数</div>
+                    <div id="ov-active-players" class="kpi-value">0</div>
+                    <div class="kpi-sub">期間内ユニーク</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">総実アクティブ時間</div>
+                    <div id="ov-active-hours" class="kpi-value">0h</div>
+                    <div id="ov-active-rate" class="kpi-sub">AFK率: 0%</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">総ブロック破壊・設置</div>
+                    <div id="ov-blocks-total" class="kpi-value">0</div>
+                    <div id="ov-blocks-sub" class="kpi-sub">破壊: 0 | 設置: 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">総獲得 Jobs XP</div>
+                    <div id="ov-jobs-xp" class="kpi-value">0.0</div>
+                    <div class="kpi-sub">全職合計</div>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title">
+                    <span>🏆 アクティブランキング TOP 5</span>
+                    <button class="refresh-btn" onclick="switchTab('players')">すべて見る →</button>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>順位</th>
+                                <th>プレイヤー</th>
+                                <th>実アクティブ</th>
+                                <th>採掘数</th>
+                                <th>Jobs XP</th>
+                                <th>主要世界</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overview-ranking-body">
+                            <tr><td colspan="6" style="text-align:center;">データを読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. プレイヤー分析タブ -->
+        <div id="tab-players" class="tab-pane">
+            <div class="section-card">
+                <div class="section-title">
+                    <span>👤 プレイヤー活動一覧</span>
+                    <input type="text" id="playerSearch" class="search-box" placeholder="プレイヤー名を検索..." oninput="filterPlayers()">
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>名前</th>
+                                <th>実アクティブ時間</th>
+                                <th>活動率</th>
+                                <th>セッション</th>
+                                <th>採掘 / 設置</th>
+                                <th>キル / 死亡</th>
+                                <th>Jobs XP</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="players-table-body">
+                            <tr><td colspan="8" style="text-align:center;">データを読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 拠点・防犯分析タブ -->
+        <div id="tab-bases" class="tab-pane">
+            <div class="section-card">
+                <div class="section-title">
+                    <span>🏰 拠点（検知ブロック）活動・防犯サマリー</span>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>拠点所有者</th>
+                                <th>検知器稼働数</th>
+                                <th>メンバー滞在</th>
+                                <th>訪問者滞在</th>
+                                <th>侵入セッション数</th>
+                                <th>最大同時人数</th>
+                                <th>検知器別</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bases-table-body">
+                            <tr><td colspan="7" style="text-align:center;">データを読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 空間ヒートマップタブ -->
+        <div id="tab-heatmap" class="tab-pane">
+            <div class="map-card">
+                <div class="section-title">
+                    <span>🗺️ 空間セル（32x32）インタラクティブ 2Dマップ</span>
+                    <div style="display: flex; gap: 8px;">
+                        <select id="heatmapDimSelector" class="window-selector" onchange="fetchHeatmap()">
+                            <option value="minecraft:overworld" selected>🌍 Overworld</option>
+                            <option value="minecraft:the_nether">🔥 The Nether</option>
+                            <option value="minecraft:the_end">🔮 The End</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 2Dマップコンテナ -->
+                <div class="map-container" id="mapContainer">
+                    <canvas id="heatmapCanvas" class="map-canvas"></canvas>
+                    
+                    <!-- トップコントロールバー -->
+                    <div class="map-top-bar">
+                        <div class="map-filter-group">
+                            <select id="mapYBandFilter" class="window-selector" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onchange="onMapFilterChange()">
+                                <option value="ALL" selected>高度: 全て</option>
+                                <option value="DEEP_UNDERGROUND">地下深層 (Y&lt;0)</option>
+                                <option value="UNDERGROUND">地下 (0〜62)</option>
+                                <option value="SURFACE">地表 (63〜128)</option>
+                                <option value="SKY">上空 (Y&gt;128)</option>
+                            </select>
+                            <select id="mapRelationFilter" class="window-selector" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onchange="onMapFilterChange()">
+                                <option value="ALL" selected>立場: 全て</option>
+                                <option value="WILDERNESS">荒野 (WILDERNESS)</option>
+                                <option value="OWN_TERRITORY">自領 (OWN)</option>
+                                <option value="FRIENDLY">友好訪問 (FRIENDLY)</option>
+                                <option value="INTRUSION">侵入 (INTRUSION)</option>
+                            </select>
+                        </div>
+                        <div class="map-btn-group">
+                            <button class="map-control-btn" onclick="mapViewer.zoomIn()" title="ズームイン">➕</button>
+                            <button class="map-control-btn" onclick="mapViewer.zoomOut()" title="ズームアウト">➖</button>
+                            <button class="map-control-btn" onclick="mapViewer.resetOrigin()" title="原点 [0,0] に移動">📍 原点</button>
+                            <button class="map-control-btn" onclick="mapViewer.fitToData()" title="データ全体にフィット">⤢ フィット</button>
+                        </div>
+                    </div>
+
+                    <!-- 凡例 -->
+                    <div class="map-legend">
+                        <div>活動密度 (サンプル数)</div>
+                        <div class="legend-bar"></div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span>低</span>
+                            <span>高</span>
+                        </div>
+                    </div>
+
+                    <!-- 座標・ズーム表示 -->
+                    <div class="map-coords-badge" id="mapCoordsBadge">
+                        X: 0, Z: 0 | Zoom: 100%
+                    </div>
+
+                    <!-- ホバーツールチップ -->
+                    <div class="map-tooltip" id="mapTooltip"></div>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title">
+                    <span>📋 密度上位セル一覧 (32x32)</span>
+                    <span id="heatmapCellCountBadge" class="badge badge-active">0 セル</span>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>セル座標 (32x32)</th>
+                                <th>高度帯</th>
+                                <th>立場</th>
+                                <th>滞在サンプル数</th>
+                                <th>ユニーク人数</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="heatmap-table-body">
+                            <tr><td colspan="6" style="text-align:center;">データを読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. システムヘルスタブ -->
+        <div id="tab-system" class="tab-pane">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">非同期キュー深度</div>
+                    <div id="sys-queue" class="kpi-value">0</div>
+                    <div class="kpi-sub">上限: 10,000</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">破棄イベント総数</div>
+                    <div id="sys-dropped" class="kpi-value">0</div>
+                    <div class="kpi-sub">欠損ゼロを維持</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">直近Flush処理時間</div>
+                    <div id="sys-flush-ms" class="kpi-value">0ms</div>
+                    <div class="kpi-sub">WAL非同期コミット</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">SQLite DB容量</div>
+                    <div id="sys-db-size" class="kpi-value">0.0 MB</div>
+                    <div class="kpi-sub">analytics.db</div>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title">
+                    <span>📥 データエクスポート</span>
+                </div>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
+                    選択中の窓期間（<span id="export-window-label" style="color: var(--accent-blue); font-weight: bold;">過去7日間</span>）の全プレイヤー活動集計データをダウンロードします。
+                </p>
+                <div class="export-btn-group">
+                    <button class="export-btn" onclick="exportData('csv')">📄 CSV形式でダウンロード</button>
+                    <button class="export-btn" onclick="exportData('jsonl')">📦 JSONL形式でダウンロード</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- プレイヤー詳細モーダル -->
+    <div id="playerModal" class="modal-backdrop">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">×</button>
+            <h2 id="modal-player-name" style="margin-bottom: 1rem; color: var(--accent-blue);">プレイヤー名</h2>
+            <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+                <div class="kpi-card">
+                    <div class="kpi-label">実アクティブ時間</div>
+                    <div id="modal-active" class="kpi-value" style="font-size: 1.4rem;">0h</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">総オンライン時間</div>
+                    <div id="modal-online" class="kpi-value" style="font-size: 1.4rem;">0h</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">AFK時間</div>
+                    <div id="modal-afk" class="kpi-value" style="font-size: 1.4rem;">0h</div>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.95rem;">
+                <div><strong>セッション数:</strong> <span id="modal-sessions">0</span> 回 (平均 <span id="modal-avg-session">0</span>)</div>
+                <div><strong>アクティブ日数:</strong> <span id="modal-active-days">0</span> 日</div>
+                <div><strong>ブロック採掘 / 設置:</strong> <span id="modal-breaks">0</span> / <span id="modal-places">0</span></div>
+                <div><strong>アイテムクラフト数:</strong> <span id="modal-crafts">0</span></div>
+                <div><strong>戦闘実績:</strong> PvE <span id="modal-pve">0</span> / PvP <span id="modal-pvp">0</span> (死亡 <span id="modal-deaths">0</span>)</div>
+                <div><strong>Jobs 獲得XP:</strong> <span id="modal-jobs">0.0</span></div>
+                <div><strong>移動距離 / TPA:</strong> <span id="modal-distance">0m</span> / <span id="modal-tpa">0</span> 回</div>
+                <div><strong>主要世界:</strong> <span id="modal-dim">minecraft:overworld</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'overview';
+        let cachedPlayers = [];
+
+        // トークンの初期化 (URLパラメータ ?token=... または sessionStorage)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('token')) {
+            sessionStorage.setItem('me_analytics_token', urlParams.get('token'));
+        }
+
+        function getAuthToken() {
+            return sessionStorage.getItem('me_analytics_token') || '';
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[ch]);
+        }
+
+        async function apiFetch(url) {
+            const token = getAuthToken();
+            const sep = url.includes('?') ? '&' : '?';
+            const authUrl = token ? `${url}${sep}token=${encodeURIComponent(token)}` : url;
+            return fetch(authUrl, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+        }
+
+        function formatDuration(sec) {
+            if (!sec || sec < 60) return (sec || 0) + '秒';
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+
+        function formatNumber(num) {
+            return (num || 0).toLocaleString();
+        }
+
+        function formatDistance(meters) {
+            if (!meters) return '0m';
+            if (meters >= 1000) return (meters / 1000).toFixed(1) + 'km';
+            return meters.toFixed(0) + 'm';
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+
+            const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tab));
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const activePane = document.getElementById('tab-' + tab);
+            if (activePane) activePane.classList.add('active');
+
+            if (tab === 'heatmap' && mapViewer) {
+                setTimeout(() => mapViewer.resize(), 50);
+            }
+
+            fetchCurrentTab();
+        }
+
+        function onWindowChange() {
+            const label = document.getElementById('windowSelector').options[document.getElementById('windowSelector').selectedIndex].text;
+            document.getElementById('export-window-label').innerText = label;
+            fetchCurrentTab();
+        }
+
+        function fetchCurrentTab() {
+            const windowVal = document.getElementById('windowSelector').value;
+            if (currentTab === 'overview') {
+                fetchOverview(windowVal);
+            } else if (currentTab === 'players') {
+                fetchPlayers(windowVal);
+            } else if (currentTab === 'bases') {
+                fetchBases(windowVal);
+            } else if (currentTab === 'heatmap') {
+                fetchHeatmap();
+            } else if (currentTab === 'system') {
+                fetchSystemHealth();
+            }
+        }
+
+        async function fetchOverview(windowVal) {
+            try {
+                // 1. サーバー全体の総合概要KPI取得
+                const ovRes = await apiFetch(`/api/overview?window=${windowVal}`);
+                if (ovRes.status === 401) {
+                    alert('API認証トークンが無効または未設定です。Minecraft内で /analytics web または /analytics token を実行してトークンを取得してください。');
+                    return;
+                }
+                const ov = await ovRes.json();
+
+                document.getElementById('ov-active-players').innerText = formatNumber(ov.activeUniquePlayers);
+                document.getElementById('ov-active-hours').innerText = formatDuration(ov.totalActiveSeconds);
+                const afkRate = ov.totalOnlineSeconds > 0 ? (((ov.totalOnlineSeconds - ov.totalActiveSeconds) / ov.totalOnlineSeconds) * 100).toFixed(0) : 0;
+                document.getElementById('ov-active-rate').innerText = `AFK率: ${afkRate}%`;
+                document.getElementById('ov-blocks-total').innerText = formatNumber(ov.totalBreaks + ov.totalPlaces);
+                document.getElementById('ov-blocks-sub').innerText = `破壊: ${formatNumber(ov.totalBreaks)} | 設置: ${formatNumber(ov.totalPlaces)}`;
+                document.getElementById('ov-jobs-xp').innerText = (ov.totalJobsXp || 0).toFixed(1);
+
+                // 2. Ranking Table (TOP 5)
+                const rankRes = await apiFetch(`/api/players?window=${windowVal}&limit=5`);
+                const topPlayers = await rankRes.json();
+                const tbody = document.getElementById('overview-ranking-body');
+                if (!topPlayers || topPlayers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">データがありません</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = topPlayers.map((p, idx) => `
+                    <tr>
+                        <td><strong>${idx + 1}</strong></td>
+                        <td><strong style="color:var(--accent-blue);">${p.lastKnownName}</strong></td>
+                        <td style="color:var(--accent-emerald); font-weight:600;">${formatDuration(p.totalActiveSeconds)}</td>
+                        <td>${formatNumber(p.totalBreaks)}</td>
+                        <td>${p.totalJobsXp.toFixed(1)} XP</td>
+                        <td><span class="badge badge-dim">${p.primaryDimension.replace('minecraft:', '')}</span></td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function fetchPlayers(windowVal) {
+            try {
+                const res = await apiFetch(`/api/players?window=${windowVal}&limit=100`);
+                cachedPlayers = await res.json();
+                renderPlayersTable(cachedPlayers);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function renderPlayersTable(players) {
+            const tbody = document.getElementById('players-table-body');
+            if (players.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">該当するプレイヤーがいません</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = players.map(p => {
+                const pct = p.totalOnlineSeconds > 0 ? Math.min(100, Math.round((p.totalActiveSeconds / p.totalOnlineSeconds) * 100)) : 0;
+                return `
+                    <tr>
+                        <td><strong>${p.lastKnownName}</strong></td>
+                        <td style="color:var(--accent-emerald); font-weight:600;">${formatDuration(p.totalActiveSeconds)}</td>
+                        <td style="width: 140px;">
+                            <div style="font-size:0.8rem; margin-bottom:4px;">${pct}%</div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${pct}%;"></div></div>
+                        </td>
+                        <td>${p.sessionCount}回 (${formatDuration(p.avgSessionDurationSeconds)})</td>
+                        <td>${formatNumber(p.totalBreaks)} / ${formatNumber(p.totalPlaces)}</td>
+                        <td>${p.totalPveKills} / ${p.totalDeaths}</td>
+                        <td>${p.totalJobsXp.toFixed(1)}</td>
+                        <td><button class="refresh-btn" style="padding:0.25rem 0.6rem; font-size:0.8rem;" onclick="openPlayerModalByUuid('${p.playerUuid}')">詳細</button></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterPlayers() {
+            const q = document.getElementById('playerSearch').value.toLowerCase();
+            const filtered = cachedPlayers.filter(p => p.lastKnownName.toLowerCase().includes(q));
+            renderPlayersTable(filtered);
+        }
+
+        async function fetchBases(windowVal) {
+            try {
+                const res = await apiFetch(`/api/groups?window=${windowVal}`);
+                const bases = await res.json();
+                const tbody = document.getElementById('bases-table-body');
+                if (!bases || bases.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">拠点データがありません</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = bases.map(b => `
+                    <tr>
+                        <td><strong style="color:var(--accent-amber);">${escapeHtml(b.ownerName)}</strong></td>
+                        <td>${b.detectorCount} 台</td>
+                        <td style="color:var(--accent-emerald); font-weight:600;">${b.totalMemberMinutes.toFixed(1)} 分</td>
+                        <td style="color:var(--accent-blue);">${b.totalVisitorMinutes.toFixed(1)} 分</td>
+                        <td style="color:var(--accent-rose); font-weight:600;">${b.totalIntrusionSessions} 回</td>
+                        <td>メンバー ${b.maxDistinctMembers}人 / 訪問者 ${b.maxDistinctVisitors}人</td>
+                        <td><button class="refresh-btn" style="padding:0.25rem 0.6rem; font-size:0.8rem;" onclick="toggleDetectors('${b.groupOwnerUuid}', this)">表示</button></td>
+                    </tr>
+                    <tr id="detectors-${b.groupOwnerUuid}" style="display:none;">
+                        <td colspan="7" style="padding:0.8rem 1.2rem; background:rgba(0,0,0,0.18);">読み込み中...</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function toggleDetectors(ownerUuid, button) {
+            const detailRow = document.getElementById(`detectors-${ownerUuid}`);
+            if (!detailRow) return;
+            if (detailRow.style.display !== 'none') {
+                detailRow.style.display = 'none';
+                button.textContent = '表示';
+                return;
+            }
+
+            detailRow.style.display = 'table-row';
+            button.textContent = '閉じる';
+            const cell = detailRow.querySelector('td');
+            cell.textContent = '読み込み中...';
+            try {
+                const windowVal = document.getElementById('windowSelector').value;
+                const res = await apiFetch(`/api/detectors?group=${encodeURIComponent(ownerUuid)}&window=${windowVal}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const detectors = await res.json();
+                if (!detectors || detectors.length === 0) {
+                    cell.textContent = 'この期間の検知器データはありません。';
+                    return;
+                }
+                cell.innerHTML = `
+                    <table style="margin:0; width:100%;">
+                        <thead><tr>
+                            <th>検知器名称</th><th>ディメンション</th><th>侵入</th>
+                            <th>メンバー滞在</th><th>訪問者滞在</th><th>最大同時人数</th>
+                        </tr></thead>
+                        <tbody>${detectors.map(d => `
+                            <tr>
+                                <td><strong>${escapeHtml(d.detectorName)}</strong></td>
+                                <td>${escapeHtml(d.dimension)}</td>
+                                <td style="color:var(--accent-rose);">${d.totalIntrusionSessions} 回</td>
+                                <td>${d.totalMemberMinutes.toFixed(1)} 分</td>
+                                <td>${d.totalVisitorMinutes.toFixed(1)} 分</td>
+                                <td>メンバー ${d.maxDistinctMembers}人 / 訪問者 ${d.maxDistinctVisitors}人</td>
+                            </tr>
+                        `).join('')}</tbody>
+                    </table>`;
+            } catch (e) {
+                cell.textContent = '検知器データの取得に失敗しました。';
+                console.error(e);
+            }
+        }
+
+        // ==========================================
+        // 空間ヒートマップ 2Dマップビューア エンジン
+        // ==========================================
+        class HeatmapMapViewer {
+            constructor(canvasId, containerId, tooltipId, coordsBadgeId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.container = document.getElementById(containerId);
+                this.tooltip = document.getElementById(tooltipId);
+                this.coordsBadge = document.getElementById(coordsBadgeId);
+
+                this.rawCells = [];
+                this.filteredCells = [];
+                this.maxSamples = 1;
+
+                this.scale = 0.2;
+                this.offsetX = 0;
+                this.offsetY = 0;
+
+                this.isDragging = false;
+                this.dragStartX = 0;
+                this.dragStartY = 0;
+                this.lastOffsetX = 0;
+                this.lastOffsetY = 0;
+
+                this.hoveredCell = null;
+                this.selectedCellKey = null;
+
+                this.initEvents();
+                this.resize();
+            }
+
+            resize() {
+                if (!this.container || !this.canvas) return;
+                const rect = this.container.getBoundingClientRect();
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                this.render();
+            }
+
+            setData(cells) {
+                this.rawCells = cells || [];
+                this.applyFilter();
+                this.fitToData();
+            }
+
+            applyFilter() {
+                const yBand = document.getElementById('mapYBandFilter') ? document.getElementById('mapYBandFilter').value : 'ALL';
+                const relation = document.getElementById('mapRelationFilter') ? document.getElementById('mapRelationFilter').value : 'ALL';
+
+                this.filteredCells = this.rawCells.filter(c => {
+                    if (yBand !== 'ALL' && c.yBand !== yBand) return false;
+                    if (relation !== 'ALL' && c.relation !== relation) return false;
+                    return true;
+                });
+
+                this.maxSamples = this.filteredCells.reduce((max, c) => Math.max(max, c.totalActiveSamples || 0), 1);
+                if (this.maxSamples === 0) this.maxSamples = 1;
+
+                const countBadge = document.getElementById('heatmapCellCountBadge');
+                if (countBadge) {
+                    countBadge.innerText = `${this.filteredCells.length} セル`;
+                }
+
+                this.render();
+                renderHeatmapTable(this.filteredCells);
+            }
+
+            worldToScreen(wx, wz) {
+                const cx = this.canvas.width / 2;
+                const cy = this.canvas.height / 2;
+                return {
+                    x: cx + this.offsetX + wx * this.scale,
+                    y: cy + this.offsetY + wz * this.scale
+                };
+            }
+
+            screenToWorld(sx, sy) {
+                const cx = this.canvas.width / 2;
+                const cy = this.canvas.height / 2;
+                return {
+                    wx: (sx - cx - this.offsetX) / this.scale,
+                    wz: (sy - cy - this.offsetY) / this.scale
+                };
+            }
+
+            getColorForRatio(ratio) {
+                if (ratio < 0.25) {
+                    const t = ratio / 0.25;
+                    return `rgba(56, 189, 248, ${0.4 + t * 0.3})`;
+                } else if (ratio < 0.5) {
+                    const t = (ratio - 0.25) / 0.25;
+                    return `rgba(52, 211, 153, ${0.7 + t * 0.2})`;
+                } else if (ratio < 0.75) {
+                    const t = (ratio - 0.5) / 0.25;
+                    return `rgba(251, 191, 36, ${0.85 + t * 0.1})`;
+                } else {
+                    const t = (ratio - 0.75) / 0.25;
+                    return `rgba(239, 68, 68, ${0.9 + t * 0.1})`;
+                }
+            }
+
+            render() {
+                if (!this.canvas || !this.ctx) return;
+                const ctx = this.ctx;
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+
+                ctx.clearRect(0, 0, width, height);
+
+                // 1. 背景グリッドと軸
+                this.renderGrid(ctx, width, height);
+
+                // 2. ヒートマップセル描画
+                const cellSizePx = 32 * this.scale;
+                for (const cell of this.filteredCells) {
+                    const worldX = cell.cellX * 32;
+                    const worldZ = cell.cellZ * 32;
+                    const sp = this.worldToScreen(worldX, worldZ);
+
+                    if (sp.x + cellSizePx < 0 || sp.x > width || sp.y + cellSizePx < 0 || sp.y > height) {
+                        continue;
+                    }
+
+                    const ratio = Math.min(1.0, (cell.totalActiveSamples || 0) / this.maxSamples);
+                    ctx.fillStyle = this.getColorForRatio(ratio);
+                    ctx.fillRect(sp.x, sp.y, Math.max(1, cellSizePx), Math.max(1, cellSizePx));
+
+                    if (cellSizePx >= 10) {
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(sp.x, sp.y, cellSizePx, cellSizePx);
+                    }
+
+                    const cellKey = `${cell.cellX}:${cell.cellZ}:${cell.yBand}:${cell.relation}`;
+                    if (this.selectedCellKey === cellKey || (this.hoveredCell && this.hoveredCell === cell)) {
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(sp.x - 1, sp.y - 1, cellSizePx + 2, cellSizePx + 2);
+                    }
+                }
+
+                // 3. 原点マーカー
+                const origin = this.worldToScreen(0, 0);
+                if (origin.x >= 0 && origin.x <= width && origin.y >= 0 && origin.y <= height) {
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.beginPath();
+                    ctx.arc(origin.x, origin.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.font = '10px monospace';
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.fillText('[0, 0]', origin.x + 6, origin.y - 4);
+                }
+
+                // 4. 方角インジケーター
+                this.renderCompass(ctx, width);
+
+                // 座標バッジ更新
+                if (this.coordsBadge) {
+                    const centerWorld = this.screenToWorld(width / 2, height / 2);
+                    const zoomPct = Math.round(this.scale * 100 / 0.2);
+                    this.coordsBadge.innerText = `中心: [X: ${Math.round(centerWorld.wx)}, Z: ${Math.round(centerWorld.wz)}] | Zoom: ${zoomPct}%`;
+                }
+            }
+
+            renderGrid(ctx, width, height) {
+                let gridStep = 512;
+                if (this.scale > 0.8) gridStep = 128;
+                else if (this.scale > 0.3) gridStep = 256;
+                else if (this.scale < 0.05) gridStep = 2048;
+                else if (this.scale < 0.1) gridStep = 1024;
+
+                const topLeft = this.screenToWorld(0, 0);
+                const bottomRight = this.screenToWorld(width, height);
+
+                const startX = Math.floor(topLeft.wx / gridStep) * gridStep;
+                const endX = Math.ceil(bottomRight.wx / gridStep) * gridStep;
+                const startZ = Math.floor(topLeft.wz / gridStep) * gridStep;
+                const endZ = Math.ceil(bottomRight.wz / gridStep) * gridStep;
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+                ctx.lineWidth = 1;
+                ctx.font = '10px monospace';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+
+                for (let x = startX; x <= endX; x += gridStep) {
+                    const sp = this.worldToScreen(x, 0);
+                    ctx.beginPath();
+                    ctx.moveTo(sp.x, 0);
+                    ctx.lineTo(sp.x, height);
+                    ctx.stroke();
+
+                    if (sp.x >= 0 && sp.x <= width - 30) {
+                        ctx.fillText(`X:${x}`, sp.x + 4, height - 20);
+                    }
+                }
+
+                for (let z = startZ; z <= endZ; z += gridStep) {
+                    const sp = this.worldToScreen(0, z);
+                    ctx.beginPath();
+                    ctx.moveTo(0, sp.y);
+                    ctx.lineTo(width, sp.y);
+                    ctx.stroke();
+
+                    if (sp.y >= 15 && sp.y <= height) {
+                        ctx.fillText(`Z:${z}`, 10, sp.y - 4);
+                    }
+                }
+
+                const origin = this.worldToScreen(0, 0);
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+                ctx.beginPath();
+                ctx.moveTo(0, origin.y);
+                ctx.lineTo(width, origin.y);
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(129, 140, 248, 0.3)';
+                ctx.beginPath();
+                ctx.moveTo(origin.x, 0);
+                ctx.lineTo(origin.x, height);
+                ctx.stroke();
+            }
+
+            renderCompass(ctx, width) {
+                const cx = width - 40;
+                const cy = 40;
+                ctx.save();
+                ctx.translate(cx, cy);
+
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillStyle = '#f87171';
+                ctx.textAlign = 'center';
+                ctx.fillText('N (-Z)', 0, -18);
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText('S (+Z)', 0, 26);
+                ctx.textAlign = 'left';
+                ctx.fillText('E (+X)', 18, 4);
+                ctx.textAlign = 'right';
+                ctx.fillText('W (-X)', -18, 4);
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            initEvents() {
+                window.addEventListener('resize', () => this.resize());
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    this.isDragging = true;
+                    this.dragStartX = e.clientX;
+                    this.dragStartY = e.clientY;
+                    this.lastOffsetX = this.offsetX;
+                    this.lastOffsetY = this.offsetY;
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (this.isDragging) {
+                        const dx = e.clientX - this.dragStartX;
+                        const dy = e.clientY - this.dragStartY;
+                        this.offsetX = this.lastOffsetX + dx;
+                        this.offsetY = this.lastOffsetY + dy;
+                        this.render();
+                    } else {
+                        this.handleMouseMove(e);
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    this.isDragging = false;
+                });
+
+                this.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const rect = this.canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+
+                    const worldPos = this.screenToWorld(mouseX, mouseY);
+                    const zoomFactor = e.deltaY < 0 ? 1.2 : 0.833;
+                    const newScale = Math.min(5.0, Math.max(0.015, this.scale * zoomFactor));
+
+                    this.scale = newScale;
+                    const cx = this.canvas.width / 2;
+                    const cy = this.canvas.height / 2;
+                    this.offsetX = mouseX - cx - worldPos.wx * this.scale;
+                    this.offsetY = mouseY - cy - worldPos.wz * this.scale;
+
+                    this.render();
+                    this.handleMouseMove(e);
+                }, { passive: false });
+
+                this.canvas.addEventListener('click', (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+                    const cell = this.findCellAtScreen(mouseX, mouseY);
+                    if (cell) {
+                        this.selectedCellKey = `${cell.cellX}:${cell.cellZ}:${cell.yBand}:${cell.relation}`;
+                        this.render();
+                        highlightTableRow(this.selectedCellKey);
+                    }
+                });
+            }
+
+            findCellAtScreen(sx, sy) {
+                const w = this.screenToWorld(sx, sy);
+                const cellX = Math.floor(w.wx / 32);
+                const cellZ = Math.floor(w.wz / 32);
+                return this.filteredCells.find(c => c.cellX === cellX && c.cellZ === cellZ);
+            }
+
+            handleMouseMove(e) {
+                if (!this.canvas || !this.tooltip) return;
+                const rect = this.canvas.getBoundingClientRect();
+                if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+                    this.tooltip.style.display = 'none';
+                    if (this.hoveredCell) {
+                        this.hoveredCell = null;
+                        this.render();
+                    }
+                    return;
+                }
+
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                const cell = this.findCellAtScreen(mouseX, mouseY);
+
+                if (cell) {
+                    this.hoveredCell = cell;
+                    const startX = cell.cellX * 32;
+                    const endX = startX + 32;
+                    const startZ = cell.cellZ * 32;
+                    const endZ = startZ + 32;
+
+                    this.tooltip.innerHTML = `
+                        <div class="map-tooltip-title">📍 セル [${cell.cellX}, ${cell.cellZ}]</div>
+                        <div class="map-tooltip-row"><span>座標範囲:</span><span style="color:#fff;">X: ${startX}〜${endX}, Z: ${startZ}〜${endZ}</span></div>
+                        <div class="map-tooltip-row"><span>高度帯:</span><span style="color:var(--accent-purple);">${cell.yBand}</span></div>
+                        <div class="map-tooltip-row"><span>立場:</span><span style="color:var(--accent-amber);">${cell.relation}</span></div>
+                        <div class="map-tooltip-row"><span>滞在サンプル:</span><span class="map-tooltip-val">${formatNumber(cell.totalActiveSamples)}</span></div>
+                        <div class="map-tooltip-row"><span>ユニーク人数:</span><span style="color:var(--accent-blue);">${cell.maxUniquePlayers} 人</span></div>
+                    `;
+                    this.tooltip.style.left = Math.min(rect.width - 220, mouseX + 16) + 'px';
+                    this.tooltip.style.top = Math.min(rect.height - 160, mouseY + 16) + 'px';
+                    this.tooltip.style.display = 'block';
+                    this.render();
+                } else {
+                    this.tooltip.style.display = 'none';
+                    if (this.hoveredCell) {
+                        this.hoveredCell = null;
+                        this.render();
+                    }
+                }
+            }
+
+            zoomIn() {
+                this.scale = Math.min(5.0, this.scale * 1.3);
+                this.render();
+            }
+
+            zoomOut() {
+                this.scale = Math.max(0.015, this.scale / 1.3);
+                this.render();
+            }
+
+            resetOrigin() {
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.scale = 0.25;
+                this.render();
+            }
+
+            fitToData() {
+                if (!this.filteredCells || this.filteredCells.length === 0) {
+                    this.resetOrigin();
+                    return;
+                }
+
+                let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+                for (const c of this.filteredCells) {
+                    const wx = c.cellX * 32;
+                    const wz = c.cellZ * 32;
+                    if (wx < minX) minX = wx;
+                    if (wx + 32 > maxX) maxX = wx + 32;
+                    if (wz < minZ) minZ = wz;
+                    if (wz + 32 > maxZ) maxZ = wz + 32;
+                }
+
+                const dataWidth = Math.max(64, maxX - minX);
+                const dataHeight = Math.max(64, maxZ - minZ);
+                const centerX = (minX + maxX) / 2;
+                const centerZ = (minZ + maxZ) / 2;
+
+                const padding = 60;
+                const availWidth = Math.max(100, this.canvas.width - padding * 2);
+                const availHeight = Math.max(100, this.canvas.height - padding * 2);
+
+                this.scale = Math.min(1.5, Math.max(0.02, Math.min(availWidth / dataWidth, availHeight / dataHeight)));
+                this.offsetX = -centerX * this.scale;
+                this.offsetY = -centerZ * this.scale;
+
+                this.render();
+            }
+
+            focusCell(cellX, cellZ) {
+                const targetX = cellX * 32 + 16;
+                const targetZ = cellZ * 32 + 16;
+                this.scale = Math.max(0.4, this.scale);
+                this.offsetX = -targetX * this.scale;
+                this.offsetY = -targetZ * this.scale;
+                this.selectedCellKey = `${cellX}:${cellZ}`;
+                this.render();
+            }
+        }
+
+        let mapViewer = null;
+
+        function onMapFilterChange() {
+            if (mapViewer) {
+                mapViewer.applyFilter();
+            }
+        }
+
+        function renderHeatmapTable(cells) {
+            const tbody = document.getElementById('heatmap-table-body');
+            if (!cells || cells.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">ヒートマップデータがありません</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = cells.map(c => {
+                const key = `${c.cellX}:${c.cellZ}:${c.yBand}:${c.relation}`;
+                return `
+                    <tr id="row-cell-${c.cellX}-${c.cellZ}" class="heatmap-row" data-key="${key}">
+                        <td><strong>[X: ${c.cellX * 32} ~, Z: ${c.cellZ * 32} ~]</strong></td>
+                        <td>${c.yBand}</td>
+                        <td><span class="badge badge-active">${c.relation}</span></td>
+                        <td style="color:var(--accent-emerald); font-weight:600;">${formatNumber(c.totalActiveSamples)}</td>
+                        <td>${c.maxUniquePlayers} 人</td>
+                        <td>
+                            <button class="action-btn" onclick="focusMapCell(${c.cellX}, ${c.cellZ}, '${key}')">📍 フォーカス</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function highlightTableRow(key) {
+            document.querySelectorAll('.heatmap-row').forEach(r => r.classList.remove('table-row-selected'));
+            const targetRow = document.querySelector(`.heatmap-row[data-key="${key}"]`);
+            if (targetRow) {
+                targetRow.classList.add('table-row-selected');
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function focusMapCell(cellX, cellZ, key) {
+            if (mapViewer) {
+                mapViewer.focusCell(cellX, cellZ);
+                mapViewer.selectedCellKey = key;
+                highlightTableRow(key);
+            }
+        }
+
+        async function fetchHeatmap() {
+            const windowVal = document.getElementById('windowSelector').value;
+            const dim = document.getElementById('heatmapDimSelector').value;
+            try {
+                const res = await apiFetch(`/api/heatmap?dimension=${encodeURIComponent(dim)}&window=${windowVal}&limit=300`);
+                const cells = await res.json();
+
+                if (!mapViewer) {
+                    mapViewer = new HeatmapMapViewer('heatmapCanvas', 'mapContainer', 'mapTooltip', 'mapCoordsBadge');
+                }
+                mapViewer.setData(cells);
+                mapViewer.resize();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function fetchSystemHealth() {
+            try {
+                const res = await apiFetch('/api/health');
+                const h = await res.json();
+                document.getElementById('sys-queue').innerText = h.queueDepth;
+                document.getElementById('sys-dropped').innerText = h.droppedEventsTotal;
+                document.getElementById('sys-flush-ms').innerText = h.lastFlushDurationMs + 'ms';
+                document.getElementById('sys-db-size').innerText = (h.databaseSizeBytes / (1024 * 1024)).toFixed(2) + ' MB';
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function exportData(format) {
+            const windowVal = document.getElementById('windowSelector').value;
+            const token = getAuthToken();
+            const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
+            window.location.href = `/api/export?format=${format}&window=${windowVal}${tokenQuery}`;
+        }
+
+        function openPlayerModalByUuid(uuid) {
+            const p = cachedPlayers.find(x => x.playerUuid === uuid);
+            if (p) {
+                openPlayerModal(p);
+            }
+        }
+
+        function openPlayerModal(p) {
+            document.getElementById('modal-player-name').innerText = p.lastKnownName;
+            document.getElementById('modal-active').innerText = formatDuration(p.totalActiveSeconds);
+            document.getElementById('modal-online').innerText = formatDuration(p.totalOnlineSeconds);
+            document.getElementById('modal-afk').innerText = formatDuration(p.totalAfkSeconds);
+            document.getElementById('modal-sessions').innerText = p.sessionCount;
+            document.getElementById('modal-avg-session').innerText = formatDuration(p.avgSessionDurationSeconds);
+            document.getElementById('modal-active-days').innerText = p.activeDays;
+            document.getElementById('modal-breaks').innerText = formatNumber(p.totalBreaks);
+            document.getElementById('modal-places').innerText = formatNumber(p.totalPlaces);
+            document.getElementById('modal-crafts').innerText = formatNumber(p.totalCrafts);
+            document.getElementById('modal-pve').innerText = p.totalPveKills;
+            document.getElementById('modal-pvp').innerText = p.totalPvpKills;
+            document.getElementById('modal-deaths').innerText = p.totalDeaths;
+            document.getElementById('modal-jobs').innerText = p.totalJobsXp.toFixed(1);
+            document.getElementById('modal-distance').innerText = formatDistance(p.totalDistanceBlocks);
+            document.getElementById('modal-tpa').innerText = p.totalTpaSuccesses;
+            document.getElementById('modal-dim').innerText = p.primaryDimension;
+
+            document.getElementById('playerModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('playerModal').classList.remove('show');
+        }
+
+        // 初期化
+        fetchOverview('7d');
+    </script>
+</body>
+</html>

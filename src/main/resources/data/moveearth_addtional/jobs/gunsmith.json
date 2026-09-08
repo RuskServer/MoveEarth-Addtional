@@ -1,0 +1,10 @@
+{
+  "display_name": "ガンスミス",
+  "description": "銃・アタッチメントの製作と銃の解体で経験値を獲得します。",
+  "max_level": 50,
+  "points_per_level": 1,
+  "xp_curve": {"base": 100, "linear": 25, "quadratic": 10},
+  "gun_craft": {"xp": 12},
+  "attachment_craft": {"xp": 4},
+  "gun_disassembly": {"xp": 8}
+}

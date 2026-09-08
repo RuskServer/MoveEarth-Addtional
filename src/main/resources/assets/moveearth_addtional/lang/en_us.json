@@ -28,7 +28,7 @@
   "message.moveearth_addtional.starterkit.status.eligible": "eligible",
   "message.moveearth_addtional.starterkit.status.ineligible": "ineligible",
   "message.moveearth_addtional.pvp.launcher_forbidden": "Launcher-class weapons cannot be brought into PvP.",
-  "message.moveearth_addtional.pvp.fixed_preset": "Joined PvP. Your inventory will be replaced with the fixed FMIC preset during the match.",
+  "message.moveearth_addtional.pvp.fixed_preset": "Joined PvP. Your inventory will be replaced with the fixed preset during the match.",
   "message.moveearth_addtional.pvp.loadout_joined": "Joined PvP with the %s preset.",
   "message.moveearth_addtional.pvp.loadout_updated": "Changed your PvP preset to %s.",
   "screen.moveearth_addtional.pvp.title": "KOTH LOADOUT SELECT",
@@ -94,5 +94,10 @@
   "message.moveearth_addtional.no_gas_mask_equipped": "No gas mask equipped.",
   "message.moveearth_addtional.filter_low": "WARNING: Gas mask filter is running low!",
   "message.moveearth_addtional.filter_depleted": "WARNING: Gas mask filter depleted! Cannot breathe!",
-  "message.moveearth_addtional.torch_extinguished": "The torch was extinguished due to lack of oxygen..."
+  "message.moveearth_addtional.torch_extinguished": "The torch was extinguished due to lack of oxygen...",
+  "overlay.moveearth_addtional.pvp.hardpoint.title": "◆ HARDPOINT",
+  "overlay.moveearth_addtional.pvp.hardpoint.neutral": "SECURE THE AREA  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.red": "RED CONTROL  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.blue": "BLUE CONTROL  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.contested": "CONTESTED  •  RED %s  BLUE %s"
 }

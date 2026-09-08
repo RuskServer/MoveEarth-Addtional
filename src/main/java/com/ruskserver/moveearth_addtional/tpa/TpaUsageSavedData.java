@@ -9,9 +9,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/** Persistent, server-wide count of successful TPA teleports in the current opening-day cycle. */
+/** Persistent TPA usage, beginner allowance, and role-based cooldown state. */
 public final class TpaUsageSavedData extends SavedData {
-    public static final int DAILY_LIMIT = 5;
+    public static final int DAILY_LIMIT = 2;
     private final Map<UUID, Usage> usages = new HashMap<>();
 
     public int used(UUID playerId) {
@@ -22,27 +22,63 @@ public final class TpaUsageSavedData extends SavedData {
         return Math.max(0, DAILY_LIMIT - used(playerId));
     }
 
-    public boolean tryConsume(UUID playerId) {
-        Usage usage = current(playerId);
-        if (usage.used >= DAILY_LIMIT) {
-            return false;
+    public int beginnerUsed(UUID playerId) {
+        return current(playerId).beginnerUsed;
+    }
+
+    public int beginnerRemaining(UUID playerId, int allowance) {
+        return Math.max(0, allowance - beginnerUsed(playerId));
+    }
+
+    public long travelerCooldownRemainingMillis(UUID playerId, long nowEpochMs) {
+        return TpaPolicy.remainingMillis(current(playerId).travelerCooldownUntilEpochMs, nowEpochMs);
+    }
+
+    public long hostCooldownRemainingMillis(UUID playerId, long nowEpochMs) {
+        return TpaPolicy.remainingMillis(current(playerId).hostCooldownUntilEpochMs, nowEpochMs);
+    }
+
+    public void recordSuccessfulTeleport(
+            UUID travelerId,
+            UUID hostId,
+            TpaPolicy.Mode mode,
+            long nowEpochMs,
+            long travelerCooldownMillis,
+            long hostCooldownMillis
+    ) {
+        Usage traveler = current(travelerId);
+        Usage host = current(hostId);
+        if (mode == TpaPolicy.Mode.BEGINNER) {
+            traveler.beginnerUsed++;
+        } else {
+            traveler.used = Math.min(DAILY_LIMIT, traveler.used + 1);
+            traveler.travelerCooldownUntilEpochMs = Math.max(
+                    traveler.travelerCooldownUntilEpochMs,
+                    nowEpochMs + Math.max(0L, travelerCooldownMillis)
+            );
         }
-        usage.used++;
+        host.hostCooldownUntilEpochMs = Math.max(
+                host.hostCooldownUntilEpochMs,
+                nowEpochMs + Math.max(0L, hostCooldownMillis)
+        );
         setDirty();
-        return true;
     }
 
     public void reset(UUID playerId) {
-        usages.put(playerId, new Usage(OpenDayCycle.currentId(), 0));
+        usages.put(playerId, new Usage(OpenDayCycle.currentId(), 0, 0, 0L, 0L));
         setDirty();
     }
 
     private Usage current(UUID playerId) {
         String cycle = OpenDayCycle.currentId();
         Usage usage = usages.get(playerId);
-        if (usage == null || !usage.cycle.equals(cycle)) {
-            usage = new Usage(cycle, 0);
+        if (usage == null) {
+            usage = new Usage(cycle, 0, 0, 0L, 0L);
             usages.put(playerId, usage);
+            setDirty();
+        } else if (!usage.cycle.equals(cycle)) {
+            usage.cycle = cycle;
+            usage.used = 0;
             setDirty();
         }
         return usage;
@@ -55,6 +91,9 @@ public final class TpaUsageSavedData extends SavedData {
             CompoundTag usageTag = new CompoundTag();
             usageTag.putString("Cycle", usage.cycle);
             usageTag.putInt("Used", usage.used);
+            usageTag.putInt("BeginnerUsed", usage.beginnerUsed);
+            usageTag.putLong("TravelerCooldownUntilEpochMs", usage.travelerCooldownUntilEpochMs);
+            usageTag.putLong("HostCooldownUntilEpochMs", usage.hostCooldownUntilEpochMs);
             players.put(playerId.toString(), usageTag);
         });
         tag.put("Players", players);
@@ -70,7 +109,10 @@ public final class TpaUsageSavedData extends SavedData {
                 CompoundTag usageTag = players.getCompound(key);
                 data.usages.put(playerId, new Usage(
                         usageTag.getString("Cycle"),
-                        Math.max(0, usageTag.getInt("Used"))));
+                        Math.max(0, usageTag.getInt("Used")),
+                        Math.max(0, usageTag.getInt("BeginnerUsed")),
+                        Math.max(0L, usageTag.getLong("TravelerCooldownUntilEpochMs")),
+                        Math.max(0L, usageTag.getLong("HostCooldownUntilEpochMs"))));
             } catch (IllegalArgumentException ignored) {
             }
         }
@@ -84,12 +126,24 @@ public final class TpaUsageSavedData extends SavedData {
     }
 
     private static final class Usage {
-        private final String cycle;
+        private String cycle;
         private int used;
+        private int beginnerUsed;
+        private long travelerCooldownUntilEpochMs;
+        private long hostCooldownUntilEpochMs;
 
-        private Usage(String cycle, int used) {
+        private Usage(
+                String cycle,
+                int used,
+                int beginnerUsed,
+                long travelerCooldownUntilEpochMs,
+                long hostCooldownUntilEpochMs
+        ) {
             this.cycle = cycle;
             this.used = used;
+            this.beginnerUsed = beginnerUsed;
+            this.travelerCooldownUntilEpochMs = travelerCooldownUntilEpochMs;
+            this.hostCooldownUntilEpochMs = hostCooldownUntilEpochMs;
         }
     }
 }

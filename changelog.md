@@ -1,4 +1,120 @@
-# Unreleased
+# v3.0
+
+## Server Opening Schedule
+
+- **18:00–00:00 JST Opening Hours**: Shifted the dedicated-server login window to 18:00 through 23:59 JST. Closing notices now run at 23:30, 23:50, 23:55, and 23:59, followed by the normal-player disconnect at midnight.
+- **Aligned Opening-Day Resets**: TPA usage, PvP daily tasks, and analytics opening-day boundaries now roll over at 18:00 JST.
+
+## Voting Reward Variety
+
+- **Create Material Rewards**: Retained all six existing voting rewards and added equally weighted Andesite Alloy, Brass Ingot, Electron Tube, Copper Sheet, Precision Mechanism, and Sturdy Sheet rewards.
+- **Missing-Mod Fallback**: If a configured Create reward item is unavailable, that roll falls back to two Gold Coins instead of failing the reward command.
+
+## TPA Travel Balance
+
+- **Role-Based Limits and Cooldowns**: Normal TPA is limited to two successful teleports per opening-day cycle. A success applies a persistent 60-minute cooldown to the traveler and a 15-minute receiving cooldown to the destination host, preventing relay-style mass transport. Cooldowns survive relogging and server restarts.
+- **Beginner Rendezvous Allowance**: Players below six hours of total play time receive three lifetime rendezvous teleports that bypass the normal daily use and traveler cooldown. The receiving host receives a shorter three-minute cooldown.
+- **Safer Warmup**: Increased warmup from 5 to 20 seconds. Either player moving, changing dimension, entering a vehicle, taking/dealing damage, or entering an invalid PvP state cancels the teleport without consuming uses or cooldowns.
+- **Configurable Balance**: Added `moveearth_addtional-tpa.toml` settings for both cooldowns, beginner eligibility and allowance, warmup duration, and combat lock duration.
+
+## Player Detector Names and GUI
+
+- **Per-Detector Names**: Owners can assign a persistent name of up to 32 characters to each player detector from a new GUI tab. Names are validated by the server and retained in block-entity NBT.
+- **Delegated Base Managers**: Owners can grant up to 20 UUID-backed base managers permission to edit the shared detector whitelist. Managers cannot rename detectors, configure payment accounts, or grant further permissions, and all whitelist changes are recorded in the server log.
+- **Readable Alerts Without Coordinates**: Intrusion and payment-failure messages identify the detector by its configured name without exposing block coordinates.
+- **Detector-Level Analytics**: SQLite schema version 4 stores the detector name while retaining the internal position hash as its stable identity. The web dashboard can expand each base into named detector summaries, with legacy databases migrated automatically.
+- **Unblurred Detector GUI**: Disabled the vanilla world-background blur for the detector screen while retaining its translucent backdrop, keeping the surrounding area visible during configuration.
+- **Loaded-Detector Tick Registry**: Replaced the every-tick scan and copy of every saved detector position with a lifecycle-managed registry of loaded detector block entities. Dummy maintenance now runs once at the end of each server tick instead of once in the block-entity tick and again in the global handler.
+
+## Compatibility
+
+- Updated the mod version to `3.0` and the network protocol to `3.0-detector-admin1` because detector GUI packets now carry block positions, configured names, and delegated access state.
+- v3.0 clients and servers must use the same network protocol; older clients are rejected cleanly instead of decoding the changed packet schema.
+
+## Non-Blocking Random Spawn
+
+- **Tick-Sliced Chunk Search**: Random spawn no longer calls synchronous `ServerLevel#getChunk` from login or respawn events. It requests at most two candidate chunks server-wide and polls completed chunks on later ticks, preventing chunk generation waits from blocking the server thread.
+- **Bounded Load and Cleanup**: Reduced each search to 24 candidates with a 20-second deadline. Search tickets are released after every candidate and on success, timeout, logout, replacement, or server shutdown; the ticket type also has a defensive automatic expiry.
+- **Safe Fallback Loading**: The best distance fallback is reloaded and revalidated asynchronously before teleporting, so fallback behavior cannot reintroduce a synchronous chunk wait.
+
+## TaCZ Gun Disassembly
+
+- **Working 1.21.1 Recipe Injection**: Replaced the obsolete reflective `RecipeMap` lookup with the public `RecipeManager` replacement API, fixing the misleading state where hundreds of recipes were reported as injected although none were registered.
+- **Gun-Specific Crushing Inputs**: Generate recipes only for actual TaCZ gun outputs and match the partial `GunId` NBT value, allowing used or customized guns to work without treating every gun, ammunition item, and attachment as the same crushing input.
+- **Datapack Reload Support**: Regenerate disassembly recipes after a full datapack reload before recipes are synchronized to clients, while keeping injection idempotent by recipe ID.
+
+## Phantom Rest Protection
+
+- **Immediate Rest Credit**: A successful bed entry resets the player's insomnia timer immediately, without requiring the whole server to skip the night.
+- **Protected Target Cleanup**: A phantom that attempts to target a player who is not yet eligible for phantom spawning is discarded without drops or a death animation.
+
+# v2.2
+
+## Delayed Chunk Cache (DCC / Bandwidth Optimization)
+
+- **Authoritative Delayed Chunk Tracking**: Reworked DCC around a `ChunkTrackingView` that is the union of the normal player view and recently departed chunks, following NotEnoughBandwidth's current design. Chunk load/unload decisions, block and light updates, entity tracking, and NeoForge watch events now share the same source of truth.
+- **Redundant Resend Suppression**: When a player moves back into a recently departed chunk before cache expiry, DCC recognizes the client-side cached state and skips resending the full `ClientboundLevelChunkWithLightPacket`, drastically reducing bandwidth consumption during back-and-forth movement.
+- **3-Dimensional Eviction Policy**: Enforced eviction triggers across **capacity limit** (default: 64 chunks/player, oldest first), **extra distance threshold** (default: View Distance + 2 chunks), and **timeout expiration** (default: 30 seconds, including while stationary).
+- **Transport-Layer Independence**: DCC makes server-authoritative chunk delivery decisions without intercepting or rewriting packet transport, allowing packet compression and templating mods to operate at their own layer.
+- **Configurable Settings**: Added `DelayedChunkCacheConfig` to customize `sizeLimit`, `extraDistance`, `timeoutSeconds`, and `checkIntervalTicks`.
+
+## Entity Occlusion Culling (SubChunk VisGraph)
+
+- **SubChunk VisGraph Packet Control**: Integrated a sub-chunk (16×16×16) visibility graph and view frustum culling engine into `ChunkMap$TrackedEntity` via Mixin. Dynamically pauses packet broadcasting (`ItemEntity` and `ExperienceOrb`) for occluded or out-of-view entities, eliminating ESP exploitation and drastically reducing client-server network traffic.
+- **Ultra-Low Overhead & O(1) Evaluation**: Pre-calculates 6-face inter-connectivity bitmasks per section on block changes, allowing BFS exploration and entity visibility checks to execute in constant $O(1)$ set lookup time without ticking voxel raycasts.
+- **Pop-in Prevention & Near-Distance Bypass**: Enforced an unconditional 3.5m near-distance bypass around players and a +30-degree FOV margin to guarantee zero pop-in latency upon turning corners and preserve full compatibility with item magnet / auto-collector mods.
+- **Broad Mod Compatibility & Fail-Safe**: Leveraged vanilla `BlockState.canOcclude()` and `isSolidRender()` to automatically recognize third-party mod blocks (pipes, machines, glass, fences) while failing safe to visible upon unrendered or exceptional states.
+- **Configurable Control Engine**: Added `SubChunkOcclusionConfig` with toggles for feature enablement, bypass radius, FOV margin, search depth, tick intervals, and entity type filters.
+
+## Player Analytics & Web Dashboard
+
+- **Interactive 2D Spatial Heatmap Canvas Viewer**: Integrated a rich HTML5 Canvas 2D grid map into the web dashboard featuring pan/drag, mouse wheel zooming, origin centering, data autofit, dynamic coordinate/axis rendering, thermographic density coloration, hover inspection tooltips, altitude (YBand) / relationship (Relation) filtering, and bidirectional focus synchronization with the top density ranking table.
+- **Web Dashboard & REST API**: Provided `/api/summary`, `/api/heatmap`, `/api/top-players`, `/api/groups`, `/api/health`, and single-player inspection endpoints, with export archiving and configurable authentication (`config/moveearth_analytics.properties`).
+- **High-Throughput SQLite Storage Engine**: Implemented `SqliteAnalyticsStorageEngine` operating in SQLite WAL mode (`PRAGMA journal_mode = WAL`) under `<world>/moveearth/analytics/analytics.db` with background daemon transaction batching, automated retention purges, and auto-healing schema migrations (Version 3).
+- **JST 18:00 Open Day Cycle Alignment**: Aligned all retention and aggregation windows to JST 18:00 (`(bucket_at - 32400) / 86400`) and enforced per-open-day 10-minute active thresholds (`HAVING SUM(active_seconds) >= 600`) for individual `activeDays` and server-wide `activeUniquePlayers`.
+- **Realtime Session & Intrusion Tracking**: Integrated non-blocking `SessionTracker` measuring active vs. AFK duration, combining online player states into realtime queries, alongside `IntrusionTracker` for detector block entry-to-exit intrusion sessions.
+- **Offline Player Analytics Commands**: Replaced `EntityArgument.player()` with `GameProfileArgument.gameProfile()` in `/analytics` command to inspect historical activity for offline players and base owners.
+
+## Jobs Compatibility
+
+- **Farmer's Delight 1.3.3 Support**: Added optional Farmer's Delight support to the Farmer job. Mature cabbages, onions, tomatoes, rope-grown tomatoes, and rice panicles now grant Farmer XP.
+- **Verified Right-Click Harvest Rewards**: XP is awarded only after the server confirms that the mature crop was successfully harvested and reset to an immature state.
+
+# v2.3
+
+## PvP Dynamic Loadouts, Multi-Map Support & Voting System
+
+- **PvP HUD Upgrade (Hardpoint Zone Control)**: Added visual zone capture states ("RED 占領中", "争奪中", etc.) to the `S2C_PvpHudPacket` and `PvpClientState` rendering.
+- **Cinematic Killcam Replay System (`PvpReplayTracker` & `PvpReplayManager`)**: Implemented a true Call of Duty-style death replay engine. Servers record a 60-tick (3-second) circular trajectory ring buffer for all combatants; upon elimination, the victim's POV rewinds to the killer's exact position and perspective, replaying their movement, aim, and final shots with slow-motion impact and rich killer info cards (weapon, distance, HP, streak, HS badge, and `[SPACE]` skip).
+- **Multi-Map Management Engine (`PvpMapSavedData` & `PvpMapDefinition`)**: Migrated fixed single-arena coordinates into a data-driven multi-map storage system (`moveearth_pvp_maps.dat`), supporting an arbitrary number of maps with individual RED/BLUE spawns, capture hills, custom descriptions, and UI accent colors.
+- **Dynamic Multi-Respawn & Smart Spawn Selector (`PvpSpawnSelector`)**: Added support for optional multiple respawn points per team (`addredspawn` / `addbluespawn`). Implemented a real-time situational scoring engine that evaluates proximity to enemies (spawn-kill prevention penalty), proximity to living allies (reinforcement bonus), distance to the hill, and recent spawn history to dynamically select the safest and most strategic respawn location.
+- **Real-Time Map Voting Phase (`PvpMapVoteManager` & `PvpMapVoteScreen`)**: When 2 or more configured maps are available, match initiation enters a 15-second map voting phase with a sleek pop-up GUI, allowing all participants to cast/switch votes with live tally synchronization.
+- **Administrative Map Commands (`/pvp admin map ...`)**: Added comprehensive commands for map creation (`create`), coordinate setup (`setredspawn`, `setbluespawn`, `addredspawn`, `addbluespawn`, `clearspawns`, `info`, `sethill1`, `sethill2`), descriptions (`setdesc`), preview teleportation (`tp`), list inspection (`list`), and deletion (`delete`).
+- **In-Game Loadout Editor GUI (`/pvp admin loadout`)**: Added an intuitive, full-featured in-game editor screen for administrators (permission level 2+) to create, duplicate, modify, reorder, and delete PvP loadouts dynamically at runtime.
+- **One-Click Inventory Gun & Attachment Capture**: Integrated an automatic hotbar analyzer button into the editor. Administrators can configure custom TaCZ weapons and attachments in their inventory and capture them into the loadout definition with a single click without manual ID entry.
+- **Dynamic Loadout Storage (`PvpLoadoutSavedData`)**: Migrated fixed preset enums into a World `SavedData` persistence engine (`moveearth_pvp_loadouts.dat`), supporting arbitrary numbers of loadouts beyond the initial 4 templates.
+- **Dynamic Scrollable Grid UI (`PvpScreen`)**: Redesigned the player-facing `/pvp` selection screen into a scrollable 2-column card grid, seamlessly supporting 5, 10, or more loadout presets with real-time server synchronization.
+- **Administrative Command Enhancements**: Added `/pvp admin loadout`, `/pvp admin loadout editor`, `/pvp admin loadout list`, and `/pvp admin loadout reset` commands.
+- **PvP Reward & Weapon Crate Air Bug Fix**:
+  - Filtered out internal/dummy IDs (`tacz:dummy` and unrendered gun indices) from `WeaponCrateItem` random rewards to prevent generating invisible/air weapons.
+  - Upgraded `PvpPlayerSnapshot` to safely preserve full item Data Components in memory and through `HolderLookup.Provider` serialization, preventing previous inventory corruption/air-loss upon match restoration.
+  - Enforced client-side inventory synchronization (`player.inventoryMenu.broadcastChanges()`) across task claiming and crate unboxing.
+
+## PvP Loadouts and Combat Balance
+
+- Replaced the FMIC PvP presets with TaCZ standard modern firearms: SCAR-L, MP5A5, AA12, and the semi-auto-only SKS Tactical, with a P320 sidearm for every role.
+- Retuned close-range body-shot damage for full Protection IV iron armor, 20 health, 1.5x headshots, and zero armor penetration. Target TTK is approximately 343-400 ms depending on weapon cadence.
+- Kept standard magazine capacities and installed only compatible sights and lasers; AA12 and SKS Tactical use sights without lasers.
+
+## TPA
+
+- Explicitly declared permission level 0 on the player-facing `/tpa`, `/tpaccept`, `/tpdeny`, and `/tpcancel` command roots, matching `/stats` for hybrid server command-permission compatibility. The previous `/tpacancel` spelling remains as an alias, and `/tpa admin` remains restricted to permission level 2.
+- Added the collision-resistant `/moveearthtpa` command tree with `request`, `accept`, `deny`, `cancel`, and `status` operations, and changed player-facing target arguments to online player names so they do not depend on privileged entity selectors.
+
+## Compatibility
+
+- Updated the mod version to `2.3` and the network protocol to `2.0-jobs1-hardpoint1` for the expanded Hardpoint HUD packet schema.
+- v2.3 clients and servers must use the same network protocol; older clients are rejected cleanly instead of decoding the changed packet schema.
 
 ## Deep Underground Oxygen Depletion and Gas Mask Survival System
 

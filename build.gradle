@@ -16,6 +16,13 @@ repositories {
         url = "https://maven.firstdark.dev/releases"
     }
     maven {
+        name = "Illusive Soulworks Maven"
+        url = "https://maven.theillusivec4.top/"
+        content {
+            includeGroup "top.theillusivec4.curios"
+        }
+    }
+    maven {
         url = "https://cursemaven.com"
         content {
             includeGroup "curse.maven"
@@ -137,16 +144,22 @@ tasks.named('processResources', ProcessResources) {
 
 dependencies {
     implementation fileTree(dir: 'lib', include: ['*.jar'])
+    implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
     
     // コンパイル時のみ参照し、ランタイムのモジュール解決競合を防ぐ
     compileOnly files('lib/discord-rpc-1.0.4.jar')
-    
+    // Create および TaCZ はサーバー側で供給されるため、コンパイル時のみ参照する
+    compileOnly files('lib/create-1.21.1-6.0.10.jar')
+    compileOnly files('lib/tacz-neoforge-1.21.1-1.1.8-hotfix-r3.jar')
     // Lightman's Currency API (Minecraft 1.21.1)
     compileOnly 'curse.maven:lightmans-currency-472521:8133254'
 
     // Sable is supplied by the target server; only its API is needed while compiling this mod.
     compileOnly 'dev.ryanhcode.sable:sable-common-1.21.1:2.0.3'
     compileOnly 'dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0'
+
+    // Optional Curios integration: the target modpack supplies the full runtime mod.
+    compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1:api'
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'

@@ -24,7 +24,7 @@ public final class VoteRewardCommand {
     private static final int ADMIN_PERMISSION_LEVEL = 2;
     private static final ResourceLocation GOLD_COIN_ID =
             ResourceLocation.fromNamespaceAndPath("lightmanscurrency", "coin_gold");
-    private static final int REWARD_COUNT = 6;
+    private static final int REWARD_COUNT = 12;
 
     private VoteRewardCommand() {
     }
@@ -78,8 +78,25 @@ public final class VoteRewardCommand {
             case 3 -> new Reward(new ItemStack(Items.GUNPOWDER, 8), "火薬 x8");
             case 4 -> enchantedPickaxe(player, true);
             case 5 -> enchantedPickaxe(player, false);
+            case 6 -> createReward("andesite_alloy", 12, "安山岩合金 x12");
+            case 7 -> createReward("brass_ingot", 8, "真鍮インゴット x8");
+            case 8 -> createReward("electron_tube", 6, "電子管 x6");
+            case 9 -> createReward("copper_sheet", 12, "銅板 x12");
+            case 10 -> createReward("precision_mechanism", 2, "精密機構 x2");
+            case 11 -> createReward("sturdy_sheet", 1, "頑丈なシート x1");
             default -> throw new IllegalStateException("Unexpected vote reward roll");
         };
+    }
+
+    private static Reward createReward(String itemPath, int amount, String description) {
+        ResourceLocation itemId = ResourceLocation.fromNamespaceAndPath("create", itemPath);
+        Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(null);
+        if (item == null || item == Items.AIR) {
+            Moveearth_addtional.LOGGER.warn(
+                    "Create vote reward item '{}' is unavailable; falling back to Gold Coins.", itemId);
+            return coinReward(2);
+        }
+        return new Reward(new ItemStack(item, amount), description);
     }
 
     private static Reward coinReward(int amount) {

@@ -9,12 +9,14 @@ MoveEarth-Addtionalは、RuskServer向けにゲーム進行、PvP、プレイヤ
 
 現在の主な機能は次のとおりです。
 
-- FMIC武器を使用したプリセット式PvPとチーム識別、戦績表示、勝敗演出
+- TaCZ標準の現代銃を使用したプリセット式PvPとチーム識別、戦績表示、勝敗演出
 - 必須TaCZ GunPackの不足検知と、公式配布ページからのドラッグ＆ドロップ導入画面
+- サブチャンク透過グラフ（VisGraph）を用いた視界外エンティティ（ドロップアイテム等）パケット制御（Anti-ESP・通信削減）
+- Webダッシュボード（2D空間ヒートマップ）付きプレイヤー行動分析・アクティビティ集約システム
 - プレイ時間8時間未満のプレイヤーを対象とする初心者装備
 - プレイヤー検知ブロックと連携した、開放日ごとに回数制限のあるTPA
 - 投票報酬、管理通知、ランダムスポーンなどのサーバー運営機能
-- Stonecutter、LocalizedChat、PlayerReviveなどとの互換処理
+- Stonecutter、LocalizedChat、PlayerRevive、Farmer's Delightなどとの互換処理
 
 詳しい変更内容は[変更履歴](changelog.md)を参照してください。
 
@@ -57,12 +59,15 @@ lib/
 ├─ create-aeronautics-bundled-1.21.1-1.3.0.jar
 ├─ createdieselgenerators-1.21.1-1.3.15.jar
 ├─ discord-rpc-1.0.4.jar
+├─ FarmersDelight-1.21.1-1.3.3.jar
 ├─ LocalizedChat-neoforge-1.21.1-5.2.1.jar
 ├─ PlayerRevive_NEOFORGE_v2.1.2_mc1.21.1.jar
 └─ tacz-neoforge-1.21.1-1.1.8-hotfix-r3.jar
 ```
 
 依存JARをコミットしたり、Pull Requestへ添付したりしないでください。
+
+Farmer's Delightは任意依存です。導入時は農家ジョブがキャベツ、タマネギ、トマト、稲穂の成熟収穫に対応します。
 
 ### TaCZ GunPack
 

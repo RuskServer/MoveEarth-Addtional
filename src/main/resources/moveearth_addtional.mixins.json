@@ -5,7 +5,12 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "StonecutterMenuMixin",
-    "PvpFloatingCheckMixin"
+    "PvpFloatingCheckMixin",
+    "ChunkMapTrackedEntityMixin",
+    "ChunkMapDccMixin",
+    "GunSmithTableMenuMixin",
+    "CrushingWheelControllerBlockEntityMixin",
+    "EntityDataAccessorMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",

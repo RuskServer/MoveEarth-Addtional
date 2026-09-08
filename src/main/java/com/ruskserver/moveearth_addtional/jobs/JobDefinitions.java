@@ -142,8 +142,17 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         List<JobDefinition.EntityReward> killRewards = parseEntityRewards(json, "entity_kill");
         List<JobDefinition.EntityReward> breedRewards = parseEntityRewards(json, "entity_breed");
         List<JobDefinition.ItemCraftReward> craftRewards = parseItemCraftRewards(json);
+        double gunCraftXp = parseActionXp(json, "gun_craft");
+        double attachmentCraftXp = parseActionXp(json, "attachment_craft");
+        double gunDisassemblyXp = parseActionXp(json, "gun_disassembly");
         return new JobDefinition(id, displayName, description, maxLevel, pointsPerLevel,
-                baseXp, linearXp, quadraticXp, blockRewards, killRewards, breedRewards, craftRewards);
+                baseXp, linearXp, quadraticXp, blockRewards, killRewards, breedRewards, craftRewards,
+                gunCraftXp, attachmentCraftXp, gunDisassemblyXp);
+    }
+
+    private static double parseActionXp(JsonObject json, String key) {
+        if (!json.has(key)) return 0.0D;
+        return positiveDouble(GsonHelper.getAsJsonObject(json, key), "xp", 1.0D);
     }
 
     private static List<JobDefinition.ItemCraftReward> parseItemCraftRewards(JsonObject json) {

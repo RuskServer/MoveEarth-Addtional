@@ -28,7 +28,7 @@
   "message.moveearth_addtional.starterkit.status.eligible": "対象",
   "message.moveearth_addtional.starterkit.status.ineligible": "対象外",
   "message.moveearth_addtional.pvp.launcher_forbidden": "ランチャー系武器はPvPへ持ち込めません。",
-  "message.moveearth_addtional.pvp.fixed_preset": "PvPに参加しました。試合中は所持品がFMIC固定プリセットに置き換わります。",
+  "message.moveearth_addtional.pvp.fixed_preset": "PvPに参加しました。試合中は所持品が固定プリセットに置き換わります。",
   "message.moveearth_addtional.pvp.loadout_joined": "%sプリセットでPvPへ参加しました。",
   "message.moveearth_addtional.pvp.loadout_updated": "PvPプリセットを%sへ変更しました。",
   "screen.moveearth_addtional.pvp.title": "KOTH LOADOUT SELECT",
@@ -94,5 +94,10 @@
   "message.moveearth_addtional.no_gas_mask_equipped": "ガスマスクを装備していません。",
   "message.moveearth_addtional.filter_low": "警告: ガスマスクのフィルター残量が低下しています！",
   "message.moveearth_addtional.filter_depleted": "警告: ガスマスクのフィルターが切れた！呼吸ができない！",
-  "message.moveearth_addtional.torch_extinguished": "酸素が欠乏しているため、松明の火が消えてしまった…"
+  "message.moveearth_addtional.torch_extinguished": "酸素が欠乏しているため、松明の火が消えてしまった…",
+  "overlay.moveearth_addtional.pvp.hardpoint.title": "◆ HARDPOINT",
+  "overlay.moveearth_addtional.pvp.hardpoint.neutral": "エリアを確保  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.red": "RED 制圧中  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.blue": "BLUE 制圧中  •  RED %s  BLUE %s",
+  "overlay.moveearth_addtional.pvp.hardpoint.contested": "争奪中  •  RED %s  BLUE %s"
 }

@@ -27,6 +27,8 @@ public final class JobService {
             return;
         }
 
+        com.ruskserver.moveearth_addtional.analytics.collector.AnalyticsCollectorManager.INSTANCE.recordJobsXp(player, result.awardedXp());
+
         JobProgressSavedData.ProgressSnapshot progress = data.snapshot(player.getUUID())
                 .progress(definition.id());
         JobProgressBossBar.show(player, definition, progress, result.awardedXp());
