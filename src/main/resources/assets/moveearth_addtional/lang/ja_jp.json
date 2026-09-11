@@ -264,5 +264,17 @@
   "message.moveearth_addtional.territory_core.outpost_registered": "拠点コアとして登録しました",
   "message.moveearth_addtional.territory_core.foreign_conflict": "他国の予約領土と重なるため設定できません",
   "message.moveearth_addtional.territory_core.not_registered": "領土コアの登録情報が見つかりません",
-  "message.moveearth_addtional.territory_core.capital_locked": "首都コアは移転仕様が有効になるまで撤去できません"
+  "message.moveearth_addtional.territory_core.capital_locked": "首都コアは移転仕様が有効になるまで撤去できません",
+  "screen.moveearth_addtional.territory.closure.run": "閉鎖診断して領土を稼働",
+  "screen.moveearth_addtional.territory.closure.pending": "閉鎖状態を診断中…",
+  "screen.moveearth_addtional.territory.closure.not_checked": "閉鎖診断: 未実行",
+  "screen.moveearth_addtional.territory.closure.sealed": "閉鎖確認済み — 領土稼働中（探索 %s ブロック）",
+  "screen.moveearth_addtional.territory.closure.open": "外部への漏出口があります（探索 %s ブロック）",
+  "screen.moveearth_addtional.territory.closure.too_small": "コア周囲に3×3×3以上の内部空間が必要です",
+  "screen.moveearth_addtional.territory.closure.limit_exceeded": "内部空間が広すぎて探索上限に達しました（%s ブロック）",
+  "screen.moveearth_addtional.territory.closure.unloaded": "未読込チャンクがあるため診断できません",
+  "screen.moveearth_addtional.territory.closure.denied": "閉鎖診断を行う権限がありません",
+  "screen.moveearth_addtional.territory.closure.not_found": "領土コアの登録情報が見つかりません",
+  "screen.moveearth_addtional.territory.closure.too_far": "領土コアへ近づいてから診断してください",
+  "overlay.moveearth_addtional.territory_closure": "領土コア閉鎖診断"
 }

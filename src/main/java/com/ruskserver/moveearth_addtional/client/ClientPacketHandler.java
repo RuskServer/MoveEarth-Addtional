@@ -15,6 +15,13 @@ public class ClientPacketHandler {
         }
     }
 
+    public static void handleTerritoryClosure(S2C_TerritoryClosurePacket packet) {
+        TerritoryPreviewClientState.updateClosure(packet);
+        if (Minecraft.getInstance().screen instanceof TerritoryCoreWizardScreen screen) {
+            screen.handleClosure(packet);
+        }
+    }
+
     public static void handleOpenTerritoryCore(S2C_OpenTerritoryCoreScreenPacket packet) {
         Minecraft.getInstance().setScreen(new TerritoryCoreWizardScreen(packet.pos(), packet.radius()));
     }

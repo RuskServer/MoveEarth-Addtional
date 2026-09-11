@@ -264,5 +264,17 @@
   "message.moveearth_addtional.territory_core.outpost_registered": "Registered as an Outpost Core",
   "message.moveearth_addtional.territory_core.foreign_conflict": "This area overlaps another nation's reserved territory",
   "message.moveearth_addtional.territory_core.not_registered": "Territory Core registration was not found",
-  "message.moveearth_addtional.territory_core.capital_locked": "The Capital Core cannot be removed until relocation is implemented"
+  "message.moveearth_addtional.territory_core.capital_locked": "The Capital Core cannot be removed until relocation is implemented",
+  "screen.moveearth_addtional.territory.closure.run": "Diagnose Closure and Activate",
+  "screen.moveearth_addtional.territory.closure.pending": "Diagnosing enclosure…",
+  "screen.moveearth_addtional.territory.closure.not_checked": "Closure diagnosis: not run",
+  "screen.moveearth_addtional.territory.closure.sealed": "Enclosure verified — territory active (%s blocks scanned)",
+  "screen.moveearth_addtional.territory.closure.open": "An escape route leads outside (%s blocks scanned)",
+  "screen.moveearth_addtional.territory.closure.too_small": "The core needs at least a 3×3×3 interior space",
+  "screen.moveearth_addtional.territory.closure.limit_exceeded": "The interior exceeded the scan limit (%s blocks)",
+  "screen.moveearth_addtional.territory.closure.unloaded": "The diagnosis reached an unloaded chunk",
+  "screen.moveearth_addtional.territory.closure.denied": "You do not have permission to diagnose this core",
+  "screen.moveearth_addtional.territory.closure.not_found": "Territory Core registration was not found",
+  "screen.moveearth_addtional.territory.closure.too_far": "Move closer to the Territory Core before diagnosing it",
+  "overlay.moveearth_addtional.territory_closure": "Territory Closure Diagnosis"
 }

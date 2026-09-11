@@ -3,12 +3,14 @@ package com.ruskserver.moveearth_addtional.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryPreviewPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryPreviewArea;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.network.chat.Component;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
@@ -29,16 +31,28 @@ public final class TerritoryPreviewRenderer {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
         Minecraft minecraft = Minecraft.getInstance();
         S2C_TerritoryPreviewPacket packet = TerritoryPreviewClientState.preview();
-        if (packet == null || minecraft.level == null || minecraft.player == null
-                || !minecraft.level.dimension().location().equals(packet.dimension())) return;
+        S2C_TerritoryClosurePacket closure = TerritoryPreviewClientState.closure();
+        if (minecraft.level == null || minecraft.player == null) return;
+        boolean showPreview = packet != null
+                && minecraft.level.dimension().location().equals(packet.dimension());
+        boolean showClosure = closure != null
+                && minecraft.level.dimension().location().equals(closure.dimension());
+        if (!showPreview && !showClosure) return;
 
-        TerritoryPreviewArea area = new TerritoryPreviewArea(
-                packet.centerChunkX(), packet.centerChunkZ(), packet.radius());
-        double y = Math.floor(minecraft.player.getY()) + 0.035D;
         Vec3 camera = event.getCamera().getPosition();
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
 
+        if (showPreview) renderPreview(packet, minecraft, poseStack, buffers, camera);
+        if (showClosure) renderClosure(closure, poseStack, buffers, camera);
+        buffers.endBatch(RenderType.debugFilledBox());
+    }
+
+    private static void renderPreview(S2C_TerritoryPreviewPacket packet, Minecraft minecraft,
+                                      PoseStack poseStack, MultiBufferSource.BufferSource buffers, Vec3 camera) {
+        TerritoryPreviewArea area = new TerritoryPreviewArea(
+                packet.centerChunkX(), packet.centerChunkZ(), packet.radius());
+        double y = Math.floor(minecraft.player.getY()) + 0.035D;
         for (int chunkX = area.minChunkX(); chunkX <= area.maxChunkX() + 1; chunkX++) {
             double x = chunkX << 4;
             boolean outer = chunkX == area.minChunkX() || chunkX == area.maxChunkX() + 1;
@@ -53,7 +67,6 @@ public final class TerritoryPreviewRenderer {
                     new AABB(area.minBlockX(), y, z - LINE_WIDTH, area.maxBlockXExclusive(),
                             y + (outer ? 0.18D : 0.06D), z + LINE_WIDTH), outer);
         }
-
         double centerX = (packet.centerChunkX() << 4) + 8.0D;
         double centerZ = (packet.centerChunkZ() << 4) + 8.0D;
         DebugRenderer.renderFilledBox(poseStack, buffers,
@@ -61,7 +74,19 @@ public final class TerritoryPreviewRenderer {
                         centerX + 0.18D, y + 2.2D, centerZ + 0.18D)
                         .move(-camera.x, -camera.y, -camera.z),
                 1.0F, 0.71F, 0.25F, 0.72F);
-        buffers.endBatch(RenderType.debugFilledBox());
+    }
+
+    private static void renderClosure(S2C_TerritoryClosurePacket packet, PoseStack poseStack,
+                                      MultiBufferSource.BufferSource buffers, Vec3 camera) {
+        for (BlockPos pos : packet.escapePath()) {
+            AABB marker = new AABB(pos).inflate(-0.32D).move(-camera.x, -camera.y, -camera.z);
+            DebugRenderer.renderFilledBox(poseStack, buffers, marker, 1.0F, 0.58F, 0.10F, 0.72F);
+        }
+        if (!packet.escapePath().isEmpty()) {
+            BlockPos leak = packet.escapePath().get(packet.escapePath().size() - 1);
+            AABB marker = new AABB(leak).inflate(-0.07D).move(-camera.x, -camera.y, -camera.z);
+            DebugRenderer.renderFilledBox(poseStack, buffers, marker, 1.0F, 0.12F, 0.10F, 0.82F);
+        }
     }
 
     private static void renderBox(PoseStack poseStack, MultiBufferSource buffers, Vec3 camera,
@@ -76,22 +101,42 @@ public final class TerritoryPreviewRenderer {
     public static void renderHud(RenderGuiEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         S2C_TerritoryPreviewPacket packet = TerritoryPreviewClientState.preview();
-        if (packet == null || minecraft.options.hideGui || minecraft.player == null
-                || minecraft.level == null || minecraft.screen != null
-                || !minecraft.level.dimension().location().equals(packet.dimension())) return;
+        S2C_TerritoryClosurePacket closure = TerritoryPreviewClientState.closure();
+        if (minecraft.options.hideGui || minecraft.player == null
+                || minecraft.level == null || minecraft.screen != null) return;
+        boolean showPreview = packet != null
+                && minecraft.level.dimension().location().equals(packet.dimension());
+        boolean showClosure = closure != null
+                && minecraft.level.dimension().location().equals(closure.dimension());
+        if (!showPreview && !showClosure) return;
         var graphics = event.getGuiGraphics();
         int x = 12;
         int y = 12;
-        graphics.fill(x, y, x + 218, y + 48, 0xD012161D);
-        graphics.fill(x, y, x + 3, y + 48, 0xFF68E09B);
-        graphics.drawString(minecraft.font,
-                Component.translatable("overlay.moveearth_addtional.territory_preview"),
-                x + 11, y + 9, 0xFF68E09B, false);
-        graphics.drawString(minecraft.font,
-                Component.translatable("overlay.moveearth_addtional.territory_preview.detail",
-                        packet.radius(), packet.chunkCount()), x + 11, y + 23, 0xFFE8EDF3, false);
+        int panelHeight = showPreview && showClosure ? 80 : 52;
+        graphics.fill(x, y, x + 266, y + panelHeight, 0xD012161D);
+        graphics.fill(x, y, x + 3, y + panelHeight, 0xFF68E09B);
+        int lineY = y + 8;
+        if (showPreview) {
+            graphics.drawString(minecraft.font,
+                    Component.translatable("overlay.moveearth_addtional.territory_preview"),
+                    x + 11, lineY, 0xFF68E09B, false);
+            graphics.drawString(minecraft.font,
+                    Component.translatable("overlay.moveearth_addtional.territory_preview.detail",
+                            packet.radius(), packet.chunkCount()), x + 11, lineY + 13, 0xFFE8EDF3, false);
+            lineY += 28;
+        }
+        if (showClosure) {
+            int color = closure.success() ? 0xFF68E09B : 0xFFFF785F;
+            graphics.drawString(minecraft.font,
+                    Component.translatable("overlay.moveearth_addtional.territory_closure"),
+                    x + 11, lineY, color, false);
+            graphics.drawString(minecraft.font,
+                    Component.translatable(closure.messageKey(), closure.visited()),
+                    x + 11, lineY + 13, 0xFFE8EDF3, false);
+            lineY += 28;
+        }
         graphics.drawString(minecraft.font,
                 Component.translatable("overlay.moveearth_addtional.territory_preview.exit"),
-                x + 11, y + 35, 0xFF8F9AA8, false);
+                x + 11, lineY, 0xFF8F9AA8, false);
     }
 }

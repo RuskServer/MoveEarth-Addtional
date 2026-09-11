@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui9");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui10");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -20,6 +20,8 @@ public class ModMessages {
         registrar.playToClient(S2C_TerritoryPreviewPacket.TYPE, S2C_TerritoryPreviewPacket.STREAM_CODEC, S2C_TerritoryPreviewPacket::handle);
         registrar.playToClient(S2C_OpenTerritoryCoreScreenPacket.TYPE, S2C_OpenTerritoryCoreScreenPacket.STREAM_CODEC, S2C_OpenTerritoryCoreScreenPacket::handle);
         registrar.playToServer(C2S_SetTerritoryCoreRadiusPacket.TYPE, C2S_SetTerritoryCoreRadiusPacket.STREAM_CODEC, C2S_SetTerritoryCoreRadiusPacket::handle);
+        registrar.playToServer(C2S_ValidateTerritoryCorePacket.TYPE, C2S_ValidateTerritoryCorePacket.STREAM_CODEC, C2S_ValidateTerritoryCorePacket::handle);
+        registrar.playToClient(S2C_TerritoryClosurePacket.TYPE, S2C_TerritoryClosurePacket.STREAM_CODEC, S2C_TerritoryClosurePacket::handle);
         registrar.playToServer(C2S_RequestReinforcementScanPacket.TYPE, C2S_RequestReinforcementScanPacket.STREAM_CODEC, C2S_RequestReinforcementScanPacket::handle);
         registrar.playToClient(S2C_ReinforcementSnapshotPacket.TYPE, S2C_ReinforcementSnapshotPacket.STREAM_CODEC, S2C_ReinforcementSnapshotPacket::handle);
         registrar.playToServer(C2S_SetWeldingBrushPacket.TYPE, C2S_SetWeldingBrushPacket.STREAM_CODEC, C2S_SetWeldingBrushPacket::handle);

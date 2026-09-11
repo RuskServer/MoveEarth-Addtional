@@ -5,7 +5,9 @@ import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestTerritoryPreviewPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_SetTerritoryCoreRadiusPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_ValidateTerritoryCorePacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryPreviewPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import net.minecraft.client.gui.GuiGraphics;
@@ -26,7 +28,9 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
     private final BlockPos corePos;
     private int radius;
     private S2C_TerritoryPreviewPacket preview;
+    private S2C_TerritoryClosurePacket closure;
     private int pendingRequestId = -1;
+    private int pendingClosureRequestId = -1;
     private Component toast;
     private int toastColor = SUCCESS;
     private int toastTicks;
@@ -59,6 +63,17 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
         toast = packet.success() ? MoveEarthMessage.success(body) : MoveEarthMessage.error(body);
         toastColor = packet.success() ? SUCCESS : DANGER;
         toastTicks = 70;
+    }
+
+    public void handleClosure(S2C_TerritoryClosurePacket packet) {
+        if (corePos == null || !corePos.equals(packet.corePos())
+                || packet.requestId() != pendingClosureRequestId) return;
+        pendingClosureRequestId = -1;
+        closure = packet;
+        Component body = Component.translatable(packet.messageKey(), packet.visited());
+        toast = packet.success() ? MoveEarthMessage.success(body) : MoveEarthMessage.error(body);
+        toastColor = packet.success() ? SUCCESS : DANGER;
+        toastTicks = 90;
     }
 
     @Override
@@ -115,9 +130,28 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
                         preview == null ? "…" : preview.centerChunkX(),
                         preview == null ? "…" : preview.centerChunkZ()),
                 summary.x() + 14, summary.y() + 29, MUTED, false);
-        graphics.drawString(font,
-                Component.translatable("screen.moveearth_addtional.territory.upkeep_pending"),
-                summary.x() + 14, summary.y() + 47, GOLD, false);
+        if (corePos != null) {
+            Component closureText = pendingClosureRequestId >= 0
+                    ? Component.translatable("screen.moveearth_addtional.territory.closure.pending")
+                    : closure == null
+                    ? Component.translatable("screen.moveearth_addtional.territory.closure.not_checked")
+                    : Component.translatable(closure.messageKey(), closure.visited());
+            int color = closure != null && closure.success() ? SUCCESS
+                    : closure == null ? MUTED : DANGER;
+            graphics.drawString(font, closureText, summary.x() + 14, summary.y() + 47, color, false);
+        } else {
+            graphics.drawString(font,
+                    Component.translatable("screen.moveearth_addtional.territory.upkeep_pending"),
+                    summary.x() + 14, summary.y() + 47, GOLD, false);
+        }
+
+        if (corePos != null) {
+            Rect diagnose = diagnoseBounds(panel);
+            boolean enabled = pendingClosureRequestId < 0 && pendingRequestId < 0;
+            drawButton(graphics, font, diagnose,
+                    Component.translatable("screen.moveearth_addtional.territory.closure.run"), SUCCESS,
+                    enabled && diagnose.contains(mouseX, mouseY), enabled);
+        }
 
         Rect back = backBounds(panel);
         drawButton(graphics, font, back, Component.translatable("screen.moveearth_addtional.territory.back"),
@@ -169,8 +203,16 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
         if (corePos != null && preview != null && pendingRequestId < 0
                 && saveBounds(panel).contains(mouseX, mouseY)) {
             pendingRequestId = ++nextRequestId;
+            closure = null;
             PacketDistributor.sendToServer(new C2S_SetTerritoryCoreRadiusPacket(
                     pendingRequestId, corePos, radius));
+            return true;
+        }
+        if (corePos != null && pendingClosureRequestId < 0 && pendingRequestId < 0
+                && diagnoseBounds(panel).contains(mouseX, mouseY)) {
+            pendingClosureRequestId = ++nextRequestId;
+            PacketDistributor.sendToServer(new C2S_ValidateTerritoryCorePacket(
+                    pendingClosureRequestId, corePos));
             return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -202,6 +244,10 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
 
     private static Rect saveBounds(Rect panel) {
         return new Rect(panel.right() - 162, panel.bottom() - 40, 144, 24);
+    }
+
+    private static Rect diagnoseBounds(Rect panel) {
+        return new Rect(panel.x() + 18, panel.bottom() - 72, panel.width() - 36, 24);
     }
 
     @Override

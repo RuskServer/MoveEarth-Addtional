@@ -67,6 +67,28 @@ public final class TerritorySavedData extends SavedData {
         return Optional.ofNullable(cores.get(new CoreKey(dimension, pos)));
     }
 
+    public Optional<CoreRecord> updateState(UUID nationId, ResourceLocation dimension,
+                                            BlockPos pos, CoreState state) {
+        CoreKey key = new CoreKey(dimension, pos);
+        CoreRecord current = cores.get(key);
+        if (current == null || !current.nationId.equals(nationId)) return Optional.empty();
+        if (current.state == state) return Optional.of(current);
+        CoreRecord updated = new CoreRecord(current.id, current.nationId, current.placedBy,
+                current.dimension, current.pos, current.type, current.radius, state);
+        cores.put(key, updated);
+        setDirty();
+        return Optional.of(updated);
+    }
+
+    public boolean controlsChunk(UUID nationId, ResourceLocation dimension, BlockPos pos) {
+        ChunkPos chunk = new ChunkPos(pos);
+        return cores.values().stream()
+                .filter(core -> core.nationId.equals(nationId) && core.dimension.equals(dimension))
+                .filter(core -> core.state == CoreState.ACTIVE || core.state == CoreState.EXPOSED)
+                .map(core -> area(core.pos, core.radius))
+                .anyMatch(area -> area.containsChunk(chunk.x, chunk.z));
+    }
+
     public void remove(ResourceLocation dimension, BlockPos pos, UUID expectedCoreId) {
         CoreKey key = new CoreKey(dimension, pos);
         CoreRecord current = cores.get(key);
