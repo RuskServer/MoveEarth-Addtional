@@ -16,4 +16,11 @@ public class ModBlocks {
                     .strength(3.0F, 3.0F)
                     .sound(SoundType.METAL)
             ));
+    public static final DeferredHolder<Block, TerritoryCoreBlock> TERRITORY_CORE = BLOCKS.register("territory_core",
+            () -> new TerritoryCoreBlock(BlockBehaviour.Properties.of()
+                    .strength(12.0F, 1200.0F)
+                    .sound(SoundType.METAL)
+                    .lightLevel(state -> 9)
+                    .requiresCorrectToolForDrops()
+            ));
 }

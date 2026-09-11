@@ -1,0 +1,551 @@
+package com.ruskserver.moveearth_addtional.client;
+
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
+import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
+import com.ruskserver.moveearth_addtional.network.C2S_NationMembershipPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_S2HubActionPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
+import com.ruskserver.moveearth_addtional.s2.S2HubTab;
+import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
+import com.ruskserver.moveearth_addtional.s2.S2Permission;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.util.List;
+import java.util.UUID;
+
+import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
+
+public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
+    private static final int PANEL_WIDTH = 620;
+    private static final int PANEL_HEIGHT = 356;
+    private static final int ROW_HEIGHT = 43;
+    private static S2HubTab lastTab = S2HubTab.OVERVIEW;
+    private static int nextRequestId;
+
+    private S2HubTab tab;
+    private S2NationSnapshot snapshot;
+    private int scrollOffset;
+    private int pendingRequestId = -1;
+    private Component toast;
+    private int toastColor = SUCCESS;
+    private int toastTicks;
+    private UUID kickTargetId;
+    private String kickTargetName = "";
+
+    public S2HubScreen(S2C_S2HubSnapshotPacket packet) {
+        super(Component.translatable("screen.moveearth_addtional.s2.title"));
+        this.snapshot = packet.snapshot();
+        this.tab = packet.tab() == null ? lastTab : packet.tab();
+        lastTab = this.tab;
+    }
+
+    public void update(S2C_S2HubSnapshotPacket packet) {
+        this.snapshot = packet.snapshot();
+        this.tab = packet.tab();
+        lastTab = tab;
+        clampScroll();
+    }
+
+    public void handleResult(S2C_S2ActionResultPacket packet) {
+        if (pendingRequestId >= 0 && packet.requestId() != pendingRequestId) return;
+        if (pendingRequestId < 0 && !packet.success()) return;
+        pendingRequestId = -1;
+        Component body = Component.translatable(packet.messageKey());
+        toast = packet.success() ? MoveEarthMessage.success(body) : MoveEarthMessage.error(body);
+        toastColor = packet.success() ? SUCCESS : DANGER;
+        toastTicks = 60;
+    }
+
+    @Override
+    public void tick() {
+        if (toastTicks > 0) toastTicks--;
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        drawBackground(graphics, width, height);
+        Rect panel = panelBounds();
+        drawPanel(graphics, panel);
+        graphics.drawString(font, title, panel.x() + 18, panel.y() + 14, TEXT, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.subtitle"),
+                panel.x() + 18, panel.y() + 28, MUTED, false);
+
+        Rect close = closeBounds(panel);
+        drawClose(graphics, font, close, close.contains(mouseX, mouseY));
+        Rect refresh = refreshBounds(panel);
+        boolean refreshEnabled = pendingRequestId < 0;
+        drawButton(graphics, font, refresh,
+                Component.translatable("screen.moveearth_addtional.s2.refresh"), ACCENT,
+                refreshEnabled && refresh.contains(mouseX, mouseY), refreshEnabled);
+
+        int tabWidth = Math.max(72, (panel.width() - 36) / 3);
+        for (S2HubTab candidate : S2HubTab.values()) {
+            Rect bounds = tabBounds(panel, candidate, tabWidth);
+            drawTab(graphics, font, bounds, tabLabel(candidate), candidate == tab,
+                    bounds.contains(mouseX, mouseY));
+        }
+
+        Rect content = contentBounds(panel);
+        if (!snapshot.member()) drawUnaffiliated(graphics, content, mouseX, mouseY);
+        else if (tab == S2HubTab.OVERVIEW) drawOverview(graphics, content, mouseX, mouseY);
+        else if (tab == S2HubTab.MEMBERS) drawMembers(graphics, content, mouseX, mouseY);
+        else drawRoles(graphics, content, mouseX, mouseY);
+
+        if (kickTargetId != null) drawKickConfirmation(graphics, mouseX, mouseY);
+        if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
+    }
+
+    private void drawUnaffiliated(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        Rect card = new Rect(content.x(), content.y(), content.width(), Math.min(118, content.height()));
+        drawCard(graphics, card, ACCENT, false, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.no_nation"),
+                card.x() + 16, card.y() + 15, ACCENT, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.no_nation.detail"),
+                card.x() + 16, card.y() + 34, MUTED, false);
+        Rect create = new Rect(card.x() + 16, card.bottom() - 34, 138, 22);
+        drawButton(graphics, font, create,
+                Component.translatable("screen.moveearth_addtional.s2.create"), ACCENT,
+                create.contains(mouseX, mouseY), true);
+        Rect preview = new Rect(create.right() + 8, create.y(), 148, 22);
+        drawButton(graphics, font, preview,
+                Component.translatable("screen.moveearth_addtional.territory.preview"), SUCCESS,
+                preview.contains(mouseX, mouseY), true);
+        if (!snapshot.invitations().isEmpty()) {
+            S2NationSnapshot.InvitationView invitation = snapshot.invitations().getFirst();
+            Rect invitationCard = invitationBounds(content);
+            drawCard(graphics, invitationCard, GOLD, false, invitationCard.contains(mouseX, mouseY));
+            String nation = invitation.nationTag().isBlank() ? invitation.nationName()
+                    : "[" + invitation.nationTag() + "] " + invitation.nationName();
+            graphics.drawString(font, Component.translatable(
+                            "screen.moveearth_addtional.nation.invitation", nation),
+                    invitationCard.x() + 13, invitationCard.y() + 10, GOLD, false);
+            Rect accept = invitationAcceptBounds(invitationCard);
+            Rect decline = invitationDeclineBounds(invitationCard);
+            boolean enabled = pendingRequestId < 0;
+            drawButton(graphics, font, decline,
+                    Component.translatable("screen.moveearth_addtional.nation.decline"), DANGER,
+                    enabled && decline.contains(mouseX, mouseY), enabled);
+            drawButton(graphics, font, accept,
+                    Component.translatable("screen.moveearth_addtional.nation.accept"), SUCCESS,
+                    enabled && accept.contains(mouseX, mouseY), enabled);
+        }
+        if (snapshot.serverAdmin()) {
+            int adminY = snapshot.invitations().isEmpty() ? card.bottom() + 13 : invitationBounds(content).bottom() + 8;
+            graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.admin_view"),
+                    content.x(), adminY, GOLD, false);
+        }
+    }
+
+    private void drawOverview(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        String nationTitle = snapshot.nationTag().isBlank()
+                ? snapshot.nationName() : "[" + snapshot.nationTag() + "] " + snapshot.nationName();
+        graphics.drawString(font, nationTitle, content.x(), content.y(), ACCENT, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.role", snapshot.roleName()),
+                content.x(), content.y() + 15, MUTED, false);
+
+        int gap = 8;
+        int cardWidth = (content.width() - gap) / 2;
+        drawMetric(graphics, new Rect(content.x(), content.y() + 38, cardWidth, 58),
+                "screen.moveearth_addtional.s2.members", snapshot.onlineMembers() + " / " + snapshot.totalMembers());
+        drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 38, cardWidth, 58),
+                "screen.moveearth_addtional.s2.territory", Integer.toString(snapshot.territoryChunks()));
+        drawMetric(graphics, new Rect(content.x(), content.y() + 104, cardWidth, 58),
+                "screen.moveearth_addtional.s2.cores", Integer.toString(snapshot.activeCores()));
+        drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 104, cardWidth, 58),
+                "screen.moveearth_addtional.s2.upkeep", Long.toString(snapshot.upkeep()));
+        Rect siege = new Rect(content.x(), content.y() + 170, content.width(), 47);
+        drawCard(graphics, siege, DANGER, false, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.siege"),
+                siege.x() + 13, siege.y() + 9, MUTED, false);
+        graphics.drawString(font, snapshot.siegeStatus(), siege.x() + 13, siege.y() + 25, TEXT, false);
+        Rect preview = memberPreviewBounds(content);
+        drawButton(graphics, font, preview,
+                Component.translatable("screen.moveearth_addtional.territory.preview"), SUCCESS,
+                preview.contains(mouseX, mouseY), true);
+        if (!isOwner()) {
+            Rect leave = memberLeaveBounds(content);
+            boolean enabled = pendingRequestId < 0;
+            drawButton(graphics, font, leave,
+                    Component.translatable("screen.moveearth_addtional.nation.leave"), DANGER,
+                    enabled && leave.contains(mouseX, mouseY), enabled);
+        }
+    }
+
+    private void drawMetric(GuiGraphics graphics, Rect bounds, String labelKey, String value) {
+        drawCard(graphics, bounds, ACCENT, false, false);
+        graphics.drawString(font, Component.translatable(labelKey), bounds.x() + 13, bounds.y() + 10, MUTED, false);
+        graphics.drawString(font, value, bounds.x() + 13, bounds.y() + 29, TEXT, false);
+    }
+
+    private void drawMembers(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        if (canManageMembers()) {
+            Rect invite = memberInviteBounds(content);
+            drawButton(graphics, font, invite,
+                    Component.translatable("screen.moveearth_addtional.nation.invite_member"), SUCCESS,
+                    invite.contains(mouseX, mouseY), true);
+        }
+        drawRows(graphics, memberListBounds(content), snapshot.members(), mouseX, mouseY, true);
+    }
+
+    private void drawRoles(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        if (canManageRoles()) {
+            Rect create = roleCreateBounds(content);
+            drawButton(graphics, font, create,
+                    Component.translatable("screen.moveearth_addtional.nation.role.create"), SUCCESS,
+                    create.contains(mouseX, mouseY), true);
+        }
+        drawRows(graphics, roleListBounds(content), snapshot.roles(), mouseX, mouseY, false);
+    }
+
+    private void drawRows(GuiGraphics graphics, Rect content, List<?> rows,
+                          int mouseX, int mouseY, boolean members) {
+        if (rows.isEmpty()) {
+            graphics.drawCenteredString(font,
+                    Component.translatable(members ? "screen.moveearth_addtional.s2.members.empty"
+                            : "screen.moveearth_addtional.s2.roles.empty"),
+                    content.x() + content.width() / 2, content.y() + 42, MUTED);
+            return;
+        }
+        graphics.enableScissor(content.x(), content.y(), content.right(), content.bottom());
+        for (int index = 0; index < rows.size(); index++) {
+            int y = content.y() + index * ROW_HEIGHT - scrollOffset;
+            Rect card = new Rect(content.x(), y, content.width() - 8, ROW_HEIGHT - 5);
+            if (card.bottom() <= content.y() || card.y() >= content.bottom()) continue;
+            drawCard(graphics, card, members ? SUCCESS : GOLD, false, card.contains(mouseX, mouseY));
+            if (members) {
+                S2NationSnapshot.MemberView member = (S2NationSnapshot.MemberView) rows.get(index);
+                graphics.drawString(font, member.name(), card.x() + 13, card.y() + 9,
+                        member.online() ? SUCCESS : TEXT, false);
+                graphics.drawString(font, member.roleName(), card.x() + 13, card.y() + 23, MUTED, false);
+                graphics.drawString(font, Component.translatable(member.online()
+                                ? "screen.moveearth_addtional.s2.online" : "screen.moveearth_addtional.s2.offline"),
+                        card.right() - (canAssignRole(member) ? 190 : canKick(member) ? 116 : 58), card.y() + 15,
+                        member.online() ? SUCCESS : MUTED, false);
+                if (canAssignRole(member)) {
+                    Rect assign = roleAssignBounds(card);
+                    drawButton(graphics, font, assign,
+                            Component.translatable("screen.moveearth_addtional.nation.role.change"), ACCENT,
+                            pendingRequestId < 0 && assign.contains(mouseX, mouseY), pendingRequestId < 0);
+                }
+                if (canKick(member)) {
+                    Rect kick = kickBounds(card);
+                    drawButton(graphics, font, kick,
+                            Component.translatable("screen.moveearth_addtional.nation.kick"), DANGER,
+                            pendingRequestId < 0 && kick.contains(mouseX, mouseY), pendingRequestId < 0);
+                }
+            } else {
+                S2NationSnapshot.RoleView role = (S2NationSnapshot.RoleView) rows.get(index);
+                graphics.drawString(font, role.displayName(), card.x() + 13, card.y() + 9, TEXT, false);
+                graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.role_summary",
+                                role.memberCount(), role.permissionCount()),
+                        card.x() + 13, card.y() + 23, MUTED, false);
+                if (canEditRole(role)) {
+                    Rect edit = roleEditBounds(card);
+                    drawButton(graphics, font, edit,
+                            Component.translatable("screen.moveearth_addtional.nation.role.edit"), ACCENT,
+                            edit.contains(mouseX, mouseY), true);
+                }
+            }
+        }
+        graphics.disableScissor();
+        drawScrollbar(graphics, new Rect(content.right() - 4, content.y(), 4, content.height()),
+                content.height(), rows.size() * ROW_HEIGHT, scrollOffset);
+    }
+
+    private void drawKickConfirmation(GuiGraphics graphics, int mouseX, int mouseY) {
+        drawModalBackdrop(graphics, width, height);
+        Rect modal = kickModalBounds();
+        drawPanel(graphics, modal);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.kick_title"),
+                modal.x() + 16, modal.y() + 15, DANGER, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.nation.kick_detail", kickTargetName).getString(),
+                modal.width() - 32), modal.x() + 16, modal.y() + 38, TEXT, false);
+        Rect cancel = modalCancelBounds(modal);
+        Rect confirm = modalConfirmBounds(modal);
+        drawButton(graphics, font, cancel,
+                Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED,
+                cancel.contains(mouseX, mouseY), true);
+        drawButton(graphics, font, confirm,
+                Component.translatable("screen.moveearth_addtional.nation.kick_confirm"), DANGER,
+                confirm.contains(mouseX, mouseY), true);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+        if (kickTargetId != null) {
+            Rect modal = kickModalBounds();
+            if (modalCancelBounds(modal).contains(mouseX, mouseY)) {
+                kickTargetId = null;
+                kickTargetName = "";
+            } else if (modalConfirmBounds(modal).contains(mouseX, mouseY) && pendingRequestId < 0) {
+                sendMembershipAction(C2S_NationMembershipPacket.Action.KICK, kickTargetId);
+                kickTargetId = null;
+                kickTargetName = "";
+            }
+            return true;
+        }
+        Rect panel = panelBounds();
+        if (closeBounds(panel).contains(mouseX, mouseY)) {
+            onClose();
+            return true;
+        }
+        if (pendingRequestId < 0 && refreshBounds(panel).contains(mouseX, mouseY)) {
+            int requestId = ++nextRequestId;
+            pendingRequestId = requestId;
+            PacketDistributor.sendToServer(new C2S_S2HubActionPacket(
+                    requestId, snapshot.revision(), tab, C2S_S2HubActionPacket.Action.REFRESH));
+            return true;
+        }
+        int tabWidth = Math.max(72, (panel.width() - 36) / 3);
+        for (S2HubTab candidate : S2HubTab.values()) {
+            if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
+                tab = candidate;
+                lastTab = candidate;
+                scrollOffset = 0;
+                return true;
+            }
+        }
+        if (!snapshot.member() || tab == S2HubTab.OVERVIEW) {
+            Rect content = contentBounds(panel);
+            if (!snapshot.member()) {
+                Rect create = new Rect(content.x() + 16,
+                        content.y() + Math.min(118, content.height()) - 34, 138, 22);
+                if (create.contains(mouseX, mouseY)) {
+                    minecraft.setScreen(new NationCreateScreen(snapshot.revision()));
+                    return true;
+                }
+                if (!snapshot.invitations().isEmpty() && pendingRequestId < 0) {
+                    S2NationSnapshot.InvitationView invitation = snapshot.invitations().getFirst();
+                    Rect invitationCard = invitationBounds(content);
+                    if (invitationAcceptBounds(invitationCard).contains(mouseX, mouseY)) {
+                        sendMembershipAction(C2S_NationMembershipPacket.Action.ACCEPT, invitation.nationId());
+                        return true;
+                    }
+                    if (invitationDeclineBounds(invitationCard).contains(mouseX, mouseY)) {
+                        sendMembershipAction(C2S_NationMembershipPacket.Action.DECLINE, invitation.nationId());
+                        return true;
+                    }
+                }
+            } else if (!isOwner() && pendingRequestId < 0
+                    && memberLeaveBounds(content).contains(mouseX, mouseY)) {
+                sendMembershipAction(C2S_NationMembershipPacket.Action.LEAVE, new UUID(0L, 0L));
+                return true;
+            }
+            Rect preview = snapshot.member()
+                    ? memberPreviewBounds(content)
+                    : new Rect(content.x() + 162,
+                    content.y() + Math.min(118, content.height()) - 34, 148, 22);
+            if (preview.contains(mouseX, mouseY)) {
+                minecraft.setScreen(new TerritoryCoreWizardScreen());
+                return true;
+            }
+        }
+        if (snapshot.member() && tab == S2HubTab.MEMBERS) {
+            Rect content = contentBounds(panel);
+            if (canManageMembers() && memberInviteBounds(content).contains(mouseX, mouseY)) {
+                minecraft.setScreen(new NationInviteScreen(snapshot.revision(), snapshot.inviteCandidates()));
+                return true;
+            }
+            Rect list = memberListBounds(content);
+            if (pendingRequestId < 0 && list.contains(mouseX, mouseY)) {
+                for (int index = 0; index < snapshot.members().size(); index++) {
+                    S2NationSnapshot.MemberView member = snapshot.members().get(index);
+                    Rect card = new Rect(list.x(), list.y() + index * ROW_HEIGHT - scrollOffset,
+                            list.width() - 8, ROW_HEIGHT - 5);
+                    if (canAssignRole(member) && roleAssignBounds(card).contains(mouseX, mouseY)) {
+                        minecraft.setScreen(new NationRoleAssignScreen(
+                                snapshot.revision(), member, snapshot.roles()));
+                        return true;
+                    }
+                    if (canKick(member) && kickBounds(card).contains(mouseX, mouseY)) {
+                        kickTargetId = member.id();
+                        kickTargetName = member.name();
+                        return true;
+                    }
+                }
+            }
+        }
+        if (snapshot.member() && tab == S2HubTab.ROLES) {
+            Rect content = contentBounds(panel);
+            if (canManageRoles() && roleCreateBounds(content).contains(mouseX, mouseY)) {
+                minecraft.setScreen(new NationRoleEditorScreen(snapshot.revision(), null));
+                return true;
+            }
+            Rect list = roleListBounds(content);
+            if (canManageRoles() && list.contains(mouseX, mouseY)) {
+                for (int index = 0; index < snapshot.roles().size(); index++) {
+                    S2NationSnapshot.RoleView role = snapshot.roles().get(index);
+                    Rect card = new Rect(list.x(), list.y() + index * ROW_HEIGHT - scrollOffset,
+                            list.width() - 8, ROW_HEIGHT - 5);
+                    if (canEditRole(role) && roleEditBounds(card).contains(mouseX, mouseY)) {
+                        minecraft.setScreen(new NationRoleEditorScreen(snapshot.revision(), role));
+                        return true;
+                    }
+                }
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        Rect content = contentBounds(panelBounds());
+        if (content.contains(mouseX, mouseY) && snapshot.member() && tab != S2HubTab.OVERVIEW) {
+            int rows = tab == S2HubTab.MEMBERS ? snapshot.members().size() : snapshot.roles().size();
+            Rect viewport = tab == S2HubTab.MEMBERS ? memberListBounds(content) : roleListBounds(content);
+            scrollOffset = MoveEarthUi.scroll(scrollOffset, scrollY, ROW_HEIGHT,
+                    rows * ROW_HEIGHT, viewport.height());
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    private void clampScroll() {
+        int rows = tab == S2HubTab.MEMBERS ? snapshot.members().size() : snapshot.roles().size();
+        Rect content = contentBounds(panelBounds());
+        int viewportHeight = tab == S2HubTab.MEMBERS
+                ? memberListBounds(content).height() : roleListBounds(content).height();
+        scrollOffset = Math.min(scrollOffset, Math.max(0, rows * ROW_HEIGHT - viewportHeight));
+    }
+
+    private void sendMembershipAction(C2S_NationMembershipPacket.Action action, UUID targetId) {
+        pendingRequestId = ++nextRequestId;
+        PacketDistributor.sendToServer(new C2S_NationMembershipPacket(
+                pendingRequestId, snapshot.revision(), action, targetId));
+    }
+
+    private boolean canManageMembers() {
+        return hasNationPermission(S2Permission.MANAGE_MEMBERS);
+    }
+
+    private boolean isOwner() {
+        return (snapshot.ownPermissionMask() & S2Permission.OWNER.mask()) != 0L;
+    }
+
+    private boolean canKick(S2NationSnapshot.MemberView member) {
+        return canManageMembers() && minecraft != null && minecraft.player != null
+                && !member.id().equals(minecraft.player.getUUID()) && !"owner".equals(member.roleId());
+    }
+
+    private boolean canManageRoles() {
+        return hasNationPermission(S2Permission.MANAGE_ROLES);
+    }
+
+    private boolean hasNationPermission(S2Permission permission) {
+        return (snapshot.ownPermissionMask() & permission.mask()) != 0L;
+    }
+
+    private boolean canAssignRole(S2NationSnapshot.MemberView member) {
+        return canManageRoles() && !"owner".equals(member.roleId());
+    }
+
+    private boolean canEditRole(S2NationSnapshot.RoleView role) {
+        return canManageRoles() && !"owner".equals(role.id()) && !"member".equals(role.id());
+    }
+
+    private Rect panelBounds() {
+        int panelWidth = Math.min(PANEL_WIDTH, Math.max(260, width - 20));
+        int panelHeight = Math.min(PANEL_HEIGHT, Math.max(220, height - 20));
+        return new Rect((width - panelWidth) / 2, (height - panelHeight) / 2, panelWidth, panelHeight);
+    }
+
+    private static Rect closeBounds(Rect panel) {
+        return new Rect(panel.right() - 28, panel.y() + 8, 20, 20);
+    }
+
+    private static Rect refreshBounds(Rect panel) {
+        return new Rect(panel.right() - 122, panel.y() + 10, 84, 20);
+    }
+
+    private static Rect tabBounds(Rect panel, S2HubTab tab, int tabWidth) {
+        return new Rect(panel.x() + 12 + tab.ordinal() * tabWidth, panel.y() + 48, tabWidth, 27);
+    }
+
+    private static Rect contentBounds(Rect panel) {
+        return new Rect(panel.x() + 18, panel.y() + 88, panel.width() - 36, panel.height() - 104);
+    }
+
+    private static Rect memberPreviewBounds(Rect content) {
+        return new Rect(content.right() - 148, content.bottom() - 23, 148, 22);
+    }
+
+    private static Rect memberLeaveBounds(Rect content) {
+        return new Rect(content.x(), content.bottom() - 23, 112, 22);
+    }
+
+    private static Rect invitationBounds(Rect content) {
+        return new Rect(content.x(), content.y() + 128, content.width(), 58);
+    }
+
+    private static Rect invitationDeclineBounds(Rect card) {
+        return new Rect(card.right() - 174, card.y() + 28, 76, 22);
+    }
+
+    private static Rect invitationAcceptBounds(Rect card) {
+        return new Rect(card.right() - 90, card.y() + 28, 78, 22);
+    }
+
+    private static Rect memberInviteBounds(Rect content) {
+        return new Rect(content.right() - 132, content.y(), 132, 22);
+    }
+
+    private static Rect memberListBounds(Rect content) {
+        return new Rect(content.x(), content.y() + 30, content.width(), Math.max(0, content.height() - 30));
+    }
+
+    private static Rect kickBounds(Rect card) {
+        return new Rect(card.right() - 62, card.y() + 8, 50, 22);
+    }
+
+    private static Rect roleAssignBounds(Rect card) {
+        return new Rect(card.right() - 132, card.y() + 8, 62, 22);
+    }
+
+    private static Rect roleCreateBounds(Rect content) {
+        return new Rect(content.right() - 120, content.y(), 120, 22);
+    }
+
+    private static Rect roleListBounds(Rect content) {
+        return new Rect(content.x(), content.y() + 30, content.width(), Math.max(0, content.height() - 30));
+    }
+
+    private static Rect roleEditBounds(Rect card) {
+        return new Rect(card.right() - 70, card.y() + 8, 58, 22);
+    }
+
+    private Rect kickModalBounds() {
+        return new Rect((width - 330) / 2, (height - 112) / 2, 330, 112);
+    }
+
+    private static Rect modalCancelBounds(Rect modal) {
+        return new Rect(modal.right() - 184, modal.bottom() - 34, 82, 22);
+    }
+
+    private static Rect modalConfirmBounds(Rect modal) {
+        return new Rect(modal.right() - 94, modal.bottom() - 34, 82, 22);
+    }
+
+    private static Component tabLabel(S2HubTab tab) {
+        return Component.translatable(switch (tab) {
+            case OVERVIEW -> "screen.moveearth_addtional.s2.tab.overview";
+            case MEMBERS -> "screen.moveearth_addtional.s2.tab.members";
+            case ROLES -> "screen.moveearth_addtional.s2.tab.roles";
+        });
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
+    }
+}

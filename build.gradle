@@ -28,6 +28,13 @@ repositories {
             includeGroup "curse.maven"
         }
     }
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
     exclusiveContent {
         forRepository {
             maven {
@@ -160,6 +167,8 @@ dependencies {
 
     // Optional Curios integration: the target modpack supplies the full runtime mod.
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1:api'
+    // Optional Jade integration. The target modpack supplies Jade at runtime.
+    compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'

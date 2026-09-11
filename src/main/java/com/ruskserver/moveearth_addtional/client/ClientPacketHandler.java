@@ -1,11 +1,53 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.network.*;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 public class ClientPacketHandler {
+
+    public static void handleTerritoryPreview(S2C_TerritoryPreviewPacket packet) {
+        TerritoryPreviewClientState.update(packet);
+        if (Minecraft.getInstance().screen instanceof TerritoryCoreWizardScreen screen) {
+            screen.update(packet);
+        }
+    }
+
+    public static void handleOpenTerritoryCore(S2C_OpenTerritoryCoreScreenPacket packet) {
+        Minecraft.getInstance().setScreen(new TerritoryCoreWizardScreen(packet.pos(), packet.radius()));
+    }
+
+    public static void handleReinforcementSnapshot(S2C_ReinforcementSnapshotPacket packet) {
+        ReinforcementClientState.update(packet);
+    }
+
+    public static void handleS2HubSnapshot(S2C_S2HubSnapshotPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof S2HubScreen screen) screen.update(packet);
+        else minecraft.setScreen(new S2HubScreen(packet));
+    }
+
+    public static void handleS2ActionResult(S2C_S2ActionResultPacket packet) {
+        if (Minecraft.getInstance().screen instanceof S2HubScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof NationCreateScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof NationInviteScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof NationRoleEditorScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof NationRoleAssignScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof TerritoryCoreWizardScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().player != null) {
+            Component body = Component.translatable(packet.messageKey());
+            Minecraft.getInstance().player.displayClientMessage(
+                    packet.success() ? MoveEarthMessage.success(body) : MoveEarthMessage.error(body), false);
+        }
+    }
 
     public static void handleOpenJobs(S2C_OpenJobsScreenPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();

@@ -1,26 +1,22 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.network.C2S_ClaimPvpTaskPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenPvpTasksPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
 
-public final class PvpTaskScreen extends Screen {
+import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
+
+public final class PvpTaskScreen extends Screen implements com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay {
     private static final int PANEL_WIDTH = 520;
     private static final int PANEL_HEIGHT = 290;
-    private static final int TEXT = 0xFFE8EDF3;
-    private static final int MUTED = 0xFF8F9AA8;
-    private static final int PANEL = 0xF012161D;
-    private static final int CARD = 0xFF1B222C;
-    private static final int CARD_HOVER = 0xFF242E3B;
-    private static final int ACCENT = 0xFF5DCBFF;
     private static String lastCategory = "DAILY";
 
     private S2C_OpenPvpTasksPacket packet;
@@ -34,7 +30,7 @@ public final class PvpTaskScreen extends Screen {
 
     public void update(S2C_OpenPvpTasksPacket packet) {
         this.packet = packet;
-        page = Mth.clamp(page, 0, Math.max(0, pageCount() - 1));
+        page = Math.max(0, Math.min(page, pageCount() - 1));
     }
 
     @Override
@@ -43,19 +39,18 @@ public final class PvpTaskScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fillGradient(0, 0, width, height, 0xD0080B10, 0xE010151D);
+        drawBackground(graphics, width, height);
         int panelWidth = Math.min(PANEL_WIDTH, width - 20);
         int panelHeight = Math.min(PANEL_HEIGHT, height - 20);
         int left = (width - panelWidth) / 2;
         int top = (height - panelHeight) / 2;
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL);
-        drawBorder(graphics, left, top, panelWidth, panelHeight, 0xFF354150);
+        drawPanel(graphics, new MoveEarthUi.Rect(left, top, panelWidth, panelHeight));
 
         graphics.drawString(font, title, left + 16, top + 14, TEXT, false);
         String points = packet.points() + " WEAPON PT";
         graphics.drawString(font, points, left + panelWidth - 44 - font.width(points), top + 15, 0xFFFFB454, false);
-        boolean closeHovered = inside(mouseX, mouseY, left + panelWidth - 28, top + 8, 20, 20);
-        graphics.drawCenteredString(font, "×", left + panelWidth - 18, top + 14, closeHovered ? 0xFFFF6577 : MUTED);
+        MoveEarthUi.Rect closeBounds = new MoveEarthUi.Rect(left + panelWidth - 28, top + 8, 20, 20);
+        drawClose(graphics, font, closeBounds, closeBounds.contains(mouseX, mouseY));
 
         drawTab(graphics, mouseX, mouseY, left + 16, top + 37, 92, "DAILY", "デイリー");
         drawTab(graphics, mouseX, mouseY, left + 114, top + 37, 92, "EVENT", "イベント");
@@ -84,26 +79,24 @@ public final class PvpTaskScreen extends Screen {
     private void drawTab(GuiGraphics graphics, int mouseX, int mouseY, int x, int y, int width,
                          String id, String label) {
         boolean selected = id.equals(category);
-        boolean hovered = inside(mouseX, mouseY, x, y, width, 25);
-        graphics.fill(x, y, x + width, y + 25, selected ? 0xFF26394A : hovered ? CARD_HOVER : CARD);
-        graphics.fill(x, y + 22, x + width, y + 25, selected ? ACCENT : 0xFF354150);
-        graphics.drawCenteredString(font, label, x + width / 2, y + 8, selected ? ACCENT : TEXT);
+        MoveEarthUi.Rect bounds = new MoveEarthUi.Rect(x, y, width, 25);
+        MoveEarthUi.drawTab(graphics, font, bounds, Component.literal(label), selected,
+                bounds.contains(mouseX, mouseY));
     }
 
     private void drawTask(GuiGraphics graphics, S2C_OpenPvpTasksPacket.TaskEntry task,
                           int x, int y, int width, int height, int mouseX, int mouseY) {
-        boolean claimHovered = inside(mouseX, mouseY, x + width - 91, y + height - 28, 75, 20);
+        MoveEarthUi.Rect claimBounds = new MoveEarthUi.Rect(x + width - 91, y + height - 28, 75, 20);
+        boolean claimHovered = claimBounds.contains(mouseX, mouseY);
         int stripe = task.claimed() ? 0xFF56616D : task.complete() ? 0xFF68E09B : ACCENT;
-        graphics.fill(x, y, x + width, y + height, CARD);
-        graphics.fill(x, y, x + 4, y + height, stripe);
-        drawBorder(graphics, x, y, width, height, 0xFF354150);
+        drawCard(graphics, new MoveEarthUi.Rect(x, y, width, height), stripe, false, false);
         graphics.drawString(font, task.title(), x + 14, y + 9, task.complete() ? 0xFF68E09B : TEXT, false);
         graphics.drawString(font, task.description(), x + 14, y + 23, MUTED, false);
 
         int barX = x + 14;
         int barY = y + height - 19;
         int barWidth = Math.max(70, width - 230);
-        graphics.fill(barX, barY, barX + barWidth, barY + 6, 0xFF0C1015);
+        graphics.fill(barX, barY, barX + barWidth, barY + 6, BAR_BACKGROUND);
         int filled = (int) (barWidth * Math.min(1.0D, task.progress() / (double) Math.max(1, task.target())));
         graphics.fill(barX, barY, barX + filled, barY + 6, stripe);
         String progress = task.progress() + " / " + task.target();
@@ -118,26 +111,21 @@ public final class PvpTaskScreen extends Screen {
         }
         graphics.drawString(font, "+" + task.pointReward() + "pt", itemX + 20, y + height - 23, 0xFFFFB454, false);
 
-        int buttonColor = task.claimed() ? 0xFF20262E
-                : task.complete() ? (claimHovered ? 0xFF315A48 : 0xFF27483A) : 0xFF20262E;
-        graphics.fill(x + width - 91, y + height - 28, x + width - 16, y + height - 8, buttonColor);
-        drawBorder(graphics, x + width - 91, y + height - 28, 75, 20,
-                task.complete() && !task.claimed() ? 0xFF68E09B : 0xFF354150);
-        graphics.drawCenteredString(font, task.claimed() ? "受取済" : task.complete() ? "受取" : "進行中",
-                x + width - 54, y + height - 21,
-                task.complete() && !task.claimed() ? 0xFF68E09B : MUTED);
+        drawButton(graphics, font, claimBounds,
+                Component.literal(task.claimed() ? "受取済" : task.complete() ? "受取" : "進行中"),
+                SUCCESS, claimHovered, task.complete() && !task.claimed());
 
-        if (!reward.isEmpty() && inside(mouseX, mouseY, itemX, y + height - 30, 18, 18)) {
+        if (!reward.isEmpty()
+                && new MoveEarthUi.Rect(itemX, y + height - 30, 18, 18).contains(mouseX, mouseY)) {
             graphics.renderTooltip(font, reward, mouseX, mouseY);
         }
     }
 
     private void drawPager(GuiGraphics graphics, int x, int y, String text, boolean enabled,
                            int mouseX, int mouseY) {
-        boolean hovered = enabled && inside(mouseX, mouseY, x, y, 20, 20);
-        graphics.fill(x, y, x + 20, y + 20, hovered ? CARD_HOVER : CARD);
-        drawBorder(graphics, x, y, 20, 20, enabled ? 0xFF354150 : 0xFF20262E);
-        graphics.drawCenteredString(font, text, x + 10, y + 6, enabled ? TEXT : 0xFF4C5662);
+        MoveEarthUi.Rect bounds = new MoveEarthUi.Rect(x, y, 20, 20);
+        drawButton(graphics, font, bounds, Component.literal(text), ACCENT,
+                enabled && bounds.contains(mouseX, mouseY), enabled);
     }
 
     @Override
@@ -147,15 +135,15 @@ public final class PvpTaskScreen extends Screen {
         int panelHeight = Math.min(PANEL_HEIGHT, height - 20);
         int left = (width - panelWidth) / 2;
         int top = (height - panelHeight) / 2;
-        if (inside(mouseX, mouseY, left + panelWidth - 28, top + 8, 20, 20)) {
+        if (new MoveEarthUi.Rect(left + panelWidth - 28, top + 8, 20, 20).contains(mouseX, mouseY)) {
             onClose();
             return true;
         }
-        if (inside(mouseX, mouseY, left + 16, top + 37, 92, 25)) {
+        if (new MoveEarthUi.Rect(left + 16, top + 37, 92, 25).contains(mouseX, mouseY)) {
             selectCategory("DAILY");
             return true;
         }
-        if (inside(mouseX, mouseY, left + 114, top + 37, 92, 25)) {
+        if (new MoveEarthUi.Rect(left + 114, top + 37, 92, 25).contains(mouseX, mouseY)) {
             selectCategory("EVENT");
             return true;
         }
@@ -167,19 +155,22 @@ public final class PvpTaskScreen extends Screen {
             S2C_OpenPvpTasksPacket.TaskEntry task = visible.get(index);
             int y = cardTop + index * (cardHeight + 7);
             if (task.complete() && !task.claimed()
-                    && inside(mouseX, mouseY, left + panelWidth - 107, y + cardHeight - 28, 75, 20)) {
+                    && new MoveEarthUi.Rect(left + panelWidth - 107, y + cardHeight - 28, 75, 20)
+                    .contains(mouseX, mouseY)) {
                 PacketDistributor.sendToServer(new C2S_ClaimPvpTaskPacket(task.id()));
                 return true;
             }
         }
 
         int footerY = top + panelHeight - 27;
-        if (page > 0 && inside(mouseX, mouseY, left + panelWidth / 2 - 62, footerY, 20, 20)) {
+        if (page > 0 && new MoveEarthUi.Rect(left + panelWidth / 2 - 62, footerY, 20, 20)
+                .contains(mouseX, mouseY)) {
             page--;
             return true;
         }
         if (page + 1 < pageCount()
-                && inside(mouseX, mouseY, left + panelWidth / 2 + 42, footerY, 20, 20)) {
+                && new MoveEarthUi.Rect(left + panelWidth / 2 + 42, footerY, 20, 20)
+                .contains(mouseX, mouseY)) {
             page++;
             return true;
         }
@@ -211,17 +202,6 @@ public final class PvpTaskScreen extends Screen {
 
     private int pageSize() {
         return Math.min(PANEL_HEIGHT, height - 20) < 260 ? 1 : 2;
-    }
-
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
-    }
-
-    private static void drawBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {
-        graphics.fill(x, y, x + width, y + 1, color);
-        graphics.fill(x, y + height - 1, x + width, y + height, color);
-        graphics.fill(x, y, x + 1, y + height, color);
-        graphics.fill(x + width - 1, y, x + width, y + height, color);
     }
 
     @Override

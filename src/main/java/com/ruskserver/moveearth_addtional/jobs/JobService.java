@@ -1,6 +1,6 @@
 package com.ruskserver.moveearth_addtional.jobs;
 
-import net.minecraft.network.chat.Component;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.server.level.ServerPlayer;
 
 /** Applies anti-abuse limits, persists awards and gives concise player feedback. */
@@ -34,13 +34,13 @@ public final class JobService {
         JobProgressBossBar.show(player, definition, progress, result.awardedXp());
 
         if (result.leveledUp()) {
-            player.sendSystemMessage(Component.literal("[Jobs] " + definition.displayName()
+            player.sendSystemMessage(MoveEarthMessage.success("JOBS  •  " + definition.displayName()
                     + " がレベル " + result.newLevel() + " になりました（+"
                     + result.pointsEarned() + "ポイント）"));
         } else if (result.recurringPointsEarned() > 0) {
             JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(player.getUUID(),
                     player.getServer().overworld().getGameTime());
-            player.sendSystemMessage(Component.literal("[Jobs] 継続報酬 +"
+            player.sendSystemMessage(MoveEarthMessage.success("JOBS  •  継続報酬 +"
                     + result.recurringPointsEarned() + " PT（今時間 " + recurring.pointsInWindow()
                     + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW + "）"));
         }

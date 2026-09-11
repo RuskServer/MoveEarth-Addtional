@@ -13,6 +13,9 @@ public class ModItems {
 
     public static final DeferredHolder<Item, BlockItem> PLAYER_DETECTOR = ITEMS.register("player_detector",
             () -> new BlockItem(ModBlocks.PLAYER_DETECTOR.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> TERRITORY_CORE = ITEMS.register("territory_core",
+            () -> new TerritoryCoreBlockItem(ModBlocks.TERRITORY_CORE.get(),
+                    new Item.Properties().rarity(net.minecraft.world.item.Rarity.EPIC)));
 
     public static final DeferredHolder<Item, Item> WEAPON_CRATE = ITEMS.register("weapon_crate",
             () -> new WeaponCrateItem(new Item.Properties().stacksTo(16).rarity(net.minecraft.world.item.Rarity.RARE)));
@@ -22,4 +25,8 @@ public class ModItems {
 
     public static final DeferredHolder<Item, Item> CARBON_FILTER = ITEMS.register("carbon_filter",
             () -> new com.ruskserver.moveearth_addtional.oxygen.CarbonFilterItem(new Item.Properties().stacksTo(16).rarity(net.minecraft.world.item.Rarity.COMMON)));
+
+    public static final DeferredHolder<Item, Item> WELDING_TOOL = ITEMS.register("welding_tool",
+            () -> new WeldingToolItem(new Item.Properties().stacksTo(1).durability(512)
+                    .rarity(net.minecraft.world.item.Rarity.UNCOMMON)));
 }

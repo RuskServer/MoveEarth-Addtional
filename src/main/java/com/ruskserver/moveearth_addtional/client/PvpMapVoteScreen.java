@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.network.C2S_VoteMapPacket;
 import com.ruskserver.moveearth_addtional.pvp.PvpMapDefinition;
 import net.minecraft.client.gui.GuiGraphics;
@@ -12,16 +13,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class PvpMapVoteScreen extends Screen {
+import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
+
+public final class PvpMapVoteScreen extends Screen implements com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay {
     private static final int PANEL_WIDTH = 540;
     private static final int PANEL_HEIGHT = 280;
-    private static final int TEXT = 0xFFE8EDF3;
-    private static final int MUTED = 0xFF8F9AA8;
-    private static final int PANEL = 0xF012161D;
-    private static final int CARD = 0xFF1B222C;
-    private static final int CARD_HOVER = 0xFF242E3B;
-    private static final int CARD_SELECTED = 0xFF1E3547;
-    private static final int ACCENT = 0xFF5DCBFF;
 
     private final List<PvpMapDefinition> candidates;
     private final int totalDurationSeconds;
@@ -57,15 +53,14 @@ public final class PvpMapVoteScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fillGradient(0, 0, width, height, 0xD0080B10, 0xE010151D);
+        drawBackground(graphics, width, height);
 
         int panelWidth = Math.min(PANEL_WIDTH, width - 20);
         int panelHeight = Math.min(PANEL_HEIGHT, height - 20);
         int left = (width - panelWidth) / 2;
         int top = (height - panelHeight) / 2;
 
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL);
-        drawBorder(graphics, left, top, panelWidth, panelHeight, 0xFF354150);
+        drawPanel(graphics, new MoveEarthUi.Rect(left, top, panelWidth, panelHeight));
 
         // ヘッダー
         graphics.drawString(font, "§lMAP VOTING", left + 16, top + 14, ACCENT, false);
@@ -77,7 +72,7 @@ public final class PvpMapVoteScreen extends Screen {
         int barX = left + 16;
         int barY = top + 28;
         int barWidth = panelWidth - 32;
-        graphics.fill(barX, barY, barX + barWidth, barY + 3, 0xFF0C1015);
+        graphics.fill(barX, barY, barX + barWidth, barY + 3, BAR_BACKGROUND);
         float progress = Mth.clamp((float) secondsRemaining / totalDurationSeconds, 0.0F, 1.0F);
         graphics.fill(barX, barY, barX + (int) (barWidth * progress), barY + 3, timerColor);
 
@@ -112,15 +107,12 @@ public final class PvpMapVoteScreen extends Screen {
     private void drawMapCard(GuiGraphics graphics, PvpMapDefinition map, int x, int y, int w, int h,
                              int mouseX, int mouseY, int totalVotes) {
         boolean selected = map.id().equals(selectedMapId);
-        boolean hovered = inside(mouseX, mouseY, x, y, w, h);
-
-        int bg = selected ? CARD_SELECTED : hovered ? CARD_HOVER : CARD;
-        graphics.fill(x, y, x + w, y + h, bg);
-        drawBorder(graphics, x, y, w, h, selected ? ACCENT : hovered ? 0xFF5DCBFF : 0xFF354150);
+        MoveEarthUi.Rect bounds = new MoveEarthUi.Rect(x, y, w, h);
+        boolean hovered = bounds.contains(mouseX, mouseY);
 
         // 左ストライプ（マップテーマカラー）
         int stripeColor = map.cardColor() != 0 ? map.cardColor() : ACCENT;
-        graphics.fill(x, y, x + 4, y + h, stripeColor);
+        drawCard(graphics, bounds, stripeColor, selected, hovered);
 
         // タイトル
         graphics.drawString(font, map.displayName(), x + 12, y + 10, selected ? ACCENT : TEXT, false);
@@ -138,7 +130,7 @@ public final class PvpMapVoteScreen extends Screen {
         int barX = x + 12;
         int barY = y + h - 22;
         int barW = w - 24;
-        graphics.fill(barX, barY, barX + barW, barY + 6, 0xFF0C1015);
+        graphics.fill(barX, barY, barX + barW, barY + 6, BAR_BACKGROUND);
         if (totalVotes > 0 && voteCount > 0) {
             int fillW = (int) (barW * ((float) voteCount / totalVotes));
             graphics.fill(barX, barY, barX + fillW, barY + 6, stripeColor);
@@ -173,7 +165,7 @@ public final class PvpMapVoteScreen extends Screen {
                 int r = i / cols;
                 int cx = left + 16 + c * (cardW + gap);
                 int cy = startY + r * (cardH + gap);
-                if (inside(mouseX, mouseY, cx, cy, cardW, cardH)) {
+                if (new MoveEarthUi.Rect(cx, cy, cardW, cardH).contains(mouseX, mouseY)) {
                     selectedMapId = map.id();
                     PacketDistributor.sendToServer(new C2S_VoteMapPacket(map.id()));
                     return true;
@@ -183,14 +175,4 @@ public final class PvpMapVoteScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
-        return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
-    }
-
-    private static void drawBorder(GuiGraphics graphics, int x, int y, int width, int height, int color) {
-        graphics.fill(x, y, x + width, y + 1, color);
-        graphics.fill(x, y + height - 1, x + width, y + height, color);
-        graphics.fill(x, y + 1, x + 1, y + height - 1, color);
-        graphics.fill(x + width - 1, y + 1, x + width, y + height - 1, color);
-    }
 }

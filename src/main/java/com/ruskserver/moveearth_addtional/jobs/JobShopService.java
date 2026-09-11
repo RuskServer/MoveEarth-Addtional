@@ -4,7 +4,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.C2S_JobShopActionPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_JobShopPacket;
 import com.ruskserver.moveearth_addtional.pvp.PvpMatchManager;
-import net.minecraft.network.chat.Component;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -31,13 +31,13 @@ public final class JobShopService {
         }
         boolean canAdmin = player.createCommandSourceStack().hasPermission(ADMIN_PERMISSION_LEVEL);
         if (action.admin && !canAdmin) {
-            player.sendSystemMessage(Component.literal("[Jobs Shop] この操作を行う権限がありません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("JOBS SHOP  •  この操作を行う権限がありません。"));
             send(player);
             return;
         }
         if (action.admin && PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal(
-                    "[Jobs Shop] PvPの一時装備を商品化しないため、参加中は商品管理できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error(
+                    "JOBS SHOP  •  PvPの一時装備を商品化しないため、参加中は商品管理できません。"));
             send(player);
             return;
         }
@@ -54,8 +54,8 @@ public final class JobShopService {
                 ItemStack held = player.getMainHandItem();
                 Optional<UUID> added = shop.addProduct(held, packet.price(), packet.purchaseLimit());
                 if (added.isEmpty()) {
-                    player.sendSystemMessage(Component.literal(
-                            "[Jobs Shop] 手持ちアイテム、価格、購入上限、または商品数を確認してください。"));
+                    player.sendSystemMessage(MoveEarthMessage.error(
+                            "JOBS SHOP  •  手持ちアイテム、価格、購入上限、または商品数を確認してください。"));
                 } else {
                     audit(player, "商品追加 " + added.get() + " " + held.getHoverName().getString()
                             + " x" + held.getCount() + " / " + packet.price() + " PT / limit="
@@ -104,7 +104,7 @@ public final class JobShopService {
 
     private static void purchase(ServerPlayer player, JobShopSavedData shop, UUID productId) {
         if (PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal("[Jobs Shop] PvP参加中は購入できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("JOBS SHOP  •  PvP参加中は購入できません。"));
             return;
         }
         JobShopSavedData.ProductSnapshot product = shop.product(productId, player.getUUID()).orElse(null);
@@ -114,15 +114,15 @@ public final class JobShopService {
         JobShopRules.PurchaseCheck check = JobShopRules.checkPurchase(points, product.price(),
                 product.purchased(), product.purchaseLimit(), product.enabled());
         if (check != JobShopRules.PurchaseCheck.ALLOWED) {
-            player.sendSystemMessage(Component.literal(purchaseFailure(check)));
+            player.sendSystemMessage(MoveEarthMessage.error(purchaseFailure(check)));
             return;
         }
         if (!canFit(player.getInventory(), product.template())) {
-            player.sendSystemMessage(Component.literal("[Jobs Shop] インベントリに商品の空きがありません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("JOBS SHOP  •  インベントリに商品の空きがありません。"));
             return;
         }
         if (!progress.trySpendPoints(player.getUUID(), product.price())) {
-            player.sendSystemMessage(Component.literal("[Jobs Shop] ポイントが不足しています。"));
+            player.sendSystemMessage(MoveEarthMessage.error("JOBS SHOP  •  ポイントが不足しています。"));
             return;
         }
 
@@ -131,8 +131,9 @@ public final class JobShopService {
             player.drop(reward, false);
         }
         shop.recordPurchase(productId, player.getUUID());
-        player.sendSystemMessage(Component.literal("[Jobs Shop] " + product.template().getHoverName().getString()
-                + " x" + product.template().getCount() + " を " + product.price() + " PTで購入しました。"));
+        player.sendSystemMessage(MoveEarthMessage.success("JOBS SHOP  •  "
+                + product.template().getHoverName().getString() + " x" + product.template().getCount()
+                + " を " + product.price() + " PTで購入しました。"));
         Moveearth_addtional.LOGGER.info("[Jobs shop purchase] {} bought {} ({}) for {} PT",
                 player.getScoreboardName(), product.template().getHoverName().getString(), productId, product.price());
     }
@@ -162,17 +163,17 @@ public final class JobShopService {
 
     private static String purchaseFailure(JobShopRules.PurchaseCheck check) {
         return switch (check) {
-            case DISABLED -> "[Jobs Shop] この商品は現在販売停止中です。";
-            case INVALID_PRODUCT -> "[Jobs Shop] 商品設定が不正です。";
-            case LIMIT_REACHED -> "[Jobs Shop] この商品の購入上限に達しています。";
-            case NOT_ENOUGH_POINTS -> "[Jobs Shop] ポイントが不足しています。";
+            case DISABLED -> "JOBS SHOP  •  この商品は現在販売停止中です。";
+            case INVALID_PRODUCT -> "JOBS SHOP  •  商品設定が不正です。";
+            case LIMIT_REACHED -> "JOBS SHOP  •  この商品の購入上限に達しています。";
+            case NOT_ENOUGH_POINTS -> "JOBS SHOP  •  ポイントが不足しています。";
             case ALLOWED -> "";
         };
     }
 
     private static void audit(ServerPlayer player, String operation) {
         Moveearth_addtional.LOGGER.info("[Jobs shop admin] {}: {}", player.getScoreboardName(), operation);
-        player.sendSystemMessage(Component.literal("[Jobs Shop 管理] " + operation));
+        player.sendSystemMessage(MoveEarthMessage.success("JOBS SHOP ADMIN  •  " + operation));
     }
 
     private enum Action {

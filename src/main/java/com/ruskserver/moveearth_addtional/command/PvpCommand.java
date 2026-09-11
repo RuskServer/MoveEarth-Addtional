@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenPvpScreenPacket;
 import com.ruskserver.moveearth_addtional.pvp.*;
 import net.minecraft.commands.CommandSourceStack;
@@ -124,7 +125,8 @@ public final class PvpCommand {
 
     private static int leave(ServerPlayer player) { PvpMatchManager.INSTANCE.leave(player); return 1; }
     private static int status(ServerPlayer player) {
-        player.sendSystemMessage(Component.literal(PvpRewardData.get(player.server).summary(player.getUUID())));
+        player.sendSystemMessage(MoveEarthMessage.info(
+                PvpRewardData.get(player.server).summary(player.getUUID())));
         return 1;
     }
     private static int tasks(ServerPlayer player) {
@@ -133,15 +135,17 @@ public final class PvpCommand {
     }
     private static int crate(ServerPlayer player) {
         if (PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal("§c試合中は武器箱を交換できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("試合中は武器箱を交換できません。"));
             return 0;
         }
         var rewards = PvpRewardData.get(player.server);
         if (!rewards.exchangeCrate(player)) {
-            player.sendSystemMessage(Component.literal("§c武器箱の交換には100ポイントと空きスロットが必要です。現在: " + rewards.points(player.getUUID()) + "pt"));
+            player.sendSystemMessage(MoveEarthMessage.error(
+                    "武器箱の交換には100ポイントと空きスロットが必要です。現在: "
+                            + rewards.points(player.getUUID()) + "pt"));
             return 0;
         }
-        player.sendSystemMessage(Component.literal("§a武器箱を交換しました。右クリックで開封できます。"));
+        player.sendSystemMessage(MoveEarthMessage.success("武器箱を交換しました。右クリックで開封できます。"));
         return 1;
     }
 

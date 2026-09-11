@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.beginner.BeginnerKitService;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
@@ -52,16 +53,16 @@ public final class StarterKitCommand {
     private static int claim(ServerPlayer player) {
         BeginnerKitService.GrantResult result = BeginnerKitService.grant(player, false, "self-command");
         switch (result) {
-            case GRANTED -> player.sendSystemMessage(Component.translatableWithFallback(
+            case GRANTED -> player.sendSystemMessage(MoveEarthMessage.success(Component.translatableWithFallback(
                     "message.moveearth_addtional.starterkit.granted",
-                    "初心者キットを受け取りました。"));
-            case ALREADY_RECEIVED -> player.sendSystemMessage(Component.translatableWithFallback(
+                    "初心者キットを受け取りました。")));
+            case ALREADY_RECEIVED -> player.sendSystemMessage(MoveEarthMessage.warning(Component.translatableWithFallback(
                     "message.moveearth_addtional.starterkit.already_received",
-                    "初心者キットはすでに受け取っています。"));
-            case PLAY_TIME_EXCEEDED -> player.sendSystemMessage(Component.translatableWithFallback(
+                    "初心者キットはすでに受け取っています。")));
+            case PLAY_TIME_EXCEEDED -> player.sendSystemMessage(MoveEarthMessage.warning(Component.translatableWithFallback(
                     "message.moveearth_addtional.starterkit.play_time_exceeded",
-                    "初心者キットはプレイ時間8時間未満のプレイヤーのみ受け取れます。"));
-            case CONTENT_UNAVAILABLE -> player.sendSystemMessage(contentUnavailableMessage());
+                    "初心者キットはプレイ時間8時間未満のプレイヤーのみ受け取れます。")));
+            case CONTENT_UNAVAILABLE -> player.sendSystemMessage(MoveEarthMessage.error(contentUnavailableMessage()));
         }
         return result == BeginnerKitService.GrantResult.GRANTED ? 1 : 0;
     }
@@ -70,32 +71,32 @@ public final class StarterKitCommand {
         BeginnerKitService.GrantResult result = BeginnerKitService.grant(
                 player, true, "admin:" + source.getTextName());
         if (result != BeginnerKitService.GrantResult.GRANTED) {
-            source.sendFailure(contentUnavailableMessage());
+            source.sendFailure(MoveEarthMessage.error(contentUnavailableMessage()));
             return 0;
         }
 
-        player.sendSystemMessage(Component.translatableWithFallback(
+        player.sendSystemMessage(MoveEarthMessage.success(Component.translatableWithFallback(
                 "message.moveearth_addtional.starterkit.admin_granted_player",
-                "管理者から初心者キットが支給されました。"));
-        source.sendSuccess(() -> Component.translatableWithFallback(
+                "管理者から初心者キットが支給されました。")));
+        source.sendSuccess(() -> MoveEarthMessage.success(Component.translatableWithFallback(
                 "message.moveearth_addtional.starterkit.admin_granted",
                 "%sに初心者キットを支給しました。",
-                player.getScoreboardName()), true);
+                player.getScoreboardName())), true);
         return 1;
     }
 
     private static int reset(CommandSourceStack source, ServerPlayer player) {
         BeginnerKitService.reset(player);
-        source.sendSuccess(() -> Component.translatableWithFallback(
+        source.sendSuccess(() -> MoveEarthMessage.success(Component.translatableWithFallback(
                 "message.moveearth_addtional.starterkit.reset",
                 "%sの初心者キット受取履歴をリセットしました。",
-                player.getScoreboardName()), true);
+                player.getScoreboardName())), true);
         return 1;
     }
 
     private static int status(CommandSourceStack source, ServerPlayer player) {
         int playedMinutes = BeginnerKitService.playTimeTicks(player) / (20 * 60);
-        source.sendSuccess(() -> Component.translatableWithFallback(
+        source.sendSuccess(() -> MoveEarthMessage.info(Component.translatableWithFallback(
                 "message.moveearth_addtional.starterkit.status",
                 "%s: プレイ時間 %s時間%s分 / 受取 %s / 対象 %s",
                 player.getScoreboardName(),
@@ -110,7 +111,7 @@ public final class StarterKitCommand {
                         ? Component.translatableWithFallback(
                                 "message.moveearth_addtional.starterkit.status.eligible", "対象")
                         : Component.translatableWithFallback(
-                                "message.moveearth_addtional.starterkit.status.ineligible", "対象外")), false);
+                                "message.moveearth_addtional.starterkit.status.ineligible", "対象外"))), false);
         return 1;
     }
 
