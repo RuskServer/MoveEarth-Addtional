@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementVisualStyle;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementBrushPattern;
+import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementGreedyMesher;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -29,6 +30,13 @@ import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 public final class ReinforcementOverlayRenderer {
     private static final int PASSIVE_RENDER_LIMIT = 4096;
     private static final int DETAILED_RENDER_LIMIT = 8192;
+    private static final int FACES_PER_BLOCK = 6;
+    private static final int MAX_RENDER_QUADS = DETAILED_RENDER_LIMIT * FACES_PER_BLOCK;
+    private static final double MAX_RENDER_DISTANCE_SQUARED = 68.0D * 68.0D;
+    private static final float[] INSTANCE_POSITIONS = new float[MAX_RENDER_QUADS * 3];
+    private static final float[] INSTANCE_SCALES = new float[MAX_RENDER_QUADS * 3];
+    private static final float[] INSTANCE_COLORS = new float[MAX_RENDER_QUADS * 4];
+    private static final int[] INSTANCE_FACES = new int[MAX_RENDER_QUADS];
 
     private ReinforcementOverlayRenderer() {
     }
@@ -46,18 +54,56 @@ public final class ReinforcementOverlayRenderer {
         Vec3 camera = event.getCamera().getPosition();
         long now = Util.getMillis();
         boolean detailed = ReinforcementClientState.overlayActive();
-        int renderLimit = detailed ? DETAILED_RENDER_LIMIT : PASSIVE_RENDER_LIMIT;
+        int renderLimit = (detailed ? DETAILED_RENDER_LIMIT : PASSIVE_RENDER_LIMIT) * FACES_PER_BLOCK;
         int rendered = 0;
-        for (S2C_ReinforcementSnapshotPacket.Entry entry : ReinforcementClientState.entries().values()) {
-            if (rendered++ >= renderLimit) break;
-            ReinforcementVisualStyle.Style style = ReinforcementVisualStyle.forEntry(
-                    entry.material(), entry.durability(), entry.enabled(), detailed, now);
-            DebugRenderer.renderFilledBox(poseStack, buffers,
-                    new AABB(entry.pos()).inflate(0.003D).move(-camera.x, -camera.y, -camera.z),
-                    entry.siegeDisabled() ? 1.0F : style.red(),
-                    entry.siegeDisabled() ? 0.18F : style.green(),
-                    entry.siegeDisabled() ? 0.12F : style.blue(),
-                    entry.siegeDisabled() ? (detailed ? 0.42F : 0.27F) : style.alpha());
+        outer:
+        for (ReinforcementClientState.ChunkBucket chunk : ReinforcementClientState.chunks()) {
+            AABB chunkBounds = new AABB(chunk.chunkX() << 4, chunk.minY(), chunk.chunkZ() << 4,
+                    (chunk.chunkX() << 4) + 16, chunk.maxY() + 1, (chunk.chunkZ() << 4) + 16).inflate(0.03D);
+            if (!event.getFrustum().isVisible(chunkBounds)) continue;
+            for (ReinforcementClientState.MergedFace merged : chunk.faces()) {
+                ReinforcementGreedyMesher.Quad quad = merged.quad();
+                S2C_ReinforcementSnapshotPacket.Entry entry = merged.style();
+                if (camera.distanceToSqr(quad.x() + quad.sizeX() * 0.5D,
+                        quad.y() + quad.sizeY() * 0.5D, quad.z() + quad.sizeZ() * 0.5D)
+                        > MAX_RENDER_DISTANCE_SQUARED) continue;
+                if (rendered >= renderLimit) break outer;
+                ReinforcementVisualStyle.Style style = ReinforcementVisualStyle.forEntry(
+                        entry.material(), entry.durability(), entry.enabled(), detailed, now);
+                int positionIndex = rendered * 3;
+                int colorIndex = rendered * 4;
+                INSTANCE_POSITIONS[positionIndex] = (float) (quad.x() - camera.x);
+                INSTANCE_POSITIONS[positionIndex + 1] = (float) (quad.y() - camera.y);
+                INSTANCE_POSITIONS[positionIndex + 2] = (float) (quad.z() - camera.z);
+                INSTANCE_SCALES[positionIndex] = quad.sizeX();
+                INSTANCE_SCALES[positionIndex + 1] = quad.sizeY();
+                INSTANCE_SCALES[positionIndex + 2] = quad.sizeZ();
+                INSTANCE_COLORS[colorIndex] = entry.siegeDisabled() ? 1.0F : style.red();
+                INSTANCE_COLORS[colorIndex + 1] = entry.siegeDisabled() ? 0.18F : style.green();
+                INSTANCE_COLORS[colorIndex + 2] = entry.siegeDisabled() ? 0.12F : style.blue();
+                INSTANCE_COLORS[colorIndex + 3] = entry.siegeDisabled()
+                        ? (detailed ? 0.42F : 0.27F) : style.alpha();
+                INSTANCE_FACES[rendered] = quad.face().ordinal();
+                rendered++;
+            }
+        }
+        if (!ReinforcementGl45Renderer.render(
+                poseStack, INSTANCE_POSITIONS, INSTANCE_SCALES,
+                INSTANCE_COLORS, INSTANCE_FACES, rendered)) {
+            for (int index = 0; index < rendered; index++) {
+                int positionIndex = index * 3;
+                int colorIndex = index * 4;
+                float x = INSTANCE_POSITIONS[positionIndex];
+                float y = INSTANCE_POSITIONS[positionIndex + 1];
+                float z = INSTANCE_POSITIONS[positionIndex + 2];
+                float sizeX = INSTANCE_SCALES[positionIndex];
+                float sizeY = INSTANCE_SCALES[positionIndex + 1];
+                float sizeZ = INSTANCE_SCALES[positionIndex + 2];
+                DebugRenderer.renderFilledBox(poseStack, buffers,
+                        mergedFaceBounds(x, y, z, sizeX, sizeY, sizeZ, INSTANCE_FACES[index]),
+                        INSTANCE_COLORS[colorIndex], INSTANCE_COLORS[colorIndex + 1],
+                        INSTANCE_COLORS[colorIndex + 2], INSTANCE_COLORS[colorIndex + 3]);
+            }
         }
 
         BlockHitResult targetHit = targetHit(minecraft);
@@ -204,6 +250,19 @@ public final class ReinforcementOverlayRenderer {
     private static String progressBar(S2C_ReinforcementSnapshotPacket.Entry entry) {
         int filled = Math.round(progress(entry) * 8.0F);
         return "▰".repeat(filled) + "▱".repeat(8 - filled);
+    }
+
+    private static AABB mergedFaceBounds(float x, float y, float z,
+                                         float sizeX, float sizeY, float sizeZ, int face) {
+        double e = 0.003D;
+        return switch (ReinforcementGreedyMesher.Face.values()[face]) {
+            case NORTH -> new AABB(x, y, z - e, x + sizeX, y + sizeY, z + e);
+            case SOUTH -> new AABB(x, y, z + sizeZ - e, x + sizeX, y + sizeY, z + sizeZ + e);
+            case WEST -> new AABB(x - e, y, z, x + e, y + sizeY, z + sizeZ);
+            case EAST -> new AABB(x + sizeX - e, y, z, x + sizeX + e, y + sizeY, z + sizeZ);
+            case DOWN -> new AABB(x, y - e, z, x + sizeX, y + e, z + sizeZ);
+            case UP -> new AABB(x, y + sizeY - e, z, x + sizeX, y + sizeY + e, z + sizeZ);
+        };
     }
 
     static AABB selectionFaceBounds(BlockPos center, Direction face, int radius) {

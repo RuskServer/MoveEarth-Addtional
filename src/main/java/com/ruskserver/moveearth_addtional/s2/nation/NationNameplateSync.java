@@ -11,6 +11,8 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -32,31 +34,41 @@ public final class NationNameplateSync {
         if (nations.revision() == lastRevision && online.equals(lastOnline)) return;
         lastRevision = nations.revision();
         lastOnline = Set.copyOf(online);
+        List<TargetProfile> targets = server.getPlayerList().getPlayers().stream()
+                .map(target -> targetProfile(target, nations))
+                .toList();
         for (ServerPlayer viewer : server.getPlayerList().getPlayers()) {
-            PacketDistributor.sendToPlayer(viewer, snapshotFor(viewer, nations,
-                    server.getPlayerList().getPlayers()));
+            PacketDistributor.sendToPlayer(viewer, snapshotFor(viewer, nations, targets));
         }
     }
 
     private static S2C_NationNameplatesPacket snapshotFor(ServerPlayer viewer, NationSavedData nations,
-                                                           List<ServerPlayer> online) {
+                                                           List<TargetProfile> targets) {
         UUID viewerNation = nations.nationIdFor(viewer.getUUID()).orElse(null);
-        List<S2C_NationNameplatesPacket.Entry> entries = online.stream().map(target -> {
-            NationSavedData.Nation targetNation = nations.nationFor(target.getUUID()).orElse(null);
-            if (targetNation == null) {
-                return new S2C_NationNameplatesPacket.Entry(
-                        target.getUUID(), "", NationNameplateRelation.NEUTRAL);
+        Map<UUID, NationNameplateRelation> relationByNation = new HashMap<>();
+        List<S2C_NationNameplatesPacket.Entry> entries = targets.stream().map(target -> {
+            if (target.nationId() == null) {
+                return new S2C_NationNameplatesPacket.Entry(target.playerId(), "",
+                        NationNameplateRelation.NEUTRAL);
             }
-            boolean same = viewerNation != null && viewerNation.equals(targetNation.id());
-            boolean allied = viewerNation != null && nations.isAllied(viewerNation, targetNation.id());
-            boolean hostile = viewerNation != null
-                    && nations.relation(viewerNation, targetNation.id()) == NationSavedData.DiplomacyRelation.HOSTILE;
-            String prefix = targetNation.tag().isBlank()
-                    ? "[" + targetNation.name() + "] " : "[" + targetNation.tag() + "] ";
-            return new S2C_NationNameplatesPacket.Entry(target.getUUID(), prefix,
-                    NationNameplateRelation.resolve(same, allied, hostile));
+            NationNameplateRelation relation = relationByNation.computeIfAbsent(target.nationId(), nationId -> {
+                boolean same = viewerNation != null && viewerNation.equals(nationId);
+                boolean allied = viewerNation != null && nations.isAllied(viewerNation, nationId);
+                boolean hostile = viewerNation != null && nations.relation(viewerNation, nationId)
+                        == NationSavedData.DiplomacyRelation.HOSTILE;
+                return NationNameplateRelation.resolve(same, allied, hostile);
+            });
+            return new S2C_NationNameplatesPacket.Entry(target.playerId(), target.prefix(), relation);
         }).toList();
         return new S2C_NationNameplatesPacket(entries);
+    }
+
+    private static TargetProfile targetProfile(ServerPlayer target, NationSavedData nations) {
+        NationSavedData.Nation nation = nations.nationFor(target.getUUID()).orElse(null);
+        if (nation == null) return new TargetProfile(target.getUUID(), null, "");
+        String prefix = nation.tag().isBlank()
+                ? "[" + nation.name() + "] " : "[" + nation.tag() + "] ";
+        return new TargetProfile(target.getUUID(), nation.id(), prefix);
     }
 
     @SubscribeEvent
@@ -64,4 +76,6 @@ public final class NationNameplateSync {
         lastRevision = Long.MIN_VALUE;
         lastOnline = Set.of();
     }
+
+    private record TargetProfile(UUID playerId, UUID nationId, String prefix) { }
 }

@@ -4,8 +4,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
-import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureScanner;
-import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureService;
+import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureRecheckManager;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -60,11 +59,7 @@ public record C2S_ValidateTerritoryCorePacket(int requestId, BlockPos pos) imple
                         dimension, pos, requestId, S2C_TerritoryClosurePacket.Status.DENIED));
                 return;
             }
-            TerritoryClosureScanner.Result result = TerritoryClosureService.scanAndUpdate(level, pos);
-            TerritorySavedData.CoreState state = territories.core(dimension, pos)
-                    .map(TerritorySavedData.CoreRecord::state).orElse(record.state());
-            send(player, S2C_TerritoryClosurePacket.scanned(dimension, pos, requestId, result, state,
-                    TerritoryClosureService.unreinforcedLeakBlocks(level, result)));
+            TerritoryClosureRecheckManager.requestValidation(player, pos, requestId);
         });
     }
 

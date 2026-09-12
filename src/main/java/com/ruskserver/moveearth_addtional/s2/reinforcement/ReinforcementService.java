@@ -19,9 +19,17 @@ import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class ReinforcementService {
     public static final int SCAN_RADIUS = 64;
+    private static final long FORCED_FULL_SYNC_TICKS = 10L * 20L;
+    private static final Map<UUID, ScanSignature> LAST_SCANS = new HashMap<>();
+    private static final Set<UUID> PENDING_SCANS = new HashSet<>();
 
     private ReinforcementService() {
     }
@@ -127,9 +135,48 @@ public final class ReinforcementService {
                         sieges.isReinforcementDisabled(player.level().dimension().location(), value.pos())))
                 .toList()
                 : List.of();
-        PacketDistributor.sendToPlayer(player, new S2C_ReinforcementSnapshotPacket(
-                player.level().dimension().location(), allowed, entries));
+        net.minecraft.resources.ResourceLocation dimension = player.level().dimension().location();
+        long signature = signature(entries);
+        long gameTime = player.serverLevel().getGameTime();
+        ScanSignature previous = LAST_SCANS.get(player.getUUID());
+        if (previous != null && previous.dimension.equals(dimension) && previous.allowed == allowed
+                && previous.entryCount == entries.size() && previous.contentHash == signature
+                && gameTime - previous.sentAtGameTime < FORCED_FULL_SYNC_TICKS) return;
+        LAST_SCANS.put(player.getUUID(), new ScanSignature(
+                dimension, allowed, entries.size(), signature, gameTime));
+        PacketDistributor.sendToPlayer(player, new S2C_ReinforcementSnapshotPacket(dimension, allowed, entries));
     }
+
+    public static void clearScanCache(UUID playerId) {
+        LAST_SCANS.remove(playerId);
+        PENDING_SCANS.remove(playerId);
+    }
+
+    public static void clearScanCache() {
+        LAST_SCANS.clear();
+        PENDING_SCANS.clear();
+    }
+
+    private static long signature(List<S2C_ReinforcementSnapshotPacket.Entry> entries) {
+        long hash = 0xcbf29ce484222325L;
+        for (S2C_ReinforcementSnapshotPacket.Entry entry : entries) {
+            hash = mix(hash, entry.pos().asLong());
+            hash = mix(hash, entry.material().ordinal());
+            hash = mix(hash, entry.durability());
+            hash = mix(hash, entry.activationTicksRemaining());
+            hash = mix(hash, entry.enabled() ? 1L : 0L);
+            hash = mix(hash, entry.constructionInProgress() ? 1L : 0L);
+            hash = mix(hash, entry.siegeDisabled() ? 1L : 0L);
+        }
+        return hash;
+    }
+
+    private static long mix(long hash, long value) {
+        return (hash ^ value) * 0x100000001b3L;
+    }
+
+    private record ScanSignature(net.minecraft.resources.ResourceLocation dimension, boolean allowed,
+                                 int entryCount, long contentHash, long sentAtGameTime) { }
 
     public static boolean canManage(ServerPlayer player) {
         NationSavedData nations = NationSavedData.get(player.server);
@@ -146,9 +193,21 @@ public final class ReinforcementService {
 
     public static void syncNearbyManagers(ServerLevel level, BlockPos pos) {
         for (ServerPlayer player : level.players()) {
-            if (canManage(player) && player.blockPosition().distSqr(pos) <= (long) SCAN_RADIUS * SCAN_RADIUS) {
-                sendScan(player, SCAN_RADIUS);
+            if (player.blockPosition().distSqr(pos) <= (long) SCAN_RADIUS * SCAN_RADIUS
+                    && canManage(player)) {
+                PENDING_SCANS.add(player.getUUID());
             }
+        }
+    }
+
+    /** Coalesces all block changes from the same server tick into one scan per nearby player. */
+    public static void flushPendingScans(net.minecraft.server.MinecraftServer server) {
+        if (PENDING_SCANS.isEmpty()) return;
+        List<UUID> pending = List.copyOf(PENDING_SCANS);
+        PENDING_SCANS.clear();
+        for (UUID playerId : pending) {
+            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+            if (player != null) sendScan(player, SCAN_RADIUS);
         }
     }
 

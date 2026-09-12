@@ -246,6 +246,30 @@ public final class SiegeSavedData extends SavedData {
         setDirty();
     }
 
+    public void removeNationState(UUID nationId) {
+        boolean changed = active.values().removeIf(record -> record.attackerNation.equals(nationId)
+                || record.defenderNation.equals(nationId));
+        changed |= fallen.values().removeIf(record -> record.attackerNation.equals(nationId)
+                || record.defenderNation.equals(nationId));
+        changed |= retryCooldowns.entrySet().removeIf(entry -> entry.getKey().attacker.equals(nationId)
+                || entry.getKey().defender.equals(nationId));
+        changed |= peaceTruces.entrySet().removeIf(entry -> entry.getKey().first.equals(nationId)
+                || entry.getKey().second.equals(nationId));
+        changed |= nationTruces.remove(nationId) != null;
+        if (changed) setDirty();
+    }
+
+    public void removeCoreState(List<TerritorySavedData.CoreRecord> cores) {
+        if (cores == null || cores.isEmpty()) return;
+        java.util.Set<UUID> coreIds = cores.stream().map(TerritorySavedData.CoreRecord::id)
+                .collect(java.util.stream.Collectors.toSet());
+        boolean changed = coreTruces.keySet().removeIf(coreIds::contains);
+        changed |= offlineDamageCarry.entrySet().removeIf(entry -> cores.stream().anyMatch(core ->
+                core.dimension().equals(entry.getKey().dimension)
+                        && core.pos().asLong() == entry.getKey().pos));
+        if (changed) setDirty();
+    }
+
     public boolean removeFallen(UUID coreId) {
         boolean changed = fallen.remove(coreId) != null;
         if (changed) setDirty();

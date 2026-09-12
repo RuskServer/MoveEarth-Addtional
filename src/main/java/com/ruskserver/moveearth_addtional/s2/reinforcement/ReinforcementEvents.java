@@ -16,8 +16,11 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID)
@@ -98,6 +101,8 @@ public final class ReinforcementEvents {
         boolean preHandled = cbc && CbcReinforcementCompat.wasRecentlyPreHandled(
                 source, level, explosionCenter);
         boolean[] reinforcementChanged = {false};
+        Map<Long, com.ruskserver.moveearth_addtional.s2.territory.UpkeepPenalty> penaltiesByChunk =
+                new HashMap<>();
         event.getAffectedBlocks().removeIf(pos -> {
             if (SiegeService.peaceTruceBlocks(attacker, level, pos)) return true;
             TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
@@ -124,7 +129,10 @@ public final class ReinforcementEvents {
                 reinforcementChanged[0] = true;
                 return false;
             }
-            if (!SiegeDamageService.penaltyAt(level, pos).reinforcementProtectionEnabled()) {
+            long chunkKey = net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
+            var penalty = penaltiesByChunk.computeIfAbsent(
+                    chunkKey, ignored -> SiegeDamageService.penaltyAt(level, pos));
+            if (!penalty.reinforcementProtectionEnabled()) {
                 data.remove(pos);
                 TerritoryClosureRecheckManager.markPotentialOpening(level, pos);
                 reinforcementChanged[0] = true;
@@ -133,7 +141,7 @@ public final class ReinforcementEvents {
             if (!cbc) return true;
             reinforcementChanged[0] = true;
             SiegeDamageService.ReinforcementDamage result = SiegeDamageService.damageReinforcement(
-                    level, pos, entry, munition);
+                    level, pos, entry, munition, penalty);
             if (result.appliedDamage() > 0) {
                 SiegeService.recordAttack(attacker, level, pos, true);
             }
@@ -147,8 +155,9 @@ public final class ReinforcementEvents {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
+        ReinforcementService.flushPendingScans(event.getServer());
         for (ServerLevel level : event.getServer().getAllLevels()) {
-            if (level.getGameTime() % 20L != 0L) continue;
+            if (level.getGameTime() % 20L != 3L) continue;
             ReinforcementSavedData.AdvanceResult result = ReinforcementSavedData.get(level)
                     .advance(level, level.getGameTime());
             playClusteredSound(level, result.activated(), net.minecraft.sounds.SoundEvents.BEACON_ACTIVATE,
@@ -172,9 +181,15 @@ public final class ReinforcementEvents {
     }
 
     @SubscribeEvent
+    public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        ReinforcementService.clearScanCache(event.getEntity().getUUID());
+    }
+
+    @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         DAMAGE_LIMITER.clear();
         WeldingBrushServerState.clear();
+        ReinforcementService.clearScanCache();
         CbcReinforcementCompat.clearRuntimeState();
     }
 }

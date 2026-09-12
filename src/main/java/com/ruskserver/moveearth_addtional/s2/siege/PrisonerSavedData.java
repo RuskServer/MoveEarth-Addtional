@@ -49,6 +49,15 @@ public final class PrisonerSavedData extends SavedData {
                 || value.holdingNation.equals(nationId)).toList();
     }
 
+    public boolean hasNation(UUID nationId) {
+        return nationId != null && held.values().stream().anyMatch(value ->
+                value.homeNation.equals(nationId) || value.holdingNation.equals(nationId));
+    }
+
+    public void removePendingReleaseNation(UUID nationId) {
+        if (pendingReleaseHome.entrySet().removeIf(entry -> entry.getValue().equals(nationId))) setDirty();
+    }
+
     /** Commit point used only after all peace terms have been validated and paid. */
     public List<Prisoner> releaseBetween(UUID firstNation, UUID secondNation) {
         List<Prisoner> released = between(firstNation, secondNation);

@@ -15,6 +15,9 @@ import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 import com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService;
 import com.ruskserver.moveearth_addtional.s2.siege.LongAbsenceService;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /** Applies server-authoritative siege damage without linking against an optional artillery mod. */
 public final class SiegeDamageService {
     private SiegeDamageService() { }
@@ -84,6 +87,7 @@ public final class SiegeDamageService {
         boolean intercepted = false;
         boolean reinforcementChanged = false;
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
+        Map<Long, UpkeepPenalty> penaltiesByChunk = new HashMap<>();
         for (ReinforcementSavedData.LocatedEntry located : reinforcements.around(level, center, safeRadius)) {
             ReinforcementEntry entry = located.entry();
             if (!entry.enabled()) continue;
@@ -91,7 +95,10 @@ public final class SiegeDamageService {
                 intercepted = true;
                 continue;
             }
-            UpkeepPenalty penalty = penaltyAt(level, located.pos());
+            long chunkKey = net.minecraft.world.level.ChunkPos.asLong(
+                    located.pos().getX() >> 4, located.pos().getZ() >> 4);
+            UpkeepPenalty penalty = penaltiesByChunk.computeIfAbsent(
+                    chunkKey, ignored -> penaltyAt(level, located.pos()));
             if (!penalty.reinforcementProtectionEnabled()) continue;
             intercepted = true;
             SiegeService.recordAttack(attacker, level, located.pos(), false);
@@ -127,6 +134,13 @@ public final class SiegeDamageService {
                                                           ReinforcementEntry entry,
                                                           CbcMunitionDamage.Kind kind) {
         UpkeepPenalty penalty = penaltyAt(level, pos);
+        return damageReinforcement(level, pos, entry, kind, penalty);
+    }
+
+    static ReinforcementDamage damageReinforcement(ServerLevel level, BlockPos pos,
+                                                    ReinforcementEntry entry,
+                                                    CbcMunitionDamage.Kind kind,
+                                                    UpkeepPenalty penalty) {
         if (!penalty.reinforcementProtectionEnabled()) {
             ReinforcementSavedData.get(level).remove(pos);
             TerritoryClosureRecheckManager.markPotentialOpening(level, pos);

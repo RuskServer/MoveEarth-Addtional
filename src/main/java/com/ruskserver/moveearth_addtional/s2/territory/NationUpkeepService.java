@@ -122,7 +122,7 @@ public final class NationUpkeepService {
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
-        if (server.overworld().getGameTime() % 1200L != 0L) return;
+        if (server.overworld().getGameTime() % 1200L != 17L) return;
         long now = System.currentTimeMillis();
         NationUpkeepSavedData data = NationUpkeepSavedData.get(server);
         TerritorySavedData territories = TerritorySavedData.get(server);
@@ -141,6 +141,11 @@ public final class NationUpkeepService {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         LAST_NOTIFIED_PENALTY.clear();
+    }
+
+    /** Drops transient notification state when a nation is permanently removed. */
+    public static void removeNation(UUID nationId) {
+        LAST_NOTIFIED_PENALTY.remove(nationId);
     }
 
     public static UpkeepPenalty penalty(MinecraftServer server, UUID nationId) {

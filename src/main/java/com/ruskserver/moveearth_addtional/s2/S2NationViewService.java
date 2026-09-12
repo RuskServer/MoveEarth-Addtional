@@ -165,7 +165,9 @@ public final class S2NationViewService {
                 : sieges.getFirst().phase() == S2NationSnapshot.SiegePhase.FALLEN ? "CORE FALLEN" : "INITIAL LOCK")
                 + " • " + formatRemaining(sieges.getFirst().remainingTicks());
         return new S2NationSnapshot(data.revision(), player.getGameProfile().getName(), serverAdmin,
-                true, nation.name(), nation.tag(), ownRole == null ? "Member" : ownRole.displayName(), permissions,
+                true, nation.name(), nation.tag(), ownRole == null ? "Member" : ownRole.displayName(),
+                java.util.Optional.ofNullable(nation.members().get(nation.ownerId()))
+                        .map(NationSavedData.Member::lastKnownName).orElse("Unknown"), permissions,
                 online, members.size(), controlledChunks,
                 controlledCores, upkeep, siegeStatus, vault != null,
                 vault == null ? "" : vault.dimension().toString(),

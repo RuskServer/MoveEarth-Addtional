@@ -9,6 +9,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.LinkedHashMap;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +20,7 @@ public final class NationSavedData extends SavedData {
     public static final int MAX_CUSTOM_ROLES = 16;
 
     private final Map<UUID, Nation> nations = new LinkedHashMap<>();
+    private final Map<UUID, Nation> nationView = Collections.unmodifiableMap(nations);
     private final Map<UUID, UUID> nationByMember = new LinkedHashMap<>();
     private final Map<UUID, Invitation> invitations = new LinkedHashMap<>();
     private final Map<NationPair, DiplomacyRecord> diplomacy = new LinkedHashMap<>();
@@ -34,7 +36,7 @@ public final class NationSavedData extends SavedData {
     }
 
     public Map<UUID, Nation> nations() {
-        return Map.copyOf(nations);
+        return nationView;
     }
 
     public Optional<UUID> nationIdFor(UUID playerId) {
@@ -53,6 +55,9 @@ public final class NationSavedData extends SavedData {
     }
 
     public DiplomacyRelation relation(UUID viewerNation, UUID otherNation) {
+        if (viewerNation == null || otherNation == null || viewerNation.equals(otherNation)) {
+            return DiplomacyRelation.NEUTRAL;
+        }
         DiplomacyRecord record = diplomacy.get(NationPair.of(viewerNation, otherNation));
         if (record == null) return DiplomacyRelation.NEUTRAL;
         if (record.allied) return DiplomacyRelation.ALLIED;
@@ -63,6 +68,7 @@ public final class NationSavedData extends SavedData {
     }
 
     public boolean isHostileFrom(UUID viewerNation, UUID otherNation) {
+        if (viewerNation == null || otherNation == null || viewerNation.equals(otherNation)) return false;
         DiplomacyRecord record = diplomacy.get(NationPair.of(viewerNation, otherNation));
         return record != null && record.isHostileFrom(viewerNation);
     }
@@ -272,6 +278,84 @@ public final class NationSavedData extends SavedData {
         return new RoleResult(RoleStatus.DELETED, revision, normalizedId);
     }
 
+    public NationAdminResult updateIdentity(UUID actorId, String rawName, String rawTag,
+                                            long expectedRevision) {
+        if (expectedRevision != revision) return adminResult(NationAdminStatus.STALE);
+        Nation nation = nationFor(actorId).orElse(null);
+        if (nation == null || !nation.ownerId.equals(actorId)) return adminResult(NationAdminStatus.OWNER_ONLY);
+        NationNamePolicy.Validation validation = NationNamePolicy.validate(rawName, rawTag);
+        if (!validation.valid()) return adminResult(NationAdminStatus.INVALID);
+        boolean duplicate = nations.values().stream().filter(other -> !other.id.equals(nation.id))
+                .anyMatch(other -> NationNamePolicy.normalizedName(other.name)
+                        .equals(NationNamePolicy.normalizedName(validation.name()))
+                        || other.tag.equalsIgnoreCase(validation.tag()));
+        if (duplicate) return adminResult(NationAdminStatus.DUPLICATE);
+        if (nation.name.equals(validation.name()) && nation.tag.equals(validation.tag())) {
+            return adminResult(NationAdminStatus.UNCHANGED);
+        }
+        nation.name = validation.name();
+        nation.tag = validation.tag();
+        changed();
+        return adminResult(NationAdminStatus.UPDATED);
+    }
+
+    public NationAdminResult transferOwner(UUID actorId, UUID targetId, long expectedRevision,
+                                           boolean siegeLocked) {
+        if (expectedRevision != revision) return adminResult(NationAdminStatus.STALE);
+        Nation nation = nationFor(actorId).orElse(null);
+        NationLifecyclePolicy.Decision decision = NationLifecyclePolicy.transfer(
+                nation != null && nation.ownerId.equals(actorId),
+                nation != null && nation.members.containsKey(targetId),
+                nation != null && nation.ownerId.equals(targetId), siegeLocked);
+        if (decision != NationLifecyclePolicy.Decision.ALLOWED) return adminResult(map(decision));
+        Member previous = nation.members.get(actorId);
+        Member next = nation.members.get(targetId);
+        previous.roleId = MEMBER_ROLE;
+        next.roleId = OWNER_ROLE;
+        nation.ownerId = targetId;
+        changed();
+        return adminResult(NationAdminStatus.OWNER_TRANSFERRED);
+    }
+
+    public NationAdminResult validateDisband(UUID actorId, long expectedRevision,
+                                             boolean siegeLocked, boolean hasPrisoners) {
+        if (expectedRevision != revision) return adminResult(NationAdminStatus.STALE);
+        Nation nation = nationFor(actorId).orElse(null);
+        NationLifecyclePolicy.Decision decision = NationLifecyclePolicy.disband(
+                nation != null && nation.ownerId.equals(actorId), siegeLocked, hasPrisoners);
+        return adminResult(decision == NationLifecyclePolicy.Decision.ALLOWED
+                ? NationAdminStatus.ALLOWED : map(decision));
+    }
+
+    public NationAdminResult disband(UUID actorId, long expectedRevision) {
+        if (expectedRevision != revision) return adminResult(NationAdminStatus.STALE);
+        Nation nation = nationFor(actorId).orElse(null);
+        if (nation == null || !nation.ownerId.equals(actorId)) return adminResult(NationAdminStatus.OWNER_ONLY);
+        UUID nationId = nation.id;
+        nation.members.keySet().forEach(nationByMember::remove);
+        invitations.values().removeIf(invitation -> invitation.nationId.equals(nationId));
+        diplomacy.entrySet().removeIf(entry -> entry.getKey().first.equals(nationId)
+                || entry.getKey().second.equals(nationId));
+        nations.remove(nationId);
+        changed();
+        return adminResult(NationAdminStatus.DISBANDED);
+    }
+
+    private NationAdminResult adminResult(NationAdminStatus status) {
+        return new NationAdminResult(status, revision);
+    }
+
+    private static NationAdminStatus map(NationLifecyclePolicy.Decision decision) {
+        return switch (decision) {
+            case OWNER_ONLY -> NationAdminStatus.OWNER_ONLY;
+            case TARGET_NOT_MEMBER -> NationAdminStatus.TARGET_NOT_MEMBER;
+            case TARGET_IS_OWNER -> NationAdminStatus.TARGET_IS_OWNER;
+            case SIEGE_LOCKED -> NationAdminStatus.SIEGE_LOCKED;
+            case PRISONERS_EXIST -> NationAdminStatus.PRISONERS_EXIST;
+            case ALLOWED -> NationAdminStatus.ALLOWED;
+        };
+    }
+
     private RoleResult roleResult(RoleStatus status) {
         return new RoleResult(status, revision, "");
     }
@@ -294,8 +378,8 @@ public final class NationSavedData extends SavedData {
 
     public CreateResult create(UUID ownerId, String ownerName, String rawName, String rawTag,
                                long expectedRevision) {
-        if (nationByMember.containsKey(ownerId)) return new CreateResult(Status.ALREADY_MEMBER, null, revision);
         if (expectedRevision != revision) return new CreateResult(Status.STALE, null, revision);
+        if (nationByMember.containsKey(ownerId)) return new CreateResult(Status.ALREADY_MEMBER, null, revision);
         NationNamePolicy.Validation validation = NationNamePolicy.validate(rawName, rawTag);
         if (!validation.valid()) return new CreateResult(Status.INVALID, null, revision);
         boolean duplicate = nations.values().stream().anyMatch(nation ->
@@ -490,6 +574,18 @@ public final class NationSavedData extends SavedData {
         BUILT_IN, NOT_FOUND, OWNER_IMMUTABLE, STALE, NO_PERMISSION
     }
 
+    public enum NationAdminStatus {
+        ALLOWED, UPDATED, OWNER_TRANSFERRED, DISBANDED, UNCHANGED, INVALID, DUPLICATE,
+        OWNER_ONLY, TARGET_NOT_MEMBER, TARGET_IS_OWNER, SIEGE_LOCKED, PRISONERS_EXIST, STALE
+    }
+
+    public record NationAdminResult(NationAdminStatus status, long revision) {
+        public boolean success() {
+            return status == NationAdminStatus.UPDATED || status == NationAdminStatus.OWNER_TRANSFERRED
+                    || status == NationAdminStatus.DISBANDED;
+        }
+    }
+
     public enum DiplomacyAction {
         REQUEST_ALLIANCE, ACCEPT_ALLIANCE, DECLINE_ALLIANCE, END_ALLIANCE,
         DECLARE_HOSTILE, SET_NEUTRAL, UNKNOWN
@@ -536,11 +632,13 @@ public final class NationSavedData extends SavedData {
 
     public static final class Nation {
         private final UUID id;
-        private final String name;
-        private final String tag;
-        private final UUID ownerId;
+        private String name;
+        private String tag;
+        private UUID ownerId;
         private final Map<UUID, Member> members = new LinkedHashMap<>();
         private final Map<String, Role> roles = new LinkedHashMap<>();
+        private final Map<UUID, Member> memberView = Collections.unmodifiableMap(members);
+        private final Map<String, Role> roleView = Collections.unmodifiableMap(roles);
 
         private Nation(UUID id, String name, String tag, UUID ownerId) {
             this.id = id;
@@ -556,8 +654,8 @@ public final class NationSavedData extends SavedData {
         public String name() { return name; }
         public String tag() { return tag; }
         public UUID ownerId() { return ownerId; }
-        public Map<UUID, Member> members() { return Map.copyOf(members); }
-        public Map<String, Role> roles() { return Map.copyOf(roles); }
+        public Map<UUID, Member> members() { return memberView; }
+        public Map<String, Role> roles() { return roleView; }
     }
 
     public static final class Member {

@@ -167,6 +167,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         graphics.drawString(font, nationTitle, content.x(), content.y(), ACCENT, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.role", snapshot.roleName()),
                 content.x(), content.y() + 15, MUTED, false);
+        Component ownerText = Component.translatable(
+                "screen.moveearth_addtional.s2.owner", snapshot.ownerName());
+        graphics.drawString(font, ownerText,
+                content.right() - font.width(ownerText), content.y() + 15, GOLD, false);
 
         int gap = 8;
         int cardWidth = (content.width() - gap) / 2;
@@ -204,7 +208,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 && snapshot.vaultChangeCooldownTicks() <= 0L;
         drawButton(graphics, font, vault, vaultLabel, ACCENT,
                 vaultEnabled && vault.contains(mouseX, mouseY), vaultEnabled);
-        if (!isOwner()) {
+        if (isOwner()) {
+            Rect settings = memberLeaveBounds(content);
+            drawButton(graphics, font, settings,
+                    Component.translatable("screen.moveearth_addtional.nation.settings.open"), ACCENT,
+                    settings.contains(mouseX, mouseY), true);
+        } else {
             Rect leave = memberLeaveBounds(content);
             boolean enabled = pendingRequestId < 0;
             drawButton(graphics, font, leave,
@@ -656,6 +665,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             if (snapshot.member() && treasuryBounds(content).contains(mouseX, mouseY)) {
                 PacketDistributor.sendToServer(new C2S_NationTreasuryPacket(
                         C2S_NationTreasuryPacket.Action.OPEN, null));
+                return true;
+            }
+            if (snapshot.member() && isOwner() && memberLeaveBounds(content).contains(mouseX, mouseY)) {
+                minecraft.setScreen(new NationSettingsScreen(snapshot));
                 return true;
             }
             if (snapshot.member() && canManageTerritory() && pendingRequestId < 0

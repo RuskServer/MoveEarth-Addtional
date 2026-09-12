@@ -50,6 +50,11 @@ public final class PeaceSavedData extends SavedData {
                 value.proposerNation, value.receiverNation, first, second))) setDirty();
     }
 
+    public void removeNation(UUID nationId) {
+        if (proposals.values().removeIf(value -> value.proposerNation.equals(nationId)
+                || value.receiverNation.equals(nationId))) setDirty();
+    }
+
     public void advance(long elapsedTicks) {
         if (elapsedTicks <= 0L || proposals.isEmpty()) return;
         var iterator = proposals.entrySet().iterator();

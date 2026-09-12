@@ -16,6 +16,7 @@ public record S2NationSnapshot(
         String nationName,
         String nationTag,
         String roleName,
+        String ownerName,
         long ownPermissionMask,
         int onlineMembers,
         int totalMembers,
@@ -43,6 +44,7 @@ public record S2NationSnapshot(
         nationName = safe(nationName);
         nationTag = safe(nationTag);
         roleName = safe(roleName);
+        ownerName = safe(ownerName);
         siegeStatus = safe(siegeStatus);
         vaultDimension = safe(vaultDimension);
         sieges = sieges == null ? List.of() : List.copyOf(sieges);
@@ -69,7 +71,7 @@ public record S2NationSnapshot(
                             List<MemberView> members, List<RoleView> roles,
                             List<DiplomacyView> diplomacy, List<InvitationView> invitations,
                             List<CandidateView> inviteCandidates) {
-        this(revision, playerName, serverAdmin, member, nationName, nationTag, roleName,
+        this(revision, playerName, serverAdmin, member, nationName, nationTag, roleName, "",
                 ownPermissionMask, onlineMembers, totalMembers, territoryChunks, activeCores,
                 upkeep, siegeStatus, false, "", 0, 0, 0L, sieges, List.of(), List.of(), List.of(), members, roles,
                 diplomacy, invitations, inviteCandidates);

@@ -46,7 +46,7 @@ public final class TerritoryCoreHealthService {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        if (event.getServer().overworld().getGameTime() % 20L != 0L) return;
+        if (event.getServer().overworld().getGameTime() % 20L != 11L) return;
         TerritorySavedData data = TerritorySavedData.get(event.getServer());
         SiegeSavedData sieges = SiegeSavedData.get(event.getServer());
         for (TerritorySavedData.CoreRecord core : data.advanceCoreRegeneration(

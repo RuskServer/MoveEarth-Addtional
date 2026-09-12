@@ -60,6 +60,27 @@ class TerritoryClosureSearchTest {
         assertFalse(result.escapePath().isEmpty());
     }
 
+    @Test
+    void resumableSearchHonorsCellBudgetAndMatchesOneShotResult() {
+        TerritoryClosureSearch.WorldView world = world(shell(false), cell -> true);
+        TerritoryClosureSearch.Result expected = TerritoryClosureSearch.scan(
+                CORE, world, 8, 1_000, 256);
+        TerritoryClosureSearch.Session session = new TerritoryClosureSearch.Session(
+                CORE, world, 8, 1_000, 256);
+
+        TerritoryClosureSearch.Result actual = null;
+        int steps = 0;
+        while (actual == null) {
+            TerritoryClosureSearch.Progress progress = session.advance(7);
+            assertTrue(progress.examinedCells() <= 7);
+            actual = progress.result();
+            steps++;
+        }
+
+        assertTrue(steps > 1);
+        assertEquals(expected, actual);
+    }
+
     private static java.util.function.Predicate<TerritoryClosureSearch.Cell> shell(boolean eastHole) {
         return chamber(cell -> eastHole && cell.equals(CORE.offset(2, 0, 0)));
     }
@@ -80,7 +101,13 @@ class TerritoryClosureSearchTest {
             java.util.function.Predicate<TerritoryClosureSearch.Cell> barrier,
             java.util.function.Predicate<TerritoryClosureSearch.Cell> loaded,
             int range, int limit) {
-        return TerritoryClosureSearch.scan(CORE, new TerritoryClosureSearch.WorldView() {
+        return TerritoryClosureSearch.scan(CORE, world(barrier, loaded), range, limit, 256);
+    }
+
+    private static TerritoryClosureSearch.WorldView world(
+            java.util.function.Predicate<TerritoryClosureSearch.Cell> barrier,
+            java.util.function.Predicate<TerritoryClosureSearch.Cell> loaded) {
+        return new TerritoryClosureSearch.WorldView() {
             @Override
             public boolean isLoaded(TerritoryClosureSearch.Cell cell) {
                 return loaded.test(cell);
@@ -90,6 +117,6 @@ class TerritoryClosureSearchTest {
             public boolean isBarrier(TerritoryClosureSearch.Cell cell) {
                 return barrier.test(cell);
             }
-        }, range, limit, 256);
+        };
     }
 }

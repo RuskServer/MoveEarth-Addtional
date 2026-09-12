@@ -27,6 +27,7 @@ import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementService;
 /** Resolves destructive actions to nation/core Siege state. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class SiegeService {
+    private static final int MAX_RECENT_LOGS = 65_536;
     private static final Map<LogKey, Long> RECENT_LOGS = new HashMap<>();
 
     private SiegeService() { }
@@ -90,7 +91,11 @@ public final class SiegeService {
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        if (event.getServer().overworld().getGameTime() % 20L != 0L) return;
+        if (event.getServer().overworld().getGameTime() % 20L != 7L) return;
+        long now = event.getServer().overworld().getGameTime();
+        long retention = Math.max(20L, S2TerritoryConfig.siegeDuplicateLogTicks() * 4L);
+        RECENT_LOGS.entrySet().removeIf(entry -> now - entry.getValue() > retention);
+        if (RECENT_LOGS.size() > MAX_RECENT_LOGS) RECENT_LOGS.clear();
         SiegeSavedData siegeData = SiegeSavedData.get(event.getServer());
         SiegeSavedData.TickResult result = siegeData.advance(20L);
         PeaceSavedData.get(event.getServer()).advance(20L);

@@ -65,6 +65,8 @@ public class ClientPacketHandler {
             screen.handleResult(packet);
         } else if (Minecraft.getInstance().screen instanceof PeaceProposalScreen screen) {
             screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof NationSettingsScreen screen) {
+            screen.handleResult(packet);
         } else if (Minecraft.getInstance().player != null) {
             Component body = Component.translatable(packet.messageKey());
             Minecraft.getInstance().player.displayClientMessage(

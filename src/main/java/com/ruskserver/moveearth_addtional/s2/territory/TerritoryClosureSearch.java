@@ -19,50 +19,108 @@ final class TerritoryClosureSearch {
     }
 
     static Result scan(Cell core, WorldView world, int range, int maxVisited, int maxPath) {
-        int safeRange = Math.max(2, range);
-        int safeLimit = Math.max(1, maxVisited);
-        // A core is a floor-mounted block: require a 3x3x3 room from its base upward,
-        // while allowing the reinforced support floor directly below that room.
-        for (int x = -1; x <= 1; x++) {
-            for (int y = 0; y <= 2; y++) {
-                for (int z = -1; z <= 1; z++) {
-                    if (x == 0 && y == 0 && z == 0) continue;
-                    Cell interior = core.offset(x, y, z);
-                    if (!world.isLoaded(interior)) return result(Status.UNLOADED, 0, interior);
-                    if (world.isBarrier(interior)) return result(Status.TOO_SMALL, 0, interior);
-                }
-            }
+        Session session = new Session(core, world, range, maxVisited, maxPath);
+        while (true) {
+            Progress progress = session.advance(4_096);
+            if (progress.result() != null) return progress.result();
+        }
+    }
+
+    /** Mutable flood-fill state which can be resumed with a bounded amount of work each tick. */
+    static final class Session {
+        private final Cell core;
+        private final WorldView world;
+        private final int range;
+        private final int maxVisited;
+        private final int maxPath;
+        private final ArrayDeque<Cell> queue = new ArrayDeque<>();
+        private final Set<Cell> visited = new HashSet<>();
+        private final Map<Cell, Cell> parents = new HashMap<>();
+        private int interiorIndex;
+        private boolean interiorValidated;
+        private Cell current;
+        private int directionIndex;
+        private Result result;
+
+        Session(Cell core, WorldView world, int range, int maxVisited, int maxPath) {
+            this.core = core;
+            this.world = world;
+            this.range = Math.max(2, range);
+            this.maxVisited = Math.max(1, maxVisited);
+            this.maxPath = Math.max(1, maxPath);
         }
 
-        ArrayDeque<Cell> queue = new ArrayDeque<>();
-        Set<Cell> visited = new HashSet<>();
-        Map<Cell, Cell> parents = new HashMap<>();
-        queue.add(core);
-        visited.add(core);
-        while (!queue.isEmpty()) {
-            Cell current = queue.removeFirst();
-            if (atSearchEdge(core, current, safeRange)) {
-                return new Result(Status.OPEN, visited.size(), path(core, current, parents, maxPath));
+        Progress advance(int cellBudget) {
+            if (result != null) return new Progress(result, 0);
+            int budget = Math.max(1, cellBudget);
+            int examined = 0;
+
+            while (!interiorValidated && examined < budget) {
+                if (interiorIndex >= 27) {
+                    interiorValidated = true;
+                    queue.add(core);
+                    visited.add(core);
+                    break;
+                }
+                int index = interiorIndex++;
+                int x = index / 9 - 1;
+                int y = index / 3 % 3;
+                int z = index % 3 - 1;
+                if (x == 0 && y == 0 && z == 0) continue;
+                Cell interior = core.offset(x, y, z);
+                examined++;
+                if (!world.isLoaded(interior)) {
+                    result = result(Status.UNLOADED, 0, interior);
+                    return new Progress(result, examined);
+                }
+                if (world.isBarrier(interior)) {
+                    result = result(Status.TOO_SMALL, 0, interior);
+                    return new Progress(result, examined);
+                }
             }
-            for (int[] direction : DIRECTIONS) {
-                Cell next = current.offset(direction[0], direction[1], direction[2]);
-                if (visited.contains(next)) continue;
-                parents.put(next, current);
-                if (!world.isLoaded(next)) {
-                    return new Result(Status.UNLOADED, visited.size(), path(core, next, parents, maxPath));
+            if (!interiorValidated) return new Progress(null, examined);
+
+            while (examined < budget) {
+                if (current == null) {
+                    current = queue.pollFirst();
+                    directionIndex = 0;
+                    if (current == null) {
+                        result = new Result(Status.SEALED, visited.size(), List.of());
+                        return new Progress(result, examined);
+                    }
+                    if (atSearchEdge(core, current, range)) {
+                        result = new Result(Status.OPEN, visited.size(),
+                                path(core, current, parents, maxPath));
+                        return new Progress(result, examined);
+                    }
                 }
-                if (world.isBarrier(next)) {
-                    parents.remove(next);
-                    continue;
+                while (directionIndex < DIRECTIONS.length && examined < budget) {
+                    int[] direction = DIRECTIONS[directionIndex++];
+                    Cell next = current.offset(direction[0], direction[1], direction[2]);
+                    examined++;
+                    if (visited.contains(next)) continue;
+                    parents.put(next, current);
+                    if (!world.isLoaded(next)) {
+                        result = new Result(Status.UNLOADED, visited.size(),
+                                path(core, next, parents, maxPath));
+                        return new Progress(result, examined);
+                    }
+                    if (world.isBarrier(next)) {
+                        parents.remove(next);
+                        continue;
+                    }
+                    visited.add(next);
+                    if (visited.size() > maxVisited) {
+                        result = new Result(Status.LIMIT_EXCEEDED, visited.size(),
+                                path(core, next, parents, maxPath));
+                        return new Progress(result, examined);
+                    }
+                    queue.addLast(next);
                 }
-                visited.add(next);
-                if (visited.size() > safeLimit) {
-                    return new Result(Status.LIMIT_EXCEEDED, visited.size(), path(core, next, parents, maxPath));
-                }
-                queue.addLast(next);
+                if (directionIndex >= DIRECTIONS.length) current = null;
             }
+            return new Progress(null, examined);
         }
-        return new Result(Status.SEALED, visited.size(), List.of());
     }
 
     private static Result result(Status status, int visited, Cell cell) {
@@ -96,6 +154,10 @@ final class TerritoryClosureSearch {
     }
 
     record Result(Status status, int visited, List<Cell> escapePath) { }
+
+    record Progress(Result result, int examinedCells) {
+        boolean complete() { return result != null; }
+    }
 
     interface WorldView {
         boolean isLoaded(Cell cell);

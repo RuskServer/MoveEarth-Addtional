@@ -106,6 +106,8 @@ public final class BastionEvents {
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
         if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+            int phase = player.getUUID().hashCode() & 3;
+            if ((player.tickCount + phase) % 5 != 0) return;
             BastionPlayerRecovery.tick(player);
         }
     }

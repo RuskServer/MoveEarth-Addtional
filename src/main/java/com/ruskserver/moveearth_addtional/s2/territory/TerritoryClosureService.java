@@ -19,9 +19,17 @@ public final class TerritoryClosureService {
     }
 
     public static TerritoryClosureScanner.Result scan(ServerLevel level, BlockPos corePos) {
+        TerritoryClosureScanner.Session session = begin(level, corePos);
+        while (true) {
+            TerritoryClosureScanner.Progress progress = session.advance(4_096);
+            if (progress.complete()) return progress.result();
+        }
+    }
+
+    public static TerritoryClosureScanner.Session begin(ServerLevel level, BlockPos corePos) {
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
         SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
-        return TerritoryClosureScanner.scan(corePos, new TerritoryClosureScanner.WorldView() {
+        return TerritoryClosureScanner.begin(corePos, new TerritoryClosureScanner.WorldView() {
             @Override
             public boolean isLoaded(BlockPos pos) {
                 return level.hasChunkAt(pos);
@@ -36,10 +44,16 @@ public final class TerritoryClosureService {
 
     public static TerritoryClosureScanner.Result scanAndUpdate(ServerLevel level, BlockPos corePos) {
         TerritoryClosureScanner.Result result = scan(level, corePos);
+        applyResult(level, corePos, result);
+        return result;
+    }
+
+    public static void applyResult(ServerLevel level, BlockPos corePos,
+                                   TerritoryClosureScanner.Result result) {
         TerritorySavedData territories = TerritorySavedData.get(level.getServer());
         TerritorySavedData.CoreRecord current = territories
                 .core(level.dimension().location(), corePos).orElse(null);
-        if (current == null) return result;
+        if (current == null) return;
         TerritorySavedData.CoreState next = result.sealed()
                 ? TerritorySavedData.CoreState.ACTIVE
                 : current.state() == TerritorySavedData.CoreState.ACTIVE
@@ -48,7 +62,6 @@ public final class TerritoryClosureService {
         TerritorySavedData.CoreRecord updated = territories.updateState(
                 current.nationId(), current.dimension(), current.pos(), next).orElse(current);
         if (level.getBlockEntity(corePos) instanceof TerritoryCoreBlockEntity core) core.bind(updated);
-        return result;
     }
 
     /** Returns solid wall candidates on the escape route which have never been reinforced. */

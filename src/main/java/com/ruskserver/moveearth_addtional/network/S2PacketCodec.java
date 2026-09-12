@@ -28,6 +28,7 @@ final class S2PacketCodec {
         buffer.writeUtf(value.nationName(), 64);
         buffer.writeUtf(value.nationTag(), 12);
         buffer.writeUtf(value.roleName(), 64);
+        buffer.writeUtf(value.ownerName(), 32);
         buffer.writeLong(value.ownPermissionMask());
         buffer.writeVarInt(value.onlineMembers());
         buffer.writeVarInt(value.totalMembers());
@@ -140,6 +141,7 @@ final class S2PacketCodec {
         String nationName = buffer.readUtf(64);
         String nationTag = buffer.readUtf(12);
         String roleName = buffer.readUtf(64);
+        String ownerName = buffer.readUtf(32);
         long permissions = buffer.readLong();
         int onlineMembers = nonNegative(buffer.readVarInt(), "online members");
         int totalMembers = nonNegative(buffer.readVarInt(), "total members");
@@ -220,7 +222,7 @@ final class S2PacketCodec {
             candidates.add(new S2NationSnapshot.CandidateView(buffer.readUUID(), buffer.readUtf(16)));
         }
         return new S2NationSnapshot(revision, playerName, serverAdmin, member,
-                nationName, nationTag, roleName, permissions, onlineMembers, totalMembers,
+                nationName, nationTag, roleName, ownerName, permissions, onlineMembers, totalMembers,
                 territoryChunks, activeCores, upkeep, siegeStatus, vaultConfigured, vaultDimension,
                 vaultChunkX, vaultChunkZ, vaultChangeCooldownTicks, sieges, peace, truces, prisoners,
                 members, roles, diplomacy,

@@ -24,6 +24,10 @@ public final class NationUpkeepSavedData extends SavedData {
         return Map.copyOf(accounts);
     }
 
+    public void removeNation(UUID nationId) {
+        if (accounts.remove(nationId) != null) setDirty();
+    }
+
     public void configure(UUID nationId, BankReference reference, boolean enabled, long now) {
         AccountState state = state(nationId);
         state.reference = reference;

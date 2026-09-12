@@ -18,21 +18,51 @@ public final class TerritoryClosureScanner {
     }
 
     static Result scan(BlockPos core, WorldView world, int range, int maxVisited) {
-        TerritoryClosureSearch.Result found = TerritoryClosureSearch.scan(cell(core),
-                new TerritoryClosureSearch.WorldView() {
-                    @Override
-                    public boolean isLoaded(TerritoryClosureSearch.Cell cell) {
-                        return world.isLoaded(blockPos(cell));
-                    }
+        Session session = begin(core, world, range, maxVisited);
+        while (true) {
+            Progress progress = session.advance(4_096);
+            if (progress.result() != null) return progress.result();
+        }
+    }
 
-                    @Override
-                    public boolean isBarrier(TerritoryClosureSearch.Cell cell) {
-                        return world.isBarrier(blockPos(cell));
-                    }
-                }, range, maxVisited, MAX_PATH);
+    public static Session begin(BlockPos core, WorldView world) {
+        return begin(core, world, SEARCH_RANGE, MAX_VISITED);
+    }
+
+    static Session begin(BlockPos core, WorldView world, int range, int maxVisited) {
+        TerritoryClosureSearch.WorldView adapter = new TerritoryClosureSearch.WorldView() {
+            @Override
+            public boolean isLoaded(TerritoryClosureSearch.Cell cell) {
+                return world.isLoaded(blockPos(cell));
+            }
+
+            @Override
+            public boolean isBarrier(TerritoryClosureSearch.Cell cell) {
+                return world.isBarrier(blockPos(cell));
+            }
+        };
+        return new Session(new TerritoryClosureSearch.Session(
+                cell(core), adapter, range, maxVisited, MAX_PATH));
+    }
+
+    private static Result convert(TerritoryClosureSearch.Result found) {
         List<BlockPos> path = found.escapePath().stream()
                 .map(TerritoryClosureScanner::blockPos).toList();
         return new Result(Status.valueOf(found.status().name()), found.visited(), path);
+    }
+
+    public static final class Session {
+        private final TerritoryClosureSearch.Session search;
+
+        private Session(TerritoryClosureSearch.Session search) {
+            this.search = search;
+        }
+
+        public Progress advance(int cellBudget) {
+            TerritoryClosureSearch.Progress progress = search.advance(cellBudget);
+            return new Progress(progress.result() == null ? null : convert(progress.result()),
+                    progress.examinedCells());
+        }
     }
 
     private static TerritoryClosureSearch.Cell cell(BlockPos pos) {
@@ -53,6 +83,10 @@ public final class TerritoryClosureScanner {
         public boolean sealed() {
             return status == Status.SEALED;
         }
+    }
+
+    public record Progress(Result result, int examinedCells) {
+        public boolean complete() { return result != null; }
     }
 
     public interface WorldView {
