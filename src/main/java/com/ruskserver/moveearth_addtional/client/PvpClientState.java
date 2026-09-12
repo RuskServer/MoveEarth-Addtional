@@ -41,6 +41,8 @@ public final class PvpClientState {
 
     private PvpClientState() {}
 
+    public static boolean isMatchActive() { return hud.active(); }
+
     public static void updateHud(S2C_PvpHudPacket packet) { hud = packet; }
     public static void updateLoadouts(List<com.ruskserver.moveearth_addtional.pvp.PvpLoadoutDefinition> list) {
         loadouts = new ArrayList<>(list);

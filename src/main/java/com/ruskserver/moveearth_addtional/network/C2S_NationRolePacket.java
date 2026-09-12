@@ -47,6 +47,7 @@ public record C2S_NationRolePacket(int requestId, long expectedRevision, Action 
                 case SAVE -> data.saveRole(player.getUUID(), roleId, displayName,
                         permissionMask, expectedRevision);
                 case ASSIGN -> data.assignRole(player.getUUID(), targetId, roleId, expectedRevision);
+                case DELETE -> data.deleteRole(player.getUUID(), roleId, expectedRevision);
                 case UNKNOWN -> new NationSavedData.RoleResult(
                         NationSavedData.RoleStatus.NO_PERMISSION, data.revision(), "");
             };
@@ -62,7 +63,7 @@ public record C2S_NationRolePacket(int requestId, long expectedRevision, Action 
     }
 
     public enum Action {
-        SAVE(0), ASSIGN(1), UNKNOWN(255);
+        SAVE(0), ASSIGN(1), DELETE(2), UNKNOWN(255);
 
         private final int networkId;
 

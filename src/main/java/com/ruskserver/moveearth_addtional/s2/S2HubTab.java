@@ -3,7 +3,8 @@ package com.ruskserver.moveearth_addtional.s2;
 public enum S2HubTab {
     OVERVIEW(0),
     MEMBERS(1),
-    ROLES(2);
+    ROLES(2),
+    DIPLOMACY(3);
 
     private final int networkId;
 

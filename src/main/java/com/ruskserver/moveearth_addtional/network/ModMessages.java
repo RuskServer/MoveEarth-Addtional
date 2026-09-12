@@ -10,15 +10,19 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui10");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui16");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
         registrar.playToClient(S2C_S2HubSnapshotPacket.TYPE, S2C_S2HubSnapshotPacket.STREAM_CODEC, S2C_S2HubSnapshotPacket::handle);
+        registrar.playToClient(S2C_NationNameplatesPacket.TYPE, S2C_NationNameplatesPacket.STREAM_CODEC, S2C_NationNameplatesPacket::handle);
+        registrar.playToClient(S2C_NationTreasuryPacket.TYPE, S2C_NationTreasuryPacket.STREAM_CODEC, S2C_NationTreasuryPacket::handle);
+        registrar.playToServer(C2S_NationTreasuryPacket.TYPE, C2S_NationTreasuryPacket.STREAM_CODEC, C2S_NationTreasuryPacket::handle);
         registrar.playToClient(S2C_S2ActionResultPacket.TYPE, S2C_S2ActionResultPacket.STREAM_CODEC, S2C_S2ActionResultPacket::handle);
         registrar.playToServer(C2S_RequestTerritoryPreviewPacket.TYPE, C2S_RequestTerritoryPreviewPacket.STREAM_CODEC, C2S_RequestTerritoryPreviewPacket::handle);
         registrar.playToClient(S2C_TerritoryPreviewPacket.TYPE, S2C_TerritoryPreviewPacket.STREAM_CODEC, S2C_TerritoryPreviewPacket::handle);
         registrar.playToClient(S2C_OpenTerritoryCoreScreenPacket.TYPE, S2C_OpenTerritoryCoreScreenPacket.STREAM_CODEC, S2C_OpenTerritoryCoreScreenPacket::handle);
+        registrar.playToClient(S2C_TerritoryCoreHealthPacket.TYPE, S2C_TerritoryCoreHealthPacket.STREAM_CODEC, S2C_TerritoryCoreHealthPacket::handle);
         registrar.playToServer(C2S_SetTerritoryCoreRadiusPacket.TYPE, C2S_SetTerritoryCoreRadiusPacket.STREAM_CODEC, C2S_SetTerritoryCoreRadiusPacket::handle);
         registrar.playToServer(C2S_ValidateTerritoryCorePacket.TYPE, C2S_ValidateTerritoryCorePacket.STREAM_CODEC, C2S_ValidateTerritoryCorePacket::handle);
         registrar.playToClient(S2C_TerritoryClosurePacket.TYPE, S2C_TerritoryClosurePacket.STREAM_CODEC, S2C_TerritoryClosurePacket::handle);
@@ -28,6 +32,7 @@ public class ModMessages {
         registrar.playToServer(C2S_CreateNationPacket.TYPE, C2S_CreateNationPacket.STREAM_CODEC, C2S_CreateNationPacket::handle);
         registrar.playToServer(C2S_NationMembershipPacket.TYPE, C2S_NationMembershipPacket.STREAM_CODEC, C2S_NationMembershipPacket::handle);
         registrar.playToServer(C2S_NationRolePacket.TYPE, C2S_NationRolePacket.STREAM_CODEC, C2S_NationRolePacket::handle);
+        registrar.playToServer(C2S_NationDiplomacyPacket.TYPE, C2S_NationDiplomacyPacket.STREAM_CODEC, C2S_NationDiplomacyPacket::handle);
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);

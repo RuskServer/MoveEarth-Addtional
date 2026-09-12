@@ -52,17 +52,15 @@ public final class TerritoryClosureService {
         if (entry == null || !entry.enabled() || entry.durability() <= 0) return false;
         BlockState state = level.getBlockState(pos);
         if (state.getBlock() instanceof DoorBlock) {
-            if (!state.hasProperty(BlockStateProperties.OPEN) || state.getValue(BlockStateProperties.OPEN)) return false;
             DoubleBlockHalf half = state.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF);
             BlockPos otherPos = half == DoubleBlockHalf.LOWER ? pos.above() : pos.below();
             BlockState other = level.getBlockState(otherPos);
             ReinforcementEntry otherEntry = data.get(otherPos).orElse(null);
-            return other.is(state.getBlock()) && other.hasProperty(BlockStateProperties.OPEN)
-                    && !other.getValue(BlockStateProperties.OPEN)
-                    && otherEntry != null && otherEntry.enabled() && otherEntry.durability() > 0;
+            return other.is(state.getBlock()) && otherEntry != null
+                    && otherEntry.enabled() && otherEntry.durability() > 0;
         }
         if (state.getBlock() instanceof TrapDoorBlock) {
-            return state.hasProperty(BlockStateProperties.OPEN) && !state.getValue(BlockStateProperties.OPEN);
+            return true;
         }
         return state.isCollisionShapeFullBlock(level, pos);
     }

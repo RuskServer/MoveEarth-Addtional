@@ -29,12 +29,13 @@ class S2NationSnapshotTest {
     void snapshotCopiesListsAndServerAdminOverridesNationPermissions() {
         var mutable = new java.util.ArrayList<S2NationSnapshot.MemberView>();
         mutable.add(new S2NationSnapshot.MemberView(
-                java.util.UUID.randomUUID(), "Rusk", "owner", "Owner", true));
+                java.util.UUID.randomUUID(), "Rusk", "owner", "Owner", true, 1234L));
         S2NationSnapshot snapshot = new S2NationSnapshot(1, "Rusk", true, true,
                 "Test", "TST", "Owner", 0, 1, 1, 2, 1, 10,
-                "NONE", mutable, List.of(), List.of(), List.of());
+                "NONE", mutable, List.of(), List.of(), List.of(), List.of());
         mutable.clear();
         assertEquals(1, snapshot.members().size());
+        assertEquals(1234L, snapshot.members().getFirst().lastSeenAt());
         assertTrue(snapshot.can(S2Permission.MANAGE_ROLES));
     }
 
@@ -49,7 +50,7 @@ class S2NationSnapshotTest {
 
         S2NationSnapshot snapshot = new S2NationSnapshot(2, "Rusk", false, false,
                 "", "", "", 0, 0, 0, 0, 0, 0,
-                "NONE", List.of(), List.of(), invitations, candidates);
+                "NONE", List.of(), List.of(), List.of(), invitations, candidates);
         invitations.clear();
         candidates.clear();
 
@@ -61,5 +62,21 @@ class S2NationSnapshotTest {
     @Test
     void invalidTabIdFallsBackToOverview() {
         assertEquals(S2HubTab.OVERVIEW, S2HubTab.fromNetworkId(999));
+    }
+
+    @Test
+    void snapshotCopiesDiplomacyViews() {
+        var nationId = java.util.UUID.randomUUID();
+        var diplomacy = new java.util.ArrayList<S2NationSnapshot.DiplomacyView>();
+        diplomacy.add(new S2NationSnapshot.DiplomacyView(nationId, "Blue Nation", "BLU",
+                S2NationSnapshot.DiplomacyState.HOSTILE, false));
+        S2NationSnapshot snapshot = new S2NationSnapshot(3, "Rusk", false, true,
+                "Green Nation", "GRN", "Member", S2Permission.BASTION_ACCESS.mask(),
+                1, 1, 9, 1, 2, "NONE", List.of(), List.of(), diplomacy, List.of(), List.of());
+        diplomacy.clear();
+
+        assertEquals(1, snapshot.diplomacy().size());
+        assertEquals(nationId, snapshot.diplomacy().getFirst().nationId());
+        assertFalse(snapshot.diplomacy().getFirst().hostileByViewer());
     }
 }

@@ -8,6 +8,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.level.block.Block;
 import snownee.jade.api.BlockAccessor;
 import snownee.jade.api.IBlockComponentProvider;
@@ -18,7 +19,9 @@ import snownee.jade.api.IWailaCommonRegistration;
 import snownee.jade.api.IWailaPlugin;
 import snownee.jade.api.WailaPlugin;
 import snownee.jade.api.config.IPluginConfig;
+import snownee.jade.api.ui.BoxStyle;
 import snownee.jade.api.ui.IElementHelper;
+import snownee.jade.api.ui.ScreenDirection;
 
 @WailaPlugin
 public final class ReinforcementJadePlugin implements IWailaPlugin {
@@ -80,19 +83,29 @@ public final class ReinforcementJadePlugin implements IWailaPlugin {
             int maxHp = Math.max(1, data.getInt(MAX_HP));
             Component state;
             ChatFormatting color;
+            int barStart;
+            int barEnd;
             if (!enabled) {
                 int seconds = Math.max(0, (data.getInt(ACTIVATION_TICKS) + 19) / 20);
                 state = Component.translatable("jade.moveearth_addtional.reinforcement.curing", seconds);
                 color = ChatFormatting.LIGHT_PURPLE;
+                barStart = 0xFF8C4EB8;
+                barEnd = 0xFFD58AFF;
             } else if (constructing) {
                 state = Component.translatable("jade.moveearth_addtional.reinforcement.filling");
                 color = ChatFormatting.GOLD;
+                barStart = 0xFFC87A20;
+                barEnd = 0xFFFFBE52;
             } else if (hp < maxHp) {
                 state = Component.translatable("jade.moveearth_addtional.reinforcement.damaged");
                 color = ChatFormatting.RED;
+                barStart = 0xFFC9403A;
+                barEnd = 0xFFFF7168;
             } else {
                 state = Component.translatable("jade.moveearth_addtional.reinforcement.active");
                 color = ChatFormatting.GREEN;
+                barStart = 0xFF2FA866;
+                barEnd = 0xFF6DE09B;
             }
             tooltip.add(Component.translatable("jade.moveearth_addtional.reinforcement.state", state)
                     .withStyle(color));
@@ -101,7 +114,10 @@ public final class ReinforcementJadePlugin implements IWailaPlugin {
                             + data.getString(MATERIAL))).withStyle(ChatFormatting.GRAY));
             tooltip.add(Component.translatable("jade.moveearth_addtional.reinforcement.hp", hp, maxHp)
                     .withStyle(color));
-            tooltip.add(IElementHelper.get().progress(Math.min(1.0F, hp / (float) maxHp)));
+            IElementHelper elements = IElementHelper.get();
+            tooltip.add(elements.progress(Math.min(1.0F, hp / (float) maxHp), Component.empty(),
+                    elements.progressStyle().color(barStart, barEnd).direction(ScreenDirection.RIGHT),
+                    BoxStyle.getNestedBox(), false).size(new Vec2(110.0F, 5.0F)));
         }
 
         @Override

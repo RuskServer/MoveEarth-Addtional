@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.s2;
 import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
+import com.ruskserver.moveearth_addtional.s2.territory.TerritoryUpkeepPolicy;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -29,7 +30,7 @@ public final class S2NationViewService {
                     .toList();
             return new S2NationSnapshot(data.revision(), player.getGameProfile().getName(),
                     serverAdmin, false, "", "", "", 0L, 0, 0, 0, 0, 0L,
-                    "NO ACTIVE SIEGE", java.util.List.of(), java.util.List.of(), invitations,
+                    "NO ACTIVE SIEGE", java.util.List.of(), java.util.List.of(), java.util.List.of(), invitations,
                     java.util.List.of());
         }
 
@@ -40,7 +41,8 @@ public final class S2NationViewService {
                 .map(member -> new S2NationSnapshot.MemberView(member.id(), member.lastKnownName(), member.roleId(),
                         java.util.Optional.ofNullable(nation.roles().get(member.roleId()))
                                 .map(NationSavedData.Role::displayName).orElse("Member"),
-                        player.server.getPlayerList().getPlayer(member.id()) != null))
+                        player.server.getPlayerList().getPlayer(member.id()) != null,
+                        member.lastSeenAt()))
                 .sorted(Comparator.comparing(S2NationSnapshot.MemberView::online).reversed()
                         .thenComparing(S2NationSnapshot.MemberView::name, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -60,10 +62,23 @@ public final class S2NationViewService {
                 .sorted(Comparator.comparing(S2NationSnapshot.CandidateView::name,
                         String.CASE_INSENSITIVE_ORDER)).toList() : java.util.List.<S2NationSnapshot.CandidateView>of();
         TerritorySavedData territories = TerritorySavedData.get(player.server);
+        var diplomacy = data.nations().values().stream()
+                .filter(other -> !other.id().equals(nation.id()))
+                .map(other -> new S2NationSnapshot.DiplomacyView(other.id(), other.name(), other.tag(),
+                        S2NationSnapshot.DiplomacyState.valueOf(
+                                data.relation(nation.id(), other.id()).name()),
+                        data.isHostileFrom(nation.id(), other.id())))
+                .sorted(Comparator.comparing(S2NationSnapshot.DiplomacyView::nationName,
+                        String.CASE_INSENSITIVE_ORDER))
+                .toList();
+        int controlledChunks = territories.controlledChunkCount(nation.id());
+        int controlledCores = territories.controlledCoreCount(nation.id());
+        long upkeep = TerritoryUpkeepPolicy.calculateConfigured(controlledChunks,
+                territories.activeOutpostCount(nation.id()));
         return new S2NationSnapshot(data.revision(), player.getGameProfile().getName(), serverAdmin,
                 true, nation.name(), nation.tag(), ownRole == null ? "Member" : ownRole.displayName(), permissions,
-                online, members.size(), territories.reservedChunkCount(nation.id()),
-                territories.coreCount(nation.id()), 0L, "NO ACTIVE SIEGE", members, roles,
+                online, members.size(), controlledChunks,
+                controlledCores, upkeep, "NO ACTIVE SIEGE", members, roles, diplomacy,
                 java.util.List.of(), candidates);
     }
 

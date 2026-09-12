@@ -9,7 +9,10 @@ import com.ruskserver.moveearth_addtional.network.C2S_ValidateTerritoryCorePacke
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryPreviewPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_TerritoryCoreHealthPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
+import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
+import com.ruskserver.moveearth_addtional.s2.territory.TerritoryUpkeepPolicy;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -26,7 +29,10 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
     private static int nextRequestId;
 
     private final BlockPos corePos;
+    private TerritorySavedData.CoreState coreState;
     private int radius;
+    private int health;
+    private int maximumHealth;
     private S2C_TerritoryPreviewPacket preview;
     private S2C_TerritoryClosurePacket closure;
     private int pendingRequestId = -1;
@@ -36,13 +42,25 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
     private int toastTicks;
 
     public TerritoryCoreWizardScreen() {
-        this(null, lastRadius);
+        this(null, lastRadius, TerritorySavedData.CoreState.CONFIGURING, 1, 1);
     }
 
     public TerritoryCoreWizardScreen(BlockPos corePos, int radius) {
+        this(corePos, radius, TerritorySavedData.CoreState.CONFIGURING, 1, 1);
+    }
+
+    public TerritoryCoreWizardScreen(BlockPos corePos, int radius, TerritorySavedData.CoreState coreState) {
+        this(corePos, radius, coreState, 1, 1);
+    }
+
+    public TerritoryCoreWizardScreen(BlockPos corePos, int radius, TerritorySavedData.CoreState coreState,
+                                     int health, int maximumHealth) {
         super(Component.translatable("screen.moveearth_addtional.territory.title"));
         this.corePos = corePos;
         this.radius = Math.max(0, Math.min(4, radius));
+        this.coreState = coreState == null ? TerritorySavedData.CoreState.CONFIGURING : coreState;
+        this.maximumHealth = Math.max(1, maximumHealth);
+        this.health = Math.max(0, Math.min(this.maximumHealth, health));
     }
 
     @Override
@@ -54,6 +72,12 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
         preview = packet;
         radius = packet.radius();
         lastRadius = radius;
+    }
+
+    public void updateHealth(S2C_TerritoryCoreHealthPacket packet) {
+        if (corePos == null || !corePos.equals(packet.pos())) return;
+        health = packet.health();
+        maximumHealth = packet.maximumHealth();
     }
 
     public void handleResult(S2C_S2ActionResultPacket packet) {
@@ -70,6 +94,7 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
                 || packet.requestId() != pendingClosureRequestId) return;
         pendingClosureRequestId = -1;
         closure = packet;
+        coreState = packet.coreState();
         Component body = Component.translatable(packet.messageKey(), packet.visited());
         toast = packet.success() ? MoveEarthMessage.success(body) : MoveEarthMessage.error(body);
         toastColor = packet.success() ? SUCCESS : DANGER;
@@ -134,14 +159,27 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
             Component closureText = pendingClosureRequestId >= 0
                     ? Component.translatable("screen.moveearth_addtional.territory.closure.pending")
                     : closure == null
-                    ? Component.translatable("screen.moveearth_addtional.territory.closure.not_checked")
+                    ? Component.translatable("screen.moveearth_addtional.territory.core_state."
+                            + coreState.name().toLowerCase(java.util.Locale.ROOT))
                     : Component.translatable(closure.messageKey(), closure.visited());
-            int color = closure != null && closure.success() ? SUCCESS
-                    : closure == null ? MUTED : DANGER;
+            int color = (closure != null && closure.success()) || (closure == null
+                    && coreState == TerritorySavedData.CoreState.ACTIVE) ? SUCCESS
+                    : closure == null && coreState == TerritorySavedData.CoreState.CONFIGURING ? MUTED : DANGER;
             graphics.drawString(font, closureText, summary.x() + 14, summary.y() + 47, color, false);
+            int barX = summary.right() - 192;
+            int barY = summary.y() + 45;
+            int barWidth = 174;
+            graphics.fill(barX, barY, barX + barWidth, barY + 11, 0xFF111820);
+            int fill = (int) Math.round(barWidth * health / (double) maximumHealth);
+            int hpColor = health * 4 <= maximumHealth ? DANGER : health * 2 <= maximumHealth ? GOLD : SUCCESS;
+            graphics.fill(barX, barY, barX + fill, barY + 11, hpColor);
+            graphics.drawCenteredString(font,
+                    Component.translatable("screen.moveearth_addtional.territory.core_health", health, maximumHealth),
+                    barX + barWidth / 2, barY + 2, TEXT);
         } else {
             graphics.drawString(font,
-                    Component.translatable("screen.moveearth_addtional.territory.upkeep_pending"),
+                    Component.translatable("screen.moveearth_addtional.territory.upkeep_estimate",
+                            TerritoryUpkeepPolicy.calculate((radius * 2 + 1) * (radius * 2 + 1), 0)),
                     summary.x() + 14, summary.y() + 47, GOLD, false);
         }
 
@@ -204,6 +242,7 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
                 && saveBounds(panel).contains(mouseX, mouseY)) {
             pendingRequestId = ++nextRequestId;
             closure = null;
+            coreState = TerritorySavedData.CoreState.CONFIGURING;
             PacketDistributor.sendToServer(new C2S_SetTerritoryCoreRadiusPacket(
                     pendingRequestId, corePos, radius));
             return true;

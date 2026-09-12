@@ -92,8 +92,15 @@ public final class TerritoryCoreBlock extends Block implements EntityBlock {
                     "message.moveearth_addtional.territory_core.no_permission")));
             return InteractionResult.CONSUME;
         }
+        TerritorySavedData.CoreRecord record = TerritorySavedData.get(serverPlayer.server)
+                .core(level.dimension().location(), pos).orElse(null);
+        if (record != null) core.bind(record);
         PacketDistributor.sendToPlayer(serverPlayer,
-                new S2C_OpenTerritoryCoreScreenPacket(pos, core.radius()));
+                new S2C_OpenTerritoryCoreScreenPacket(pos,
+                        record == null ? core.radius() : record.radius(),
+                        record == null ? core.coreState() : record.state(),
+                        record == null ? core.health() : record.health(),
+                        record == null ? core.maximumHealth() : record.maximumHealth()));
         return InteractionResult.SUCCESS;
     }
 }

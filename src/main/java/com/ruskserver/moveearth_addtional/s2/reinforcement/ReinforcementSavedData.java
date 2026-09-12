@@ -47,12 +47,14 @@ public final class ReinforcementSavedData extends SavedData {
     public AdvanceResult advance(ServerLevel level, long gameTime) {
         List<BlockPos> activated = new ArrayList<>();
         List<BlockPos> completed = new ArrayList<>();
+        List<BlockPos> removed = new ArrayList<>();
         boolean changed = false;
         var iterator = entries.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<BlockPos, ReinforcementEntry> value = iterator.next();
             if (!level.hasChunkAt(value.getKey())) continue;
             if (level.getBlockState(value.getKey()).isAir()) {
+                removed.add(value.getKey().immutable());
                 iterator.remove();
                 changed = true;
                 continue;
@@ -70,7 +72,7 @@ public final class ReinforcementSavedData extends SavedData {
             }
         }
         if (changed) setDirty();
-        return new AdvanceResult(List.copyOf(activated), List.copyOf(completed));
+        return new AdvanceResult(List.copyOf(activated), List.copyOf(completed), List.copyOf(removed));
     }
 
     @Override
@@ -114,6 +116,7 @@ public final class ReinforcementSavedData extends SavedData {
     public record LocatedEntry(BlockPos pos, ReinforcementEntry entry) {
     }
 
-    public record AdvanceResult(List<BlockPos> activated, List<BlockPos> completed) {
+    public record AdvanceResult(List<BlockPos> activated, List<BlockPos> completed,
+                                List<BlockPos> removed) {
     }
 }

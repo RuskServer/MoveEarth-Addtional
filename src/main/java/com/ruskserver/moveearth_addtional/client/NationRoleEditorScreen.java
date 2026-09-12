@@ -31,11 +31,13 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
 
     private long revision;
     private final String roleId;
+    private final int roleMemberCount;
     private long permissionMask;
     private EditBox nameEdit;
     private int pendingRequestId = -1;
     private Component toast;
     private int toastTicks;
+    private boolean confirmingDelete;
 
     public NationRoleEditorScreen(long revision, S2NationSnapshot.RoleView role) {
         super(Component.translatable(role == null
@@ -43,6 +45,7 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
                 : "screen.moveearth_addtional.nation.role.edit_title"));
         this.revision = revision;
         this.roleId = role == null ? "" : role.id();
+        this.roleMemberCount = role == null ? 0 : role.memberCount();
         this.permissionMask = role == null ? 0L : role.permissionMask();
         this.initialName = role == null ? "" : role.displayName();
     }
@@ -117,23 +120,48 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
         drawButton(graphics, font, cancel,
                 Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED,
                 cancel.contains(mouseX, mouseY), true);
+        if (!roleId.isBlank()) {
+            Rect delete = deleteBounds(panel);
+            boolean canDelete = pendingRequestId < 0;
+            drawButton(graphics, font, delete,
+                    Component.translatable("screen.moveearth_addtional.nation.role.delete"), DANGER,
+                    canDelete && delete.contains(mouseX, mouseY), canDelete);
+        }
         boolean canSave = validation.valid() && pendingRequestId < 0;
         drawButton(graphics, font, save,
                 Component.translatable("screen.moveearth_addtional.nation.role.save"), SUCCESS,
                 canSave && save.contains(mouseX, mouseY), canSave);
         super.render(graphics, mouseX, mouseY, partialTick);
+        if (confirmingDelete) drawDeleteConfirmation(graphics, mouseX, mouseY);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, DANGER);
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
+            if (confirmingDelete) {
+                Rect modal = deleteModalBounds();
+                if (modalCancelBounds(modal).contains(mouseX, mouseY)) {
+                    confirmingDelete = false;
+                } else if (modalConfirmBounds(modal).contains(mouseX, mouseY) && pendingRequestId < 0) {
+                    confirmingDelete = false;
+                    pendingRequestId = ++nextRequestId;
+                    PacketDistributor.sendToServer(new C2S_NationRolePacket(
+                            pendingRequestId, revision, C2S_NationRolePacket.Action.DELETE,
+                            roleId, "", 0L, new UUID(0L, 0L)));
+                }
+                return true;
+            }
             Rect panel = panelBounds();
             if (closeBounds(panel).contains(mouseX, mouseY) || cancelBounds(panel).contains(mouseX, mouseY)) {
                 returnToHub();
                 return true;
             }
             if (pendingRequestId < 0) {
+                if (!roleId.isBlank() && deleteBounds(panel).contains(mouseX, mouseY)) {
+                    confirmingDelete = true;
+                    return true;
+                }
                 for (int index = 0; index < EDITABLE_PERMISSIONS.size(); index++) {
                     if (permissionBounds(panel, index).contains(mouseX, mouseY)) {
                         permissionMask ^= EDITABLE_PERMISSIONS.get(index).mask();
@@ -167,12 +195,49 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
     private static Rect closeBounds(Rect panel) { return new Rect(panel.right() - 28, panel.y() + 8, 20, 20); }
     private static Rect permissionBounds(Rect panel, int index) {
         int gap = 8;
-        int width = (panel.width() - 58 - gap) / 2;
-        return new Rect(panel.x() + 25 + (index % 2) * (width + gap),
-                panel.y() + 122 + (index / 2) * 38, width, 31);
+        int width = (panel.width() - 50 - gap * 2) / 3;
+        return new Rect(panel.x() + 25 + (index % 3) * (width + gap),
+                panel.y() + 122 + (index / 3) * 38, width, 31);
     }
     private static Rect cancelBounds(Rect panel) { return new Rect(panel.x() + 20, panel.bottom() - 38, 92, 22); }
+    private static Rect deleteBounds(Rect panel) { return new Rect(panel.x() + 120, panel.bottom() - 38, 104, 22); }
     private static Rect saveBounds(Rect panel) { return new Rect(panel.right() - 120, panel.bottom() - 38, 100, 22); }
+    private Rect deleteModalBounds() { return new Rect((width - 360) / 2, (height - 126) / 2, 360, 126); }
+    private static Rect modalCancelBounds(Rect modal) { return new Rect(modal.right() - 198, modal.bottom() - 36, 88, 22); }
+    private static Rect modalConfirmBounds(Rect modal) { return new Rect(modal.right() - 102, modal.bottom() - 36, 90, 22); }
+
+    private void drawDeleteConfirmation(GuiGraphics graphics, int mouseX, int mouseY) {
+        drawModalBackdrop(graphics, width, height);
+        Rect modal = deleteModalBounds();
+        drawPanel(graphics, modal);
+        graphics.drawString(font,
+                Component.translatable("screen.moveearth_addtional.nation.role.delete_title"),
+                modal.x() + 16, modal.y() + 15, DANGER, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.nation.role.delete_detail",
+                        initialName, roleMemberCount).getString(), modal.width() - 32),
+                modal.x() + 16, modal.y() + 39, TEXT, false);
+        graphics.drawString(font,
+                Component.translatable("screen.moveearth_addtional.nation.role.delete_reassign"),
+                modal.x() + 16, modal.y() + 57, GOLD, false);
+        Rect cancel = modalCancelBounds(modal);
+        Rect confirm = modalConfirmBounds(modal);
+        drawButton(graphics, font, cancel,
+                Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED,
+                cancel.contains(mouseX, mouseY), true);
+        drawButton(graphics, font, confirm,
+                Component.translatable("screen.moveearth_addtional.nation.role.delete_confirm"), DANGER,
+                confirm.contains(mouseX, mouseY), true);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (confirmingDelete && keyCode == 256) {
+            confirmingDelete = false;
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
     private static String permissionKey(S2Permission permission) {
         return "screen.moveearth_addtional.nation.permission."
                 + permission.name().toLowerCase(java.util.Locale.ROOT);

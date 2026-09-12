@@ -14,6 +14,8 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
     private UUID nationId;
     private UUID placedBy;
     private int radius = 1;
+    private int health = 1;
+    private int maximumHealth = 1;
 
     public TerritoryCoreBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.TERRITORY_CORE.get(), pos, state);
@@ -29,6 +31,8 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
         this.radius = record.radius();
         this.coreType = record.type();
         this.coreState = record.state();
+        this.health = record.health();
+        this.maximumHealth = record.maximumHealth();
         setChanged();
     }
 
@@ -38,6 +42,8 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
     public int radius() { return radius; }
     public TerritorySavedData.CoreType coreType() { return coreType; }
     public TerritorySavedData.CoreState coreState() { return coreState; }
+    public int health() { return health; }
+    public int maximumHealth() { return maximumHealth; }
 
     public void setRadius(int radius) {
         this.radius = Math.max(0, Math.min(4, radius));
@@ -55,6 +61,8 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
         catch (IllegalArgumentException ignored) { coreType = TerritorySavedData.CoreType.OUTPOST; }
         try { coreState = TerritorySavedData.CoreState.valueOf(tag.getString("CoreState")); }
         catch (IllegalArgumentException ignored) { coreState = TerritorySavedData.CoreState.CONFIGURING; }
+        maximumHealth = Math.max(1, tag.getInt("MaximumHealth"));
+        health = Math.max(0, Math.min(maximumHealth, tag.getInt("Health")));
     }
 
     @Override
@@ -66,5 +74,7 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
         tag.putInt("Radius", radius);
         tag.putString("CoreType", coreType.name());
         tag.putString("CoreState", coreState.name());
+        tag.putInt("Health", health);
+        tag.putInt("MaximumHealth", maximumHealth);
     }
 }

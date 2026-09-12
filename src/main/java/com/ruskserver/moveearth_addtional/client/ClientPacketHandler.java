@@ -23,7 +23,14 @@ public class ClientPacketHandler {
     }
 
     public static void handleOpenTerritoryCore(S2C_OpenTerritoryCoreScreenPacket packet) {
-        Minecraft.getInstance().setScreen(new TerritoryCoreWizardScreen(packet.pos(), packet.radius()));
+        Minecraft.getInstance().setScreen(new TerritoryCoreWizardScreen(
+                packet.pos(), packet.radius(), packet.coreState(), packet.health(), packet.maximumHealth()));
+    }
+
+    public static void handleTerritoryCoreHealth(S2C_TerritoryCoreHealthPacket packet) {
+        if (Minecraft.getInstance().screen instanceof TerritoryCoreWizardScreen screen) {
+            screen.updateHealth(packet);
+        }
     }
 
     public static void handleReinforcementSnapshot(S2C_ReinforcementSnapshotPacket packet) {
@@ -34,6 +41,12 @@ public class ClientPacketHandler {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof S2HubScreen screen) screen.update(packet);
         else minecraft.setScreen(new S2HubScreen(packet));
+    }
+
+    public static void handleNationTreasury(S2C_NationTreasuryPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof NationTreasuryScreen screen) screen.update(packet);
+        else minecraft.setScreen(new NationTreasuryScreen(packet));
     }
 
     public static void handleS2ActionResult(S2C_S2ActionResultPacket packet) {

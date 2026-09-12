@@ -3,6 +3,8 @@ package com.ruskserver.moveearth_addtional;
 import com.mojang.logging.LogUtils;
 import com.ruskserver.moveearth_addtional.config.DelayedChunkCacheConfig;
 import com.ruskserver.moveearth_addtional.config.TpaConfig;
+import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
+import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -26,6 +28,13 @@ public class Moveearth_addtional {
                 TpaConfig.SPEC,
                 "moveearth_addtional-tpa.toml"
         );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                S2TerritoryConfig.SPEC,
+                "moveearth_addtional-s2-territory.toml"
+        );
+
+        CbcReinforcementCompat.registerIfPresent();
 
         // Register Sounds
         ModSounds.SOUND_EVENTS.register(modEventBus);

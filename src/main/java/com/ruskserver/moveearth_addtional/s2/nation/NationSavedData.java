@@ -21,6 +21,7 @@ public final class NationSavedData extends SavedData {
     private final Map<UUID, Nation> nations = new LinkedHashMap<>();
     private final Map<UUID, UUID> nationByMember = new LinkedHashMap<>();
     private final Map<UUID, Invitation> invitations = new LinkedHashMap<>();
+    private final Map<NationPair, DiplomacyRecord> diplomacy = new LinkedHashMap<>();
     private long revision;
 
     public Optional<Nation> nationFor(UUID playerId) {
@@ -32,6 +33,10 @@ public final class NationSavedData extends SavedData {
         return Optional.ofNullable(nations.get(nationId));
     }
 
+    public Map<UUID, Nation> nations() {
+        return Map.copyOf(nations);
+    }
+
     public Optional<UUID> nationIdFor(UUID playerId) {
         return Optional.ofNullable(nationByMember.get(playerId));
     }
@@ -39,6 +44,96 @@ public final class NationSavedData extends SavedData {
     public boolean can(UUID playerId, S2Permission permission) {
         Nation nation = nationFor(playerId).orElse(null);
         return nation != null && hasPermission(nation, playerId, permission);
+    }
+
+    public boolean isAllied(UUID firstNation, UUID secondNation) {
+        if (firstNation == null || secondNation == null || firstNation.equals(secondNation)) return false;
+        DiplomacyRecord record = diplomacy.get(NationPair.of(firstNation, secondNation));
+        return record != null && record.allied;
+    }
+
+    public DiplomacyRelation relation(UUID viewerNation, UUID otherNation) {
+        DiplomacyRecord record = diplomacy.get(NationPair.of(viewerNation, otherNation));
+        if (record == null) return DiplomacyRelation.NEUTRAL;
+        if (record.allied) return DiplomacyRelation.ALLIED;
+        if (record.isHostile(viewerNation, otherNation)) return DiplomacyRelation.HOSTILE;
+        if (viewerNation.equals(record.requestFrom)) return DiplomacyRelation.OUTGOING_REQUEST;
+        if (otherNation.equals(record.requestFrom)) return DiplomacyRelation.INCOMING_REQUEST;
+        return DiplomacyRelation.NEUTRAL;
+    }
+
+    public boolean isHostileFrom(UUID viewerNation, UUID otherNation) {
+        DiplomacyRecord record = diplomacy.get(NationPair.of(viewerNation, otherNation));
+        return record != null && record.isHostileFrom(viewerNation);
+    }
+
+    public DiplomacyResult changeDiplomacy(UUID actorId, UUID targetNationId,
+                                             DiplomacyAction action, long expectedRevision) {
+        if (expectedRevision != revision) return diplomacyResult(DiplomacyStatus.STALE);
+        Nation actorNation = nationFor(actorId).orElse(null);
+        if (actorNation == null || !hasPermission(actorNation, actorId, S2Permission.MANAGE_DIPLOMACY)) {
+            return diplomacyResult(DiplomacyStatus.NO_PERMISSION);
+        }
+        if (targetNationId == null || actorNation.id.equals(targetNationId) || !nations.containsKey(targetNationId)) {
+            return diplomacyResult(DiplomacyStatus.NOT_FOUND);
+        }
+        if (action == null || action == DiplomacyAction.UNKNOWN) {
+            return diplomacyResult(DiplomacyStatus.INVALID);
+        }
+        NationPair pair = NationPair.of(actorNation.id, targetNationId);
+        DiplomacyRecord record = diplomacy.get(pair);
+        if (record == null) record = new DiplomacyRecord(pair);
+        DiplomacyStatus status;
+        switch (action) {
+            case REQUEST_ALLIANCE -> {
+                if (record.allied) return diplomacyResult(DiplomacyStatus.ALREADY_ALLIED);
+                if (record.anyHostile()) return diplomacyResult(DiplomacyStatus.HOSTILE_CONFLICT);
+                if (record.requestFrom != null) return diplomacyResult(DiplomacyStatus.REQUEST_EXISTS);
+                record.requestFrom = actorNation.id;
+                status = DiplomacyStatus.REQUESTED;
+            }
+            case ACCEPT_ALLIANCE -> {
+                if (record.requestFrom == null || !record.requestFrom.equals(targetNationId)) {
+                    return diplomacyResult(DiplomacyStatus.REQUEST_NOT_FOUND);
+                }
+                record.requestFrom = null;
+                record.allied = true;
+                record.hostileFirstToSecond = false;
+                record.hostileSecondToFirst = false;
+                status = DiplomacyStatus.ALLIED;
+            }
+            case DECLINE_ALLIANCE -> {
+                if (record.requestFrom == null || !record.requestFrom.equals(targetNationId)) {
+                    return diplomacyResult(DiplomacyStatus.REQUEST_NOT_FOUND);
+                }
+                record.requestFrom = null;
+                status = DiplomacyStatus.DECLINED;
+            }
+            case END_ALLIANCE -> {
+                if (!record.allied) return diplomacyResult(DiplomacyStatus.NOT_ALLIED);
+                record.allied = false;
+                status = DiplomacyStatus.ALLIANCE_ENDED;
+            }
+            case DECLARE_HOSTILE -> {
+                record.allied = false;
+                record.requestFrom = null;
+                record.setHostile(actorNation.id, targetNationId, true);
+                status = DiplomacyStatus.HOSTILE_DECLARED;
+            }
+            case SET_NEUTRAL -> {
+                if (!record.isHostileFrom(actorNation.id)) return diplomacyResult(DiplomacyStatus.NOT_HOSTILE);
+                record.setHostile(actorNation.id, targetNationId, false);
+                status = DiplomacyStatus.NEUTRAL;
+            }
+            default -> throw new IllegalStateException("Unhandled diplomacy action: " + action);
+        }
+        if (record.isEmpty()) diplomacy.remove(pair); else diplomacy.put(pair, record);
+        changed();
+        return new DiplomacyResult(status, revision);
+    }
+
+    private DiplomacyResult diplomacyResult(DiplomacyStatus status) {
+        return new DiplomacyResult(status, revision);
     }
 
     public long revision() {
@@ -72,7 +167,8 @@ public final class NationSavedData extends SavedData {
         if (invitation == null || !invitation.nationId.equals(nationId) || nation == null) {
             return membershipResult(MembershipStatus.INVITE_NOT_FOUND);
         }
-        nation.members.put(playerId, new Member(playerId, playerName, MEMBER_ROLE));
+        nation.members.put(playerId, new Member(
+                playerId, playerName, MEMBER_ROLE, System.currentTimeMillis()));
         nationByMember.put(playerId, nationId);
         invitations.remove(playerId);
         changed();
@@ -157,6 +253,25 @@ public final class NationSavedData extends SavedData {
         return new RoleResult(RoleStatus.ASSIGNED, revision, role.id);
     }
 
+    public RoleResult deleteRole(UUID actorId, String roleId, long expectedRevision) {
+        if (expectedRevision != revision) return roleResult(RoleStatus.STALE);
+        Nation nation = nationFor(actorId).orElse(null);
+        if (nation == null || !hasPermission(nation, actorId, S2Permission.MANAGE_ROLES)) {
+            return roleResult(RoleStatus.NO_PERMISSION);
+        }
+        String normalizedId = roleId == null ? "" : roleId.trim();
+        if (OWNER_ROLE.equals(normalizedId) || MEMBER_ROLE.equals(normalizedId)) {
+            return roleResult(RoleStatus.BUILT_IN);
+        }
+        if (!nation.roles.containsKey(normalizedId)) return roleResult(RoleStatus.NOT_FOUND);
+        nation.members.values().stream()
+                .filter(member -> normalizedId.equals(member.roleId))
+                .forEach(member -> member.roleId = MEMBER_ROLE);
+        nation.roles.remove(normalizedId);
+        changed();
+        return new RoleResult(RoleStatus.DELETED, revision, normalizedId);
+    }
+
     private RoleResult roleResult(RoleStatus status) {
         return new RoleResult(status, revision, "");
     }
@@ -190,7 +305,8 @@ public final class NationSavedData extends SavedData {
 
         UUID nationId = UUID.randomUUID();
         Nation nation = new Nation(nationId, validation.name(), validation.tag(), ownerId);
-        nation.members.put(ownerId, new Member(ownerId, ownerName, OWNER_ROLE));
+        nation.members.put(ownerId, new Member(
+                ownerId, ownerName, OWNER_ROLE, System.currentTimeMillis()));
         nations.put(nationId, nation);
         nationByMember.put(ownerId, nationId);
         changed();
@@ -205,6 +321,25 @@ public final class NationSavedData extends SavedData {
             member.lastKnownName = name;
             setDirty();
         }
+    }
+
+    public void updatePresence(UUID playerId, String name, long lastSeenAt) {
+        Nation nation = nationFor(playerId).orElse(null);
+        if (nation == null) return;
+        Member member = nation.members.get(playerId);
+        if (member == null) return;
+        boolean updated = false;
+        String safeName = name == null ? "" : name;
+        if (!safeName.isBlank() && !member.lastKnownName.equals(safeName)) {
+            member.lastKnownName = safeName;
+            updated = true;
+        }
+        long safeLastSeen = Math.max(0L, lastSeenAt);
+        if (safeLastSeen > member.lastSeenAt) {
+            member.lastSeenAt = safeLastSeen;
+            updated = true;
+        }
+        if (updated) setDirty();
     }
 
     @Override
@@ -232,6 +367,7 @@ public final class NationSavedData extends SavedData {
                 memberTag.putString("Id", member.id.toString());
                 memberTag.putString("Name", member.lastKnownName);
                 memberTag.putString("Role", member.roleId);
+                memberTag.putLong("LastSeenAt", member.lastSeenAt);
                 memberList.add(memberTag);
             }
             nationTag.put("Members", memberList);
@@ -247,6 +383,18 @@ public final class NationSavedData extends SavedData {
             inviteList.add(inviteTag);
         }
         tag.put("Invitations", inviteList);
+        ListTag diplomacyList = new ListTag();
+        for (DiplomacyRecord record : diplomacy.values()) {
+            CompoundTag value = new CompoundTag();
+            value.putUUID("First", record.pair.first);
+            value.putUUID("Second", record.pair.second);
+            value.putBoolean("Allied", record.allied);
+            if (record.requestFrom != null) value.putUUID("RequestFrom", record.requestFrom);
+            value.putBoolean("HostileFirstToSecond", record.hostileFirstToSecond);
+            value.putBoolean("HostileSecondToFirst", record.hostileSecondToFirst);
+            diplomacyList.add(value);
+        }
+        tag.put("Diplomacy", diplomacyList);
         return tag;
     }
 
@@ -278,7 +426,8 @@ public final class NationSavedData extends SavedData {
                     UUID memberId = UUID.fromString(memberTag.getString("Id"));
                     String loadedRole = memberTag.getString("Role");
                     if (!nation.roles.containsKey(loadedRole)) loadedRole = MEMBER_ROLE;
-                    Member member = new Member(memberId, memberTag.getString("Name"), loadedRole);
+                    Member member = new Member(memberId, memberTag.getString("Name"), loadedRole,
+                            memberTag.getLong("LastSeenAt"));
                     nation.members.put(memberId, member);
                 }
                 if (!nation.members.containsKey(owner)) continue;
@@ -301,6 +450,24 @@ public final class NationSavedData extends SavedData {
             } catch (IllegalArgumentException ignored) {
             }
         }
+        ListTag diplomacyList = tag.getList("Diplomacy", Tag.TAG_COMPOUND);
+        for (int index = 0; index < diplomacyList.size(); index++) {
+            CompoundTag value = diplomacyList.getCompound(index);
+            if (!value.hasUUID("First") || !value.hasUUID("Second")) continue;
+            UUID first = value.getUUID("First");
+            UUID second = value.getUUID("Second");
+            if (first.equals(second) || !data.nations.containsKey(first) || !data.nations.containsKey(second)) continue;
+            NationPair pair = NationPair.of(first, second);
+            DiplomacyRecord record = new DiplomacyRecord(pair);
+            record.allied = value.getBoolean("Allied");
+            if (value.hasUUID("RequestFrom")) {
+                UUID requester = value.getUUID("RequestFrom");
+                if (requester.equals(pair.first) || requester.equals(pair.second)) record.requestFrom = requester;
+            }
+            record.hostileFirstToSecond = value.getBoolean("HostileFirstToSecond");
+            record.hostileSecondToFirst = value.getBoolean("HostileSecondToFirst");
+            if (!record.isEmpty()) data.diplomacy.put(pair, record);
+        }
         return data;
     }
 
@@ -319,8 +486,23 @@ public final class NationSavedData extends SavedData {
     }
 
     public enum RoleStatus {
-        CREATED, UPDATED, ASSIGNED, INVALID, DUPLICATE, LIMIT_REACHED,
+        CREATED, UPDATED, ASSIGNED, DELETED, INVALID, DUPLICATE, LIMIT_REACHED,
         BUILT_IN, NOT_FOUND, OWNER_IMMUTABLE, STALE, NO_PERMISSION
+    }
+
+    public enum DiplomacyAction {
+        REQUEST_ALLIANCE, ACCEPT_ALLIANCE, DECLINE_ALLIANCE, END_ALLIANCE,
+        DECLARE_HOSTILE, SET_NEUTRAL, UNKNOWN
+    }
+
+    public enum DiplomacyRelation {
+        NEUTRAL, OUTGOING_REQUEST, INCOMING_REQUEST, ALLIED, HOSTILE
+    }
+
+    public enum DiplomacyStatus {
+        REQUESTED, ALLIED, DECLINED, ALLIANCE_ENDED, HOSTILE_DECLARED, NEUTRAL,
+        STALE, NO_PERMISSION, NOT_FOUND, ALREADY_ALLIED, HOSTILE_CONFLICT,
+        REQUEST_EXISTS, REQUEST_NOT_FOUND, NOT_ALLIED, NOT_HOSTILE, INVALID
     }
 
     public record CreateResult(Status status, Nation nation, long revision) {
@@ -339,7 +521,16 @@ public final class NationSavedData extends SavedData {
 
     public record RoleResult(RoleStatus status, long revision, String roleId) {
         public boolean success() {
-            return status == RoleStatus.CREATED || status == RoleStatus.UPDATED || status == RoleStatus.ASSIGNED;
+            return status == RoleStatus.CREATED || status == RoleStatus.UPDATED
+                    || status == RoleStatus.ASSIGNED || status == RoleStatus.DELETED;
+        }
+    }
+
+    public record DiplomacyResult(DiplomacyStatus status, long revision) {
+        public boolean success() {
+            return status == DiplomacyStatus.REQUESTED || status == DiplomacyStatus.ALLIED
+                    || status == DiplomacyStatus.DECLINED || status == DiplomacyStatus.ALLIANCE_ENDED
+                    || status == DiplomacyStatus.HOSTILE_DECLARED || status == DiplomacyStatus.NEUTRAL;
         }
     }
 
@@ -358,7 +549,7 @@ public final class NationSavedData extends SavedData {
             this.ownerId = ownerId;
             roles.put(OWNER_ROLE, new Role(OWNER_ROLE, "Owner",
                     S2Permission.toMask(java.util.EnumSet.allOf(S2Permission.class))));
-            roles.put(MEMBER_ROLE, new Role(MEMBER_ROLE, "Member", 0L));
+            roles.put(MEMBER_ROLE, new Role(MEMBER_ROLE, "Member", S2Permission.BASTION_ACCESS.mask()));
         }
 
         public UUID id() { return id; }
@@ -373,16 +564,19 @@ public final class NationSavedData extends SavedData {
         private final UUID id;
         private String lastKnownName;
         private String roleId;
+        private long lastSeenAt;
 
-        private Member(UUID id, String lastKnownName, String roleId) {
+        private Member(UUID id, String lastKnownName, String roleId, long lastSeenAt) {
             this.id = id;
             this.lastKnownName = lastKnownName == null ? "" : lastKnownName;
             this.roleId = roleId == null || roleId.isBlank() ? MEMBER_ROLE : roleId;
+            this.lastSeenAt = Math.max(0L, lastSeenAt);
         }
 
         public UUID id() { return id; }
         public String lastKnownName() { return lastKnownName; }
         public String roleId() { return roleId; }
+        public long lastSeenAt() { return lastSeenAt; }
     }
 
     public static final class Role {
@@ -399,5 +593,44 @@ public final class NationSavedData extends SavedData {
         public String id() { return id; }
         public String displayName() { return displayName; }
         public long permissionMask() { return permissionMask; }
+    }
+
+    private record NationPair(UUID first, UUID second) {
+        private static NationPair of(UUID first, UUID second) {
+            return first.compareTo(second) <= 0 ? new NationPair(first, second) : new NationPair(second, first);
+        }
+    }
+
+    private static final class DiplomacyRecord {
+        private final NationPair pair;
+        private UUID requestFrom;
+        private boolean allied;
+        private boolean hostileFirstToSecond;
+        private boolean hostileSecondToFirst;
+
+        private DiplomacyRecord(NationPair pair) {
+            this.pair = pair;
+        }
+
+        private boolean isHostile(UUID viewer, UUID other) {
+            return isHostileFrom(viewer) || isHostileFrom(other);
+        }
+
+        private boolean isHostileFrom(UUID nation) {
+            return pair.first.equals(nation) ? hostileFirstToSecond : hostileSecondToFirst;
+        }
+
+        private void setHostile(UUID from, UUID to, boolean hostile) {
+            if (pair.first.equals(from) && pair.second.equals(to)) hostileFirstToSecond = hostile;
+            else if (pair.second.equals(from) && pair.first.equals(to)) hostileSecondToFirst = hostile;
+        }
+
+        private boolean anyHostile() {
+            return hostileFirstToSecond || hostileSecondToFirst;
+        }
+
+        private boolean isEmpty() {
+            return !allied && requestFrom == null && !anyHostile();
+        }
     }
 }
