@@ -99,6 +99,10 @@ public final class SiegeActionService {
         }
         SiegeSavedData.ConflictEndResult ended = sieges.endConflictsBetween(
                 proposal.proposerNation(), proposal.receiverNation());
+        ended.active().forEach(record -> SiegeService.notifySiegeEnded(player.server,
+                record.attackerNation(), record.defenderNation(), record.dimension(), record.corePos(), "peace"));
+        ended.fallen().forEach(record -> SiegeService.notifySiegeEnded(player.server,
+                record.attackerNation(), record.defenderNation(), record.dimension(), record.corePos(), "peace"));
         int returnedPrisoners = proposal.returnPrisoners() ? PrisonerService.returnAll(player.server,
                 proposal.proposerNation(), proposal.receiverNation()) : 0;
         TerritorySavedData territories = TerritorySavedData.get(player.server);
@@ -150,6 +154,8 @@ public final class SiegeActionService {
                         S2TerritoryConfig.siegeRetryCooldownTicks());
                 PeaceSavedData.get(player.server).removeBetween(active.attackerNation(), active.defenderNation());
                 broadcastExit(player, active.attackerNation(), active.defenderNation(), true);
+                SiegeService.notifySiegeEnded(player.server, active.attackerNation(), active.defenderNation(),
+                        active.dimension(), active.corePos(), "attacker_withdrew");
                 return Result.ATTACK_WITHDRAWN;
             }
             if (!active.defenderNation().equals(nationId)) return Result.CONFLICT_NOT_FOUND;
@@ -178,6 +184,8 @@ public final class SiegeActionService {
                     .ifPresent(core -> TerritoryCoreHealthService.syncCore(player.server, core));
             SiegeService.syncFallVisuals(player.server, fallen);
             broadcastExit(player, fallen.attackerNation(), fallen.defenderNation(), true);
+            SiegeService.notifySiegeEnded(player.server, fallen.attackerNation(), fallen.defenderNation(),
+                    fallen.dimension(), fallen.corePos(), "attacker_withdrew");
             return Result.ATTACK_WITHDRAWN;
         }
         if (!fallen.defenderNation().equals(nationId)) return Result.CONFLICT_NOT_FOUND;

@@ -5,6 +5,8 @@ import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
@@ -217,6 +219,11 @@ public final class TerritoryClosureRecheckManager {
                     core.pos().getX(), core.pos().getY(), core.pos().getZ());
             player.sendSystemMessage(active ? MoveEarthMessage.success(body) : MoveEarthMessage.warning(body));
         }
+        NationNotificationService.publish(server, java.util.List.of(core.nationId()),
+                active ? NationNotificationSavedData.EventType.TERRITORY_RESEALED
+                        : NationNotificationSavedData.EventType.TERRITORY_EXPOSED,
+                core.dimension(), core.pos(), null,
+                java.util.List.of(active ? "resealed" : "exposed"));
     }
 
     private record CoreKey(ResourceLocation dimension, BlockPos pos) {

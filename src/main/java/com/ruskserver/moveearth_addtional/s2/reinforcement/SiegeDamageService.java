@@ -17,6 +17,8 @@ import com.ruskserver.moveearth_addtional.s2.siege.LongAbsenceService;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /** Applies server-authoritative siege damage without linking against an optional artillery mod. */
 public final class SiegeDamageService {
@@ -57,7 +59,7 @@ public final class SiegeDamageService {
             if (!penalty.reinforcementProtectionEnabled()) {
                 reinforcements.remove(pos);
                 TerritoryClosureRecheckManager.markPotentialOpening(level, pos);
-                ReinforcementService.syncNearbyManagers(level, pos);
+                ReinforcementService.syncChangedNearbyManagers(level, Set.of(pos));
                 return false;
             }
             ReinforcementDamage result = damageReinforcement(level, pos, entry, kind, penalty, true);
@@ -86,6 +88,7 @@ public final class SiegeDamageService {
         int damage = configuredDamage(kind);
         boolean intercepted = false;
         boolean reinforcementChanged = false;
+        Set<BlockPos> changedPositions = new LinkedHashSet<>();
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
         Map<Long, UpkeepPenalty> penaltiesByChunk = new HashMap<>();
         for (ReinforcementSavedData.LocatedEntry located : reinforcements.around(level, center, safeRadius)) {
@@ -108,6 +111,7 @@ public final class SiegeDamageService {
                 if (result.appliedDamage() > 0) {
                     SiegeService.recordAttack(attacker, level, located.pos(), true);
                     reinforcementChanged = true;
+                    changedPositions.add(located.pos().immutable());
                 }
             }
         }
@@ -125,7 +129,7 @@ public final class SiegeDamageService {
                 SiegeService.recordAttack(attacker, level, core.pos(), true);
             }
         }
-        if (reinforcementChanged) ReinforcementService.syncNearbyManagers(level, center);
+        if (reinforcementChanged) ReinforcementService.syncChangedNearbyManagers(level, changedPositions);
         return intercepted;
     }
 
@@ -163,11 +167,11 @@ public final class SiegeDamageService {
         if (damaged.durability() <= 0) {
             data.remove(pos);
             TerritoryClosureRecheckManager.markPotentialOpening(level, pos);
-            if (syncImmediately) ReinforcementService.syncNearbyManagers(level, pos);
+            if (syncImmediately) ReinforcementService.syncChangedNearbyManagers(level, Set.of(pos));
             return new ReinforcementDamage(false, damage);
         }
         data.put(pos, damaged);
-        if (syncImmediately) ReinforcementService.syncNearbyManagers(level, pos);
+        if (syncImmediately) ReinforcementService.syncChangedNearbyManagers(level, Set.of(pos));
         return new ReinforcementDamage(true, damage);
     }
 

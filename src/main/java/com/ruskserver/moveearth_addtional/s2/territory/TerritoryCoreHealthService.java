@@ -4,6 +4,8 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryCoreHealthPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 import com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -66,18 +68,16 @@ public final class TerritoryCoreHealthService {
     }
 
     private static void notifyNation(ServerLevel level, TerritorySavedData.CoreRecord core) {
-        NationSavedData nations = NationSavedData.get(level.getServer());
-        NationSavedData.Nation nation = nations.nation(core.nationId()).orElse(null);
-        if (nation == null) return;
         Component body = core.health() == 0
                 ? Component.translatable("message.moveearth_addtional.territory_core.depleted",
                 core.pos().getX(), core.pos().getY(), core.pos().getZ())
                 : Component.translatable("message.moveearth_addtional.territory_core.damaged",
                 core.pos().getX(), core.pos().getY(), core.pos().getZ(), core.health(), core.maximumHealth());
-        for (UUID member : nation.members().keySet()) {
-            ServerPlayer player = level.getServer().getPlayerList().getPlayer(member);
-            if (player != null) player.sendSystemMessage(MoveEarthMessage.warning(body));
-        }
+        NationNotificationService.publish(level.getServer(), java.util.List.of(core.nationId()),
+                core.health() == 0 ? NationNotificationSavedData.EventType.CORE_FALLEN
+                        : NationNotificationSavedData.EventType.CORE_DAMAGED,
+                core.dimension(), core.pos(), body,
+                java.util.List.of(Integer.toString(core.health()), Integer.toString(core.maximumHealth())));
     }
 
     private static void syncLoadedBlock(ServerLevel level, TerritorySavedData.CoreRecord core) {

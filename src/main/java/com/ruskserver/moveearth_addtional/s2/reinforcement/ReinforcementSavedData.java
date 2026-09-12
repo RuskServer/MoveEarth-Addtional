@@ -90,6 +90,7 @@ public final class ReinforcementSavedData extends SavedData {
     public AdvanceResult advance(ServerLevel level, long gameTime) {
         List<BlockPos> activated = new ArrayList<>();
         List<BlockPos> completed = new ArrayList<>();
+        List<BlockPos> progressed = new ArrayList<>();
         Set<BlockPos> removed = new LinkedHashSet<>();
         boolean changed = false;
         for (BlockPos pos : List.copyOf(constructionEntries)) {
@@ -105,6 +106,7 @@ public final class ReinforcementSavedData extends SavedData {
                 changed = true;
                 continue;
             }
+            progressed.add(pos.immutable());
             ReinforcementEntry after = before.advance(gameTime);
             if (after.equals(before)) continue;
             entries.put(pos, after);
@@ -133,7 +135,8 @@ public final class ReinforcementSavedData extends SavedData {
             changed = true;
         }
         if (changed) setDirty();
-        return new AdvanceResult(List.copyOf(activated), List.copyOf(completed), List.copyOf(removed));
+        return new AdvanceResult(List.copyOf(activated), List.copyOf(completed),
+                List.copyOf(progressed), List.copyOf(removed));
     }
 
     @Override
@@ -200,6 +203,7 @@ public final class ReinforcementSavedData extends SavedData {
     }
 
     public record AdvanceResult(List<BlockPos> activated, List<BlockPos> completed,
+                                List<BlockPos> progressed,
                                 List<BlockPos> removed) {
     }
 }

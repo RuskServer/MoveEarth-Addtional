@@ -77,6 +77,20 @@ Apache License, Version 2.0.
 - Source: https://github.com/xerial/sqlite-jdbc
 - License: http://www.apache.org/licenses/LICENSE-2.0
 
+## JDA Discord API library
+
+Release JARs include JDA and its required runtime libraries for the optional
+dedicated-server Discord Bot integration. Voice/Opus support is excluded.
+
+- Component: `net.dv8tion:JDA:6.6.0`
+- Source: https://github.com/discord-jda/JDA
+- License: Apache License, Version 2.0
+
+The generated nested runtime JAR retains the upstream license and notice files
+supplied by JDA and its runtime dependencies. Runtime dependency packages are
+relocated into a MoveEarth-private namespace to prevent module conflicts with
+libraries supplied by NeoForge or other mods.
+
 ## Third-party dependencies
 
 Minecraft, NeoForge, TaCZ, FMIC, CIBR, Create and other third-party libraries,

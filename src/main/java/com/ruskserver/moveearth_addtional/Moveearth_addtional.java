@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import com.ruskserver.moveearth_addtional.config.DelayedChunkCacheConfig;
 import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
+import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -18,6 +19,11 @@ public class Moveearth_addtional {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Moveearth_addtional(IEventBus modEventBus, ModContainer modContainer) {
+        modContainer.registerConfig(
+                ModConfig.Type.STARTUP,
+                DiscordBotConfig.SPEC,
+                "moveearth_addtional-discord.toml"
+        );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 DelayedChunkCacheConfig.SPEC,

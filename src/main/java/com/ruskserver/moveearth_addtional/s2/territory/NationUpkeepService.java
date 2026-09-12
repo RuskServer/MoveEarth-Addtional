@@ -5,6 +5,8 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.network.S2C_NationTreasuryPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;
 import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
 import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
 import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
@@ -160,15 +162,11 @@ public final class NationUpkeepService {
     private static void notifyPenaltyChange(MinecraftServer server, UUID nationId, UpkeepPenalty penalty) {
         UpkeepPenalty previous = LAST_NOTIFIED_PENALTY.put(nationId, penalty);
         if (penalty == UpkeepPenalty.CURRENT || penalty == previous) return;
-        NationSavedData.Nation nation = NationSavedData.get(server).nation(nationId).orElse(null);
-        if (nation == null) return;
         String key = "message.moveearth_addtional.upkeep.penalty." + penalty.name().toLowerCase(java.util.Locale.ROOT);
-        for (UUID memberId : nation.members().keySet()) {
-            ServerPlayer player = server.getPlayerList().getPlayer(memberId);
-            if (player != null) player.sendSystemMessage(
-                    com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning(
-                            net.minecraft.network.chat.Component.translatable(key)));
-        }
+        NationNotificationService.publish(server, java.util.List.of(nationId),
+                NationNotificationSavedData.EventType.UPKEEP_WARNING, null, null,
+                net.minecraft.network.chat.Component.translatable(key),
+                java.util.List.of(penalty.name()));
     }
 
     private static boolean charge(MinecraftServer server, UUID nationId, long now) {

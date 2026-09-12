@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.client;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_NationSettingsPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_RequestNationNotificationsPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
@@ -124,9 +125,13 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
                 transferEnabled && transfer.contains(mouseX, mouseY), transferEnabled);
 
         Rect back = backBounds(panel);
+        Rect notifications = notificationsBounds(panel);
         Rect disband = disbandBounds(panel);
         drawButton(graphics, font, back, Component.translatable("screen.moveearth_addtional.nation.cancel"),
                 MUTED, back.contains(mouseX, mouseY), true);
+        drawButton(graphics, font, notifications,
+                Component.translatable("screen.moveearth_addtional.notifications.open"), ACCENT,
+                notifications.contains(mouseX, mouseY), true);
         drawButton(graphics, font, disband,
                 Component.translatable("screen.moveearth_addtional.nation.settings.disband"), DANGER,
                 pendingRequestId < 0 && disband.contains(mouseX, mouseY), pendingRequestId < 0);
@@ -178,6 +183,10 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
         Rect panel = panelBounds();
         if (closeBounds(panel).contains(mouseX, mouseY) || backBounds(panel).contains(mouseX, mouseY)) {
             returnToHub();
+            return true;
+        }
+        if (notificationsBounds(panel).contains(mouseX, mouseY)) {
+            PacketDistributor.sendToServer(new C2S_RequestNationNotificationsPacket());
             return true;
         }
         NationNamePolicy.Validation validation = validation();
@@ -271,6 +280,7 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
     private Rect memberCard(Rect list, int index) { return new Rect(list.x(), list.y() + index * 39 - memberScroll, list.width() - 8, 34); }
     private static Rect transferBounds(Rect panel) { return new Rect(panel.right() - 158, panel.y() + 261, 130, 22); }
     private static Rect backBounds(Rect panel) { return new Rect(panel.x() + 20, panel.bottom() - 39, 98, 23); }
+    private static Rect notificationsBounds(Rect panel) { return new Rect(panel.x() + 130, panel.bottom() - 39, 140, 23); }
     private static Rect disbandBounds(Rect panel) { return new Rect(panel.right() - 158, panel.bottom() - 39, 130, 23); }
     private Rect modalBounds() { return new Rect((width - 390) / 2, (height - 132) / 2, 390, 132); }
     private static Rect modalCancel(Rect modal) { return new Rect(modal.right() - 184, modal.bottom() - 34, 82, 22); }

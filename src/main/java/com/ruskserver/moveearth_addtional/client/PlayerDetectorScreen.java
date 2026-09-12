@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.network.C2S_UpdateWhitelistPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_ConfigurePaymentPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_SetDetectorNamePacket;
 import com.ruskserver.moveearth_addtional.network.C2S_UpdateDetectorManagerPacket;
+import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
 import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
 import net.minecraft.client.gui.GuiGraphics;
@@ -19,8 +20,10 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.List;
 import java.util.Collections;
 
+import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
+
 @OnlyIn(Dist.CLIENT)
-public class PlayerDetectorScreen extends Screen {
+public class PlayerDetectorScreen extends Screen implements SuppressesChatOverlay {
 
     private final BlockPos detectorPos;
     private String detectorName;
@@ -436,21 +439,14 @@ public class PlayerDetectorScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        guiGraphics.fill(0, 0, this.width, this.height, 0x70000000);
+        drawBackground(guiGraphics, this.width, this.height);
 
         int windowWidth = 400;
         int windowHeight = 260;
         int leftPos = (this.width - windowWidth) / 2;
         int topPos = (this.height - windowHeight) / 2;
 
-        // メインウィンドウ背景
-        guiGraphics.fill(leftPos, topPos, leftPos + windowWidth, topPos + windowHeight, 0xDD111111);
-
-        // 枠線
-        guiGraphics.fill(leftPos, topPos, leftPos + windowWidth, topPos + 1, 0xFF444444);
-        guiGraphics.fill(leftPos, topPos + windowHeight - 1, leftPos + windowWidth, topPos + windowHeight, 0xFF444444);
-        guiGraphics.fill(leftPos, topPos, leftPos + 1, topPos + windowHeight, 0xFF444444);
-        guiGraphics.fill(leftPos + windowWidth - 1, topPos, leftPos + windowWidth, topPos + windowHeight, 0xFF444444);
+        drawPanel(guiGraphics, new Rect(leftPos, topPos, windowWidth, windowHeight));
 
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 

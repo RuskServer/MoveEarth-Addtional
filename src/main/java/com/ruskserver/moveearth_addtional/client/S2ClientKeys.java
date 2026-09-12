@@ -24,6 +24,8 @@ public final class S2ClientKeys {
             GLFW.GLFW_KEY_G, "key.categories.moveearth_addtional");
     private static int reinforcementScanTicks;
     private static boolean wasHoldingWelder;
+    private static net.minecraft.core.BlockPos lastReinforcementScanPos;
+    private static net.minecraft.resources.ResourceLocation lastReinforcementScanDimension;
 
     private S2ClientKeys() {
     }
@@ -42,6 +44,8 @@ public final class S2ClientKeys {
             ReinforcementClientState.clear();
             WeldingBrushClientState.clear();
             wasHoldingWelder = false;
+            lastReinforcementScanPos = null;
+            lastReinforcementScanDimension = null;
             return;
         }
         while (OPEN_HUB.consumeClick()) {
@@ -63,19 +67,37 @@ public final class S2ClientKeys {
         if (holdingWelder && !wasHoldingWelder) {
             PacketDistributor.sendToServer(new com.ruskserver.moveearth_addtional.network.C2S_SetWeldingBrushPacket(
                     WeldingBrushClientState.radius()));
+            requestReinforcementScan(minecraft);
         }
         wasHoldingWelder = holdingWelder;
         while (TOGGLE_REINFORCEMENT_OVERLAY.consumeClick()) {
             if (minecraft.screen == null && holdingWelder) {
                 ReinforcementClientState.toggleOverlay();
-                PacketDistributor.sendToServer(new C2S_RequestReinforcementScanPacket(64));
+                requestReinforcementScan(minecraft);
             }
         }
-        if (holdingWelder && ++reinforcementScanTicks >= 20) {
-            reinforcementScanTicks = 0;
-            PacketDistributor.sendToServer(new C2S_RequestReinforcementScanPacket(64));
+        if (holdingWelder && minecraft.player != null) {
+            reinforcementScanTicks++;
+            var currentPos = minecraft.player.blockPosition();
+            var currentDimension = minecraft.player.level().dimension().location();
+            boolean moved = lastReinforcementScanPos == null
+                    || lastReinforcementScanPos.distSqr(currentPos) >= 64.0D;
+            boolean changedDimension = !currentDimension.equals(lastReinforcementScanDimension);
+            if (moved || changedDimension || reinforcementScanTicks >= 200) {
+                requestReinforcementScan(minecraft);
+            }
         } else if (!holdingWelder) {
             reinforcementScanTicks = 0;
+            lastReinforcementScanPos = null;
+            lastReinforcementScanDimension = null;
         }
+    }
+
+    private static void requestReinforcementScan(Minecraft minecraft) {
+        if (minecraft.player == null) return;
+        reinforcementScanTicks = 0;
+        lastReinforcementScanPos = minecraft.player.blockPosition().immutable();
+        lastReinforcementScanDimension = minecraft.player.level().dimension().location();
+        PacketDistributor.sendToServer(new C2S_RequestReinforcementScanPacket(64));
     }
 }

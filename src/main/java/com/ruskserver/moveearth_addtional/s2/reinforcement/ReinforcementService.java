@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.reinforcement;
 
 import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementDeltaPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
@@ -24,12 +25,16 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import net.minecraft.resources.ResourceLocation;
 
 public final class ReinforcementService {
     public static final int SCAN_RADIUS = 64;
     private static final long FORCED_FULL_SYNC_TICKS = 10L * 20L;
     private static final Map<UUID, ScanSignature> LAST_SCANS = new HashMap<>();
     private static final Set<UUID> PENDING_SCANS = new HashSet<>();
+    private static final Map<UUID, PendingDelta> PENDING_DELTAS = new HashMap<>();
 
     private ReinforcementService() {
     }
@@ -62,6 +67,7 @@ public final class ReinforcementService {
         int reinforced = 0;
         int repaired = 0;
         int skipped = 0;
+        List<BlockPos> changedPositions = new java.util.ArrayList<>();
         for (ReinforcementBrushPattern.Offset offset : ReinforcementBrushPattern.offsets(axis, brushRadius)) {
             BlockPos target = pos.offset(offset.x(), offset.y(), offset.z());
             if (!canManage(player, target)) {
@@ -92,6 +98,7 @@ public final class ReinforcementService {
                 break;
             }
             data.put(target, updated);
+            changedPositions.add(target.immutable());
             if (!player.getAbilities().instabuild) materialStack.shrink(1);
             player.getMainHandItem().hurtAndBreak(1, player, EquipmentSlot.MAINHAND);
             if (player.getMainHandItem().isEmpty()) break;
@@ -111,7 +118,7 @@ public final class ReinforcementService {
                         "message.moveearth_addtional.welding.batch_result",
                         ReinforcementBrushPattern.size(brushRadius), ReinforcementBrushPattern.size(brushRadius),
                         reinforced, repaired, skipped)));
-        syncNearbyManagers(level, pos);
+        syncChangedNearbyManagers(level, changedPositions);
         return InteractionResult.SUCCESS;
     }
 
@@ -150,11 +157,13 @@ public final class ReinforcementService {
     public static void clearScanCache(UUID playerId) {
         LAST_SCANS.remove(playerId);
         PENDING_SCANS.remove(playerId);
+        PENDING_DELTAS.remove(playerId);
     }
 
     public static void clearScanCache() {
         LAST_SCANS.clear();
         PENDING_SCANS.clear();
+        PENDING_DELTAS.clear();
     }
 
     private static long signature(List<S2C_ReinforcementSnapshotPacket.Entry> entries) {
@@ -196,20 +205,97 @@ public final class ReinforcementService {
             if (player.blockPosition().distSqr(pos) <= (long) SCAN_RADIUS * SCAN_RADIUS
                     && canManage(player)) {
                 PENDING_SCANS.add(player.getUUID());
+                PENDING_DELTAS.remove(player.getUUID());
+            }
+        }
+    }
+
+    /** Queues exact changed positions, coalesced into one delta packet per player and server tick. */
+    public static void syncChangedNearbyManagers(ServerLevel level, Collection<BlockPos> changedPositions) {
+        if (changedPositions == null || changedPositions.isEmpty()) return;
+        ResourceLocation dimension = level.dimension().location();
+        long radiusSquared = (long) SCAN_RADIUS * SCAN_RADIUS;
+        for (ServerPlayer player : level.players()) {
+            if (PENDING_SCANS.contains(player.getUUID()) || !canManage(player)) continue;
+            PendingDelta pending = PENDING_DELTAS.get(player.getUUID());
+            if (pending != null && !pending.dimension.equals(dimension)) {
+                PENDING_DELTAS.remove(player.getUUID());
+                PENDING_SCANS.add(player.getUUID());
+                continue;
+            }
+            for (BlockPos pos : changedPositions) {
+                if (player.blockPosition().distSqr(pos) > radiusSquared) continue;
+                if (pending == null) {
+                    pending = new PendingDelta(dimension, new LinkedHashSet<>());
+                    PENDING_DELTAS.put(player.getUUID(), pending);
+                }
+                pending.positions.add(pos.immutable());
             }
         }
     }
 
     /** Coalesces all block changes from the same server tick into one scan per nearby player. */
     public static void flushPendingScans(net.minecraft.server.MinecraftServer server) {
-        if (PENDING_SCANS.isEmpty()) return;
-        List<UUID> pending = List.copyOf(PENDING_SCANS);
-        PENDING_SCANS.clear();
-        for (UUID playerId : pending) {
-            ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-            if (player != null) sendScan(player, SCAN_RADIUS);
+        if (!PENDING_SCANS.isEmpty()) {
+            List<UUID> pending = List.copyOf(PENDING_SCANS);
+            PENDING_SCANS.clear();
+            for (UUID playerId : pending) {
+                PENDING_DELTAS.remove(playerId);
+                ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+                if (player != null) sendScan(player, SCAN_RADIUS);
+            }
+        }
+        if (PENDING_DELTAS.isEmpty()) return;
+        Map<UUID, PendingDelta> deltas = Map.copyOf(PENDING_DELTAS);
+        PENDING_DELTAS.clear();
+        for (Map.Entry<UUID, PendingDelta> value : deltas.entrySet()) {
+            ServerPlayer player = server.getPlayerList().getPlayer(value.getKey());
+            if (player != null) sendDelta(player, value.getValue());
         }
     }
+
+    private static void sendDelta(ServerPlayer player, PendingDelta pending) {
+        if (!player.level().dimension().location().equals(pending.dimension)
+                || pending.positions.size() > 8_192) {
+            sendScan(player, SCAN_RADIUS);
+            return;
+        }
+        NationSavedData nations = NationSavedData.get(player.server);
+        UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
+        if (nationId == null || !canManage(player, player.blockPosition())) {
+            sendScan(player, SCAN_RADIUS);
+            return;
+        }
+        TerritorySavedData territories = TerritorySavedData.get(player.server);
+        SiegeSavedData sieges = SiegeSavedData.get(player.server);
+        ReinforcementSavedData data = ReinforcementSavedData.get(player.serverLevel());
+        List<S2C_ReinforcementDeltaPacket.Entry> upserts = new java.util.ArrayList<>();
+        List<BlockPos> removals = new java.util.ArrayList<>();
+        long now = player.serverLevel().getGameTime();
+        long radiusSquared = (long) SCAN_RADIUS * SCAN_RADIUS;
+        for (BlockPos pos : pending.positions) {
+            if (player.blockPosition().distSqr(pos) > radiusSquared
+                    || !territories.ownsChunk(nationId, pending.dimension, pos)) {
+                removals.add(pos);
+                continue;
+            }
+            ReinforcementEntry entry = data.get(pos).orElse(null);
+            if (entry == null || player.serverLevel().getBlockState(pos).isAir()) {
+                removals.add(pos);
+                continue;
+            }
+            upserts.add(new S2C_ReinforcementDeltaPacket.Entry(pos, entry.material(), entry.durability(),
+                    entry.enabled(), (int) Math.min(Integer.MAX_VALUE,
+                    entry.activationTicksRemaining(now)), entry.activatesAt() > 0L,
+                    sieges.isReinforcementDisabled(pending.dimension, pos)));
+        }
+        if (!upserts.isEmpty() || !removals.isEmpty()) {
+            PacketDistributor.sendToPlayer(player,
+                    new S2C_ReinforcementDeltaPacket(pending.dimension, upserts, removals));
+        }
+    }
+
+    private record PendingDelta(ResourceLocation dimension, Set<BlockPos> positions) { }
 
     private static ReinforcementMaterial materialFor(ItemStack stack) {
         if (stack.is(Items.COBBLESTONE)) return ReinforcementMaterial.COBBLESTONE;

@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui23");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui27");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -28,6 +28,7 @@ public class ModMessages {
         registrar.playToClient(S2C_TerritoryClosurePacket.TYPE, S2C_TerritoryClosurePacket.STREAM_CODEC, S2C_TerritoryClosurePacket::handle);
         registrar.playToServer(C2S_RequestReinforcementScanPacket.TYPE, C2S_RequestReinforcementScanPacket.STREAM_CODEC, C2S_RequestReinforcementScanPacket::handle);
         registrar.playToClient(S2C_ReinforcementSnapshotPacket.TYPE, S2C_ReinforcementSnapshotPacket.STREAM_CODEC, S2C_ReinforcementSnapshotPacket::handle);
+        registrar.playToClient(S2C_ReinforcementDeltaPacket.TYPE, S2C_ReinforcementDeltaPacket.STREAM_CODEC, S2C_ReinforcementDeltaPacket::handle);
         registrar.playToServer(C2S_SetWeldingBrushPacket.TYPE, C2S_SetWeldingBrushPacket.STREAM_CODEC, C2S_SetWeldingBrushPacket::handle);
         registrar.playToServer(C2S_CreateNationPacket.TYPE, C2S_CreateNationPacket.STREAM_CODEC, C2S_CreateNationPacket::handle);
         registrar.playToServer(C2S_NationMembershipPacket.TYPE, C2S_NationMembershipPacket.STREAM_CODEC, C2S_NationMembershipPacket::handle);
@@ -35,6 +36,11 @@ public class ModMessages {
         registrar.playToServer(C2S_NationDiplomacyPacket.TYPE, C2S_NationDiplomacyPacket.STREAM_CODEC, C2S_NationDiplomacyPacket::handle);
         registrar.playToServer(C2S_SiegeActionPacket.TYPE, C2S_SiegeActionPacket.STREAM_CODEC, C2S_SiegeActionPacket::handle);
         registrar.playToServer(C2S_NationSettingsPacket.TYPE, C2S_NationSettingsPacket.STREAM_CODEC, C2S_NationSettingsPacket::handle);
+        registrar.playToServer(C2S_RequestNationNotificationsPacket.TYPE, C2S_RequestNationNotificationsPacket.STREAM_CODEC, C2S_RequestNationNotificationsPacket::handle);
+        registrar.playToServer(C2S_UpdateNationNotificationsPacket.TYPE, C2S_UpdateNationNotificationsPacket.STREAM_CODEC, C2S_UpdateNationNotificationsPacket::handle);
+        registrar.playToServer(C2S_LinkNationDiscordPacket.TYPE, C2S_LinkNationDiscordPacket.STREAM_CODEC, C2S_LinkNationDiscordPacket::handle);
+        registrar.playToServer(C2S_LinkDiscordAccountPacket.TYPE, C2S_LinkDiscordAccountPacket.STREAM_CODEC, C2S_LinkDiscordAccountPacket::handle);
+        registrar.playToClient(S2C_OpenNationNotificationsPacket.TYPE, S2C_OpenNationNotificationsPacket.STREAM_CODEC, S2C_OpenNationNotificationsPacket::handle);
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);

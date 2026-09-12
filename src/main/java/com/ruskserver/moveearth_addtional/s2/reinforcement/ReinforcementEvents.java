@@ -53,7 +53,7 @@ public final class ReinforcementEvents {
         if (!SiegeDamageService.penaltyAt(level, event.getPos()).reinforcementProtectionEnabled()) {
             data.remove(event.getPos());
             TerritoryClosureRecheckManager.markPotentialOpening(level, event.getPos());
-            ReinforcementService.syncNearbyManagers(level, event.getPos());
+            ReinforcementService.syncChangedNearbyManagers(level, Set.of(event.getPos()));
             return;
         }
         if (!entry.enabled() || (player.isCreative() && ReinforcementService.canManage(player, event.getPos()))) {
@@ -61,6 +61,7 @@ public final class ReinforcementEvents {
             if (entry.enabled() && entry.durability() > 0) {
                 TerritoryClosureRecheckManager.markPotentialOpening(level, event.getPos());
             }
+            ReinforcementService.syncChangedNearbyManagers(level, Set.of(event.getPos()));
             return;
         }
         event.setCanceled(true);
@@ -85,7 +86,7 @@ public final class ReinforcementEvents {
             player.displayClientMessage(net.minecraft.network.chat.Component.literal(
                     "補強に阻まれた  •  -1"), true);
         }
-        ReinforcementService.syncNearbyManagers(level, event.getPos());
+        ReinforcementService.syncChangedNearbyManagers(level, Set.of(event.getPos()));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -100,7 +101,7 @@ public final class ReinforcementEvents {
                 event.getExplosion().center());
         boolean preHandled = cbc && CbcReinforcementCompat.wasRecentlyPreHandled(
                 source, level, explosionCenter);
-        boolean[] reinforcementChanged = {false};
+        Set<net.minecraft.core.BlockPos> reinforcementChanges = new java.util.LinkedHashSet<>();
         Map<Long, com.ruskserver.moveearth_addtional.s2.territory.UpkeepPenalty> penaltiesByChunk =
                 new HashMap<>();
         event.getAffectedBlocks().removeIf(pos -> {
@@ -126,7 +127,7 @@ public final class ReinforcementEvents {
             SiegeService.recordAttack(attacker, level, pos, false);
             if (!entry.enabled()) {
                 data.remove(pos);
-                reinforcementChanged[0] = true;
+                reinforcementChanges.add(pos.immutable());
                 return false;
             }
             long chunkKey = net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
@@ -135,22 +136,19 @@ public final class ReinforcementEvents {
             if (!penalty.reinforcementProtectionEnabled()) {
                 data.remove(pos);
                 TerritoryClosureRecheckManager.markPotentialOpening(level, pos);
-                reinforcementChanged[0] = true;
+                reinforcementChanges.add(pos.immutable());
                 return false;
             }
             if (!cbc) return true;
-            reinforcementChanged[0] = true;
             SiegeDamageService.ReinforcementDamage result = SiegeDamageService.damageReinforcement(
                     level, pos, entry, munition, penalty);
             if (result.appliedDamage() > 0) {
                 SiegeService.recordAttack(attacker, level, pos, true);
+                reinforcementChanges.add(pos.immutable());
             }
             return result.remains();
         });
-        if (reinforcementChanged[0]) {
-            ReinforcementService.syncNearbyManagers(level,
-                    explosionCenter);
-        }
+        ReinforcementService.syncChangedNearbyManagers(level, reinforcementChanges);
     }
 
     @SubscribeEvent
@@ -166,6 +164,12 @@ public final class ReinforcementEvents {
                     2.8F, 1.55F);
             TerritoryClosureRecheckManager.markPotentialSeal(level, result.activated());
             TerritoryClosureRecheckManager.markPotentialOpenings(level, result.removed());
+            Set<net.minecraft.core.BlockPos> changes = new java.util.LinkedHashSet<>();
+            changes.addAll(result.progressed());
+            changes.addAll(result.activated());
+            changes.addAll(result.completed());
+            changes.addAll(result.removed());
+            ReinforcementService.syncChangedNearbyManagers(level, changes);
         }
     }
 

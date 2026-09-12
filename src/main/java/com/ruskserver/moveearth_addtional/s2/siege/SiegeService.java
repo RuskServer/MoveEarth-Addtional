@@ -3,6 +3,8 @@ package com.ruskserver.moveearth_addtional.s2.siege;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
@@ -105,8 +107,14 @@ public final class SiegeService {
                 Component.translatable("message.moveearth_addtional.siege.initial_expired")));
         result.rollingExpired().forEach(siege -> notifyParties(event.getServer(), nations, siege,
                 Component.translatable("message.moveearth_addtional.siege.ended")));
+        result.rollingExpired().forEach(siege -> publishSiege(event.getServer(), siege,
+                NationNotificationSavedData.EventType.SIEGE_ENDED, "timer_expired"));
         SiegeSavedData.FallenTickResult fallen = siegeData.advanceFallen(
                 20L, record -> counterPresence(event.getServer(), nations, record));
+        fallen.counterStarted().forEach(record -> publishFallen(event.getServer(), record,
+                NationNotificationSavedData.EventType.COUNTEROFFENSIVE_STARTED, "defender_present"));
+        fallen.counterFailed().forEach(record -> publishFallen(event.getServer(), record,
+                NationNotificationSavedData.EventType.COUNTEROFFENSIVE_FAILED, "progress_lost"));
         fallen.stageChanged().forEach(record -> {
             notifyFallenParties(event.getServer(), nations, record,
                     Component.translatable("message.moveearth_addtional.siege.fall_stage." + record.stage()));
@@ -120,9 +128,17 @@ public final class SiegeService {
                     notifyFallenParties(event.getServer(), nations, record,
                             Component.translatable("message.moveearth_addtional.siege.counter_success",
                                     S2TerritoryConfig.siegeCounterRecoveryPercent()));
+                    publishFallen(event.getServer(), record,
+                            NationNotificationSavedData.EventType.COUNTEROFFENSIVE_SUCCEEDED,
+                            Double.toString(S2TerritoryConfig.siegeCounterRecoveryPercent()));
+                    publishFallen(event.getServer(), record,
+                            NationNotificationSavedData.EventType.SIEGE_ENDED, "counteroffensive_success");
                 }));
-        fallen.finalized().forEach(record -> finalizeFall(
-                event.getServer(), nations, siegeData, record));
+        fallen.finalized().forEach(record -> {
+            if (record.captureTicks() > 0L) publishFallen(event.getServer(), record,
+                    NationNotificationSavedData.EventType.COUNTEROFFENSIVE_FAILED, "settlement_timer_expired");
+            finalizeFall(event.getServer(), nations, siegeData, record);
+        });
     }
 
     @SubscribeEvent
@@ -131,18 +147,28 @@ public final class SiegeService {
     private static void notifyTransition(MinecraftServer server, NationSavedData nations,
                                          SiegeSavedData.AttemptResult result) {
         if (result.siege() == null) return;
+        SiegeSavedData.SiegeRecord siege = result.siege();
+        java.util.List<UUID> parties = java.util.List.of(siege.attackerNation(), siege.defenderNation());
         if (result.status() == SiegeSavedData.AttemptStatus.INITIAL_STARTED) {
-            notifyParties(server, nations, result.siege(),
-                    Component.translatable("message.moveearth_addtional.siege.initial_started",
-                            formatTicks(S2TerritoryConfig.siegeInitialLockTicks())));
+            String remaining = formatTicks(S2TerritoryConfig.siegeInitialLockTicks());
+            NationNotificationService.publish(server, parties,
+                    NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED,
+                    siege.dimension(), siege.corePos(),
+                    Component.translatable("message.moveearth_addtional.siege.initial_started", remaining),
+                    java.util.List.of(remaining));
         } else if (result.status() == SiegeSavedData.AttemptStatus.ROLLING_STARTED) {
-            NationSavedData.Nation attacker = nations.nation(result.siege().attackerNation()).orElse(null);
-            NationSavedData.Nation defender = nations.nation(result.siege().defenderNation()).orElse(null);
+            NationSavedData.Nation attacker = nations.nation(siege.attackerNation()).orElse(null);
+            NationSavedData.Nation defender = nations.nation(siege.defenderNation()).orElse(null);
             String attackerName = attacker == null ? "?" : attacker.name();
             String defenderName = defender == null ? "?" : defender.name();
-            server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
+            Component body = Component.translatable(
                     "message.moveearth_addtional.siege.rolling_started", attackerName, defenderName,
-                    result.siege().corePos().getX(), result.siege().corePos().getY(), result.siege().corePos().getZ())), false);
+                    siege.corePos().getX(), siege.corePos().getY(), siege.corePos().getZ());
+            server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(body), false);
+            NationNotificationService.publish(server, parties,
+                    NationNotificationSavedData.EventType.SIEGE_STARTED,
+                    siege.dimension(), siege.corePos(), null,
+                    java.util.List.of(attackerName, defenderName));
         }
     }
 
@@ -186,6 +212,8 @@ public final class SiegeService {
                 "message.moveearth_addtional.siege.core_fallen",
                 defender == null ? "?" : defender.name(), attacker == null ? "?" : attacker.name(),
                 fallen.corePos().getX(), fallen.corePos().getY(), fallen.corePos().getZ())), false);
+        publishFallen(server, fallen, NationNotificationSavedData.EventType.CORE_FALLEN,
+                defender == null ? "?" : defender.name());
     }
 
     private static void notifyFallenParties(MinecraftServer server, NationSavedData nations,
@@ -246,6 +274,49 @@ public final class SiegeService {
                     record.corePos().getX(), record.corePos().getY(), record.corePos().getZ());
         };
         server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(body), false);
+        java.util.List<UUID> parties = java.util.List.of(record.attackerNation(), record.defenderNation());
+        NationNotificationService.publish(server, parties,
+                NationNotificationSavedData.EventType.SIEGE_ENDED,
+                record.dimension(), record.corePos(), null, java.util.List.of("settled"));
+        if (settlement.outcome()
+                == com.ruskserver.moveearth_addtional.s2.territory.TerritoryFallSettlementPolicy.Outcome.OUTPOST_OCCUPIED) {
+            NationNotificationService.publish(server, java.util.List.of(record.attackerNation()),
+                    NationNotificationSavedData.EventType.TERRITORY_OCCUPIED,
+                    record.dimension(), record.corePos(), null,
+                    java.util.List.of(defenderName, attackerName));
+            NationNotificationService.publish(server, java.util.List.of(record.defenderNation()),
+                    NationNotificationSavedData.EventType.TERRITORY_LOST,
+                    record.dimension(), record.corePos(), null,
+                    java.util.List.of(attackerName));
+        } else if (settlement.outcome()
+                == com.ruskserver.moveearth_addtional.s2.territory.TerritoryFallSettlementPolicy.Outcome.OUTPOST_NEUTRALIZED) {
+            NationNotificationService.publish(server, java.util.List.of(record.defenderNation()),
+                    NationNotificationSavedData.EventType.TERRITORY_LOST,
+                    record.dimension(), record.corePos(), null,
+                    java.util.List.of("neutralized"));
+        }
+    }
+
+    static void notifySiegeEnded(MinecraftServer server, UUID attacker, UUID defender,
+                                 net.minecraft.resources.ResourceLocation dimension,
+                                 BlockPos pos, String reason) {
+        NationNotificationService.publish(server, java.util.List.of(attacker, defender),
+                NationNotificationSavedData.EventType.SIEGE_ENDED, dimension, pos, null,
+                java.util.List.of(reason));
+    }
+
+    private static void publishSiege(MinecraftServer server, SiegeSavedData.SiegeRecord siege,
+                                     NationNotificationSavedData.EventType type, String detail) {
+        NationNotificationService.publish(server,
+                java.util.List.of(siege.attackerNation(), siege.defenderNation()), type,
+                siege.dimension(), siege.corePos(), null, java.util.List.of(detail));
+    }
+
+    private static void publishFallen(MinecraftServer server, SiegeSavedData.FallenRecord record,
+                                      NationNotificationSavedData.EventType type, String detail) {
+        NationNotificationService.publish(server,
+                java.util.List.of(record.attackerNation(), record.defenderNation()), type,
+                record.dimension(), record.corePos(), null, java.util.List.of(detail));
     }
 
     private static String formatTicks(long ticks) {

@@ -37,6 +37,10 @@ public class ClientPacketHandler {
         ReinforcementClientState.update(packet);
     }
 
+    public static void handleReinforcementDelta(S2C_ReinforcementDeltaPacket packet) {
+        ReinforcementClientState.update(packet);
+    }
+
     public static void handleS2HubSnapshot(S2C_S2HubSnapshotPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
         VaultClientState.update(packet.snapshot());
@@ -48,6 +52,10 @@ public class ClientPacketHandler {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof NationTreasuryScreen screen) screen.update(packet);
         else minecraft.setScreen(new NationTreasuryScreen(packet));
+    }
+
+    public static void handleOpenNationNotifications(S2C_OpenNationNotificationsPacket packet) {
+        Minecraft.getInstance().setScreen(new NationNotificationsScreen(packet));
     }
 
     public static void handleS2ActionResult(S2C_S2ActionResultPacket packet) {
@@ -66,6 +74,8 @@ public class ClientPacketHandler {
         } else if (Minecraft.getInstance().screen instanceof PeaceProposalScreen screen) {
             screen.handleResult(packet);
         } else if (Minecraft.getInstance().screen instanceof NationSettingsScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof NationNotificationsScreen screen) {
             screen.handleResult(packet);
         } else if (Minecraft.getInstance().player != null) {
             Component body = Component.translatable(packet.messageKey());

@@ -131,10 +131,13 @@ public final class SiegeSavedData extends SavedData {
 
     public FallenTickResult advanceFallen(long elapsedTicks,
                                            Function<FallenRecord, SiegeFallPolicy.Presence> presence) {
-        if (elapsedTicks <= 0L || fallen.isEmpty()) return new FallenTickResult(List.of(), List.of(), List.of());
+        if (elapsedTicks <= 0L || fallen.isEmpty()) return new FallenTickResult(
+                List.of(), List.of(), List.of(), List.of(), List.of());
         List<FallenRecord> stageChanged = new ArrayList<>();
         List<FallenRecord> recovered = new ArrayList<>();
         List<FallenRecord> finalized = new ArrayList<>();
+        List<FallenRecord> counterStarted = new ArrayList<>();
+        List<FallenRecord> counterFailed = new ArrayList<>();
         boolean changed = false;
         var iterator = fallen.entrySet().iterator();
         while (iterator.hasNext()) {
@@ -152,6 +155,8 @@ public final class SiegeSavedData extends SavedData {
                     S2TerritoryConfig.siegeCounterCaptureTicks());
             FallenRecord updated = current.withProgress(next.remainingTicks(), next.captureTicks(),
                     next.stage(), next.remainingTicks() == 0L);
+            if (current.captureTicks() == 0L && updated.captureTicks() > 0L) counterStarted.add(updated);
+            if (current.captureTicks() > 0L && updated.captureTicks() == 0L) counterFailed.add(updated);
             if (next.recovered()) {
                 recovered.add(updated);
                 iterator.remove();
@@ -164,7 +169,8 @@ public final class SiegeSavedData extends SavedData {
             }
         }
         if (changed) setDirty();
-        return new FallenTickResult(List.copyOf(stageChanged), List.copyOf(recovered), List.copyOf(finalized));
+        return new FallenTickResult(List.copyOf(stageChanged), List.copyOf(recovered), List.copyOf(finalized),
+                List.copyOf(counterStarted), List.copyOf(counterFailed));
     }
 
     public List<FallenRecord> fallenFor(UUID nationId) {
@@ -494,7 +500,8 @@ public final class SiegeSavedData extends SavedData {
     public record TickResult(List<SiegeRecord> initialExpired, List<SiegeRecord> rollingExpired) { }
     public record FallenResult(boolean created, FallenRecord fallen) { }
     public record FallenTickResult(List<FallenRecord> stageChanged, List<FallenRecord> recovered,
-                                   List<FallenRecord> finalized) { }
+                                   List<FallenRecord> finalized, List<FallenRecord> counterStarted,
+                                   List<FallenRecord> counterFailed) { }
     public record ConflictEndResult(List<SiegeRecord> active, List<FallenRecord> fallen) { }
     public record SiegeRecord(UUID id, UUID attackerNation, UUID defenderNation, UUID coreId,
                               ResourceLocation dimension, BlockPos corePos, SiegeTimerPolicy.Phase phase,
