@@ -23,6 +23,15 @@ public record S2NationSnapshot(
         int activeCores,
         long upkeep,
         String siegeStatus,
+        boolean vaultConfigured,
+        String vaultDimension,
+        int vaultChunkX,
+        int vaultChunkZ,
+        long vaultChangeCooldownTicks,
+        List<SiegeView> sieges,
+        List<PeaceView> peaceProposals,
+        List<TruceView> truces,
+        List<PrisonerView> prisoners,
         List<MemberView> members,
         List<RoleView> roles,
         List<DiplomacyView> diplomacy,
@@ -35,6 +44,12 @@ public record S2NationSnapshot(
         nationTag = safe(nationTag);
         roleName = safe(roleName);
         siegeStatus = safe(siegeStatus);
+        vaultDimension = safe(vaultDimension);
+        sieges = sieges == null ? List.of() : List.copyOf(sieges);
+        peaceProposals = peaceProposals == null ? List.of() : List.copyOf(peaceProposals);
+        truces = truces == null ? List.of() : List.copyOf(truces);
+        prisoners = prisoners == null ? List.of() : List.copyOf(prisoners);
+        vaultChangeCooldownTicks = Math.max(0L, vaultChangeCooldownTicks);
         onlineMembers = Math.max(0, onlineMembers);
         totalMembers = Math.max(onlineMembers, totalMembers);
         territoryChunks = Math.max(0, territoryChunks);
@@ -47,6 +62,19 @@ public record S2NationSnapshot(
         inviteCandidates = inviteCandidates == null ? List.of() : List.copyOf(inviteCandidates);
     }
 
+    public S2NationSnapshot(long revision, String playerName, boolean serverAdmin, boolean member,
+                            String nationName, String nationTag, String roleName, long ownPermissionMask,
+                            int onlineMembers, int totalMembers, int territoryChunks, int activeCores,
+                            long upkeep, String siegeStatus, List<SiegeView> sieges,
+                            List<MemberView> members, List<RoleView> roles,
+                            List<DiplomacyView> diplomacy, List<InvitationView> invitations,
+                            List<CandidateView> inviteCandidates) {
+        this(revision, playerName, serverAdmin, member, nationName, nationTag, roleName,
+                ownPermissionMask, onlineMembers, totalMembers, territoryChunks, activeCores,
+                upkeep, siegeStatus, false, "", 0, 0, 0L, sieges, List.of(), List.of(), List.of(), members, roles,
+                diplomacy, invitations, inviteCandidates);
+    }
+
     public static S2NationSnapshot unaffiliated(String playerName, boolean serverAdmin) {
         return unaffiliated(playerName, serverAdmin, 0L);
     }
@@ -54,7 +82,7 @@ public record S2NationSnapshot(
     public static S2NationSnapshot unaffiliated(String playerName, boolean serverAdmin, long revision) {
         return new S2NationSnapshot(revision, playerName, serverAdmin, false,
                 "", "", "", 0L, 0, 0, 0, 0, 0L,
-                "NO ACTIVE SIEGE", List.of(), List.of(), List.of(), List.of(), List.of());
+                "NO ACTIVE SIEGE", List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public boolean can(S2Permission permission) {
@@ -110,6 +138,78 @@ public record S2NationSnapshot(
             nationName = safe(nationName);
             nationTag = safe(nationTag);
             if (state == null) state = DiplomacyState.NEUTRAL;
+        }
+    }
+
+    public record SiegeView(UUID id, UUID opponentNationId, String opponentName, String opponentTag, boolean attacker,
+                            SiegePhase phase, long remainingTicks, String dimension,
+                            int coreX, int coreY, int coreZ, int coreHealth, int coreMaximumHealth,
+                            long counterCaptureTicks, long counterRequiredTicks, int fallStage,
+                            boolean offlineDefenseActive) {
+        public SiegeView {
+            if (id == null) id = new UUID(0L, 0L);
+            if (opponentNationId == null) opponentNationId = new UUID(0L, 0L);
+            opponentName = safe(opponentName);
+            opponentTag = safe(opponentTag);
+            if (phase == null) phase = SiegePhase.INITIAL_LOCK;
+            remainingTicks = Math.max(0L, remainingTicks);
+            dimension = safe(dimension);
+            coreMaximumHealth = Math.max(1, coreMaximumHealth);
+            coreHealth = Math.max(0, Math.min(coreMaximumHealth, coreHealth));
+            counterCaptureTicks = Math.max(0L, counterCaptureTicks);
+            counterRequiredTicks = Math.max(0L, counterRequiredTicks);
+            fallStage = Math.max(0, Math.min(3, fallStage));
+        }
+
+        public SiegeView(UUID id, String opponentName, String opponentTag, boolean attacker,
+                         SiegePhase phase, long remainingTicks, String dimension,
+                         int coreX, int coreY, int coreZ, int coreHealth, int coreMaximumHealth,
+                         long counterCaptureTicks, long counterRequiredTicks, int fallStage,
+                         boolean offlineDefenseActive) {
+            this(id, new UUID(0L, 0L), opponentName, opponentTag, attacker, phase, remainingTicks,
+                    dimension, coreX, coreY, coreZ, coreHealth, coreMaximumHealth,
+                    counterCaptureTicks, counterRequiredTicks, fallStage, offlineDefenseActive);
+        }
+    }
+
+    public record PeaceView(UUID id, UUID opponentNationId, String opponentName, String opponentTag,
+                            boolean incoming, long goldCompensation, long remainingTicks) {
+        public PeaceView {
+            if (id == null) id = new UUID(0L, 0L);
+            if (opponentNationId == null) opponentNationId = new UUID(0L, 0L);
+            opponentName = safe(opponentName);
+            opponentTag = safe(opponentTag);
+            goldCompensation = Math.max(0L, goldCompensation);
+            remainingTicks = Math.max(0L, remainingTicks);
+        }
+    }
+
+    public record TruceView(UUID opponentNationId, String opponentName, String opponentTag,
+                            long remainingTicks) {
+        public TruceView {
+            if (opponentNationId == null) opponentNationId = new UUID(0L, 0L);
+            opponentName = safe(opponentName);
+            opponentTag = safe(opponentTag);
+            remainingTicks = Math.max(0L, remainingTicks);
+        }
+    }
+
+    public record PrisonerView(UUID playerId, String playerName, UUID opponentNationId,
+                               String opponentName, String opponentTag, boolean heldByViewer) {
+        public PrisonerView {
+            if (playerId == null) playerId = new UUID(0L, 0L);
+            if (opponentNationId == null) opponentNationId = new UUID(0L, 0L);
+            playerName = safe(playerName);
+            opponentName = safe(opponentName);
+            opponentTag = safe(opponentTag);
+        }
+    }
+
+    public enum SiegePhase {
+        INITIAL_LOCK, ROLLING, FALLEN;
+
+        public static SiegePhase fromNetworkId(int id) {
+            return id >= 0 && id < values().length ? values()[id] : INITIAL_LOCK;
         }
     }
 

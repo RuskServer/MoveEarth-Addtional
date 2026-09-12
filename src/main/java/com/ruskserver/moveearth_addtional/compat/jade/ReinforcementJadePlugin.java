@@ -3,6 +3,9 @@ package com.ruskserver.moveearth_addtional.compat.jade;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.LongAbsencePolicy;
+import com.ruskserver.moveearth_addtional.s2.siege.LongAbsenceService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -49,6 +52,8 @@ public final class ReinforcementJadePlugin implements IWailaPlugin {
         private static final String HP = "MoveEarthReinforcementHp";
         private static final String MAX_HP = "MoveEarthReinforcementMaxHp";
         private static final String ACTIVATION_TICKS = "MoveEarthReinforcementActivationTicks";
+        private static final String SIEGE_DISABLED = "MoveEarthReinforcementSiegeDisabled";
+        private static final String ABSENCE_TIER = "MoveEarthReinforcementAbsenceTier";
 
         @Override
         public void appendServerData(CompoundTag data, BlockAccessor accessor) {
@@ -59,6 +64,9 @@ public final class ReinforcementJadePlugin implements IWailaPlugin {
             data.putBoolean(PRESENT, entry != null);
             if (entry == null) return;
             data.putBoolean(ENABLED, entry.enabled());
+            data.putBoolean(SIEGE_DISABLED, SiegeSavedData.get(level.getServer()).isReinforcementDisabled(
+                    level.dimension().location(), accessor.getPosition()));
+            data.putString(ABSENCE_TIER, LongAbsenceService.tierAt(level, accessor.getPosition()).name());
             data.putBoolean(CONSTRUCTING, entry.activatesAt() > 0L);
             data.putString(MATERIAL, entry.material().id());
             data.putInt(HP, entry.durability());
@@ -79,13 +87,30 @@ public final class ReinforcementJadePlugin implements IWailaPlugin {
 
             boolean enabled = data.getBoolean(ENABLED);
             boolean constructing = data.getBoolean(CONSTRUCTING);
+            boolean siegeDisabled = data.getBoolean(SIEGE_DISABLED);
+            LongAbsencePolicy.Tier absenceTier;
+            try {
+                absenceTier = LongAbsencePolicy.Tier.valueOf(data.getString(ABSENCE_TIER));
+            } catch (IllegalArgumentException exception) {
+                absenceTier = LongAbsencePolicy.Tier.FULL;
+            }
             int hp = Math.max(0, data.getInt(HP));
             int maxHp = Math.max(1, data.getInt(MAX_HP));
             Component state;
             ChatFormatting color;
             int barStart;
             int barEnd;
-            if (!enabled) {
+            if (absenceTier == LongAbsencePolicy.Tier.DISABLED) {
+                state = Component.translatable("jade.moveearth_addtional.reinforcement.absence_disabled");
+                color = ChatFormatting.DARK_PURPLE;
+                barStart = 0xFF623475;
+                barEnd = 0xFFAA64C8;
+            } else if (siegeDisabled) {
+                state = Component.translatable("jade.moveearth_addtional.reinforcement.siege_disabled");
+                color = ChatFormatting.RED;
+                barStart = 0xFFC52E28;
+                barEnd = 0xFFFF554A;
+            } else if (!enabled) {
                 int seconds = Math.max(0, (data.getInt(ACTIVATION_TICKS) + 19) / 20);
                 state = Component.translatable("jade.moveearth_addtional.reinforcement.curing", seconds);
                 color = ChatFormatting.LIGHT_PURPLE;
@@ -114,6 +139,17 @@ public final class ReinforcementJadePlugin implements IWailaPlugin {
                             + data.getString(MATERIAL))).withStyle(ChatFormatting.GRAY));
             tooltip.add(Component.translatable("jade.moveearth_addtional.reinforcement.hp", hp, maxHp)
                     .withStyle(color));
+            if (absenceTier != LongAbsencePolicy.Tier.FULL
+                    && absenceTier != LongAbsencePolicy.Tier.DISABLED) {
+                int strength = switch (absenceTier) {
+                    case THREE_QUARTERS -> 75;
+                    case HALF -> 50;
+                    case QUARTER -> 25;
+                    default -> 100;
+                };
+                tooltip.add(Component.translatable("jade.moveearth_addtional.reinforcement.absence_weakened",
+                        strength).withStyle(ChatFormatting.LIGHT_PURPLE));
+            }
             IElementHelper elements = IElementHelper.get();
             tooltip.add(elements.progress(Math.min(1.0F, hp / (float) maxHp), Component.empty(),
                     elements.progressStyle().color(barStart, barEnd).direction(ScreenDirection.RIGHT),

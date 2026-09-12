@@ -17,11 +17,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /** Server-authoritative registry of placed territory cores and reserved chunk areas. */
 public final class TerritorySavedData extends SavedData {
     private final Map<CoreKey, CoreRecord> cores = new LinkedHashMap<>();
+    private final Map<UUID, VaultChunk> vaults = new LinkedHashMap<>();
+    private final Map<UUID, Long> vaultChangeCooldowns = new LinkedHashMap<>();
 
     public RegistrationResult register(UUID nationId, UUID placedBy, ResourceLocation dimension,
                                        BlockPos pos, int radius) {
@@ -77,6 +80,8 @@ public final class TerritorySavedData extends SavedData {
         CoreKey key = new CoreKey(dimension, pos);
         CoreRecord current = cores.get(key);
         if (current == null || !current.nationId.equals(nationId)) return Optional.empty();
+        if ((current.state == CoreState.FALLEN || current.state == CoreState.DEFEATED)
+                && state != current.state) return Optional.of(current);
         if (current.state == state) return Optional.of(current);
         CoreRecord updated = new CoreRecord(current.id, current.nationId, current.placedBy,
                 current.dimension, current.pos, current.type, current.radius, state,
@@ -113,14 +118,81 @@ public final class TerritorySavedData extends SavedData {
         return Optional.of(updated);
     }
 
+    public Optional<CoreRecord> markCoreFallen(UUID coreId, boolean finalized) {
+        for (Map.Entry<CoreKey, CoreRecord> value : cores.entrySet()) {
+            CoreRecord current = value.getValue();
+            if (!current.id.equals(coreId)) continue;
+            CoreRecord updated = new CoreRecord(current.id, current.nationId, current.placedBy,
+                    current.dimension, current.pos, current.type, current.radius,
+                    finalized ? CoreState.DEFEATED : CoreState.FALLEN,
+                    0, current.maximumHealth, 0L, 0L);
+            value.setValue(updated);
+            setDirty();
+            return Optional.of(updated);
+        }
+        return Optional.empty();
+    }
+
+    public Optional<CoreRecord> recoverCore(UUID coreId, double healthPercent) {
+        for (Map.Entry<CoreKey, CoreRecord> value : cores.entrySet()) {
+            CoreRecord current = value.getValue();
+            if (!current.id.equals(coreId)) continue;
+            int health = Math.max(1, (int) Math.ceil(current.maximumHealth
+                    * Math.max(0.0D, Math.min(100.0D, healthPercent)) / 100.0D));
+            CoreRecord updated = new CoreRecord(current.id, current.nationId, current.placedBy,
+                    current.dimension, current.pos, current.type, current.radius, CoreState.EXPOSED,
+                    health, current.maximumHealth, S2TerritoryConfig.coreRegenDelayTicks(), 0L);
+            value.setValue(updated);
+            setDirty();
+            return Optional.of(updated);
+        }
+        return Optional.empty();
+    }
+
+    /** Finalizes a fallen core without deleting any blocks, containers, or items in its territory. */
+    public Optional<SettlementResult> settleFallenCore(UUID coreId, UUID attackerNation,
+                                                        double recoveryPercent) {
+        if (attackerNation == null) return Optional.empty();
+        for (Map.Entry<CoreKey, CoreRecord> value : cores.entrySet()) {
+            CoreRecord current = value.getValue();
+            if (!current.id.equals(coreId) || (current.state != CoreState.FALLEN
+                    && current.state != CoreState.DEFEATED)) continue;
+            TerritoryFallSettlementPolicy.Decision decision = TerritoryFallSettlementPolicy.decide(
+                    current.type == CoreType.CAPITAL, current.radius,
+                    radius -> conflicts(attackerNation, current.dimension,
+                            area(current.pos, radius), value.getKey()));
+            boolean occupied = decision.outcome()
+                    == TerritoryFallSettlementPolicy.Outcome.OUTPOST_OCCUPIED;
+            boolean rebuilding = decision.outcome()
+                    == TerritoryFallSettlementPolicy.Outcome.CAPITAL_REBUILDING;
+            UUID nextNation = occupied ? attackerNation : current.nationId;
+            CoreState nextState = occupied || rebuilding ? CoreState.EXPOSED : CoreState.DEFEATED;
+            int nextHealth = nextState == CoreState.EXPOSED
+                    ? recoveryHealth(current.maximumHealth, recoveryPercent) : 0;
+            CoreRecord updated = new CoreRecord(current.id, nextNation, current.placedBy,
+                    current.dimension, current.pos, current.type, decision.radius(), nextState,
+                    nextHealth, current.maximumHealth, S2TerritoryConfig.coreRegenDelayTicks(), 0L);
+            value.setValue(updated);
+            setDirty();
+            return Optional.of(new SettlementResult(decision.outcome(), current, updated));
+        }
+        return Optional.empty();
+    }
+
     /** Advances health using server-open ticks only; depleted cores await the Siege state machine. */
     public List<CoreRecord> advanceCoreRegeneration(long elapsedTicks) {
+        return advanceCoreRegeneration(elapsedTicks, ignored -> false);
+    }
+
+    public List<CoreRecord> advanceCoreRegeneration(long elapsedTicks, Predicate<UUID> pausedCore) {
         if (elapsedTicks <= 0L) return List.of();
         List<CoreRecord> changed = new java.util.ArrayList<>();
         boolean persistenceChanged = false;
         for (Map.Entry<CoreKey, CoreRecord> value : cores.entrySet()) {
             CoreRecord current = value.getValue();
-            if (current.state == CoreState.CONFIGURING || current.health <= 0) continue;
+            if (current.state == CoreState.CONFIGURING || current.state == CoreState.DEFEATED
+                    || current.health <= 0) continue;
+            if (pausedCore != null && pausedCore.test(current.id)) continue;
             int configuredMaximum = maximumHealth(current.type);
             var result = TerritoryCoreHealthPolicy.advance(current.health, configuredMaximum,
                     current.regenDelayTicks, current.regenProgressTicks, elapsedTicks,
@@ -144,9 +216,9 @@ public final class TerritorySavedData extends SavedData {
 
     public boolean controlsChunk(UUID nationId, ResourceLocation dimension, BlockPos pos) {
         ChunkPos chunk = new ChunkPos(pos);
-        return cores.values().stream()
+        return vaultMatches(nationId, dimension, chunk) || cores.values().stream()
                 .filter(core -> core.nationId.equals(nationId) && core.dimension.equals(dimension))
-                .filter(core -> core.state == CoreState.ACTIVE || core.state == CoreState.EXPOSED)
+                .filter(TerritorySavedData::isControlled)
                 .map(core -> area(core.pos, core.radius))
                 .anyMatch(area -> area.containsChunk(chunk.x, chunk.z));
     }
@@ -154,12 +226,51 @@ public final class TerritorySavedData extends SavedData {
     /** Returns the nation whose ACTIVE or EXPOSED territory controls this chunk. */
     public Optional<UUID> controllingNation(ResourceLocation dimension, BlockPos pos) {
         ChunkPos chunk = new ChunkPos(pos);
-        return cores.values().stream()
+        Optional<UUID> coreOwner = cores.values().stream()
                 .filter(core -> core.dimension.equals(dimension))
-                .filter(core -> core.state == CoreState.ACTIVE || core.state == CoreState.EXPOSED)
+                .filter(TerritorySavedData::isControlled)
                 .filter(core -> area(core.pos, core.radius).containsChunk(chunk.x, chunk.z))
                 .map(CoreRecord::nationId)
                 .findFirst();
+        if (coreOwner.isPresent()) return coreOwner;
+        return vaults.values().stream()
+                .filter(vault -> vault.dimension.equals(dimension)
+                        && vault.chunkX == chunk.x && vault.chunkZ == chunk.z)
+                .map(VaultChunk::nationId).findFirst();
+    }
+
+    /** Returns the closest active core controlling the target chunk. */
+    public Optional<CoreRecord> controllingCore(ResourceLocation dimension, BlockPos pos) {
+        ChunkPos chunk = new ChunkPos(pos);
+        Optional<CoreRecord> controlling = cores.values().stream()
+                .filter(core -> core.dimension.equals(dimension))
+                .filter(TerritorySavedData::isControlled)
+                .filter(core -> area(core.pos, core.radius).containsChunk(chunk.x, chunk.z))
+                .min(java.util.Comparator.comparingDouble(core -> core.pos.distSqr(pos)));
+        if (controlling.isPresent()) return controlling;
+        UUID vaultNation = vaults.values().stream()
+                .filter(vault -> vault.dimension.equals(dimension)
+                        && vault.chunkX == chunk.x && vault.chunkZ == chunk.z)
+                .map(VaultChunk::nationId).findFirst().orElse(null);
+        if (vaultNation == null) return Optional.empty();
+        return cores.values().stream()
+                .filter(core -> core.nationId.equals(vaultNation) && core.type == CoreType.CAPITAL)
+                .filter(core -> core.state != CoreState.DEFEATED)
+                .findFirst();
+    }
+
+    /** Returns the closest non-defeated core whose reserved square contains the target chunk. */
+    public Optional<CoreRecord> reservedCore(ResourceLocation dimension, BlockPos pos) {
+        return reservedCores(dimension, pos).stream().findFirst();
+    }
+
+    public List<CoreRecord> reservedCores(ResourceLocation dimension, BlockPos pos) {
+        ChunkPos chunk = new ChunkPos(pos);
+        return cores.values().stream()
+                .filter(core -> core.dimension.equals(dimension) && core.state != CoreState.DEFEATED)
+                .filter(core -> area(core.pos, core.radius).containsChunk(chunk.x, chunk.z))
+                .sorted(java.util.Comparator.comparingDouble(core -> core.pos.distSqr(pos)))
+                .toList();
     }
 
     public void remove(ResourceLocation dimension, BlockPos pos, UUID expectedCoreId) {
@@ -198,14 +309,16 @@ public final class TerritorySavedData extends SavedData {
 
     public boolean ownsChunk(UUID nationId, ResourceLocation dimension, BlockPos pos) {
         ChunkPos chunk = new ChunkPos(pos);
-        return cores.values().stream()
+        return vaultMatches(nationId, dimension, chunk) || cores.values().stream()
                 .filter(core -> core.nationId.equals(nationId) && core.dimension.equals(dimension))
+                .filter(core -> core.state != CoreState.DEFEATED)
                 .map(core -> area(core.pos, core.radius))
                 .anyMatch(area -> area.containsChunk(chunk.x, chunk.z));
     }
 
     private Set<ReservedChunk> reservedChunks(UUID nationId) {
-        return cores.values().stream().filter(core -> core.nationId.equals(nationId))
+        Set<ReservedChunk> result = cores.values().stream().filter(core -> core.nationId.equals(nationId))
+                .filter(core -> core.state != CoreState.DEFEATED)
                 .flatMap(core -> {
                     TerritoryPreviewArea area = area(core.pos, core.radius);
                     java.util.List<ReservedChunk> chunks = new java.util.ArrayList<>(area.chunkCount());
@@ -216,10 +329,13 @@ public final class TerritorySavedData extends SavedData {
                     }
                     return chunks.stream();
                 }).collect(Collectors.toSet());
+        VaultChunk vault = vaults.get(nationId);
+        if (vault != null) result.add(new ReservedChunk(vault.dimension, vault.chunkX, vault.chunkZ));
+        return result;
     }
 
     private Set<ReservedChunk> controlledChunks(UUID nationId) {
-        return cores.values().stream()
+        Set<ReservedChunk> result = cores.values().stream()
                 .filter(core -> core.nationId.equals(nationId) && isControlled(core))
                 .flatMap(core -> {
                     TerritoryPreviewArea area = area(core.pos, core.radius);
@@ -231,20 +347,73 @@ public final class TerritorySavedData extends SavedData {
                     }
                     return chunks.stream();
                 }).collect(Collectors.toSet());
+        VaultChunk vault = vaults.get(nationId);
+        if (vault != null) result.add(new ReservedChunk(vault.dimension, vault.chunkX, vault.chunkZ));
+        return result;
     }
 
     private static boolean isControlled(CoreRecord core) {
-        return core.state == CoreState.ACTIVE || core.state == CoreState.EXPOSED;
+        return core.state == CoreState.ACTIVE || core.state == CoreState.EXPOSED
+                || core.state == CoreState.FALLEN;
     }
 
     private boolean conflicts(UUID nationId, ResourceLocation dimension,
                               TerritoryPreviewArea proposed, CoreKey ignored) {
-        return cores.entrySet().stream()
+        boolean coreConflict = cores.entrySet().stream()
                 .filter(entry -> ignored == null || !entry.getKey().equals(ignored))
                 .map(Map.Entry::getValue)
                 .filter(core -> !core.nationId.equals(nationId) && core.dimension.equals(dimension))
+                .filter(core -> core.state != CoreState.DEFEATED)
                 .map(core -> area(core.pos, core.radius))
                 .anyMatch(proposed::overlaps);
+        if (coreConflict) return true;
+        return vaults.values().stream()
+                .filter(vault -> !vault.nationId.equals(nationId) && vault.dimension.equals(dimension))
+                .anyMatch(vault -> proposed.containsChunk(vault.chunkX, vault.chunkZ));
+    }
+
+    public VaultResult setVaultChunk(UUID nationId, ResourceLocation dimension, BlockPos pos) {
+        if (nationId == null || dimension == null || pos == null) return VaultResult.INVALID;
+        ChunkPos chunk = new ChunkPos(pos);
+        boolean capitalChunk = cores.values().stream()
+                .filter(core -> core.nationId.equals(nationId) && core.type == CoreType.CAPITAL
+                        && core.dimension.equals(dimension))
+                .anyMatch(core -> (core.pos.getX() >> 4) == chunk.x && (core.pos.getZ() >> 4) == chunk.z);
+        if (capitalChunk) return VaultResult.CAPITAL_CHUNK;
+        boolean controlledByCore = cores.values().stream()
+                .filter(core -> core.nationId.equals(nationId) && core.dimension.equals(dimension))
+                .filter(TerritorySavedData::isControlled)
+                .anyMatch(core -> area(core.pos, core.radius).containsChunk(chunk.x, chunk.z));
+        if (!controlledByCore) return VaultResult.NOT_CONTROLLED;
+        VaultChunk current = vaults.get(nationId);
+        if (current != null && current.dimension.equals(dimension)
+                && current.chunkX == chunk.x && current.chunkZ == chunk.z) return VaultResult.UNCHANGED;
+        if (current != null && vaultChangeCooldown(nationId) > 0L) return VaultResult.COOLDOWN;
+        vaults.put(nationId, new VaultChunk(nationId, dimension, chunk.x, chunk.z));
+        if (current != null) vaultChangeCooldowns.put(nationId, S2TerritoryConfig.vaultChangeCooldownTicks());
+        setDirty();
+        return VaultResult.UPDATED;
+    }
+
+    public Optional<VaultChunk> vaultChunk(UUID nationId) {
+        return Optional.ofNullable(vaults.get(nationId));
+    }
+
+    public long vaultChangeCooldown(UUID nationId) {
+        return Math.max(0L, vaultChangeCooldowns.getOrDefault(nationId, 0L));
+    }
+
+    public void advanceVaultCooldowns(long elapsedTicks) {
+        if (elapsedTicks <= 0L || vaultChangeCooldowns.isEmpty()) return;
+        vaultChangeCooldowns.replaceAll((nation, remaining) -> Math.max(0L, remaining - elapsedTicks));
+        vaultChangeCooldowns.entrySet().removeIf(entry -> entry.getValue() <= 0L);
+        setDirty();
+    }
+
+    private boolean vaultMatches(UUID nationId, ResourceLocation dimension, ChunkPos chunk) {
+        VaultChunk vault = vaults.get(nationId);
+        return vault != null && vault.dimension.equals(dimension)
+                && vault.chunkX == chunk.x && vault.chunkZ == chunk.z;
     }
 
     private static TerritoryPreviewArea area(BlockPos pos, int radius) {
@@ -276,6 +445,17 @@ public final class TerritorySavedData extends SavedData {
             list.add(value);
         }
         tag.put("Cores", list);
+        ListTag vaultList = new ListTag();
+        for (VaultChunk vault : vaults.values()) {
+            CompoundTag value = new CompoundTag();
+            value.putUUID("Nation", vault.nationId);
+            value.putString("Dimension", vault.dimension.toString());
+            value.putInt("ChunkX", vault.chunkX);
+            value.putInt("ChunkZ", vault.chunkZ);
+            value.putLong("ChangeCooldownTicks", vaultChangeCooldown(vault.nationId));
+            vaultList.add(value);
+        }
+        tag.put("Vaults", vaultList);
         return tag;
     }
 
@@ -302,6 +482,18 @@ public final class TerritorySavedData extends SavedData {
             } catch (IllegalArgumentException ignored) {
             }
         }
+        ListTag vaultList = tag.getList("Vaults", Tag.TAG_COMPOUND);
+        for (int index = 0; index < vaultList.size(); index++) {
+            CompoundTag value = vaultList.getCompound(index);
+            try {
+                UUID nationId = value.getUUID("Nation");
+                data.vaults.put(nationId, new VaultChunk(nationId,
+                        ResourceLocation.parse(value.getString("Dimension")),
+                        value.getInt("ChunkX"), value.getInt("ChunkZ")));
+                long cooldown = Math.max(0L, value.getLong("ChangeCooldownTicks"));
+                if (cooldown > 0L) data.vaultChangeCooldowns.put(nationId, cooldown);
+            } catch (IllegalArgumentException ignored) { }
+        }
         return data;
     }
 
@@ -312,10 +504,14 @@ public final class TerritorySavedData extends SavedData {
     }
 
     public enum CoreType { CAPITAL, OUTPOST }
-    public enum CoreState { CONFIGURING, ACTIVE, EXPOSED }
+    public enum CoreState { CONFIGURING, ACTIVE, EXPOSED, FALLEN, DEFEATED }
     public enum Status { REGISTERED, UPDATED, POSITION_OCCUPIED, FOREIGN_TERRITORY_CONFLICT, INVALID_RADIUS, NOT_FOUND }
+    public enum VaultResult { UPDATED, UNCHANGED, COOLDOWN, NOT_CONTROLLED, CAPITAL_CHUNK, INVALID }
     public record RegistrationResult(Status status, CoreRecord core) { public boolean success() { return status == Status.REGISTERED; } }
     public record UpdateResult(Status status, CoreRecord core) { public boolean success() { return status == Status.UPDATED; } }
+    public record SettlementResult(TerritoryFallSettlementPolicy.Outcome outcome,
+                                   CoreRecord previous, CoreRecord core) { }
+    public record VaultChunk(UUID nationId, ResourceLocation dimension, int chunkX, int chunkZ) { }
     public record CoreRecord(UUID id, UUID nationId, UUID placedBy, ResourceLocation dimension,
                              BlockPos pos, CoreType type, int radius, CoreState state,
                              int health, int maximumHealth, long regenDelayTicks,
@@ -333,5 +529,10 @@ public final class TerritorySavedData extends SavedData {
     private static int maximumHealth(CoreType type) {
         return type == CoreType.CAPITAL
                 ? S2TerritoryConfig.capitalCoreHealth() : S2TerritoryConfig.outpostCoreHealth();
+    }
+
+    private static int recoveryHealth(int maximumHealth, double recoveryPercent) {
+        return Math.max(1, (int) Math.ceil(maximumHealth
+                * Math.max(0.0D, Math.min(100.0D, recoveryPercent)) / 100.0D));
     }
 }

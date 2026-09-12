@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui16");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui22");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -33,6 +33,7 @@ public class ModMessages {
         registrar.playToServer(C2S_NationMembershipPacket.TYPE, C2S_NationMembershipPacket.STREAM_CODEC, C2S_NationMembershipPacket::handle);
         registrar.playToServer(C2S_NationRolePacket.TYPE, C2S_NationRolePacket.STREAM_CODEC, C2S_NationRolePacket::handle);
         registrar.playToServer(C2S_NationDiplomacyPacket.TYPE, C2S_NationDiplomacyPacket.STREAM_CODEC, C2S_NationDiplomacyPacket::handle);
+        registrar.playToServer(C2S_SiegeActionPacket.TYPE, C2S_SiegeActionPacket.STREAM_CODEC, C2S_SiegeActionPacket::handle);
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);

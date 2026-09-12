@@ -10,6 +10,9 @@ import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
+
+import java.util.List;
 
 public final class TerritoryClosureService {
     private TerritoryClosureService() {
@@ -17,6 +20,7 @@ public final class TerritoryClosureService {
 
     public static TerritoryClosureScanner.Result scan(ServerLevel level, BlockPos corePos) {
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
+        SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
         return TerritoryClosureScanner.scan(corePos, new TerritoryClosureScanner.WorldView() {
             @Override
             public boolean isLoaded(BlockPos pos) {
@@ -25,7 +29,7 @@ public final class TerritoryClosureService {
 
             @Override
             public boolean isBarrier(BlockPos pos) {
-                return isReinforcedBarrier(level, reinforcements, pos);
+                return isReinforcedBarrier(level, reinforcements, sieges, pos);
             }
         });
     }
@@ -47,7 +51,20 @@ public final class TerritoryClosureService {
         return result;
     }
 
-    static boolean isReinforcedBarrier(ServerLevel level, ReinforcementSavedData data, BlockPos pos) {
+    /** Returns solid wall candidates on the escape route which have never been reinforced. */
+    public static List<BlockPos> unreinforcedLeakBlocks(ServerLevel level,
+                                                        TerritoryClosureScanner.Result result) {
+        ReinforcementSavedData data = ReinforcementSavedData.get(level);
+        return result.escapePath().stream()
+                .filter(pos -> data.get(pos).isEmpty())
+                .filter(pos -> canFormClosureBarrier(level, pos))
+                .toList();
+    }
+
+    static boolean isReinforcedBarrier(ServerLevel level, ReinforcementSavedData data,
+                                       SiegeSavedData sieges, BlockPos pos) {
+        if (sieges.isReinforcementDisabled(
+                level.dimension().location(), pos)) return false;
         ReinforcementEntry entry = data.get(pos).orElse(null);
         if (entry == null || !entry.enabled() || entry.durability() <= 0) return false;
         BlockState state = level.getBlockState(pos);
@@ -63,5 +80,11 @@ public final class TerritoryClosureService {
             return true;
         }
         return state.isCollisionShapeFullBlock(level, pos);
+    }
+
+    private static boolean canFormClosureBarrier(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        return state.getBlock() instanceof DoorBlock || state.getBlock() instanceof TrapDoorBlock
+                || state.isCollisionShapeFullBlock(level, pos);
     }
 }

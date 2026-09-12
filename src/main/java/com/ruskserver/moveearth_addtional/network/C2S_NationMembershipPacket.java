@@ -13,6 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.UUID;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 
 public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
                                          Action action, UUID targetId)
@@ -52,7 +53,13 @@ public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
                 case ACCEPT -> result = data.accept(player.getUUID(), targetId,
                         player.getGameProfile().getName(), expectedRevision);
                 case DECLINE -> result = data.decline(player.getUUID(), targetId, expectedRevision);
-                case LEAVE -> result = data.leave(player.getUUID(), expectedRevision);
+                case LEAVE -> {
+                    UUID nationId = data.nationIdFor(player.getUUID()).orElse(null);
+                    result = nationId != null && SiegeSavedData.get(player.server).isNationLocked(nationId)
+                            ? new NationSavedData.MembershipResult(
+                            NationSavedData.MembershipStatus.SIEGE_LOCKED, data.revision())
+                            : data.leave(player.getUUID(), expectedRevision);
+                }
                 case KICK -> {
                     affectedPlayer = player.server.getPlayerList().getPlayer(targetId);
                     result = data.kick(player.getUUID(), targetId, expectedRevision);

@@ -38,6 +38,7 @@ public final class S2ClientKeys {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.getConnection() == null) {
             TerritoryPreviewClientState.clear();
+            VaultClientState.clear();
             ReinforcementClientState.clear();
             WeldingBrushClientState.clear();
             wasHoldingWelder = false;

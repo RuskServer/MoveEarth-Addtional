@@ -15,7 +15,8 @@ import java.util.Locale;
 
 public record S2C_TerritoryClosurePacket(ResourceLocation dimension, BlockPos corePos, int requestId,
                                          Status status, TerritorySavedData.CoreState coreState,
-                                         int visited, List<BlockPos> escapePath)
+                                         int visited, List<BlockPos> escapePath,
+                                         List<BlockPos> unreinforcedLeakBlocks)
         implements CustomPacketPayload {
     public static final Type<S2C_TerritoryClosurePacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "territory_closure"));
@@ -30,6 +31,11 @@ public record S2C_TerritoryClosurePacket(ResourceLocation dimension, BlockPos co
                 int pathSize = Math.min(TerritoryClosureScanner.MAX_PATH, packet.escapePath.size());
                 buffer.writeVarInt(pathSize);
                 for (int index = 0; index < pathSize; index++) buffer.writeBlockPos(packet.escapePath.get(index));
+                int leakSize = Math.min(TerritoryClosureScanner.MAX_PATH, packet.unreinforcedLeakBlocks.size());
+                buffer.writeVarInt(leakSize);
+                for (int index = 0; index < leakSize; index++) {
+                    buffer.writeBlockPos(packet.unreinforcedLeakBlocks.get(index));
+                }
             },
             buffer -> {
                 ResourceLocation dimension = buffer.readResourceLocation();
@@ -44,25 +50,35 @@ public record S2C_TerritoryClosurePacket(ResourceLocation dimension, BlockPos co
                 }
                 List<BlockPos> path = new ArrayList<>(pathSize);
                 for (int index = 0; index < pathSize; index++) path.add(buffer.readBlockPos());
+                int leakSize = buffer.readVarInt();
+                if (leakSize < 0 || leakSize > TerritoryClosureScanner.MAX_PATH) {
+                    throw new IllegalArgumentException("Invalid territory closure leak size: " + leakSize);
+                }
+                List<BlockPos> leaks = new ArrayList<>(leakSize);
+                for (int index = 0; index < leakSize; index++) leaks.add(buffer.readBlockPos());
                 return new S2C_TerritoryClosurePacket(
-                        dimension, corePos, requestId, status, coreState, visited, path);
+                        dimension, corePos, requestId, status, coreState, visited, path, leaks);
             });
 
     public S2C_TerritoryClosurePacket {
         escapePath = escapePath == null ? List.of() : List.copyOf(escapePath);
+        unreinforcedLeakBlocks = unreinforcedLeakBlocks == null
+                ? List.of() : List.copyOf(unreinforcedLeakBlocks);
     }
 
     public static S2C_TerritoryClosurePacket scanned(ResourceLocation dimension, BlockPos corePos,
                                                       int requestId, TerritoryClosureScanner.Result result,
-                                                      TerritorySavedData.CoreState coreState) {
+                                                      TerritorySavedData.CoreState coreState,
+                                                      List<BlockPos> unreinforcedLeakBlocks) {
         return new S2C_TerritoryClosurePacket(dimension, corePos, requestId,
-                Status.valueOf(result.status().name()), coreState, result.visited(), result.escapePath());
+                Status.valueOf(result.status().name()), coreState, result.visited(), result.escapePath(),
+                unreinforcedLeakBlocks);
     }
 
     public static S2C_TerritoryClosurePacket rejected(ResourceLocation dimension, BlockPos corePos,
                                                        int requestId, Status status) {
         return new S2C_TerritoryClosurePacket(dimension, corePos, requestId, status,
-                TerritorySavedData.CoreState.CONFIGURING, 0, List.of());
+                TerritorySavedData.CoreState.CONFIGURING, 0, List.of(), List.of());
     }
 
     public String messageKey() {

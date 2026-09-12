@@ -63,7 +63,8 @@ public record C2S_ValidateTerritoryCorePacket(int requestId, BlockPos pos) imple
             TerritoryClosureScanner.Result result = TerritoryClosureService.scanAndUpdate(level, pos);
             TerritorySavedData.CoreState state = territories.core(dimension, pos)
                     .map(TerritorySavedData.CoreRecord::state).orElse(record.state());
-            send(player, S2C_TerritoryClosurePacket.scanned(dimension, pos, requestId, result, state));
+            send(player, S2C_TerritoryClosurePacket.scanned(dimension, pos, requestId, result, state,
+                    TerritoryClosureService.unreinforcedLeakBlocks(level, result)));
         });
     }
 

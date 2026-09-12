@@ -482,7 +482,7 @@ public final class NationSavedData extends SavedData {
     public enum MembershipStatus {
         INVITED, JOINED, DECLINED, LEFT, KICKED,
         STALE, NO_PERMISSION, TARGET_ALREADY_MEMBER, ALREADY_INVITED,
-        INVITE_NOT_FOUND, NOT_MEMBER, OWNER_CANNOT_LEAVE, TARGET_OFFLINE
+        INVITE_NOT_FOUND, NOT_MEMBER, OWNER_CANNOT_LEAVE, TARGET_OFFLINE, SIEGE_LOCKED
     }
 
     public enum RoleStatus {

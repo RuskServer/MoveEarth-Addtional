@@ -17,6 +17,7 @@ public class CompatEventHandler {
 
     private static boolean reflectionInitialized = false;
     private static Method isBleedingMethod = null;
+    private static Method reviveMethod = null;
     private static Method getDataMethod = null;
     private static Object bleedingAttachment = null;
 
@@ -38,6 +39,7 @@ public class CompatEventHandler {
                 Class<?> attachmentTypeClass = Class.forName("net.neoforged.neoforge.attachment.AttachmentType");
                 getDataMethod = Player.class.getMethod("getData", attachmentTypeClass);
                 isBleedingMethod = bleedingClass.getMethod("isBleeding");
+                reviveMethod = bleedingClass.getMethod("revive", Player.class);
             } catch (Exception e) {
                 System.err.println("[MoveEarth-Addtional] PlayerRevive Bleeding class reflection failed: " + e.getMessage());
             }
@@ -61,6 +63,23 @@ public class CompatEventHandler {
         }
 
         return false;
+    }
+
+    /** Completes PlayerRevive's downed state without taking a hard dependency on the mod. */
+    public static boolean revivePlayer(Player player) {
+        if (!isPlayerDown(player) || getDataMethod == null || bleedingAttachment == null || reviveMethod == null) {
+            return false;
+        }
+        try {
+            Object bleedingCap = getDataMethod.invoke(player, bleedingAttachment);
+            if (bleedingCap == null) return false;
+            reviveMethod.invoke(bleedingCap, player);
+            return true;
+        } catch (Exception exception) {
+            System.err.println("[MoveEarth-Addtional] PlayerRevive revive invoke failed: "
+                    + exception.getMessage());
+            return false;
+        }
     }
 
     /**

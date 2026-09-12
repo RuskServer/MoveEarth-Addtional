@@ -4,7 +4,9 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureRecheckManager;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryCoreHealthService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
+import com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.EventPriority;
@@ -32,6 +34,19 @@ public final class ReinforcementEvents {
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         ReinforcementEntry entry = data.get(event.getPos()).orElse(null);
         if (entry == null) return;
+        if (SiegeService.peaceTruceBlocks(player, level, event.getPos())) {
+            event.setCanceled(true);
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    "message.moveearth_addtional.peace.truce_protected"), true);
+            return;
+        }
+        if (OfflineDefenseService.settlementProtected(level, event.getPos())) {
+            event.setCanceled(true);
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    "message.moveearth_addtional.siege.settlement_truce"), true);
+            return;
+        }
+        SiegeService.recordAttack(player, level, event.getPos(), false);
         if (!SiegeDamageService.penaltyAt(level, event.getPos()).reinforcementProtectionEnabled()) {
             data.remove(event.getPos());
             TerritoryClosureRecheckManager.markPotentialOpening(level, event.getPos());
@@ -48,7 +63,15 @@ public final class ReinforcementEvents {
         event.setCanceled(true);
         if (!DAMAGE_LIMITER.tryDamage(player.getUUID(), level.dimension().location().toString(),
                 event.getPos().asLong(), level.getGameTime())) return;
-        ReinforcementEntry damaged = entry.damage(1);
+        var scaled = OfflineDefenseService.scale(level, event.getPos(), 1);
+        if (scaled.appliedDamage() <= 0) {
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    "message.moveearth_addtional.reinforcement.offline_defense",
+                    scaled.carriedUnits(), scaled.divisor()), true);
+            return;
+        }
+        ReinforcementEntry damaged = entry.damage(scaled.appliedDamage());
+        SiegeService.recordAttack(player, level, event.getPos(), true);
         if (damaged.durability() <= 0) {
             data.remove(event.getPos());
             TerritoryClosureRecheckManager.markPotentialOpening(level, event.getPos());
@@ -67,19 +90,35 @@ public final class ReinforcementEvents {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         net.minecraft.world.entity.Entity source = event.getExplosion().getDirectSourceEntity();
+        ServerPlayer attacker = SiegeService.attributablePlayer(source);
         boolean cbc = CbcReinforcementCompat.isCbc(source);
         CbcMunitionDamage.Kind munition = CbcReinforcementCompat.kind(source);
+        net.minecraft.core.BlockPos explosionCenter = net.minecraft.core.BlockPos.containing(
+                event.getExplosion().center());
+        boolean preHandled = cbc && CbcReinforcementCompat.wasRecentlyPreHandled(
+                source, level, explosionCenter);
         boolean[] reinforcementChanged = {false};
         event.getAffectedBlocks().removeIf(pos -> {
+            if (SiegeService.peaceTruceBlocks(attacker, level, pos)) return true;
             TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
                     .core(level.dimension().location(), pos).orElse(null);
             if (core != null) {
-                if (cbc) TerritoryCoreHealthService.damage(level, pos,
-                        SiegeDamageService.configuredDamage(munition));
+                if (preHandled) return true;
+                SiegeService.recordAttack(attacker, level, pos, false);
+                if (cbc) {
+                    int beforeHealth = core.health();
+                    TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, pos,
+                            SiegeDamageService.configuredCoreDamage(munition));
+                    if (after != null && after.health() < beforeHealth) {
+                        SiegeService.recordAttack(attacker, level, pos, true);
+                    }
+                }
                 return true;
             }
             ReinforcementEntry entry = data.get(pos).orElse(null);
             if (entry == null) return false;
+            if (preHandled) return true;
+            SiegeService.recordAttack(attacker, level, pos, false);
             if (!entry.enabled()) {
                 data.remove(pos);
                 reinforcementChanged[0] = true;
@@ -93,11 +132,16 @@ public final class ReinforcementEvents {
             }
             if (!cbc) return true;
             reinforcementChanged[0] = true;
-            return SiegeDamageService.damageReinforcement(level, pos, entry, munition);
+            SiegeDamageService.ReinforcementDamage result = SiegeDamageService.damageReinforcement(
+                    level, pos, entry, munition);
+            if (result.appliedDamage() > 0) {
+                SiegeService.recordAttack(attacker, level, pos, true);
+            }
+            return result.remains();
         });
         if (reinforcementChanged[0]) {
             ReinforcementService.syncNearbyManagers(level,
-                    net.minecraft.core.BlockPos.containing(event.getExplosion().center()));
+                    explosionCenter);
         }
     }
 
@@ -131,5 +175,6 @@ public final class ReinforcementEvents {
     public static void onServerStopped(ServerStoppedEvent event) {
         DAMAGE_LIMITER.clear();
         WeldingBrushServerState.clear();
+        CbcReinforcementCompat.clearRuntimeState();
     }
 }

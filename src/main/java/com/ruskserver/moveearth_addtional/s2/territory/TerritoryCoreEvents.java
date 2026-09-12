@@ -6,6 +6,9 @@ import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -26,6 +29,10 @@ public final class TerritoryCoreEvents {
         }
         NationSavedData data = NationSavedData.get(player.server);
         java.util.UUID playerNation = data.nationIdFor(player.getUUID()).orElse(null);
+        if (event.getLevel() instanceof ServerLevel level
+                && playerNation != null && !playerNation.equals(core.nationId())) {
+            SiegeService.recordAttack(player, level, event.getPos(), false);
+        }
         if (core.coreType() == TerritorySavedData.CoreType.CAPITAL) {
             event.setCanceled(true);
             player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
@@ -34,6 +41,12 @@ public final class TerritoryCoreEvents {
         }
         boolean allowed = playerNation != null && playerNation.equals(core.nationId())
                 && data.can(player.getUUID(), S2Permission.MANAGE_TERRITORY);
+        if (allowed && SiegeSavedData.get(player.server).isCoreLocked(core.coreId())) {
+            event.setCanceled(true);
+            player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
+                    "message.moveearth_addtional.territory_core.siege_locked")));
+            return;
+        }
         if (!allowed) {
             event.setCanceled(true);
             player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(

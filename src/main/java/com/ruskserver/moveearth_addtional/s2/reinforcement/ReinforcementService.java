@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacke
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -112,6 +113,7 @@ public final class ReinforcementService {
         java.util.UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         boolean allowed = nationId != null && canManage(player, player.blockPosition());
         TerritorySavedData territories = TerritorySavedData.get(player.server);
+        SiegeSavedData sieges = SiegeSavedData.get(player.server);
         List<S2C_ReinforcementSnapshotPacket.Entry> entries = allowed
                 ? ReinforcementSavedData.get(player.serverLevel())
                 .around(player.serverLevel(), player.blockPosition(), radius).stream()
@@ -121,7 +123,8 @@ public final class ReinforcementService {
                         value.entry().material(), value.entry().durability(), value.entry().enabled(),
                         (int) Math.min(Integer.MAX_VALUE,
                                 value.entry().activationTicksRemaining(player.serverLevel().getGameTime())),
-                        value.entry().activatesAt() > 0L))
+                        value.entry().activatesAt() > 0L,
+                        sieges.isReinforcementDisabled(player.level().dimension().location(), value.pos())))
                 .toList()
                 : List.of();
         PacketDistributor.sendToPlayer(player, new S2C_ReinforcementSnapshotPacket(

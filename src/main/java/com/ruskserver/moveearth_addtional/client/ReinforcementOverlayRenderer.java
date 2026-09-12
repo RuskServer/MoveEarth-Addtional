@@ -54,7 +54,10 @@ public final class ReinforcementOverlayRenderer {
                     entry.material(), entry.durability(), entry.enabled(), detailed, now);
             DebugRenderer.renderFilledBox(poseStack, buffers,
                     new AABB(entry.pos()).inflate(0.003D).move(-camera.x, -camera.y, -camera.z),
-                    style.red(), style.green(), style.blue(), style.alpha());
+                    entry.siegeDisabled() ? 1.0F : style.red(),
+                    entry.siegeDisabled() ? 0.18F : style.green(),
+                    entry.siegeDisabled() ? 0.12F : style.blue(),
+                    entry.siegeDisabled() ? (detailed ? 0.42F : 0.27F) : style.alpha());
         }
 
         BlockHitResult targetHit = targetHit(minecraft);
@@ -71,11 +74,11 @@ public final class ReinforcementOverlayRenderer {
                 BlockPos selected = target.offset(offset.x(), offset.y(), offset.z());
                 if (minecraft.level.getBlockState(selected).isAir()) continue;
                 S2C_ReinforcementSnapshotPacket.Entry selectedEntry = ReinforcementClientState.at(selected);
-                float red = selectedEntry == null ? 1.0F : !selectedEntry.enabled() ? 0.72F
+                float red = selectedEntry == null || selectedEntry.siegeDisabled() ? 1.0F : !selectedEntry.enabled() ? 0.72F
                         : selectedEntry.constructionInProgress() ? 1.0F : 0.16F;
-                float green = selectedEntry == null ? 0.16F : !selectedEntry.enabled() ? 0.27F
+                float green = selectedEntry == null || selectedEntry.siegeDisabled() ? 0.16F : !selectedEntry.enabled() ? 0.27F
                         : selectedEntry.constructionInProgress() ? 0.63F : 1.0F;
-                float blue = selectedEntry == null ? 0.12F : !selectedEntry.enabled() ? 1.0F
+                float blue = selectedEntry == null || selectedEntry.siegeDisabled() ? 0.12F : !selectedEntry.enabled() ? 1.0F
                         : selectedEntry.constructionInProgress() ? 0.12F : 0.30F;
                 DebugRenderer.renderFilledBox(poseStack, buffers,
                         new AABB(selected).inflate(0.008D).move(-camera.x, -camera.y, -camera.z),
@@ -93,12 +96,16 @@ public final class ReinforcementOverlayRenderer {
                 && !minecraft.level.getBlockState(target).isAir()) {
             var entry = ReinforcementClientState.at(target);
             boolean reinforced = entry != null;
-            int targetColor = entry != null && !entry.enabled() ? 0xFFC67AFF
+            int targetColor = entry != null && entry.siegeDisabled() ? 0xFFFF3D30
+                    : entry != null && !entry.enabled() ? 0xFFC67AFF
                     : reinforced ? 0xFF68E09B : 0xFFFF6577;
             DebugRenderer.renderFilledBox(poseStack, buffers,
                     new AABB(target).inflate(0.012D).move(-camera.x, -camera.y, -camera.z),
-                    reinforced ? 0.50F : 1.0F, entry != null && !entry.enabled() ? 0.28F : reinforced ? 0.94F : 0.30F,
-                    entry != null && !entry.enabled() ? 0.92F : reinforced ? 0.63F : 0.22F, 0.24F);
+                    entry != null && entry.siegeDisabled() ? 1.0F : reinforced ? 0.50F : 1.0F,
+                    entry != null && entry.siegeDisabled() ? 0.18F
+                            : entry != null && !entry.enabled() ? 0.28F : reinforced ? 0.94F : 0.30F,
+                    entry != null && entry.siegeDisabled() ? 0.12F
+                            : entry != null && !entry.enabled() ? 0.92F : reinforced ? 0.63F : 0.22F, 0.24F);
             String marker = entry == null ? "×" : progressBar(entry) + " " + Math.round(progress(entry) * 100.0F) + "%";
             DebugRenderer.renderFloatingText(poseStack, buffers, marker,
                     target.getX() + 0.5D, target.getY() + 1.18D, target.getZ() + 0.5D,
@@ -123,6 +130,7 @@ public final class ReinforcementOverlayRenderer {
         int boxHeight = 72;
         int y = Math.max(12, (graphics.guiHeight() - boxHeight) / 2);
         int accent = !ReinforcementClientState.allowed() ? 0xFF8F9AA8 : entry == null ? 0xFFFF6577
+                : entry.siegeDisabled() ? 0xFFFF3D30
                 : !entry.enabled() ? 0xFFC67AFF
                 : entry.durability() < entry.material().maxDurability() ? 0xFFFFB454 : 0xFF68E09B;
         graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xD012161D);
@@ -132,6 +140,8 @@ public final class ReinforcementOverlayRenderer {
                         ? "overlay.moveearth_addtional.reinforcement.unavailable"
                         : entry == null
                         ? "overlay.moveearth_addtional.reinforcement.unreinforced"
+                        : entry.siegeDisabled()
+                        ? "overlay.moveearth_addtional.reinforcement.siege_disabled"
                         : !entry.enabled()
                         ? "overlay.moveearth_addtional.reinforcement.curing"
                         : entry.constructionInProgress()
@@ -142,6 +152,9 @@ public final class ReinforcementOverlayRenderer {
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.unavailable.detail")
                 : entry == null
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.material_hint")
+                : entry.siegeDisabled()
+                ? Component.translatable("overlay.moveearth_addtional.reinforcement.siege_disabled.detail",
+                entry.material().id(), entry.durability(), entry.material().maxDurability())
                 : !entry.enabled()
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.curing.detail",
                 entry.material().id(), Math.max(0, (entry.activationTicksRemaining() + 19) / 20))

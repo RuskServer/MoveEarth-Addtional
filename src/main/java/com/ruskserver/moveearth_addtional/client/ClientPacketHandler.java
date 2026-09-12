@@ -39,6 +39,7 @@ public class ClientPacketHandler {
 
     public static void handleS2HubSnapshot(S2C_S2HubSnapshotPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
+        VaultClientState.update(packet.snapshot());
         if (minecraft.screen instanceof S2HubScreen screen) screen.update(packet);
         else minecraft.setScreen(new S2HubScreen(packet));
     }
@@ -61,6 +62,8 @@ public class ClientPacketHandler {
         } else if (Minecraft.getInstance().screen instanceof NationRoleAssignScreen screen) {
             screen.handleResult(packet);
         } else if (Minecraft.getInstance().screen instanceof TerritoryCoreWizardScreen screen) {
+            screen.handleResult(packet);
+        } else if (Minecraft.getInstance().screen instanceof PeaceProposalScreen screen) {
             screen.handleResult(packet);
         } else if (Minecraft.getInstance().player != null) {
             Component body = Component.translatable(packet.messageKey());

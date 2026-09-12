@@ -4,6 +4,8 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryCoreHealthPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
+import com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
@@ -26,11 +28,14 @@ public final class TerritoryCoreHealthService {
         TerritorySavedData data = TerritorySavedData.get(level.getServer());
         TerritorySavedData.CoreRecord before = data.core(level.dimension().location(), pos).orElse(null);
         if (before == null || before.state() != TerritorySavedData.CoreState.EXPOSED || amount <= 0) return before;
-        TerritorySavedData.CoreRecord after = data.damageCore(level.dimension().location(), pos, amount).orElse(before);
+        int appliedDamage = OfflineDefenseService.scale(level, pos, amount).appliedDamage();
+        if (appliedDamage <= 0) return before;
+        TerritorySavedData.CoreRecord after = data.damageCore(
+                level.dimension().location(), pos, appliedDamage).orElse(before);
         syncLoadedBlock(level, after);
         syncNearby(level, after);
         level.sendParticles(ParticleTypes.ELECTRIC_SPARK, pos.getX() + 0.5D, pos.getY() + 0.7D,
-                pos.getZ() + 0.5D, Math.min(24, 5 + amount / 4), 0.28D, 0.25D, 0.28D, 0.08D);
+                pos.getZ() + 0.5D, Math.min(24, 5 + appliedDamage / 4), 0.28D, 0.25D, 0.28D, 0.08D);
         level.playSound(null, pos, SoundEvents.ANVIL_LAND, SoundSource.BLOCKS, 3.5F,
                 after.health() == 0 ? 0.55F : 0.85F);
         if (after.health() == 0 || crossedThreshold(before, after, 25) || crossedThreshold(before, after, 50)) {
@@ -43,7 +48,9 @@ public final class TerritoryCoreHealthService {
     public static void onServerTick(ServerTickEvent.Post event) {
         if (event.getServer().overworld().getGameTime() % 20L != 0L) return;
         TerritorySavedData data = TerritorySavedData.get(event.getServer());
-        for (TerritorySavedData.CoreRecord core : data.advanceCoreRegeneration(20L)) {
+        SiegeSavedData sieges = SiegeSavedData.get(event.getServer());
+        for (TerritorySavedData.CoreRecord core : data.advanceCoreRegeneration(
+                20L, sieges::isCoreRegenPaused)) {
             ServerLevel level = event.getServer().getLevel(net.minecraft.resources.ResourceKey.create(
                     net.minecraft.core.registries.Registries.DIMENSION, core.dimension()));
             if (level == null || !level.hasChunkAt(core.pos())) continue;
@@ -84,5 +91,14 @@ public final class TerritoryCoreHealthService {
                         new S2C_TerritoryCoreHealthPacket(core.pos(), core.health(), core.maximumHealth()));
             }
         }
+    }
+
+    public static void syncCore(net.minecraft.server.MinecraftServer server,
+                                TerritorySavedData.CoreRecord core) {
+        ServerLevel level = server.getLevel(net.minecraft.resources.ResourceKey.create(
+                net.minecraft.core.registries.Registries.DIMENSION, core.dimension()));
+        if (level == null || !level.hasChunkAt(core.pos())) return;
+        syncLoadedBlock(level, core);
+        syncNearby(level, core);
     }
 }

@@ -79,6 +79,46 @@ public final class NationUpkeepService {
         return nationId != null && charge(player.server, nationId, System.currentTimeMillis());
     }
 
+    /** Transfers configured treasury gold, rolling the withdrawal back if the receiver deposit fails. */
+    public static TransferResult transferGold(MinecraftServer server, UUID payerNation,
+                                              UUID receiverNation, long amount) {
+        if (amount < 0L) return TransferResult.INVALID_AMOUNT;
+        if (amount == 0L) return TransferResult.SUCCESS;
+        try {
+            NationUpkeepSavedData data = NationUpkeepSavedData.get(server);
+            BankReference payerReference = data.state(payerNation).reference();
+            BankReference receiverReference = data.state(receiverNation).reference();
+            IBankAccount payer = payerReference == null || !payerReference.isValid()
+                    ? null : payerReference.get();
+            IBankAccount receiver = receiverReference == null || !receiverReference.isValid()
+                    ? null : receiverReference.get();
+            if (payer == null) return TransferResult.PAYER_ACCOUNT_MISSING;
+            if (receiver == null) return TransferResult.RECEIVER_ACCOUNT_MISSING;
+            MoneyValue value = MoneyValueParser.ParseConfigString(
+                    "coin;" + amount + "-lightmanscurrency:coin_gold", MoneyValue::empty);
+            if (value.isEmpty() || !payer.getStoredMoney().containsValue(value)) {
+                return TransferResult.INSUFFICIENT_FUNDS;
+            }
+            var withdrawn = BankAPI.getApi().BankWithdrawFromServer(payer, value);
+            if (!withdrawn.getFirst()) return TransferResult.INSUFFICIENT_FUNDS;
+            if (BankAPI.getApi().BankDepositFromServer(receiver, value)) return TransferResult.SUCCESS;
+            if (!BankAPI.getApi().BankDepositFromServer(payer, value)) {
+                Moveearth_addtional.LOGGER.error(
+                        "Failed to roll back peace compensation for nation {}", payerNation);
+            }
+            return TransferResult.DEPOSIT_FAILED;
+        } catch (RuntimeException exception) {
+            Moveearth_addtional.LOGGER.warn("Peace compensation transfer failed from {} to {}",
+                    payerNation, receiverNation, exception);
+            return TransferResult.DEPOSIT_FAILED;
+        }
+    }
+
+    public enum TransferResult {
+        SUCCESS, INVALID_AMOUNT, PAYER_ACCOUNT_MISSING, RECEIVER_ACCOUNT_MISSING,
+        INSUFFICIENT_FUNDS, DEPOSIT_FAILED
+    }
+
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();

@@ -36,6 +36,7 @@ public record S2C_ReinforcementSnapshotPacket(ResourceLocation dimension, boolea
             buffer.writeBoolean(entry.enabled);
             buffer.writeVarInt(entry.activationTicksRemaining);
             buffer.writeBoolean(entry.constructionInProgress);
+            buffer.writeBoolean(entry.siegeDisabled);
         }
     }
 
@@ -54,7 +55,7 @@ public record S2C_ReinforcementSnapshotPacket(ResourceLocation dimension, boolea
             ReinforcementMaterial material = materialId < materials.length
                     ? materials[materialId] : ReinforcementMaterial.COBBLESTONE;
             entries.add(new Entry(pos, material, buffer.readVarInt(), buffer.readBoolean(), buffer.readVarInt(),
-                    buffer.readBoolean()));
+                    buffer.readBoolean(), buffer.readBoolean()));
         }
         return new S2C_ReinforcementSnapshotPacket(dimension, allowed, entries);
     }
@@ -70,6 +71,6 @@ public record S2C_ReinforcementSnapshotPacket(ResourceLocation dimension, boolea
     }
 
     public record Entry(BlockPos pos, ReinforcementMaterial material, int durability, boolean enabled,
-                        int activationTicksRemaining, boolean constructionInProgress) {
+                        int activationTicksRemaining, boolean constructionInProgress, boolean siegeDisabled) {
     }
 }

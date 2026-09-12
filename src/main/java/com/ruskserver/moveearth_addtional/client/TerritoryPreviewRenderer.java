@@ -1,12 +1,14 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryPreviewPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryPreviewArea;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.debug.DebugRenderer;
 import net.minecraft.network.chat.Component;
@@ -44,8 +46,34 @@ public final class TerritoryPreviewRenderer {
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
 
         if (showPreview) renderPreview(packet, minecraft, poseStack, buffers, camera);
+        VaultClientState.VaultMarker vault = VaultClientState.marker();
+        if (showPreview && vault != null && vault.dimension().equals(packet.dimension())) {
+            renderVault(vault, minecraft, poseStack, buffers, camera);
+        }
         if (showClosure) renderClosure(closure, poseStack, buffers, camera);
         buffers.endBatch(RenderType.debugFilledBox());
+        buffers.endBatch();
+    }
+
+    private static void renderVault(VaultClientState.VaultMarker vault, Minecraft minecraft,
+                                    PoseStack poseStack, MultiBufferSource.BufferSource buffers, Vec3 camera) {
+        double y = Math.floor(minecraft.player.getY()) + 0.045D;
+        double minX = vault.chunkX() << 4;
+        double minZ = vault.chunkZ() << 4;
+        VertexConsumer outline = buffers.getBuffer(RenderType.lines());
+        AABB chunk = new AABB(minX, y, minZ, minX + 16.0D, y + 0.16D, minZ + 16.0D)
+                .move(-camera.x, -camera.y, -camera.z);
+        LevelRenderer.renderLineBox(poseStack, outline, chunk, 0.20F, 1.0F, 0.54F, 1.0F);
+        double centerX = minX + 8.0D;
+        double centerZ = minZ + 8.0D;
+        DebugRenderer.renderFilledBox(poseStack, buffers,
+                new AABB(centerX - 0.14D, y, centerZ - 0.14D,
+                        centerX + 0.14D, y + 3.6D, centerZ + 0.14D)
+                        .move(-camera.x, -camera.y, -camera.z),
+                0.20F, 1.0F, 0.54F, 0.78F);
+        DebugRenderer.renderFloatingText(poseStack, buffers,
+                Component.translatable("overlay.moveearth_addtional.vault").getString(),
+                centerX, y + 3.8D, centerZ, 0xFF52FF8A, 0.028F, true, 0.0F, true);
     }
 
     private static void renderPreview(S2C_TerritoryPreviewPacket packet, Minecraft minecraft,
@@ -78,7 +106,9 @@ public final class TerritoryPreviewRenderer {
 
     private static void renderClosure(S2C_TerritoryClosurePacket packet, PoseStack poseStack,
                                       MultiBufferSource.BufferSource buffers, Vec3 camera) {
+        java.util.Set<BlockPos> unreinforced = new java.util.HashSet<>(packet.unreinforcedLeakBlocks());
         for (BlockPos pos : packet.escapePath()) {
+            if (unreinforced.contains(pos)) continue;
             AABB marker = new AABB(pos).inflate(-0.32D).move(-camera.x, -camera.y, -camera.z);
             DebugRenderer.renderFilledBox(poseStack, buffers, marker, 1.0F, 0.58F, 0.10F, 0.72F);
         }
@@ -86,6 +116,29 @@ public final class TerritoryPreviewRenderer {
             BlockPos leak = packet.escapePath().get(packet.escapePath().size() - 1);
             AABB marker = new AABB(leak).inflate(-0.07D).move(-camera.x, -camera.y, -camera.z);
             DebugRenderer.renderFilledBox(poseStack, buffers, marker, 1.0F, 0.12F, 0.10F, 0.82F);
+        }
+        float pulse = 0.5F + 0.5F * (float) Math.sin(net.minecraft.Util.getMillis() / 180.0D);
+        VertexConsumer outline = buffers.getBuffer(RenderType.lines());
+        for (BlockPos pos : packet.unreinforcedLeakBlocks()) {
+            AABB full = new AABB(pos).inflate(0.018D).move(-camera.x, -camera.y, -camera.z);
+            DebugRenderer.renderFilledBox(poseStack, buffers, full,
+                    1.0F, 0.04F + pulse * 0.10F, 0.30F, 0.34F + pulse * 0.20F);
+            LevelRenderer.renderLineBox(poseStack, outline, full.inflate(0.025D),
+                    0.28F, 0.01F, 0.06F, 1.0F);
+            LevelRenderer.renderLineBox(poseStack, outline, full,
+                    1.0F, 0.22F, 0.52F, 1.0F);
+            AABB beacon = new AABB(pos.getX() + 0.43D, pos.getY() + 1.0D, pos.getZ() + 0.43D,
+                    pos.getX() + 0.57D, pos.getY() + 3.8D + pulse, pos.getZ() + 0.57D)
+                    .move(-camera.x, -camera.y, -camera.z);
+            DebugRenderer.renderFilledBox(poseStack, buffers, beacon, 1.0F, 0.08F, 0.36F, 0.62F);
+        }
+        if (!packet.unreinforcedLeakBlocks().isEmpty()) {
+            BlockPos nearest = packet.unreinforcedLeakBlocks().getFirst();
+            DebugRenderer.renderFloatingText(poseStack, buffers,
+                    Component.translatable("overlay.moveearth_addtional.territory_closure.unreinforced_marker",
+                            nearest.getX(), nearest.getY(), nearest.getZ()).getString(),
+                    nearest.getX() + 0.5D, nearest.getY() + 1.35D, nearest.getZ() + 0.5D,
+                    0xFFFF3970, 0.028F, true, 0.0F, true);
         }
     }
 
@@ -112,7 +165,8 @@ public final class TerritoryPreviewRenderer {
         var graphics = event.getGuiGraphics();
         int x = 12;
         int y = 12;
-        int panelHeight = showPreview && showClosure ? 80 : 52;
+        boolean showLeakCount = showClosure && !closure.unreinforcedLeakBlocks().isEmpty();
+        int panelHeight = (showPreview && showClosure ? 80 : 52) + (showLeakCount ? 13 : 0);
         graphics.fill(x, y, x + 266, y + panelHeight, 0xD012161D);
         graphics.fill(x, y, x + 3, y + panelHeight, 0xFF68E09B);
         int lineY = y + 8;
@@ -133,10 +187,19 @@ public final class TerritoryPreviewRenderer {
             graphics.drawString(minecraft.font,
                     Component.translatable(closure.messageKey(), closure.visited()),
                     x + 11, lineY + 13, 0xFFE8EDF3, false);
-            lineY += 28;
+            if (showLeakCount) {
+                BlockPos nearest = closure.unreinforcedLeakBlocks().getFirst();
+                graphics.drawString(minecraft.font,
+                        Component.translatable("overlay.moveearth_addtional.territory_closure.unreinforced",
+                                closure.unreinforcedLeakBlocks().size(),
+                                nearest.getX(), nearest.getY(), nearest.getZ()),
+                        x + 11, lineY + 26, 0xFFFF3970, false);
+            }
+            lineY += showLeakCount ? 41 : 28;
         }
         graphics.drawString(minecraft.font,
-                Component.translatable("overlay.moveearth_addtional.territory_preview.exit"),
+                Component.translatable("overlay.moveearth_addtional.territory_preview.exit",
+                        S2ClientKeys.CLEAR_TERRITORY_PREVIEW.getTranslatedKeyMessage()),
                 x + 11, lineY, 0xFF8F9AA8, false);
     }
 }

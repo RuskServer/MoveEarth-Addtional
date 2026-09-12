@@ -23,6 +23,9 @@ class S2NationSnapshotTest {
         assertTrue(snapshot.roles().isEmpty());
         assertTrue(snapshot.invitations().isEmpty());
         assertTrue(snapshot.inviteCandidates().isEmpty());
+        assertTrue(snapshot.peaceProposals().isEmpty());
+        assertTrue(snapshot.truces().isEmpty());
+        assertEquals(0L, snapshot.vaultChangeCooldownTicks());
     }
 
     @Test
@@ -32,7 +35,7 @@ class S2NationSnapshotTest {
                 java.util.UUID.randomUUID(), "Rusk", "owner", "Owner", true, 1234L));
         S2NationSnapshot snapshot = new S2NationSnapshot(1, "Rusk", true, true,
                 "Test", "TST", "Owner", 0, 1, 1, 2, 1, 10,
-                "NONE", mutable, List.of(), List.of(), List.of(), List.of());
+                "NONE", List.of(), mutable, List.of(), List.of(), List.of(), List.of());
         mutable.clear();
         assertEquals(1, snapshot.members().size());
         assertEquals(1234L, snapshot.members().getFirst().lastSeenAt());
@@ -50,7 +53,7 @@ class S2NationSnapshotTest {
 
         S2NationSnapshot snapshot = new S2NationSnapshot(2, "Rusk", false, false,
                 "", "", "", 0, 0, 0, 0, 0, 0,
-                "NONE", List.of(), List.of(), List.of(), invitations, candidates);
+                "NONE", List.of(), List.of(), List.of(), List.of(), invitations, candidates);
         invitations.clear();
         candidates.clear();
 
@@ -65,6 +68,15 @@ class S2NationSnapshotTest {
     }
 
     @Test
+    void truceViewClampsTimerAndNormalizesText() {
+        var view = new S2NationSnapshot.TruceView(null, null, null, -20L);
+        assertEquals(new java.util.UUID(0L, 0L), view.opponentNationId());
+        assertEquals("", view.opponentName());
+        assertEquals("", view.opponentTag());
+        assertEquals(0L, view.remainingTicks());
+    }
+
+    @Test
     void snapshotCopiesDiplomacyViews() {
         var nationId = java.util.UUID.randomUUID();
         var diplomacy = new java.util.ArrayList<S2NationSnapshot.DiplomacyView>();
@@ -72,11 +84,29 @@ class S2NationSnapshotTest {
                 S2NationSnapshot.DiplomacyState.HOSTILE, false));
         S2NationSnapshot snapshot = new S2NationSnapshot(3, "Rusk", false, true,
                 "Green Nation", "GRN", "Member", S2Permission.BASTION_ACCESS.mask(),
-                1, 1, 9, 1, 2, "NONE", List.of(), List.of(), diplomacy, List.of(), List.of());
+                1, 1, 9, 1, 2, "NONE", List.of(), List.of(), List.of(), diplomacy, List.of(), List.of());
         diplomacy.clear();
 
         assertEquals(1, snapshot.diplomacy().size());
         assertEquals(nationId, snapshot.diplomacy().getFirst().nationId());
         assertFalse(snapshot.diplomacy().getFirst().hostileByViewer());
+    }
+
+    @Test
+    void snapshotCopiesAndClampsSiegeViews() {
+        var siegeId = java.util.UUID.randomUUID();
+        var sieges = new java.util.ArrayList<S2NationSnapshot.SiegeView>();
+        sieges.add(new S2NationSnapshot.SiegeView(siegeId, "Blue Nation", "BLU", true,
+                S2NationSnapshot.SiegePhase.ROLLING, 36000L, "minecraft:overworld",
+                10, 64, -20, 2200, 2000, 0L, 0L, 0, true));
+        S2NationSnapshot snapshot = new S2NationSnapshot(4, "Rusk", false, true,
+                "Green Nation", "GRN", "Member", 0L, 1, 1, 9, 1, 2L,
+                "ROLLING", sieges, List.of(), List.of(), List.of(), List.of(), List.of());
+        sieges.clear();
+
+        assertEquals(1, snapshot.sieges().size());
+        assertEquals(siegeId, snapshot.sieges().getFirst().id());
+        assertEquals(2000, snapshot.sieges().getFirst().coreHealth());
+        assertTrue(snapshot.sieges().getFirst().offlineDefenseActive());
     }
 }

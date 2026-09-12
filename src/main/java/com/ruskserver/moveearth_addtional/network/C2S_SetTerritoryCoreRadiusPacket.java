@@ -13,6 +13,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 
 public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int radius)
         implements CustomPacketPayload {
@@ -41,8 +42,10 @@ public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int 
             java.util.UUID playerNation = data.nationIdFor(player.getUUID()).orElse(null);
             boolean allowed = core != null && playerNation != null && playerNation.equals(core.nationId())
                     && data.can(player.getUUID(), S2Permission.MANAGE_TERRITORY);
+            boolean siegeLocked = core != null && core.coreId() != null
+                    && SiegeSavedData.get(player.server).isCoreLocked(core.coreId());
             TerritorySavedData.UpdateResult update = null;
-            if (validRadius && closeEnough && allowed) {
+            if (validRadius && closeEnough && allowed && !siegeLocked) {
                 TerritorySavedData territories = TerritorySavedData.get(player.server);
                 if (territories.core(player.level().dimension().location(), pos).isEmpty()) {
                     TerritorySavedData.RegistrationResult repaired = territories.register(
@@ -59,6 +62,7 @@ public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int 
                     : !validRadius ? "message.moveearth_addtional.territory_core.invalid_radius"
                     : !closeEnough ? "message.moveearth_addtional.territory_core.too_far"
                     : !allowed ? "message.moveearth_addtional.territory_core.no_permission"
+                    : siegeLocked ? "message.moveearth_addtional.territory_core.siege_locked"
                     : update != null && update.status() == TerritorySavedData.Status.FOREIGN_TERRITORY_CONFLICT
                     ? "message.moveearth_addtional.territory_core.foreign_conflict"
                     : "message.moveearth_addtional.territory_core.not_registered";

@@ -4,7 +4,8 @@ public enum S2HubTab {
     OVERVIEW(0),
     MEMBERS(1),
     ROLES(2),
-    DIPLOMACY(3);
+    DIPLOMACY(3),
+    SIEGE(4);
 
     private final int networkId;
 
