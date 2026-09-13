@@ -65,8 +65,9 @@ public final class WarnauticsC4Placement {
         UUID actorNation = nations.nationIdFor(player.getUUID()).orElse(null);
         UUID defenderNation = TerritorySavedData.get(level.getServer())
                 .controllingNation(level.dimension().location(), support).orElse(null);
-        if (actorNation == null || defenderNation == null || actorNation.equals(defenderNation)
-                || nations.relation(actorNation, defenderNation) != NationSavedData.DiplomacyRelation.HOSTILE) {
+        if (defenderNation == null || defenderNation.equals(actorNation)
+                || (actorNation != null && nations.relation(actorNation, defenderNation)
+                != NationSavedData.DiplomacyRelation.HOSTILE)) {
             return false;
         }
         return !SiegeService.peaceTruceBlocks(new SiegeService.AttackAttribution(
@@ -99,7 +100,7 @@ public final class WarnauticsC4Placement {
                             "C4は敵対国家の補強された外面にだけ設置できます。")));
             return;
         }
-        if (actorNation != null) record(level, chargePos, support, player, actorNation);
+        record(level, chargePos, support, player, actorNation);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -109,7 +110,6 @@ public final class WarnauticsC4Placement {
                 || !(event.getLevel() instanceof ServerLevel level)
                 || !isC4(event.getPlacedBlock())) return;
         UUID nationId = NationSavedData.get(level.getServer()).nationIdFor(player.getUUID()).orElse(null);
-        if (nationId == null) return;
         BlockPos support = support(event.getPos(), event.getPlacedBlock());
         record(level, event.getPos(), support, player, nationId);
     }
@@ -120,7 +120,7 @@ public final class WarnauticsC4Placement {
                 chargePos, support, player.getUUID(), nationId, level.getGameTime());
         if (TerritorySavedData.get(level.getServer())
                 .controllingNation(level.dimension().location(), support)
-                .filter(defender -> !defender.equals(nationId)).isPresent()) {
+                .filter(defender -> nationId == null || !defender.equals(nationId)).isPresent()) {
             SiegeService.recordAttack(new SiegeService.AttackAttribution(
                     nationId, player.getUUID(), "warnautics_c4_placed"), level, support, false);
         }

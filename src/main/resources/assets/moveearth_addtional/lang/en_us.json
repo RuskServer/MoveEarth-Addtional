@@ -228,6 +228,9 @@
   "tooltip.moveearth_addtional.welding_tool.material": "Off hand: Cobblestone / Copper / Iron / Gold / Diamond",
   "tooltip.moveearth_addtional.welding_tool.brush": "Scroll: batch area 1×1 / 3×3 / 5×5",
   "key.moveearth_addtional.reinforcement_overlay": "Toggle Reinforcement Overlay",
+  "key.moveearth_addtional.map_territories": "Toggle Map Territories",
+  "message.moveearth_addtional.map_territories.enabled": "Map territory overlay enabled",
+  "message.moveearth_addtional.map_territories.disabled": "Map territory overlay disabled",
   "overlay.moveearth_addtional.reinforcement.unreinforced": "× UNREINFORCED",
   "overlay.moveearth_addtional.reinforcement.reinforced": "✓ REINFORCED",
   "overlay.moveearth_addtional.reinforcement.curing": "⌛ REINFORCEMENT CURING",
@@ -511,5 +514,11 @@
   "screen.moveearth_addtional.notifications.result.minecraft_in_use": "This Minecraft account is already linked to another Discord account",
   "screen.moveearth_addtional.notifications.result.discord_in_use": "This Discord account is already linked to another Minecraft account",
   "screen.moveearth_addtional.notifications.result.account_conflict": "Account verification conflicts with an existing link",
-  "message.moveearth_addtional.warnautics.cruise_disabled": "Cruise missiles are disabled on this server."
+  "message.moveearth_addtional.warnautics.cruise_disabled": "Cruise missiles are disabled on this server.",
+  "title.moveearth_addtional.territory.wilderness": "Wilderness",
+  "title.moveearth_addtional.territory.wilderness.subtitle": "Unclaimed Territory",
+  "title.moveearth_addtional.territory.relation.own": "Your Territory",
+  "title.moveearth_addtional.territory.relation.allied": "Allied Territory",
+  "title.moveearth_addtional.territory.relation.hostile": "Hostile Territory",
+  "title.moveearth_addtional.territory.relation.foreign": "Foreign Territory"
 }

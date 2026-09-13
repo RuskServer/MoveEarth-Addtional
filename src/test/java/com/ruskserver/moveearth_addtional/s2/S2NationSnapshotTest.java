@@ -95,8 +95,9 @@ class S2NationSnapshotTest {
     @Test
     void snapshotCopiesAndClampsSiegeViews() {
         var siegeId = java.util.UUID.randomUUID();
+        var defenderId = java.util.UUID.randomUUID();
         var sieges = new java.util.ArrayList<S2NationSnapshot.SiegeView>();
-        sieges.add(new S2NationSnapshot.SiegeView(siegeId, "Blue Nation", "BLU", true,
+        sieges.add(new S2NationSnapshot.SiegeView(siegeId, defenderId, "Blue Nation", "BLU", true, true,
                 S2NationSnapshot.SiegePhase.ROLLING, 36000L, "minecraft:overworld",
                 10, 64, -20, 2200, 2000, 0L, 0L, 0, true));
         S2NationSnapshot snapshot = new S2NationSnapshot(4, "Rusk", false, true,
@@ -106,6 +107,8 @@ class S2NationSnapshotTest {
 
         assertEquals(1, snapshot.sieges().size());
         assertEquals(siegeId, snapshot.sieges().getFirst().id());
+        assertEquals(defenderId, snapshot.sieges().getFirst().opponentNationId());
+        assertTrue(snapshot.sieges().getFirst().individualAttacker());
         assertEquals(2000, snapshot.sieges().getFirst().coreHealth());
         assertTrue(snapshot.sieges().getFirst().offlineDefenseActive());
     }

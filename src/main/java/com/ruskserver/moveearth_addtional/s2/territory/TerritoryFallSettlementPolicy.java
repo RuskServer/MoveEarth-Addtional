@@ -21,6 +21,12 @@ public final class TerritoryFallSettlementPolicy {
         return new Decision(Outcome.OUTPOST_NEUTRALIZED, 0);
     }
 
+    /** A player without a nation can defeat an outpost, but cannot own its territory. */
+    public static Decision decideIndividual(boolean capital) {
+        return capital ? new Decision(Outcome.CAPITAL_REBUILDING, 0)
+                : new Decision(Outcome.OUTPOST_NEUTRALIZED, 0);
+    }
+
     public enum Outcome { CAPITAL_REBUILDING, OUTPOST_OCCUPIED, OUTPOST_NEUTRALIZED }
     public record Decision(Outcome outcome, int radius) { }
 }

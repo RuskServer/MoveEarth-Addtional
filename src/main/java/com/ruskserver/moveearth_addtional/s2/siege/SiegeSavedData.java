@@ -22,7 +22,7 @@ import java.util.function.Function;
 /** Persistent attacker/defender/core scoped Siege timers. */
 public final class SiegeSavedData extends SavedData {
     private final Map<SiegeKey, SiegeRecord> active = new LinkedHashMap<>();
-    private final Map<NationPair, Long> retryCooldowns = new LinkedHashMap<>();
+    private final Map<AttackerPair, Long> retryCooldowns = new LinkedHashMap<>();
     private final Map<UUID, FallenRecord> fallen = new LinkedHashMap<>();
     private final Map<UUID, Long> nationTruces = new LinkedHashMap<>();
     private final Map<UUID, Long> coreTruces = new LinkedHashMap<>();
@@ -31,36 +31,44 @@ public final class SiegeSavedData extends SavedData {
 
     public AttemptResult registerAttempt(UUID attackerNation, TerritorySavedData.CoreRecord core,
                                          boolean effectiveDamage, boolean offlineDefenseAllowed) {
-        if (attackerNation == null || core == null || attackerNation.equals(core.nationId())) {
+        return registerAttempt(attackerNation, false, core, effectiveDamage, offlineDefenseAllowed);
+    }
+
+    public AttemptResult registerAttempt(UUID attackerId, boolean individualAttacker,
+                                         TerritorySavedData.CoreRecord core,
+                                         boolean effectiveDamage, boolean offlineDefenseAllowed) {
+        if (attackerId == null || core == null
+                || (!individualAttacker && attackerId.equals(core.nationId()))) {
             return new AttemptResult(AttemptStatus.IGNORED, null);
         }
         if (isNationSettlementProtected(core.nationId()) || isCoreSettlementProtected(core.id())) {
             return new AttemptResult(AttemptStatus.SETTLEMENT_TRUCE, null);
         }
-        if (isPeaceTruceActive(attackerNation, core.nationId())) {
+        if (!individualAttacker && isPeaceTruceActive(attackerId, core.nationId())) {
             return new AttemptResult(AttemptStatus.PEACE_TRUCE, null);
         }
-        SiegeKey key = new SiegeKey(attackerNation, core.nationId(), core.id());
+        SiegeKey key = new SiegeKey(attackerId, individualAttacker, core.nationId(), core.id());
         SiegeRecord current = active.get(key);
         if (current != null) {
             if (!effectiveDamage) return new AttemptResult(AttemptStatus.ACTIVE_UNCHANGED, current);
             SiegeRecord updated = current.withTimer(SiegeTimerPolicy.Phase.ROLLING,
                     S2TerritoryConfig.siegeRollingTicks());
             active.put(key, updated);
-            retryCooldowns.remove(new NationPair(attackerNation, core.nationId()));
+            retryCooldowns.remove(new AttackerPair(attackerId, individualAttacker, core.nationId()));
             setDirty();
             return new AttemptResult(current.phase() == SiegeTimerPolicy.Phase.INITIAL_LOCK
                     ? AttemptStatus.ROLLING_STARTED : AttemptStatus.ROLLING_EXTENDED, updated);
         }
 
-        NationPair pair = new NationPair(attackerNation, core.nationId());
+        AttackerPair pair = new AttackerPair(attackerId, individualAttacker, core.nationId());
         if (!effectiveDamage && retryCooldowns.getOrDefault(pair, 0L) > 0L) {
             return new AttemptResult(AttemptStatus.RETRY_COOLDOWN, null);
         }
         SiegeTimerPolicy.State state = SiegeTimerPolicy.begin(effectiveDamage,
                 S2TerritoryConfig.siegeInitialLockTicks(), S2TerritoryConfig.siegeRollingTicks());
-        SiegeRecord created = new SiegeRecord(UUID.randomUUID(), attackerNation, core.nationId(), core.id(),
-                core.dimension(), core.pos(), state.phase(), state.remainingTicks(), offlineDefenseAllowed);
+        SiegeRecord created = new SiegeRecord(UUID.randomUUID(), attackerId, core.nationId(), core.id(),
+                core.dimension(), core.pos(), state.phase(), state.remainingTicks(), offlineDefenseAllowed,
+                individualAttacker);
         active.put(key, created);
         if (effectiveDamage) retryCooldowns.remove(pair);
         setDirty();
@@ -94,7 +102,8 @@ public final class SiegeSavedData extends SavedData {
                 iterator.remove();
                 if (current.phase() == SiegeTimerPolicy.Phase.INITIAL_LOCK) {
                     initialExpired.add(current);
-                    retryCooldowns.put(new NationPair(current.attackerNation(), current.defenderNation()),
+                    retryCooldowns.put(new AttackerPair(current.attackerNation(), current.individualAttacker(),
+                                    current.defenderNation()),
                             S2TerritoryConfig.siegeRetryCooldownTicks());
                 } else {
                     rollingExpired.add(current);
@@ -110,7 +119,7 @@ public final class SiegeSavedData extends SavedData {
 
     public List<SiegeRecord> activeFor(UUID nationId) {
         return active.values().stream()
-                .filter(record -> record.attackerNation().equals(nationId)
+                .filter(record -> (!record.individualAttacker() && record.attackerNation().equals(nationId))
                         || record.defenderNation().equals(nationId))
                 .sorted(Comparator.comparing(SiegeRecord::remainingTicks))
                 .toList();
@@ -122,7 +131,7 @@ public final class SiegeSavedData extends SavedData {
         if (existing != null) return new FallenResult(false, existing);
         FallenRecord created = new FallenRecord(siege.id(), siege.attackerNation(), siege.defenderNation(),
                 core.id(), core.dimension(), core.pos(), core.type(), core.radius(),
-                S2TerritoryConfig.siegePostFallTicks(), 0L, 0, false);
+                S2TerritoryConfig.siegePostFallTicks(), 0L, 0, false, siege.individualAttacker());
         active.entrySet().removeIf(entry -> entry.getValue().coreId().equals(core.id()));
         fallen.put(core.id(), created);
         setDirty();
@@ -176,7 +185,7 @@ public final class SiegeSavedData extends SavedData {
     public List<FallenRecord> fallenFor(UUID nationId) {
         return fallen.values().stream()
                 .filter(record -> !record.finalized())
-                .filter(record -> record.attackerNation().equals(nationId)
+                .filter(record -> (!record.individualAttacker() && record.attackerNation().equals(nationId))
                         || record.defenderNation().equals(nationId))
                 .sorted(Comparator.comparing(FallenRecord::remainingTicks))
                 .toList();
@@ -184,6 +193,26 @@ public final class SiegeSavedData extends SavedData {
 
     public boolean isNationLocked(UUID nationId) {
         return !activeFor(nationId).isEmpty() || !fallenFor(nationId).isEmpty();
+    }
+
+    public List<SiegeRecord> activeForPlayer(UUID playerId) {
+        return active.values().stream()
+                .filter(SiegeRecord::individualAttacker)
+                .filter(record -> record.attackerNation().equals(playerId))
+                .sorted(Comparator.comparing(SiegeRecord::remainingTicks)).toList();
+    }
+
+    public boolean hasActiveIndividualAttack(UUID playerId, UUID coreId) {
+        return playerId != null && coreId != null && active.values().stream()
+                .anyMatch(record -> record.individualAttacker()
+                        && record.attackerNation().equals(playerId) && record.coreId().equals(coreId));
+    }
+
+    public List<FallenRecord> fallenForPlayer(UUID playerId) {
+        return fallen.values().stream().filter(record -> !record.finalized())
+                .filter(FallenRecord::individualAttacker)
+                .filter(record -> record.attackerNation().equals(playerId))
+                .sorted(Comparator.comparing(FallenRecord::remainingTicks)).toList();
     }
 
     public boolean isCoreLocked(UUID coreId) {
@@ -226,9 +255,9 @@ public final class SiegeSavedData extends SavedData {
     }
 
     public boolean hasConflictBetween(UUID firstNation, UUID secondNation) {
-        return active.values().stream().anyMatch(record -> sameParties(record.attackerNation,
+        return active.values().stream().anyMatch(record -> !record.individualAttacker() && sameParties(record.attackerNation,
                 record.defenderNation, firstNation, secondNation))
-                || fallen.values().stream().anyMatch(record -> sameParties(record.attackerNation,
+                || fallen.values().stream().anyMatch(record -> !record.individualAttacker() && sameParties(record.attackerNation,
                 record.defenderNation, firstNation, secondNation));
     }
 
@@ -247,17 +276,21 @@ public final class SiegeSavedData extends SavedData {
     }
 
     public void startRetryCooldown(UUID attackerNation, UUID defenderNation, long ticks) {
-        if (attackerNation == null || defenderNation == null || ticks <= 0L) return;
-        retryCooldowns.merge(new NationPair(attackerNation, defenderNation), ticks, Math::max);
+        startRetryCooldown(attackerNation, false, defenderNation, ticks);
+    }
+
+    public void startRetryCooldown(UUID attackerId, boolean individualAttacker, UUID defenderNation, long ticks) {
+        if (attackerId == null || defenderNation == null || ticks <= 0L) return;
+        retryCooldowns.merge(new AttackerPair(attackerId, individualAttacker, defenderNation), ticks, Math::max);
         setDirty();
     }
 
     public void removeNationState(UUID nationId) {
-        boolean changed = active.values().removeIf(record -> record.attackerNation.equals(nationId)
+        boolean changed = active.values().removeIf(record -> !record.individualAttacker && record.attackerNation.equals(nationId)
                 || record.defenderNation.equals(nationId));
-        changed |= fallen.values().removeIf(record -> record.attackerNation.equals(nationId)
+        changed |= fallen.values().removeIf(record -> !record.individualAttacker && record.attackerNation.equals(nationId)
                 || record.defenderNation.equals(nationId));
-        changed |= retryCooldowns.entrySet().removeIf(entry -> entry.getKey().attacker.equals(nationId)
+        changed |= retryCooldowns.entrySet().removeIf(entry -> (!entry.getKey().individual && entry.getKey().attacker.equals(nationId))
                 || entry.getKey().defender.equals(nationId));
         changed |= peaceTruces.entrySet().removeIf(entry -> entry.getKey().first.equals(nationId)
                 || entry.getKey().second.equals(nationId));
@@ -284,10 +317,10 @@ public final class SiegeSavedData extends SavedData {
 
     public ConflictEndResult endConflictsBetween(UUID firstNation, UUID secondNation) {
         List<SiegeRecord> endedActive = active.values().stream()
-                .filter(record -> sameParties(record.attackerNation, record.defenderNation,
+                .filter(record -> !record.individualAttacker() && sameParties(record.attackerNation, record.defenderNation,
                         firstNation, secondNation)).toList();
         List<FallenRecord> endedFallen = fallen.values().stream()
-                .filter(record -> sameParties(record.attackerNation, record.defenderNation,
+                .filter(record -> !record.individualAttacker() && sameParties(record.attackerNation, record.defenderNation,
                         firstNation, secondNation)).toList();
         if (!endedActive.isEmpty()) active.values().removeAll(endedActive);
         if (!endedFallen.isEmpty()) fallen.values().removeAll(endedFallen);
@@ -365,6 +398,7 @@ public final class SiegeSavedData extends SavedData {
             CompoundTag value = new CompoundTag();
             value.putUUID("Id", record.id());
             value.putUUID("Attacker", record.attackerNation());
+            value.putBoolean("IndividualAttacker", record.individualAttacker());
             value.putUUID("Defender", record.defenderNation());
             value.putUUID("Core", record.coreId());
             value.putString("Dimension", record.dimension().toString());
@@ -379,6 +413,7 @@ public final class SiegeSavedData extends SavedData {
         for (var entry : retryCooldowns.entrySet()) {
             CompoundTag value = new CompoundTag();
             value.putUUID("Attacker", entry.getKey().attacker());
+            value.putBoolean("IndividualAttacker", entry.getKey().individual());
             value.putUUID("Defender", entry.getKey().defender());
             value.putLong("Remaining", entry.getValue());
             cooldownTag.add(value);
@@ -389,6 +424,7 @@ public final class SiegeSavedData extends SavedData {
             CompoundTag value = new CompoundTag();
             value.putUUID("Siege", record.siegeId());
             value.putUUID("Attacker", record.attackerNation());
+            value.putBoolean("IndividualAttacker", record.individualAttacker());
             value.putUUID("Defender", record.defenderNation());
             value.putUUID("Core", record.coreId());
             value.putString("Dimension", record.dimension().toString());
@@ -437,8 +473,9 @@ public final class SiegeSavedData extends SavedData {
                         ResourceLocation.parse(value.getString("Dimension")), BlockPos.of(value.getLong("Pos")),
                         SiegeTimerPolicy.Phase.valueOf(value.getString("Phase")),
                         Math.max(1L, value.getLong("Remaining")),
-                        value.getBoolean("OfflineDefenseAllowed"));
-                data.active.put(new SiegeKey(record.attackerNation(), record.defenderNation(), record.coreId()), record);
+                        value.getBoolean("OfflineDefenseAllowed"), value.getBoolean("IndividualAttacker"));
+                data.active.put(new SiegeKey(record.attackerNation(), record.individualAttacker(),
+                        record.defenderNation(), record.coreId()), record);
             } catch (IllegalArgumentException ignored) { }
         }
         ListTag cooldownTag = tag.getList("RetryCooldowns", Tag.TAG_COMPOUND);
@@ -446,7 +483,8 @@ public final class SiegeSavedData extends SavedData {
             CompoundTag value = cooldownTag.getCompound(index);
             long remaining = value.getLong("Remaining");
             if (remaining > 0L) data.retryCooldowns.put(
-                    new NationPair(value.getUUID("Attacker"), value.getUUID("Defender")), remaining);
+                    new AttackerPair(value.getUUID("Attacker"), value.getBoolean("IndividualAttacker"),
+                            value.getUUID("Defender")), remaining);
         }
         ListTag fallenTag = tag.getList("Fallen", Tag.TAG_COMPOUND);
         for (int index = 0; index < fallenTag.size(); index++) {
@@ -458,7 +496,7 @@ public final class SiegeSavedData extends SavedData {
                         TerritorySavedData.CoreType.valueOf(value.getString("CoreType")),
                         Math.max(0, value.getInt("Radius")), Math.max(0L, value.getLong("Remaining")),
                         Math.max(0L, value.getLong("Capture")), Math.max(0, value.getInt("Stage")),
-                        value.getBoolean("Finalized"));
+                        value.getBoolean("Finalized"), value.getBoolean("IndividualAttacker"));
                 data.fallen.put(record.coreId(), record);
             } catch (IllegalArgumentException ignored) { }
         }
@@ -505,24 +543,24 @@ public final class SiegeSavedData extends SavedData {
     public record ConflictEndResult(List<SiegeRecord> active, List<FallenRecord> fallen) { }
     public record SiegeRecord(UUID id, UUID attackerNation, UUID defenderNation, UUID coreId,
                               ResourceLocation dimension, BlockPos corePos, SiegeTimerPolicy.Phase phase,
-                              long remainingTicks, boolean offlineDefenseAllowed) {
+                              long remainingTicks, boolean offlineDefenseAllowed, boolean individualAttacker) {
         public SiegeRecord withTimer(SiegeTimerPolicy.Phase nextPhase, long nextRemaining) {
             return new SiegeRecord(id, attackerNation, defenderNation, coreId, dimension, corePos,
-                    nextPhase, Math.max(1L, nextRemaining), offlineDefenseAllowed);
+                    nextPhase, Math.max(1L, nextRemaining), offlineDefenseAllowed, individualAttacker);
         }
     }
     public record FallenRecord(UUID siegeId, UUID attackerNation, UUID defenderNation, UUID coreId,
                                ResourceLocation dimension, BlockPos corePos,
                                TerritorySavedData.CoreType coreType, int radius, long remainingTicks,
-                               long captureTicks, int stage, boolean finalized) {
+                               long captureTicks, int stage, boolean finalized, boolean individualAttacker) {
         public FallenRecord withProgress(long remaining, long capture, int nextStage, boolean nextFinalized) {
             return new FallenRecord(siegeId, attackerNation, defenderNation, coreId, dimension, corePos,
                     coreType, radius, Math.max(0L, remaining), Math.max(0L, capture),
-                    Math.max(0, Math.min(3, nextStage)), nextFinalized);
+                    Math.max(0, Math.min(3, nextStage)), nextFinalized, individualAttacker);
         }
     }
-    private record SiegeKey(UUID attacker, UUID defender, UUID core) { }
-    private record NationPair(UUID attacker, UUID defender) { }
+    private record SiegeKey(UUID attacker, boolean individual, UUID defender, UUID core) { }
+    private record AttackerPair(UUID attacker, boolean individual, UUID defender) { }
     private record OfflineDamageKey(ResourceLocation dimension, long pos) { }
     private record DamageCarry(int units, int denominator) { }
     private record DiplomaticPair(UUID first, UUID second) {

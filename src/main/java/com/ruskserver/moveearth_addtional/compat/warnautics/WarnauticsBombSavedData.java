@@ -66,7 +66,7 @@ public final class WarnauticsBombSavedData extends SavedData {
             entry.putLong("Pos", placement.pos().asLong());
             entry.putString("Weapon", placement.weaponPath());
             entry.putUUID("Placer", placement.placerId());
-            entry.putUUID("Nation", placement.nationId());
+            if (placement.nationId() != null) entry.putUUID("Nation", placement.nationId());
             if (placement.subLevelId() != null) entry.putUUID("SubLevel", placement.subLevelId());
             entry.putLong("PlacedTick", placement.placedTick());
             list.add(entry);
@@ -80,11 +80,12 @@ public final class WarnauticsBombSavedData extends SavedData {
         ListTag list = tag.getList("Placements", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             CompoundTag entry = list.getCompound(i);
-            if (!entry.hasUUID("Placer") || !entry.hasUUID("Nation")) continue;
+            if (!entry.hasUUID("Placer")) continue;
             BlockPos pos = BlockPos.of(entry.getLong("Pos"));
             String weapon = entry.getString("Weapon");
             data.placements.put(pos.asLong(), new Placement(
-                    pos, weapon, entry.getUUID("Placer"), entry.getUUID("Nation"),
+                    pos, weapon, entry.getUUID("Placer"),
+                    entry.hasUUID("Nation") ? entry.getUUID("Nation") : null,
                     entry.hasUUID("SubLevel") ? entry.getUUID("SubLevel") : null,
                     entry.getLong("PlacedTick")));
         }

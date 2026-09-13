@@ -36,6 +36,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /** Runtime-only bridge to Create Warnautics' public block-detonation hooks. */
@@ -233,19 +234,19 @@ public final class WarnauticsReinforcementCompat {
 
     private static SiegeService.AttackAttribution playerAttribution(ServerPlayer player) {
         if (player == null) return null;
-        return NationSavedData.get(player.server).nationIdFor(player.getUUID())
-                .map(nation -> new SiegeService.AttackAttribution(
-                        nation, player.getUUID(), "warnautics_entity"))
-                .orElse(null);
+        UUID nation = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
+        return new SiegeService.AttackAttribution(nation, player.getUUID(), "warnautics_entity");
     }
 
     private static SiegeService.AttackAttribution sourceAttribution(ServerLevel level, Vec3 center,
                                                                     Entity source, ServerPlayer fallbackPlayer) {
         if (source != null) {
             var persistent = source.getPersistentData();
-            if (persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_NATION)) {
+            if (persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_NATION)
+                    || persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_ACTOR)) {
                 return new SiegeService.AttackAttribution(
-                        persistent.getUUID(WarnauticsWeaponEvents.ATTRIBUTION_NATION),
+                        persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_NATION)
+                                ? persistent.getUUID(WarnauticsWeaponEvents.ATTRIBUTION_NATION) : null,
                         persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_ACTOR)
                                 ? persistent.getUUID(WarnauticsWeaponEvents.ATTRIBUTION_ACTOR) : null,
                         "warnautics_aerial_bomb");

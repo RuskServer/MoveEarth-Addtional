@@ -144,6 +144,7 @@ public record S2NationSnapshot(
     }
 
     public record SiegeView(UUID id, UUID opponentNationId, String opponentName, String opponentTag, boolean attacker,
+                            boolean individualAttacker,
                             SiegePhase phase, long remainingTicks, String dimension,
                             int coreX, int coreY, int coreZ, int coreHealth, int coreMaximumHealth,
                             long counterCaptureTicks, long counterRequiredTicks, int fallStage,
@@ -168,7 +169,7 @@ public record S2NationSnapshot(
                          int coreX, int coreY, int coreZ, int coreHealth, int coreMaximumHealth,
                          long counterCaptureTicks, long counterRequiredTicks, int fallStage,
                          boolean offlineDefenseActive) {
-            this(id, new UUID(0L, 0L), opponentName, opponentTag, attacker, phase, remainingTicks,
+            this(id, new UUID(0L, 0L), opponentName, opponentTag, attacker, false, phase, remainingTicks,
                     dimension, coreX, coreY, coreZ, coreHealth, coreMaximumHealth,
                     counterCaptureTicks, counterRequiredTicks, fallStage, offlineDefenseActive);
         }

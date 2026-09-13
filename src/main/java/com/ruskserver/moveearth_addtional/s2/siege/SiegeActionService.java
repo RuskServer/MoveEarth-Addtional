@@ -142,18 +142,43 @@ public final class SiegeActionService {
         NationSavedData nations = NationSavedData.get(player.server);
         UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         if (expectedRevision != nations.revision()) return Result.STALE;
+        SiegeSavedData sieges = SiegeSavedData.get(player.server);
+        SiegeSavedData.SiegeRecord active = sieges.activeById(siegeId).orElse(null);
+        if (active != null && active.individualAttacker()
+                && active.attackerNation().equals(player.getUUID())) {
+            sieges.removeActive(siegeId);
+            sieges.startRetryCooldown(active.attackerNation(), true, active.defenderNation(),
+                    S2TerritoryConfig.siegeRetryCooldownTicks());
+            broadcastExit(player, active.attackerNation(), active.defenderNation(), true, true);
+            SiegeService.notifySiegeEnded(player.server, active.attackerNation(), true,
+                    active.defenderNation(), active.dimension(), active.corePos(), "attacker_withdrew");
+            return Result.ATTACK_WITHDRAWN;
+        }
+        SiegeSavedData.FallenRecord fallen = sieges.fallenBySiegeId(siegeId).orElse(null);
+        if (fallen != null && fallen.individualAttacker()
+                && fallen.attackerNation().equals(player.getUUID())) {
+            sieges.removeFallen(fallen.coreId());
+            sieges.startRetryCooldown(fallen.attackerNation(), true, fallen.defenderNation(),
+                    S2TerritoryConfig.siegeRetryCooldownTicks());
+            TerritorySavedData.get(player.server).recoverCore(fallen.coreId(),
+                    S2TerritoryConfig.siegeCounterRecoveryPercent())
+                    .ifPresent(core -> TerritoryCoreHealthService.syncCore(player.server, core));
+            SiegeService.syncFallVisuals(player.server, fallen);
+            broadcastExit(player, fallen.attackerNation(), fallen.defenderNation(), true, true);
+            SiegeService.notifySiegeEnded(player.server, fallen.attackerNation(), true,
+                    fallen.defenderNation(), fallen.dimension(), fallen.corePos(), "attacker_withdrew");
+            return Result.ATTACK_WITHDRAWN;
+        }
         if (nationId == null || !nations.can(player.getUUID(), S2Permission.MANAGE_SIEGE)) {
             return Result.NO_PERMISSION;
         }
-        SiegeSavedData sieges = SiegeSavedData.get(player.server);
-        SiegeSavedData.SiegeRecord active = sieges.activeById(siegeId).orElse(null);
         if (active != null) {
             if (active.attackerNation().equals(nationId)) {
                 sieges.removeActive(siegeId);
                 sieges.startRetryCooldown(active.attackerNation(), active.defenderNation(),
                         S2TerritoryConfig.siegeRetryCooldownTicks());
                 PeaceSavedData.get(player.server).removeBetween(active.attackerNation(), active.defenderNation());
-                broadcastExit(player, active.attackerNation(), active.defenderNation(), true);
+                broadcastExit(player, active.attackerNation(), active.defenderNation(), true, false);
                 SiegeService.notifySiegeEnded(player.server, active.attackerNation(), active.defenderNation(),
                         active.dimension(), active.corePos(), "attacker_withdrew");
                 return Result.ATTACK_WITHDRAWN;
@@ -165,15 +190,14 @@ public final class SiegeActionService {
             if (core == null) return Result.CONFLICT_NOT_FOUND;
             TerritorySavedData.CoreRecord depleted = territories.damageCore(
                     core.dimension(), core.pos(), core.health()).orElse(core);
-            SiegeSavedData.FallenResult fallen = sieges.markFallen(active, depleted);
-            if (fallen.fallen() != null) {
+            SiegeSavedData.FallenResult fallResult = sieges.markFallen(active, depleted);
+            if (fallResult.fallen() != null) {
                 territories.markCoreFallen(core.id(), false)
                         .ifPresent(value -> TerritoryCoreHealthService.syncCore(player.server, value));
-                SiegeService.broadcastFall(player.server, nations, fallen.fallen());
+                SiegeService.broadcastFall(player.server, nations, fallResult.fallen());
             }
             return Result.DEFENDER_SURRENDERED;
         }
-        SiegeSavedData.FallenRecord fallen = sieges.fallenBySiegeId(siegeId).orElse(null);
         if (fallen == null) return Result.CONFLICT_NOT_FOUND;
         if (fallen.attackerNation().equals(nationId)) {
             sieges.removeFallen(fallen.coreId());
@@ -183,7 +207,7 @@ public final class SiegeActionService {
                     S2TerritoryConfig.siegeCounterRecoveryPercent())
                     .ifPresent(core -> TerritoryCoreHealthService.syncCore(player.server, core));
             SiegeService.syncFallVisuals(player.server, fallen);
-            broadcastExit(player, fallen.attackerNation(), fallen.defenderNation(), true);
+            broadcastExit(player, fallen.attackerNation(), fallen.defenderNation(), true, false);
             SiegeService.notifySiegeEnded(player.server, fallen.attackerNation(), fallen.defenderNation(),
                     fallen.dimension(), fallen.corePos(), "attacker_withdrew");
             return Result.ATTACK_WITHDRAWN;
@@ -194,9 +218,9 @@ public final class SiegeActionService {
     }
 
     private static void broadcastExit(ServerPlayer player, UUID attackerId, UUID defenderId,
-                                      boolean attackerWithdrew) {
+                                      boolean attackerWithdrew, boolean individualAttacker) {
         NationSavedData nations = NationSavedData.get(player.server);
-        String attacker = nations.nation(attackerId).map(NationSavedData.Nation::name).orElse("?");
+        String attacker = SiegeService.attackerName(player.server, nations, attackerId, individualAttacker);
         String defender = nations.nation(defenderId).map(NationSavedData.Nation::name).orElse("?");
         player.server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
                 attackerWithdrew ? "message.moveearth_addtional.siege.attack_withdrawn"

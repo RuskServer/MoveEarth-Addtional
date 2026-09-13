@@ -49,6 +49,7 @@ final class S2PacketCodec {
             buffer.writeUtf(siege.opponentName(), 64);
             buffer.writeUtf(siege.opponentTag(), 12);
             buffer.writeBoolean(siege.attacker());
+            buffer.writeBoolean(siege.individualAttacker());
             buffer.writeByte(siege.phase().ordinal());
             buffer.writeVarLong(siege.remainingTicks());
             buffer.writeUtf(siege.dimension(), 128);
@@ -159,7 +160,7 @@ final class S2PacketCodec {
         List<S2NationSnapshot.SiegeView> sieges = new ArrayList<>(siegeCount);
         for (int index = 0; index < siegeCount; index++) {
             sieges.add(new S2NationSnapshot.SiegeView(buffer.readUUID(), buffer.readUUID(), buffer.readUtf(64),
-                    buffer.readUtf(12), buffer.readBoolean(),
+                    buffer.readUtf(12), buffer.readBoolean(), buffer.readBoolean(),
                     S2NationSnapshot.SiegePhase.fromNetworkId(buffer.readUnsignedByte()),
                     Math.max(0L, buffer.readVarLong()), buffer.readUtf(128),
                     buffer.readInt(), buffer.readInt(), buffer.readInt(),

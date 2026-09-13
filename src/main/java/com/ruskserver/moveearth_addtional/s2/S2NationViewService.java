@@ -31,9 +31,15 @@ public final class S2NationViewService {
                     .map(invitedNation -> new S2NationSnapshot.InvitationView(
                             invitedNation.id(), invitedNation.name(), invitedNation.tag()))
                     .toList();
+            TerritorySavedData territories = TerritorySavedData.get(player.server);
+            SiegeSavedData siegeData = SiegeSavedData.get(player.server);
+            var soloSieges = individualSieges(player, data, territories, siegeData);
+            String siegeStatus = soloSieges.isEmpty() ? "NO ACTIVE SIEGE"
+                    : "SOLO " + soloSieges.getFirst().phase().name().replace('_', ' ')
+                    + " • " + formatRemaining(soloSieges.getFirst().remainingTicks());
             return new S2NationSnapshot(data.revision(), player.getGameProfile().getName(),
                     serverAdmin, false, "", "", "", 0L, 0, 0, 0, 0, 0L,
-                    "NO ACTIVE SIEGE", java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), invitations,
+                    siegeStatus, soloSieges, java.util.List.of(), java.util.List.of(), java.util.List.of(), invitations,
                     java.util.List.of());
         }
 
@@ -82,7 +88,8 @@ public final class S2NationViewService {
         java.util.List<S2NationSnapshot.SiegeView> sieges = new java.util.ArrayList<>();
         sieges.addAll(siegeData.activeFor(nation.id()).stream().map(siege -> {
             boolean attacker = siege.attackerNation().equals(nation.id());
-            var opponent = data.nation(attacker ? siege.defenderNation() : siege.attackerNation()).orElse(null);
+            var opponent = siege.individualAttacker() && !attacker ? null
+                    : data.nation(attacker ? siege.defenderNation() : siege.attackerNation()).orElse(null);
             var core = territories.cores().stream().filter(candidate -> candidate.id().equals(siege.coreId()))
                     .findFirst().orElse(null);
             net.minecraft.server.level.ServerLevel coreLevel = player.server.getLevel(
@@ -93,8 +100,12 @@ public final class S2NationViewService {
                     .divisor(coreLevel, core) > 1;
             UUID opponentId = attacker ? siege.defenderNation() : siege.attackerNation();
             return new S2NationSnapshot.SiegeView(siege.id(), opponentId,
-                    opponent == null ? "Unknown" : opponent.name(),
-                    opponent == null ? "" : opponent.tag(), attacker,
+                    siege.individualAttacker() && !attacker
+                            ? com.ruskserver.moveearth_addtional.s2.siege.SiegeService.attackerName(
+                            player.server, data, siege.attackerNation(), true)
+                            : opponent == null ? "Unknown" : opponent.name(),
+                    siege.individualAttacker() ? "SOLO" : opponent == null ? "" : opponent.tag(), attacker,
+                    siege.individualAttacker(),
                     siege.phase() == SiegeTimerPolicy.Phase.ROLLING
                             ? S2NationSnapshot.SiegePhase.ROLLING : S2NationSnapshot.SiegePhase.INITIAL_LOCK,
                     siege.remainingTicks(), siege.dimension().toString(),
@@ -104,19 +115,30 @@ public final class S2NationViewService {
         }).toList());
         sieges.addAll(siegeData.fallenFor(nation.id()).stream().map(fallen -> {
             boolean attacker = fallen.attackerNation().equals(nation.id());
-            var opponent = data.nation(attacker ? fallen.defenderNation() : fallen.attackerNation()).orElse(null);
+            var opponent = fallen.individualAttacker() && !attacker ? null
+                    : data.nation(attacker ? fallen.defenderNation() : fallen.attackerNation()).orElse(null);
             var core = territories.cores().stream().filter(candidate -> candidate.id().equals(fallen.coreId()))
                     .findFirst().orElse(null);
             UUID opponentId = attacker ? fallen.defenderNation() : fallen.attackerNation();
             return new S2NationSnapshot.SiegeView(fallen.siegeId(), opponentId,
-                    opponent == null ? "Unknown" : opponent.name(), opponent == null ? "" : opponent.tag(),
-                    attacker, S2NationSnapshot.SiegePhase.FALLEN, fallen.remainingTicks(),
+                    fallen.individualAttacker() && !attacker
+                            ? com.ruskserver.moveearth_addtional.s2.siege.SiegeService.attackerName(
+                            player.server, data, fallen.attackerNation(), true)
+                            : opponent == null ? "Unknown" : opponent.name(),
+                    fallen.individualAttacker() ? "SOLO" : opponent == null ? "" : opponent.tag(),
+                    attacker, fallen.individualAttacker(), S2NationSnapshot.SiegePhase.FALLEN, fallen.remainingTicks(),
                     fallen.dimension().toString(), fallen.corePos().getX(), fallen.corePos().getY(),
                     fallen.corePos().getZ(), core == null ? 0 : core.health(),
                     core == null ? 1 : core.maximumHealth(), fallen.captureTicks(),
                     com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.siegeCounterCaptureTicks(),
                     fallen.stage(), false);
         }).toList());
+        for (S2NationSnapshot.SiegeView individual : individualSieges(player, data, territories, siegeData)) {
+            // A solo attacker may join the defending nation while the Siege is active. The
+            // persisted player identity remains authoritative for that player's own view.
+            sieges.removeIf(existing -> existing.id().equals(individual.id()));
+            sieges.add(individual);
+        }
         sieges.sort(Comparator.comparing(S2NationSnapshot.SiegeView::remainingTicks));
         var peaceProposals = com.ruskserver.moveearth_addtional.s2.siege.PeaceSavedData
                 .get(player.server).forNation(nation.id()).stream().map(proposal -> {
@@ -179,6 +201,45 @@ public final class S2NationViewService {
 
     public void sendHub(ServerPlayer player, S2HubTab tab) {
         PacketDistributor.sendToPlayer(player, new S2C_S2HubSnapshotPacket(tab, snapshotFor(player)));
+    }
+
+    private static java.util.List<S2NationSnapshot.SiegeView> individualSieges(
+            ServerPlayer player, NationSavedData nations, TerritorySavedData territories,
+            SiegeSavedData siegeData) {
+        java.util.List<S2NationSnapshot.SiegeView> result = new java.util.ArrayList<>();
+        result.addAll(siegeData.activeForPlayer(player.getUUID()).stream().map(siege -> {
+            NationSavedData.Nation defender = nations.nation(siege.defenderNation()).orElse(null);
+            TerritorySavedData.CoreRecord core = territories.cores().stream()
+                    .filter(candidate -> candidate.id().equals(siege.coreId())).findFirst().orElse(null);
+            net.minecraft.server.level.ServerLevel coreLevel = player.server.getLevel(
+                    net.minecraft.resources.ResourceKey.create(
+                            net.minecraft.core.registries.Registries.DIMENSION, siege.dimension()));
+            boolean offlineDefense = core != null && coreLevel != null
+                    && com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService
+                    .divisor(coreLevel, core) > 1;
+            return new S2NationSnapshot.SiegeView(siege.id(), siege.defenderNation(),
+                    defender == null ? "Unknown" : defender.name(), defender == null ? "" : defender.tag(),
+                    true, true, siege.phase() == SiegeTimerPolicy.Phase.ROLLING
+                    ? S2NationSnapshot.SiegePhase.ROLLING : S2NationSnapshot.SiegePhase.INITIAL_LOCK,
+                    siege.remainingTicks(), siege.dimension().toString(), siege.corePos().getX(),
+                    siege.corePos().getY(), siege.corePos().getZ(), core == null ? 0 : core.health(),
+                    core == null ? 1 : core.maximumHealth(), 0L, 0L, 0, offlineDefense);
+        }).toList());
+        result.addAll(siegeData.fallenForPlayer(player.getUUID()).stream().map(fallen -> {
+            NationSavedData.Nation defender = nations.nation(fallen.defenderNation()).orElse(null);
+            TerritorySavedData.CoreRecord core = territories.cores().stream()
+                    .filter(candidate -> candidate.id().equals(fallen.coreId())).findFirst().orElse(null);
+            return new S2NationSnapshot.SiegeView(fallen.siegeId(), fallen.defenderNation(),
+                    defender == null ? "Unknown" : defender.name(), defender == null ? "" : defender.tag(),
+                    true, true, S2NationSnapshot.SiegePhase.FALLEN, fallen.remainingTicks(),
+                    fallen.dimension().toString(), fallen.corePos().getX(), fallen.corePos().getY(),
+                    fallen.corePos().getZ(), core == null ? 0 : core.health(),
+                    core == null ? 1 : core.maximumHealth(), fallen.captureTicks(),
+                    com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.siegeCounterCaptureTicks(),
+                    fallen.stage(), false);
+        }).toList());
+        result.sort(Comparator.comparing(S2NationSnapshot.SiegeView::remainingTicks));
+        return java.util.List.copyOf(result);
     }
 
     private static String formatRemaining(long ticks) {

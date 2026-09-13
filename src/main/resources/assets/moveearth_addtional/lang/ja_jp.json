@@ -228,6 +228,9 @@
   "tooltip.moveearth_addtional.welding_tool.material": "オフハンド: 丸石 / 銅 / 鉄 / 金 / ダイヤ",
   "tooltip.moveearth_addtional.welding_tool.brush": "スクロール: 一括施工範囲 1×1 / 3×3 / 5×5",
   "key.moveearth_addtional.reinforcement_overlay": "補強施工オーバーレイ切替",
+  "key.moveearth_addtional.map_territories": "地図の領土表示を切替",
+  "message.moveearth_addtional.map_territories.enabled": "地図の領土表示を有効にしました",
+  "message.moveearth_addtional.map_territories.disabled": "地図の領土表示を無効にしました",
   "overlay.moveearth_addtional.reinforcement.unreinforced": "× 未補強",
   "overlay.moveearth_addtional.reinforcement.reinforced": "✓ 補強済み",
   "overlay.moveearth_addtional.reinforcement.curing": "⌛ 補強を硬化中",
@@ -511,5 +514,11 @@
   "screen.moveearth_addtional.notifications.result.minecraft_in_use": "このMinecraftアカウントは別のDiscordアカウントと連携済みです",
   "screen.moveearth_addtional.notifications.result.discord_in_use": "このDiscordアカウントは別のMinecraftアカウントと連携済みです",
   "screen.moveearth_addtional.notifications.result.account_conflict": "既存の本人確認情報と競合しています",
-  "message.moveearth_addtional.warnautics.cruise_disabled": "このサーバーでは巡航ミサイルを作成・使用できません。"
+  "message.moveearth_addtional.warnautics.cruise_disabled": "このサーバーでは巡航ミサイルを作成・使用できません。",
+  "title.moveearth_addtional.territory.wilderness": "荒野",
+  "title.moveearth_addtional.territory.wilderness.subtitle": "未領有地域",
+  "title.moveearth_addtional.territory.relation.own": "自国領",
+  "title.moveearth_addtional.territory.relation.allied": "同盟国領",
+  "title.moveearth_addtional.territory.relation.hostile": "敵国領",
+  "title.moveearth_addtional.territory.relation.foreign": "他国領"
 }

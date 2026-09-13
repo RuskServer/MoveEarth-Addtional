@@ -15,7 +15,8 @@
   ],
   "client": [
     "client.CustomHeadLayerMixin",
-    "client.HumanoidArmorLayerMixin"
+    "client.HumanoidArmorLayerMixin",
+    "client.MapInstanceTerritoryOverlayMixin"
   ],
   "injectors": {
     "defaultRequire": 1

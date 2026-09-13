@@ -71,11 +71,9 @@ public final class WarnauticsWeaponEvents {
         String path = blockPath(event.getPlacedBlock());
         if (!AERIAL_BOMBS.contains(path)) return;
         UUID nationId = NationSavedData.get(level.getServer()).nationIdFor(player.getUUID()).orElse(null);
-        if (nationId != null) {
-            WarnauticsBombSavedData.get(level).put(
-                    event.getPos(), path, player.getUUID(), nationId,
-                    WarnauticsSableBombCompat.subLevelId(level, event.getPos()), level.getGameTime());
-        }
+        WarnauticsBombSavedData.get(level).put(
+                event.getPos(), path, player.getUUID(), nationId,
+                WarnauticsSableBombCompat.subLevelId(level, event.getPos()), level.getGameTime());
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -121,7 +119,7 @@ public final class WarnauticsWeaponEvents {
         WarnauticsBombSavedData.Placement placement = WarnauticsBombSavedData.get(level)
                 .claimNearest(level, entity.position(), path, level.getGameTime());
         if (placement == null) return;
-        persistent.putUUID(ATTRIBUTION_NATION, placement.nationId());
+        if (placement.nationId() != null) persistent.putUUID(ATTRIBUTION_NATION, placement.nationId());
         persistent.putUUID(ATTRIBUTION_ACTOR, placement.placerId());
     }
 

@@ -174,15 +174,16 @@ public final class TerritorySavedData extends SavedData {
     /** Finalizes a fallen core without deleting any blocks, containers, or items in its territory. */
     public Optional<SettlementResult> settleFallenCore(UUID coreId, UUID attackerNation,
                                                         double recoveryPercent) {
-        if (attackerNation == null) return Optional.empty();
         for (Map.Entry<CoreKey, CoreRecord> value : cores.entrySet()) {
             CoreRecord current = value.getValue();
             if (!current.id.equals(coreId) || (current.state != CoreState.FALLEN
                     && current.state != CoreState.DEFEATED)) continue;
-            TerritoryFallSettlementPolicy.Decision decision = TerritoryFallSettlementPolicy.decide(
-                    current.type == CoreType.CAPITAL, current.radius,
-                    radius -> conflicts(attackerNation, current.dimension,
-                            area(current.pos, radius), value.getKey()));
+            TerritoryFallSettlementPolicy.Decision decision = attackerNation == null
+                    ? TerritoryFallSettlementPolicy.decideIndividual(
+                            current.type == CoreType.CAPITAL)
+                    : TerritoryFallSettlementPolicy.decide(current.type == CoreType.CAPITAL, current.radius,
+                            radius -> conflicts(attackerNation, current.dimension,
+                                    area(current.pos, radius), value.getKey()));
             boolean occupied = decision.outcome()
                     == TerritoryFallSettlementPolicy.Outcome.OUTPOST_OCCUPIED;
             boolean rebuilding = decision.outcome()

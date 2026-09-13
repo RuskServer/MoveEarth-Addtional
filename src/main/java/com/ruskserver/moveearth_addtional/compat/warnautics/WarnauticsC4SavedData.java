@@ -40,7 +40,7 @@ public final class WarnauticsC4SavedData extends SavedData {
             entry.putLong("Pos", charge.pos().asLong());
             entry.putLong("Support", charge.support().asLong());
             entry.putUUID("Placer", charge.placerId());
-            entry.putUUID("Nation", charge.nationId());
+            if (charge.nationId() != null) entry.putUUID("Nation", charge.nationId());
             entry.putLong("PlacedTick", charge.placedTick());
             list.add(entry);
         }
@@ -53,11 +53,11 @@ public final class WarnauticsC4SavedData extends SavedData {
         ListTag list = tag.getList("Charges", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             CompoundTag entry = list.getCompound(i);
-            if (!entry.hasUUID("Placer") || !entry.hasUUID("Nation")) continue;
+            if (!entry.hasUUID("Placer")) continue;
             BlockPos pos = BlockPos.of(entry.getLong("Pos"));
             data.charges.put(pos.asLong(), new Charge(
                     pos, BlockPos.of(entry.getLong("Support")), entry.getUUID("Placer"),
-                    entry.getUUID("Nation"), entry.getLong("PlacedTick")));
+                    entry.hasUUID("Nation") ? entry.getUUID("Nation") : null, entry.getLong("PlacedTick")));
         }
         return data;
     }

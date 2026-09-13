@@ -107,7 +107,9 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         }
 
         Rect content = contentBounds(panel);
-        if (!snapshot.member()) drawUnaffiliated(graphics, content, mouseX, mouseY);
+        if (!snapshot.member() && tab == S2HubTab.SIEGE && !snapshot.sieges().isEmpty()) {
+            drawSieges(graphics, content, mouseX, mouseY);
+        } else if (!snapshot.member()) drawUnaffiliated(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.OVERVIEW) drawOverview(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.MEMBERS) drawMembers(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.ROLES) drawRoles(graphics, content, mouseX, mouseY);
@@ -421,7 +423,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             graphics.drawString(font, core, card.right() - 210, card.y() + 7, MUTED, false);
             int barX = card.x() + 13;
             int barY = card.y() + 42;
-            int barWidth = canManageSiege() || canManageDiplomacy() ? 286 : card.width() - 26;
+            boolean canWithdraw = canWithdraw(siege);
+            int barWidth = canWithdraw || canManageDiplomacy() ? 286 : card.width() - 26;
             graphics.fill(barX, barY, barX + barWidth, barY + 7, BAR_BACKGROUND);
             boolean fallen = siege.phase() == S2NationSnapshot.SiegePhase.FALLEN;
             int filled = fallen && siege.counterRequiredTicks() > 0L
@@ -434,20 +437,21 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                             / Math.max(1L, siege.counterRequiredTicks())))
                     : Component.literal(siege.coreHealth() + " / " + siege.coreMaximumHealth());
             graphics.drawCenteredString(font, barLabel, barX + barWidth / 2, barY - 1, TEXT);
-            if (canManageSiege() || canManageDiplomacy()) {
+            if (canWithdraw || canManageDiplomacy()) {
                 boolean enabled = pendingRequestId < 0;
                 Rect peace = siegePeaceBounds(card);
                 Rect surrender = siegeSurrenderBounds(card);
                 drawButton(graphics, font, peace,
                         Component.translatable("screen.moveearth_addtional.peace.propose"), SUCCESS,
-                        enabled && canManageDiplomacy() && peace.contains(mouseX, mouseY),
-                        enabled && canManageDiplomacy());
+                        enabled && !siege.individualAttacker() && canManageDiplomacy()
+                                && peace.contains(mouseX, mouseY),
+                        enabled && !siege.individualAttacker() && canManageDiplomacy());
                 drawButton(graphics, font, surrender,
                         Component.translatable(siege.attacker()
                                 ? "screen.moveearth_addtional.siege.withdraw"
                                 : "screen.moveearth_addtional.siege.surrender"), DANGER,
-                        enabled && canManageSiege() && surrender.contains(mouseX, mouseY),
-                        enabled && canManageSiege());
+                        enabled && canWithdraw && surrender.contains(mouseX, mouseY),
+                        enabled && canWithdraw);
             }
         }
         graphics.disableScissor();
@@ -628,7 +632,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 return true;
             }
         }
-        if (!snapshot.member() || tab == S2HubTab.OVERVIEW) {
+        if ((!snapshot.member() && tab != S2HubTab.SIEGE) || tab == S2HubTab.OVERVIEW) {
             Rect content = contentBounds(panel);
             if (!snapshot.member()) {
                 Rect create = new Rect(content.x() + 16,
@@ -739,8 +743,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
-        if (snapshot.member() && tab == S2HubTab.SIEGE
-                && (canManageSiege() || canManageDiplomacy())
+        if (tab == S2HubTab.SIEGE
+                && (snapshot.member() || !snapshot.sieges().isEmpty())
                 && pendingRequestId < 0) {
             Rect list = diplomacyListBounds(contentBounds(panel));
             if (list.contains(mouseX, mouseY)) {
@@ -769,12 +773,13 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
                 for (S2NationSnapshot.SiegeView siege : snapshot.sieges()) {
                     Rect card = siegeCard(list, row++);
-                    if (canManageDiplomacy() && siegePeaceBounds(card).contains(mouseX, mouseY)) {
+                    if (!siege.individualAttacker() && canManageDiplomacy()
+                            && siegePeaceBounds(card).contains(mouseX, mouseY)) {
                         minecraft.setScreen(new PeaceProposalScreen(snapshot.revision(),
                                 siege.opponentNationId(), siege.opponentName()));
                         return true;
                     }
-                    if (canManageSiege() && siegeSurrenderBounds(card).contains(mouseX, mouseY)) {
+                    if (canWithdraw(siege) && siegeSurrenderBounds(card).contains(mouseX, mouseY)) {
                         surrenderTargetId = siege.id();
                         surrenderTargetName = siege.opponentName();
                         return true;
@@ -788,7 +793,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         Rect content = contentBounds(panelBounds());
-        if (content.contains(mouseX, mouseY) && snapshot.member() && tab != S2HubTab.OVERVIEW) {
+        if (content.contains(mouseX, mouseY)
+                && (snapshot.member() || tab == S2HubTab.SIEGE) && tab != S2HubTab.OVERVIEW) {
             int rows = rowCount();
             Rect viewport = listBounds(content);
             int rowHeight = tab == S2HubTab.SIEGE ? SIEGE_ROW_HEIGHT : ROW_HEIGHT;
@@ -835,6 +841,9 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     private boolean canManageSiege() { return hasNationPermission(S2Permission.MANAGE_SIEGE); }
+    private boolean canWithdraw(S2NationSnapshot.SiegeView siege) {
+        return canManageSiege() || siege.individualAttacker() && siege.attacker();
+    }
     private boolean canManageTerritory() { return hasNationPermission(S2Permission.MANAGE_TERRITORY); }
 
     private boolean hasNationPermission(S2Permission permission) {

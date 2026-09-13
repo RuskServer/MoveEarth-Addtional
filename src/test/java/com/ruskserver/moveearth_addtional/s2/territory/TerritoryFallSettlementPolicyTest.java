@@ -25,4 +25,12 @@ class TerritoryFallSettlementPolicyTest {
         assertEquals(TerritoryFallSettlementPolicy.Outcome.OUTPOST_NEUTRALIZED, decision.outcome());
         assertEquals(0, decision.radius());
     }
+
+    @Test
+    void individualAttackerNeverOccupiesAnOutpost() {
+        assertEquals(TerritoryFallSettlementPolicy.Outcome.OUTPOST_NEUTRALIZED,
+                TerritoryFallSettlementPolicy.decideIndividual(false).outcome());
+        assertEquals(TerritoryFallSettlementPolicy.Outcome.CAPITAL_REBUILDING,
+                TerritoryFallSettlementPolicy.decideIndividual(true).outcome());
+    }
 }
