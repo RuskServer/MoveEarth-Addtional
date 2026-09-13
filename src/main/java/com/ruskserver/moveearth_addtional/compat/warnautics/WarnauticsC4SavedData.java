@@ -1,0 +1,72 @@
+package com.ruskserver.moveearth_addtional.compat.warnautics;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.saveddata.SavedData;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+/** Persists C4 support and attribution because Warnautics removes the block before its blast event. */
+public final class WarnauticsC4SavedData extends SavedData {
+    private final Map<Long, Charge> charges = new HashMap<>();
+
+    public void put(BlockPos chargePos, BlockPos supportPos, UUID placerId, UUID nationId, long placedTick) {
+        charges.put(chargePos.asLong(), new Charge(
+                chargePos.immutable(), supportPos.immutable(), placerId, nationId, placedTick));
+        setDirty();
+    }
+
+    public Charge consume(BlockPos chargePos) {
+        Charge removed = charges.remove(chargePos.asLong());
+        if (removed != null) setDirty();
+        return removed;
+    }
+
+    public void remove(BlockPos chargePos) {
+        if (charges.remove(chargePos.asLong()) != null) setDirty();
+    }
+
+    @Override
+    public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+        ListTag list = new ListTag();
+        for (Charge charge : charges.values()) {
+            CompoundTag entry = new CompoundTag();
+            entry.putLong("Pos", charge.pos().asLong());
+            entry.putLong("Support", charge.support().asLong());
+            entry.putUUID("Placer", charge.placerId());
+            entry.putUUID("Nation", charge.nationId());
+            entry.putLong("PlacedTick", charge.placedTick());
+            list.add(entry);
+        }
+        tag.put("Charges", list);
+        return tag;
+    }
+
+    public static WarnauticsC4SavedData load(CompoundTag tag, HolderLookup.Provider registries) {
+        WarnauticsC4SavedData data = new WarnauticsC4SavedData();
+        ListTag list = tag.getList("Charges", Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            if (!entry.hasUUID("Placer") || !entry.hasUUID("Nation")) continue;
+            BlockPos pos = BlockPos.of(entry.getLong("Pos"));
+            data.charges.put(pos.asLong(), new Charge(
+                    pos, BlockPos.of(entry.getLong("Support")), entry.getUUID("Placer"),
+                    entry.getUUID("Nation"), entry.getLong("PlacedTick")));
+        }
+        return data;
+    }
+
+    public static WarnauticsC4SavedData get(ServerLevel level) {
+        return level.getDataStorage().computeIfAbsent(
+                new SavedData.Factory<>(WarnauticsC4SavedData::new, WarnauticsC4SavedData::load, null),
+                "moveearth_warnautics_c4");
+    }
+
+    public record Charge(BlockPos pos, BlockPos support, UUID placerId, UUID nationId, long placedTick) { }
+}

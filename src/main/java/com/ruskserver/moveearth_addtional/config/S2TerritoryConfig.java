@@ -29,6 +29,15 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue CBC_UTILITY_DAMAGE;
     private static final ModConfigSpec.DoubleValue CBC_CORE_DAMAGE_MULTIPLIER;
     private static final ModConfigSpec.IntValue CBC_PROTECTED_BLAST_RADIUS;
+    private static final ModConfigSpec.IntValue WARNAUTICS_SMALL_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_SEA_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_MEDIUM_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_LARGE_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_MOAB_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_C4_PRIMARY_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_C4_SPLASH_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_C4_CORE_DAMAGE;
+    private static final ModConfigSpec.IntValue WARNAUTICS_CORE_RADIUS;
     private static final ModConfigSpec.IntValue SIEGE_INITIAL_LOCK_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_ROLLING_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_RETRY_COOLDOWN_SECONDS;
@@ -100,6 +109,26 @@ public final class S2TerritoryConfig {
                 .defineInRange("protectedBlastRadiusBlocks", 8, 1, 32);
         BUILDER.pop();
 
+        BUILDER.push("warnauticsDamage");
+        WARNAUTICS_SMALL_DAMAGE = BUILDER.defineInRange("smallBomb", 16, 0, 100000);
+        WARNAUTICS_SEA_DAMAGE = BUILDER.defineInRange("seaBomb", 32, 0, 100000);
+        WARNAUTICS_MEDIUM_DAMAGE = BUILDER.defineInRange("mediumBomb", 40, 0, 100000);
+        WARNAUTICS_LARGE_DAMAGE = BUILDER.defineInRange("largeBomb", 72, 0, 100000);
+        WARNAUTICS_MOAB_DAMAGE = BUILDER.defineInRange("moab", 96, 0, 100000);
+        WARNAUTICS_C4_PRIMARY_DAMAGE = BUILDER.comment(
+                "Focused damage to the reinforced support face of an attributable C4 charge.")
+                .defineInRange("c4Primary", 64, 0, 100000);
+        WARNAUTICS_C4_SPLASH_DAMAGE = BUILDER.comment(
+                "Damage to other reinforced blocks in a C4 blast. Also used when its support cannot be identified.")
+                .defineInRange("c4Splash", 8, 0, 100000);
+        WARNAUTICS_C4_CORE_DAMAGE = BUILDER.comment(
+                "Maximum damage from directly adjacent C4 to an exposed core. Mines never damage cores.")
+                .defineInRange("c4ExposedCore", 16, 0, 100000);
+        WARNAUTICS_CORE_RADIUS = BUILDER.comment(
+                "Maximum radius considered for exposed-core damage from Warnautics bombs.")
+                .defineInRange("exposedCoreRadiusBlocks", 12, 1, 64);
+        BUILDER.pop();
+
         BUILDER.push("siege");
         SIEGE_INITIAL_LOCK_SECONDS = BUILDER.defineInRange("initialLockSeconds", 300, 1, 86400);
         SIEGE_ROLLING_SECONDS = BUILDER.defineInRange("rollingSeconds", 1800, 1, 604800);
@@ -167,6 +196,15 @@ public final class S2TerritoryConfig {
     public static int cbcUtilityDamage() { return CBC_UTILITY_DAMAGE.getAsInt(); }
     public static double cbcCoreDamageMultiplier() { return CBC_CORE_DAMAGE_MULTIPLIER.getAsDouble(); }
     public static int cbcProtectedBlastRadius() { return CBC_PROTECTED_BLAST_RADIUS.getAsInt(); }
+    public static int warnauticsSmallDamage() { return WARNAUTICS_SMALL_DAMAGE.getAsInt(); }
+    public static int warnauticsSeaDamage() { return WARNAUTICS_SEA_DAMAGE.getAsInt(); }
+    public static int warnauticsMediumDamage() { return WARNAUTICS_MEDIUM_DAMAGE.getAsInt(); }
+    public static int warnauticsLargeDamage() { return WARNAUTICS_LARGE_DAMAGE.getAsInt(); }
+    public static int warnauticsMoabDamage() { return WARNAUTICS_MOAB_DAMAGE.getAsInt(); }
+    public static int warnauticsC4PrimaryDamage() { return WARNAUTICS_C4_PRIMARY_DAMAGE.getAsInt(); }
+    public static int warnauticsC4SplashDamage() { return WARNAUTICS_C4_SPLASH_DAMAGE.getAsInt(); }
+    public static int warnauticsC4CoreDamage() { return WARNAUTICS_C4_CORE_DAMAGE.getAsInt(); }
+    public static int warnauticsCoreRadius() { return WARNAUTICS_CORE_RADIUS.getAsInt(); }
     public static long siegeInitialLockTicks() { return SIEGE_INITIAL_LOCK_SECONDS.getAsInt() * 20L; }
     public static long siegeRollingTicks() { return SIEGE_ROLLING_SECONDS.getAsInt() * 20L; }
     public static long siegeRetryCooldownTicks() { return SIEGE_RETRY_COOLDOWN_SECONDS.getAsInt() * 20L; }

@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.territory;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsC4Placement;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BoatItem;
@@ -38,6 +39,9 @@ public final class BastionEvents {
             restricted = BastionService.isRestricted(player, level, event.getPos());
         }
         if (!restricted) return;
+        if (!(event instanceof BlockEvent.EntityMultiPlaceEvent)
+                && WarnauticsC4Placement.canPlaceOnHostileReinforcement(
+                player, level, event.getPos(), event.getPlacedBlock())) return;
         event.setCanceled(true);
         BastionService.deny(player, BastionService.Action.BLOCK_PLACE);
     }

@@ -39,6 +39,17 @@ public final class SiegeService {
         if (attacker == null) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
         NationSavedData nations = NationSavedData.get(level.getServer());
         UUID attackerNation = nations.nationIdFor(attacker.getUUID()).orElse(null);
+        return recordAttack(new AttackAttribution(attackerNation, attacker.getUUID(), "player"),
+                level, target, effectiveDamage);
+    }
+
+    public static SiegeSavedData.AttemptResult recordAttack(AttackAttribution attribution, ServerLevel level,
+                                                             BlockPos target, boolean effectiveDamage) {
+        if (attribution == null || attribution.nationId() == null) {
+            return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+        }
+        NationSavedData nations = NationSavedData.get(level.getServer());
+        UUID attackerNation = attribution.nationId();
         TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
                 .controllingCore(level.dimension().location(), target).orElse(null);
         SiegeSavedData siegeData = SiegeSavedData.get(level.getServer());
@@ -49,13 +60,15 @@ public final class SiegeService {
         }
 
         long gameTick = level.getServer().overworld().getGameTime();
-        LogKey logKey = new LogKey(attacker.getUUID(), level.dimension().location().toString(), target.asLong());
+        UUID logActor = attribution.actorId() == null ? attackerNation : attribution.actorId();
+        LogKey logKey = new LogKey(logActor, level.dimension().location().toString(), target.asLong());
         boolean shouldLog = gameTick >= RECENT_LOGS.getOrDefault(logKey, Long.MIN_VALUE)
                 + S2TerritoryConfig.siegeDuplicateLogTicks();
         if (shouldLog) {
             RECENT_LOGS.put(logKey, gameTick);
-            Moveearth_addtional.LOGGER.info("Siege attempt: player={} attackerNation={} defenderNation={} target={} effective={}",
-                    attacker.getGameProfile().getName(), attackerNation, core.nationId(), target, effectiveDamage);
+            Moveearth_addtional.LOGGER.info(
+                    "Siege attempt: actor={} source={} attackerNation={} defenderNation={} target={} effective={}",
+                    attribution.actorId(), attribution.source(), attackerNation, core.nationId(), target, effectiveDamage);
         }
         boolean offlineDefenseAllowed = OfflineDefenseService.baseDivisor(level, core) > 1;
         SiegeSavedData.AttemptResult result = siegeData.registerAttempt(
@@ -83,6 +96,12 @@ public final class SiegeService {
         if (attacker == null) return false;
         NationSavedData nations = NationSavedData.get(level.getServer());
         UUID attackerNation = nations.nationIdFor(attacker.getUUID()).orElse(null);
+        return peaceTruceBlocks(new AttackAttribution(attackerNation, attacker.getUUID(), "player"), level, target);
+    }
+
+    public static boolean peaceTruceBlocks(AttackAttribution attribution, ServerLevel level, BlockPos target) {
+        if (attribution == null || attribution.nationId() == null) return false;
+        UUID attackerNation = attribution.nationId();
         UUID defenderNation = TerritorySavedData.get(level.getServer())
                 .controllingNation(level.dimension().location(), target).orElse(null);
         return attackerNation != null && defenderNation != null
@@ -90,6 +109,8 @@ public final class SiegeService {
                 && SiegeSavedData.get(level.getServer()).isPeaceTruceActive(
                         attackerNation, defenderNation);
     }
+
+    public record AttackAttribution(UUID nationId, UUID actorId, String source) { }
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {

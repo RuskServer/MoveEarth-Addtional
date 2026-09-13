@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
+import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcementCompat;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -41,6 +42,7 @@ public class Moveearth_addtional {
         );
 
         CbcReinforcementCompat.registerIfPresent();
+        WarnauticsReinforcementCompat.registerIfPresent();
 
         // Register Sounds
         ModSounds.SOUND_EVENTS.register(modEventBus);

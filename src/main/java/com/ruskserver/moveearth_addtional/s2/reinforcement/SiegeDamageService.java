@@ -43,6 +43,26 @@ public final class SiegeDamageService {
                 S2TerritoryConfig.cbcCoreDamageMultiplier());
     }
 
+    public static int configuredWarnauticsDamage(WarnauticsWeaponDamage.Kind kind, boolean c4Primary) {
+        return switch (kind) {
+            case SMALL_BOMB -> S2TerritoryConfig.warnauticsSmallDamage();
+            case SEA_BOMB -> S2TerritoryConfig.warnauticsSeaDamage();
+            case MEDIUM_BOMB -> S2TerritoryConfig.warnauticsMediumDamage();
+            case LARGE_BOMB -> S2TerritoryConfig.warnauticsLargeDamage();
+            case MOAB -> S2TerritoryConfig.warnauticsMoabDamage();
+            case CRUISE_MISSILE -> 0;
+            case C4 -> c4Primary ? S2TerritoryConfig.warnauticsC4PrimaryDamage()
+                    : S2TerritoryConfig.warnauticsC4SplashDamage();
+            case LARGE_MINE, UNKNOWN -> 0;
+        };
+    }
+
+    public static int configuredWarnauticsCoreDamage(WarnauticsWeaponDamage.Kind kind) {
+        if (!WarnauticsWeaponDamage.canDamageCore(kind)) return 0;
+        if (kind == WarnauticsWeaponDamage.Kind.C4) return S2TerritoryConfig.warnauticsC4CoreDamage();
+        return configuredWarnauticsDamage(kind, false);
+    }
+
     /** Returns true when the original terrain-damage attempt must be cancelled. */
     public static boolean interceptCbcImpact(ServerLevel level, BlockPos pos, CbcMunitionDamage.Kind kind) {
         return interceptCbcImpact(null, level, pos, kind);
@@ -153,12 +173,32 @@ public final class SiegeDamageService {
         return damageReinforcement(level, pos, entry, kind, penalty, false);
     }
 
+    /** Shared optional-mod entry point; applies upkeep and offline scaling to an explicit profile value. */
+    public static ReinforcementDamage damageReinforcement(ServerLevel level, BlockPos pos,
+                                                           ReinforcementEntry entry, int configuredDamage,
+                                                           UpkeepPenalty penalty) {
+        if (!penalty.reinforcementProtectionEnabled()) {
+            ReinforcementSavedData.get(level).remove(pos);
+            TerritoryClosureRecheckManager.markPotentialOpening(level, pos);
+            return new ReinforcementDamage(false, 0);
+        }
+        return damageReinforcement(level, pos, entry, configuredDamage, penalty, false);
+    }
+
     private static ReinforcementDamage damageReinforcement(ServerLevel level, BlockPos pos,
                                                             ReinforcementEntry entry,
                                                             CbcMunitionDamage.Kind kind,
                                                             UpkeepPenalty penalty,
                                                             boolean syncImmediately) {
-        int rawDamage = UpkeepPenaltyPolicy.scaleSiegeDamage(configuredDamage(kind), penalty,
+        return damageReinforcement(level, pos, entry, configuredDamage(kind), penalty, syncImmediately);
+    }
+
+    private static ReinforcementDamage damageReinforcement(ServerLevel level, BlockPos pos,
+                                                            ReinforcementEntry entry,
+                                                            int configuredDamage,
+                                                            UpkeepPenalty penalty,
+                                                            boolean syncImmediately) {
+        int rawDamage = UpkeepPenaltyPolicy.scaleSiegeDamage(configuredDamage, penalty,
                 S2TerritoryConfig.overdueDamageMultiplier());
         int damage = OfflineDefenseService.scale(level, pos, rawDamage).appliedDamage();
         if (damage <= 0) return new ReinforcementDamage(true, 0);

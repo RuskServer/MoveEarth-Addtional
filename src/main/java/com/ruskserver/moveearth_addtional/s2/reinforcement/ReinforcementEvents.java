@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.s2.territory.TerritoryCoreHealthServic
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
+import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcementCompat;
 import com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -92,6 +93,9 @@ public final class ReinforcementEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onExplosion(ExplosionEvent.Detonate event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
+        // Warnautics publishes a later mutable blast-list event. Let that dedicated bridge
+        // handle the blast once; otherwise generic protection would consume it first.
+        if (WarnauticsReinforcementCompat.handles(event.getExplosion())) return;
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         net.minecraft.world.entity.Entity source = event.getExplosion().getDirectSourceEntity();
         ServerPlayer attacker = SiegeService.attributablePlayer(source);
@@ -195,5 +199,6 @@ public final class ReinforcementEvents {
         WeldingBrushServerState.clear();
         ReinforcementService.clearScanCache();
         CbcReinforcementCompat.clearRuntimeState();
+        WarnauticsReinforcementCompat.clearRuntimeState();
     }
 }

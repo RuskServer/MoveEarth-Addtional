@@ -510,5 +510,6 @@
   "screen.moveearth_addtional.notifications.result.account_linked": "Your Minecraft and Discord accounts are verified",
   "screen.moveearth_addtional.notifications.result.minecraft_in_use": "This Minecraft account is already linked to another Discord account",
   "screen.moveearth_addtional.notifications.result.discord_in_use": "This Discord account is already linked to another Minecraft account",
-  "screen.moveearth_addtional.notifications.result.account_conflict": "Account verification conflicts with an existing link"
+  "screen.moveearth_addtional.notifications.result.account_conflict": "Account verification conflicts with an existing link",
+  "message.moveearth_addtional.warnautics.cruise_disabled": "Cruise missiles are disabled on this server."
 }

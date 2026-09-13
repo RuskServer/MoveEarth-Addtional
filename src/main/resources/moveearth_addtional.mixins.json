@@ -10,7 +10,8 @@
     "ChunkMapDccMixin",
     "GunSmithTableMenuMixin",
     "CrushingWheelControllerBlockEntityMixin",
-    "EntityDataAccessorMixin"
+    "EntityDataAccessorMixin",
+    "WarnauticsDropBombAssemblyMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",

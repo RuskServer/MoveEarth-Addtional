@@ -510,5 +510,6 @@
   "screen.moveearth_addtional.notifications.result.account_linked": "MinecraftとDiscordアカウントを本人確認しました",
   "screen.moveearth_addtional.notifications.result.minecraft_in_use": "このMinecraftアカウントは別のDiscordアカウントと連携済みです",
   "screen.moveearth_addtional.notifications.result.discord_in_use": "このDiscordアカウントは別のMinecraftアカウントと連携済みです",
-  "screen.moveearth_addtional.notifications.result.account_conflict": "既存の本人確認情報と競合しています"
+  "screen.moveearth_addtional.notifications.result.account_conflict": "既存の本人確認情報と競合しています",
+  "message.moveearth_addtional.warnautics.cruise_disabled": "このサーバーでは巡航ミサイルを作成・使用できません。"
 }
