@@ -618,5 +618,10 @@
   "tip.moveearth_addtional.prisoners.body": "Restrain downed enemies during a Siege, escort them, and use a prison intake inside valid territory.",
   "tip.moveearth_addtional.rest_healing.title": "Rest Healing",
   "tip.moveearth_addtional.rest_healing.body": "Beds and normal campfires restore health from a shared allowance that refreshes periodically.",
-  "message.moveearth_addtional.combat.bossbar": "⚔ IN COMBAT • %s seconds • Logging out leaves your body behind"
+  "message.moveearth_addtional.combat.bossbar": "⚔ IN COMBAT • %s seconds • Logging out leaves your body behind",
+  "screen.moveearth_addtional.main_menu.title": "MoveEarth Main Menu",
+  "screen.moveearth_addtional.main_menu.moveearth": "MoveEarth",
+  "screen.moveearth_addtional.main_menu.changelog": "CHANGELOG",
+  "screen.moveearth_addtional.main_menu.changelog_unavailable": "The changelog could not be loaded",
+  "screen.moveearth_addtional.main_menu.discord": "Join our Discord"
 }

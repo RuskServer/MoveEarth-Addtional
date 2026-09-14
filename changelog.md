@@ -91,6 +91,7 @@ This release establishes the Season 2 feature set as the v3.1 test-play baseline
 
 ## Player Guidance
 
+- **Native MoveEarth Main Menu**: Replaced the vanilla title screen with a responsive MoveEarth interface using the `/pvp` visual language, a centered aspect-correct title above translucent control panels, direct server access, a scrollable bundled changelog, and a Discord invitation. A dependency-free static starfield and deterministic batched meteor shower replace video decoding while preserving the original atmosphere at minimal runtime cost.
 - **Periodic Chat Tips**: Players receive one unread-first localized tip after five online minutes and then every 30 online minutes. Due tips wait until combat, downed, escort, and imprisonment states have ended.
 - **Persistent Tip Controls**: Read state, recent history, opt-out preference, and the next-tip countdown persist across logins. `/tip` provides clickable history, paginated browsing, and enable/disable controls, while server owners can tune pacing in `moveearth_addtional-tips.toml`.
 - **Combat Timer Boss Bar**: Replaced the repeated action-bar countdown with a per-player CombatLogX-style boss bar. The bar tracks refreshed and extended tags, turns red for the final ten seconds, disappears during captivity, and restores from persistent combat state after reconnecting.

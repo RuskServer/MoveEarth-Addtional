@@ -618,5 +618,10 @@
   "tip.moveearth_addtional.prisoners.body": "Siege中にダウンした敵は拘束具で護送し、有効領土内の牢獄受付へ収監できます。",
   "tip.moveearth_addtional.rest_healing.title": "休息による回復",
   "tip.moveearth_addtional.rest_healing.body": "ベッドや通常の焚き火付近では、一定期間ごとの共有回復枠を使って体力を回復できます。",
-  "message.moveearth_addtional.combat.bossbar": "⚔ 戦闘状態 • 残り%s秒 • ログアウトすると身体が残ります"
+  "message.moveearth_addtional.combat.bossbar": "⚔ 戦闘状態 • 残り%s秒 • ログアウトすると身体が残ります",
+  "screen.moveearth_addtional.main_menu.title": "MoveEarth メインメニュー",
+  "screen.moveearth_addtional.main_menu.moveearth": "MoveEarth",
+  "screen.moveearth_addtional.main_menu.changelog": "CHANGELOG",
+  "screen.moveearth_addtional.main_menu.changelog_unavailable": "更新履歴を読み込めませんでした",
+  "screen.moveearth_addtional.main_menu.discord": "Discordに参加"
 }

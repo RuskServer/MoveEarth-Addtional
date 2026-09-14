@@ -153,6 +153,10 @@ configurations {
 
 // Ship the primary GPLv3 license and all bundled third-party notices inside every release JAR.
 tasks.named('processResources', ProcessResources) {
+    from('changelog.md') {
+        into 'assets/moveearth_addtional/menu'
+        rename { 'changelog.md' }
+    }
     from('THIRD_PARTY_NOTICES.md') {
         into 'META-INF'
     }
@@ -382,11 +386,11 @@ var verifyPackagedDiscordRuntime = tasks.register('verifyPackagedDiscordRuntime'
     inputs.file(serverJarFile)
     doLast {
         new java.util.zip.ZipFile(serverJarFile.get().asFile).withCloseable { zip ->
-            def bundledColdSweat = zip.entries().findAll { entry ->
+            def bundledClientLibraries = zip.entries().findAll { entry ->
                 !entry.directory && entry.name.startsWith('com/momosoftworks/coldsweat/')
             }.collect { it.name }.take(10)
-            if (!bundledColdSweat.empty) {
-                throw new GradleException("Server JAR unexpectedly bundles Cold Sweat classes: ${bundledColdSweat}")
+            if (!bundledClientLibraries.empty) {
+                throw new GradleException("Server JAR unexpectedly bundles optional client library classes: ${bundledClientLibraries}")
             }
             def nested = zip.entries().findAll { entry ->
                 !entry.directory && entry.name.startsWith('META-INF/jarjar/') &&
