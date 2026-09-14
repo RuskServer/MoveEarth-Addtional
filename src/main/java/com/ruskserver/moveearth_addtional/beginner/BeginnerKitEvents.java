@@ -16,15 +16,15 @@ public final class BeginnerKitEvents {
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)
-                || !BeginnerKitService.isFirstLogin(player)) {
+                || !BeginnerKitService.isEligible(player)) {
             return;
         }
 
-        BeginnerKitService.GrantResult result = BeginnerKitService.grant(player, false, "first-login");
+        BeginnerKitService.GrantResult result = BeginnerKitService.grant(player, false, "eligible-login");
         if (result == BeginnerKitService.GrantResult.GRANTED) {
             player.sendSystemMessage(MoveEarthMessage.success(Component.translatableWithFallback(
-                    "message.moveearth_addtional.starterkit.first_login",
-                    "初心者キットを支給しました。三八式歩兵銃の予備弾8発と食料16個入りです。")));
+                    "message.moveearth_addtional.starterkit.granted",
+                    "初心者キットを支給しました。")));
         } else if (result == BeginnerKitService.GrantResult.CONTENT_UNAVAILABLE) {
             player.sendSystemMessage(MoveEarthMessage.error(Component.translatableWithFallback(
                     "message.moveearth_addtional.starterkit.content_unavailable",

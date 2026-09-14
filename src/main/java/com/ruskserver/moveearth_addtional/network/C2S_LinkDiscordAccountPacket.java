@@ -3,7 +3,8 @@ package com.ruskserver.moveearth_addtional.network;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkCodeRegistry;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
-import com.ruskserver.moveearth_addtional.s2.notification.discord.DiscordBotService;
+import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkAccess;
+import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkGateway;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -29,7 +30,7 @@ public record C2S_LinkDiscordAccountPacket(int requestId, String code) implement
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) return;
             NationNotificationSavedData data = NationNotificationSavedData.get(player.server);
-            DiscordBotService bot = DiscordBotService.instance();
+            DiscordLinkAccess bot = DiscordLinkGateway.access();
             boolean success = false;
             String result;
             long discordId = 0L;

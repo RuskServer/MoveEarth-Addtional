@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.notification.discord;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkGateway;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -15,7 +16,9 @@ public final class DiscordBotEvents {
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
-        DiscordBotService.instance().start(event.getServer());
+        DiscordBotService bot = DiscordBotService.instance();
+        DiscordLinkGateway.install(bot);
+        bot.start(event.getServer());
     }
 
     @SubscribeEvent
@@ -26,5 +29,6 @@ public final class DiscordBotEvents {
     @SubscribeEvent
     public static void onServerStopping(ServerStoppingEvent event) {
         DiscordBotService.instance().stop();
+        DiscordLinkGateway.reset();
     }
 }

@@ -1,0 +1,14 @@
+{
+  "vertex": "moveearth_addtional:gas_mask_vignette",
+  "fragment": "moveearth_addtional:gas_mask_vignette",
+  "samplers": [],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "ScreenSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+    { "name": "MaskAlpha", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "FogStrength", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "PanicStrength", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Time", "type": "float", "count": 1, "values": [ 0.0 ] }
+  ]
+}

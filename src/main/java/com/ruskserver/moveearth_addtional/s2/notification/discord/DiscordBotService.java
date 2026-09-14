@@ -5,6 +5,7 @@ import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkCodeRegistry;
+import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkAccess;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
@@ -28,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 
 /** Owns the embedded JDA lifecycle and bridges the persistent outbox without blocking server ticks. */
-public final class DiscordBotService {
+public final class DiscordBotService implements DiscordLinkAccess {
     private static final DiscordBotService INSTANCE = new DiscordBotService();
 
     private final DiscordLinkCodeRegistry linkCodes = new DiscordLinkCodeRegistry();

@@ -1,4 +1,13 @@
-# UNRELEASED
+# v3.1 — Test Play Release
+
+This release establishes the Season 2 feature set as the v3.1 test-play baseline. Live testing will focus on gameplay balance, performance, compatibility, and operational reliability; the resulting fixes and refinements will target completion in v3.2.
+
+## Test Play Fixes
+
+- **Reliable Starter Supplies**: Automatic starter supplies no longer depend on the retired CIB GunPack. Eligible players receive the kit on login, the rifle uses TaCZ's built-in Kar98 data, and armor and food are still granted if the weapon data is unavailable.
+- **Configuring-Core Reinforcement**: A newly placed core's reserved area now permits its nation to create the reinforcement required for initial activation. Active-core outer reservations remain unavailable when upkeep shrinkage removes control.
+- **CBC Mortar Consistency**: Source-less CBC custom explosions are now classified from their explosion type. Mortar block transformations are rolled back while reinforcement durability remains, and placing a block into a cleared position removes any stale reinforcement record.
+- **Limited Rest Healing**: Beds and lit normal campfires now restore health through one persistent 20 HP allowance per 30 server-open minutes. Beds recover faster after a short settling delay, campfires provide slower stationary field recovery, and combat, movement, downed state, escort, or imprisonment interrupts recovery.
 
 ## Season 2 Nations and Unified Interface
 
@@ -77,6 +86,16 @@
 - **Safe Discord Content**: User-controlled text is length-limited and neutralizes Markdown and mentions. Allowed mentions are restricted explicitly, and notification channels must grant view, send-message, and embed-link permissions.
 - **Failure Isolation**: Synchronous embed or request-construction failures are contained per delivery, in-flight IDs are released correctly, and Discord failures cannot escape into the Minecraft server tick loop.
 - **Dependency Isolation**: JDA and its transitive runtime are relocated and verified during the build to prevent Java module package collisions with NeoForge or other installed mods.
+- **Split Player/Server Builds**: Release builds now produce a lightweight player JAR without JDA and a dedicated-server JAR with the isolated JDA runtime. Common packet handlers communicate through a JDA-free boundary so both artifacts retain the same mod ID, version, and network protocol safely.
+- **Cold Sweat Temperature HUD**: Optional Cold Sweat integration adds an adaptive top-left Celsius display. Comfortable conditions remain visible as a subdued single line, while cold, heat, and extreme conditions expand into increasingly prominent localized warnings using each player's synced temperature and personal survival thresholds.
+
+## Player Guidance
+
+- **Periodic Chat Tips**: Players receive one unread-first localized tip after five online minutes and then every 30 online minutes. Due tips wait until combat, downed, escort, and imprisonment states have ended.
+- **Persistent Tip Controls**: Read state, recent history, opt-out preference, and the next-tip countdown persist across logins. `/tip` provides clickable history, paginated browsing, and enable/disable controls, while server owners can tune pacing in `moveearth_addtional-tips.toml`.
+- **Combat Timer Boss Bar**: Replaced the repeated action-bar countdown with a per-player CombatLogX-style boss bar. The bar tracks refreshed and extended tags, turns red for the final ten seconds, disappears during captivity, and restores from persistent combat state after reconnecting.
+- **Smooth Gas-Mask Lenses**: Replaced the hard rectangular mask corners with a single-pass GLSL 1.50 lens vignette featuring soft elliptical edges, low-filter condensation, low-oxygen pulsing, and frame-rate-independent equip fades. The lens renders before readable HUD elements so it no longer covers boss bars, crosshairs, temperature information, or chat; shader failures automatically fall back to the legacy overlay.
+- **Chat-Front Reinforcement HUD**: The right-side welding and reinforcement panel is redrawn after the chat screen without changing its position, preventing chat rendering from covering its status and progress information.
 
 ## Performance, Reliability, and Compatibility
 

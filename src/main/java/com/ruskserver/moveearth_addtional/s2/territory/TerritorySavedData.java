@@ -262,6 +262,29 @@ public final class TerritorySavedData extends SavedData {
         return false;
     }
 
+    /**
+     * Allows normal reinforcement inside effective controlled territory and also
+     * permits the one bootstrap case needed to activate a newly placed core.
+     * Reserved space around active cores is deliberately not accepted here, so
+     * upkeep shrinkage cannot be bypassed by welding in the disabled outer area.
+     */
+    public boolean allowsReinforcement(MinecraftServer server, UUID nationId,
+                                       ResourceLocation dimension, BlockPos pos) {
+        boolean controlled = controlsChunk(server, nationId, dimension, pos);
+        if (controlled) return true;
+        ChunkPos chunk = new ChunkPos(pos);
+        boolean configuringReservation = false;
+        for (CoreKey key : indexed(reservedChunkIndex, dimension, chunk.x, chunk.z)) {
+            CoreRecord core = cores.get(key);
+            if (core != null && core.nationId.equals(nationId)
+                    && core.state == CoreState.CONFIGURING) {
+                configuringReservation = true;
+                break;
+            }
+        }
+        return TerritoryReinforcementAccessPolicy.canManage(controlled, configuringReservation);
+    }
+
     /** Returns the nation whose ACTIVE or EXPOSED territory controls this chunk. */
     public Optional<UUID> controllingNation(ResourceLocation dimension, BlockPos pos) {
         return controllingNation(null, dimension, pos);

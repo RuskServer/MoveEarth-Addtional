@@ -32,6 +32,16 @@ class CbcMunitionDamageTest {
     }
 
     @Test
+    void classifiesSourceLessCbcCustomExplosions() {
+        assertEquals(CbcMunitionDamage.Kind.MORTAR,
+                CbcMunitionDamage.classifyExplosionClass("MortarStoneExplosion"));
+        assertEquals(CbcMunitionDamage.Kind.HE_SHELL,
+                CbcMunitionDamage.classifyExplosionClass("ShellExplosion"));
+        assertEquals(CbcMunitionDamage.Kind.UTILITY,
+                CbcMunitionDamage.classifyExplosionClass("CustomExplosion"));
+    }
+
+    @Test
     void onlyHeavyMunitionsCanDamageStrategicCores() {
         assertTrue(CbcMunitionDamage.canDamageCore(CbcMunitionDamage.Kind.SHOT));
         assertTrue(CbcMunitionDamage.canDamageCore(CbcMunitionDamage.Kind.HE_SHELL));

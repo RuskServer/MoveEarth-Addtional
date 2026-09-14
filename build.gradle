@@ -197,6 +197,8 @@ dependencies {
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1:api'
     // Optional Jade integration. The target modpack supplies Jade at runtime.
     compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
+    // Optional Cold Sweat API integration. Never bundle Cold Sweat or its assets.
+    compileOnly('curse.maven:cold-sweat-506194:8872715') { transitive = false }
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -358,13 +360,34 @@ tasks.named('jarJar') {
     dependsOn verifyDiscordRuntimeIsolation
 }
 
-def releaseJarFile = layout.buildDirectory.file(
-        "libs/${base.archivesName.get()}-${project.version}.jar")
+// The dedicated-server artifact carries the isolated JDA runtime. Clients use the
+// player artifact, which contains the same mod classes/protocol but no JDA payload.
+tasks.named('jar', Jar) {
+    archiveClassifier = 'server'
+}
+
+def serverJarFile = tasks.named('jar', Jar).flatMap { it.archiveFile }
+var playerJar = tasks.register('playerJar', Jar) {
+    group = 'build'
+    description = 'Builds the player distribution without the embedded JDA runtime.'
+    archiveClassifier = 'player'
+    from sourceSets.main.output
+    exclude 'com/ruskserver/moveearth_addtional/s2/notification/discord/**'
+    dependsOn tasks.named('classes')
+}
+def playerJarFile = playerJar.flatMap { it.archiveFile }
+
 var verifyPackagedDiscordRuntime = tasks.register('verifyPackagedDiscordRuntime') {
     dependsOn tasks.named('jar')
-    inputs.file(releaseJarFile)
+    inputs.file(serverJarFile)
     doLast {
-        new java.util.zip.ZipFile(releaseJarFile.get().asFile).withCloseable { zip ->
+        new java.util.zip.ZipFile(serverJarFile.get().asFile).withCloseable { zip ->
+            def bundledColdSweat = zip.entries().findAll { entry ->
+                !entry.directory && entry.name.startsWith('com/momosoftworks/coldsweat/')
+            }.collect { it.name }.take(10)
+            if (!bundledColdSweat.empty) {
+                throw new GradleException("Server JAR unexpectedly bundles Cold Sweat classes: ${bundledColdSweat}")
+            }
             def nested = zip.entries().findAll { entry ->
                 !entry.directory && entry.name.startsWith('META-INF/jarjar/') &&
                         entry.name.endsWith('.jar')
@@ -383,6 +406,57 @@ var verifyPackagedDiscordRuntime = tasks.register('verifyPackagedDiscordRuntime'
     }
 }
 
-tasks.named('assemble') {
+var verifyPlayerDistribution = tasks.register('verifyPlayerDistribution') {
+    dependsOn playerJar
+    inputs.file(playerJarFile)
+    doLast {
+        new java.util.zip.ZipFile(playerJarFile.get().asFile).withCloseable { zip ->
+            def forbidden = zip.entries().findAll { entry ->
+                !entry.directory && (entry.name.startsWith('META-INF/jarjar/') ||
+                        entry.name.startsWith('net/dv8tion/jda/') ||
+                        entry.name.startsWith('com/momosoftworks/coldsweat/') ||
+                        entry.name.startsWith('com/ruskserver/moveearth_addtional/s2/notification/discord/'))
+            }.collect { it.name }.take(10)
+            if (!forbidden.empty) {
+                throw new GradleException("Player JAR contains Discord server runtime entries: ${forbidden}")
+            }
+            if (zip.getEntry('dev/firstdark/rpc/DiscordRpc.class') == null) {
+                throw new GradleException('Player JAR is missing the client Discord RPC runtime')
+            }
+            ['C2S_LinkDiscordAccountPacket.class', 'C2S_LinkNationDiscordPacket.class'].each { className ->
+                def entry = zip.getEntry("com/ruskserver/moveearth_addtional/network/${className}")
+                if (entry == null) throw new GradleException("Player JAR is missing ${className}")
+                def bytes = zip.getInputStream(entry).bytes
+                def constants = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                if (constants.contains('DiscordBotService') || constants.contains('net/dv8tion/jda')) {
+                    throw new GradleException("Common packet ${className} directly references the JDA implementation")
+                }
+            }
+            def leakedJdaReferences = zip.entries().findAll { entry ->
+                if (entry.directory || !entry.name.endsWith('.class')) return false
+                def bytes = zip.getInputStream(entry).bytes
+                return new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                        .contains('net/dv8tion/jda')
+            }.collect { it.name }.take(10)
+            if (!leakedJdaReferences.empty) {
+                throw new GradleException("Player JAR class files still reference JDA: ${leakedJdaReferences}")
+            }
+        }
+    }
+}
+
+tasks.register('buildServerJar') {
+    group = 'build'
+    description = 'Builds and verifies the dedicated-server distribution with embedded JDA.'
     dependsOn verifyPackagedDiscordRuntime
+}
+
+tasks.register('buildPlayerJar') {
+    group = 'build'
+    description = 'Builds and verifies the JDA-free player distribution.'
+    dependsOn verifyPlayerDistribution
+}
+
+tasks.named('assemble') {
+    dependsOn verifyPackagedDiscordRuntime, verifyPlayerDistribution
 }

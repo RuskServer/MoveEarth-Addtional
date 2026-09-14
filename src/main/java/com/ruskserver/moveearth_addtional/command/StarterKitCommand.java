@@ -118,6 +118,6 @@ public final class StarterKitCommand {
     private static Component contentUnavailableMessage() {
         return Component.translatableWithFallback(
                 "message.moveearth_addtional.starterkit.content_unavailable",
-                "初心者キットを作成できません。CIBR GunPackの三八式歩兵銃が読み込まれているか確認してください。");
+                "初心者キットを作成できませんでした。サーバーログを確認してください。");
     }
 }

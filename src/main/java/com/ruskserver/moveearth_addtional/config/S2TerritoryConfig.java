@@ -64,6 +64,12 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue RESTRAINT_SECONDS;
     private static final ModConfigSpec.IntValue ESCORT_MAX_DISTANCE;
     private static final ModConfigSpec.IntValue CAPTIVITY_MAX_SECONDS;
+    private static final ModConfigSpec.IntValue REST_HEALING_PERIOD_MINUTES;
+    private static final ModConfigSpec.DoubleValue REST_HEALING_MAX_HEALTH;
+    private static final ModConfigSpec.IntValue BED_REST_START_SECONDS;
+    private static final ModConfigSpec.IntValue BED_HEAL_INTERVAL_SECONDS;
+    private static final ModConfigSpec.IntValue CAMPFIRE_HEAL_INTERVAL_SECONDS;
+    private static final ModConfigSpec.IntValue CAMPFIRE_RADIUS;
 
     public static final ModConfigSpec SPEC;
 
@@ -187,6 +193,20 @@ public final class S2TerritoryConfig {
                 "Maximum combined escort and imprisonment time measured only during the JST 18:00-00:00 opening window.")
                 .defineInRange("maximumCaptivitySeconds", 10800, 60, 10800);
         BUILDER.pop();
+
+        BUILDER.push("restHealing");
+        REST_HEALING_PERIOD_MINUTES = BUILDER.comment(
+                "Server-open minutes in one shared bed/campfire healing allowance period.")
+                .defineInRange("periodMinutes", 30, 1, 1440);
+        REST_HEALING_MAX_HEALTH = BUILDER.comment(
+                "Maximum health restored per player in each period. 20 health equals ten hearts.")
+                .defineInRange("maximumHealthPerPeriod", 20.0D, 0.0D, 1024.0D);
+        BED_REST_START_SECONDS = BUILDER.defineInRange("bedStartDelaySeconds", 5, 0, 300);
+        BED_HEAL_INTERVAL_SECONDS = BUILDER.defineInRange("bedHealIntervalSeconds", 2, 1, 300);
+        CAMPFIRE_HEAL_INTERVAL_SECONDS = BUILDER.defineInRange("campfireHealIntervalSeconds", 4, 1, 300);
+        CAMPFIRE_RADIUS = BUILDER.comment("Lit normal-campfire detection radius. Soul campfires are excluded.")
+                .defineInRange("campfireRadiusBlocks", 4, 1, 16);
+        BUILDER.pop();
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
@@ -251,6 +271,12 @@ public final class S2TerritoryConfig {
     public static int restraintTicks() { return RESTRAINT_SECONDS.getAsInt() * 20; }
     public static int escortMaxDistance() { return ESCORT_MAX_DISTANCE.getAsInt(); }
     public static long captivityMaxTicks() { return CAPTIVITY_MAX_SECONDS.getAsInt() * 20L; }
+    public static long restHealingPeriodTicks() { return REST_HEALING_PERIOD_MINUTES.getAsInt() * 60L * 20L; }
+    public static float restHealingMaxHealth() { return REST_HEALING_MAX_HEALTH.get().floatValue(); }
+    public static int bedRestStartTicks() { return BED_REST_START_SECONDS.getAsInt() * 20; }
+    public static int bedHealIntervalTicks() { return BED_HEAL_INTERVAL_SECONDS.getAsInt() * 20; }
+    public static int campfireHealIntervalTicks() { return CAMPFIRE_HEAL_INTERVAL_SECONDS.getAsInt() * 20; }
+    public static int campfireRadius() { return CAMPFIRE_RADIUS.getAsInt(); }
 
     private static long daysToMillis(int days) { return days * 86_400_000L; }
 }

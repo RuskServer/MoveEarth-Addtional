@@ -26,6 +26,17 @@ public final class CbcMunitionDamage {
         };
     }
 
+    /** Classifies CBC custom explosions whose direct source entity is intentionally null. */
+    public static Kind classifyExplosionClass(String simpleClassName) {
+        String name = simpleClassName == null ? "" : simpleClassName.toLowerCase(Locale.ROOT);
+        if (name.contains("mortar")) return Kind.MORTAR;
+        if (name.contains("armor") && name.contains("piercing") && name.contains("shell")) {
+            return Kind.AP_SHELL;
+        }
+        if (name.contains("shell")) return Kind.HE_SHELL;
+        return Kind.UTILITY;
+    }
+
     /**
      * Only the carrier projectile owns an explosion area. Burst entities report one terrain event per
      * fragment, so treating their shared FRAGMENTATION kind as an area hit multiplies damage heavily.

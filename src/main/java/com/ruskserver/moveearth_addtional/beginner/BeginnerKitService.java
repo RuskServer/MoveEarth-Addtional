@@ -14,6 +14,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public final class BeginnerKitService {
@@ -22,10 +23,12 @@ public final class BeginnerKitService {
     public static final int FOOD_COUNT = 16;
 
     private static final String NBT_KEY_GRANTED = "MoveEarthBeginnerKitGranted";
-    private static final ResourceLocation TYPE_38_ID =
-            ResourceLocation.fromNamespaceAndPath("cib", "type38");
-    private static final ResourceLocation TYPE_38_AMMO_ID =
-            ResourceLocation.fromNamespaceAndPath("cib", "65x50");
+    // Keep the automatic kit independent from optional external GunPacks. Kar98 and
+    // its ammunition are part of TaCZ's built-in default pack on both client and server.
+    private static final ResourceLocation STARTER_GUN_ID =
+            ResourceLocation.fromNamespaceAndPath("tacz", "kar98");
+    private static final ResourceLocation STARTER_AMMO_ID =
+            ResourceLocation.fromNamespaceAndPath("tacz", "792x57");
 
     private BeginnerKitService() {
     }
@@ -60,13 +63,6 @@ public final class BeginnerKitService {
         }
 
         List<ItemStack> kit = createKit(player);
-        if (kit.isEmpty()) {
-            Moveearth_addtional.LOGGER.error(
-                    "Could not create beginner kit for {}: CIB Type 38 or its ammo is unavailable.",
-                    player.getGameProfile().getName());
-            return GrantResult.CONTENT_UNAVAILABLE;
-        }
-
         persistedData(player).putBoolean(NBT_KEY_GRANTED, true);
         kit.forEach(stack -> giveOrDrop(player, stack));
         Moveearth_addtional.LOGGER.info(
@@ -83,25 +79,28 @@ public final class BeginnerKitService {
     }
 
     private static List<ItemStack> createKit(ServerPlayer player) {
-        ItemStack gun = createType38();
-        ItemStack ammo = createType38Ammo();
-        if (gun.isEmpty() || ammo.isEmpty()) {
-            return List.of();
-        }
+        List<ItemStack> kit = new ArrayList<>();
+        kit.add(enchantedArmor(player, new ItemStack(Items.IRON_HELMET), false));
+        kit.add(enchantedArmor(player, new ItemStack(Items.IRON_CHESTPLATE), false));
+        kit.add(enchantedArmor(player, new ItemStack(Items.IRON_LEGGINGS), false));
+        kit.add(enchantedArmor(player, new ItemStack(Items.IRON_BOOTS), true));
 
-        return List.of(
-                enchantedArmor(player, new ItemStack(Items.IRON_HELMET), false),
-                enchantedArmor(player, new ItemStack(Items.IRON_CHESTPLATE), false),
-                enchantedArmor(player, new ItemStack(Items.IRON_LEGGINGS), false),
-                enchantedArmor(player, new ItemStack(Items.IRON_BOOTS), true),
-                gun,
-                ammo,
-                new ItemStack(Items.COOKED_BEEF, FOOD_COUNT)
-        );
+        ItemStack gun = createStarterGun();
+        ItemStack ammo = createStarterAmmo();
+        if (!gun.isEmpty() && !ammo.isEmpty()) {
+            kit.add(gun);
+            kit.add(ammo);
+        } else {
+            Moveearth_addtional.LOGGER.warn(
+                    "TaCZ built-in starter weapon is unavailable for {}; granting armor and food without it.",
+                    player.getGameProfile().getName());
+        }
+        kit.add(new ItemStack(Items.COOKED_BEEF, FOOD_COUNT));
+        return List.copyOf(kit);
     }
 
-    private static ItemStack createType38() {
-        if (TimelessAPI.getCommonGunIndex(TYPE_38_ID).isEmpty()) {
+    private static ItemStack createStarterGun() {
+        if (TimelessAPI.getCommonGunIndex(STARTER_GUN_ID).isEmpty()) {
             return ItemStack.EMPTY;
         }
 
@@ -111,8 +110,8 @@ public final class BeginnerKitService {
             return ItemStack.EMPTY;
         }
 
-        gun.setGunId(stack, TYPE_38_ID);
-        int magazineSize = TimelessAPI.getCommonGunIndex(TYPE_38_ID)
+        gun.setGunId(stack, STARTER_GUN_ID);
+        int magazineSize = TimelessAPI.getCommonGunIndex(STARTER_GUN_ID)
                 .map(index -> index.getGunData().getAmmoAmount())
                 .orElse(4);
         gun.setCurrentAmmoCount(stack, magazineSize);
@@ -120,13 +119,13 @@ public final class BeginnerKitService {
         return stack;
     }
 
-    private static ItemStack createType38Ammo() {
+    private static ItemStack createStarterAmmo() {
         ItemStack stack = new ItemStack(com.tacz.guns.init.ModItems.AMMO.get(), RESERVE_AMMO_COUNT);
         IAmmo ammo = IAmmo.getIAmmoOrNull(stack);
         if (ammo == null) {
             return ItemStack.EMPTY;
         }
-        ammo.setAmmoId(stack, TYPE_38_AMMO_ID);
+        ammo.setAmmoId(stack, STARTER_AMMO_ID);
         return stack;
     }
 

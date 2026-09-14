@@ -49,6 +49,10 @@ public final class MoveEarthMessage {
         return compose(Severity.ERROR, message);
     }
 
+    public static MutableComponent tip(Component message) {
+        return compose(Severity.TIP, message);
+    }
+
     public static MutableComponent compose(Severity severity, Component message) {
         MutableComponent result = Component.empty();
         appendGradient(result, BRAND, BRAND_START, BRAND_END, true);
@@ -78,6 +82,7 @@ public final class MoveEarthMessage {
 
     public enum Severity {
         INFO("•", 0xDCE5EA),
+        TIP("TIP", 0x78F0AA),
         SUCCESS("✓", 0x68E09B),
         WARNING("!", 0xFFB454),
         ERROR("×", 0xFF6577);

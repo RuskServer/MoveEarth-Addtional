@@ -21,8 +21,11 @@ import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import com.ruskserver.moveearth_addtional.s2.siege.PrisonerSavedData;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /** Server-authoritative PvP combat tags and disconnect bodies. */
@@ -79,6 +82,7 @@ public final class CombatTagService {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        CombatTagBossBar.remove(player.getUUID());
         PrisonerSavedData prisoners = PrisonerSavedData.get(player.server);
         boolean inCustody = prisoners.custody(player.getUUID()).isPresent();
         if (!isTagged(player) && !inCustody) return;
@@ -159,15 +163,23 @@ public final class CombatTagService {
                 discardBody(server, expired);
             }
         }
+        Set<UUID> visibleBars = new HashSet<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             CombatTagSavedData.get(server).state(player.getUUID()).ifPresent(state -> {
                 PrisonerSavedData prisoners = PrisonerSavedData.get(server);
                 if (state.remainingTicks() > 0L && prisoners.custody(player.getUUID()).isEmpty()
-                        && prisoners.prisoner(player.getUUID()).isEmpty()) player.displayClientMessage(Component.literal(
-                        "戦闘中 " + Math.max(1L, (state.remainingTicks() + 19L) / 20L) + "秒")
-                        .withStyle(ChatFormatting.RED), true);
+                        && prisoners.prisoner(player.getUUID()).isEmpty()) {
+                    visibleBars.add(player.getUUID());
+                    CombatTagBossBar.update(player, state.remainingTicks());
+                }
             });
         }
+        CombatTagBossBar.retain(visibleBars);
+    }
+
+    @SubscribeEvent
+    public static void onServerStopped(ServerStoppedEvent event) {
+        CombatTagBossBar.clear();
     }
 
     public static void releaseBody(MinecraftServer server, UUID playerId, boolean keepRestore) {

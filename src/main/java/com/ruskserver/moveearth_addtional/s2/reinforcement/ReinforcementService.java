@@ -132,7 +132,7 @@ public final class ReinforcementService {
         List<S2C_ReinforcementSnapshotPacket.Entry> entries = allowed
                 ? ReinforcementSavedData.get(player.serverLevel())
                 .around(player.serverLevel(), player.blockPosition(), radius).stream()
-                .filter(value -> territories.controlsChunk(player.server, nationId,
+                .filter(value -> territories.allowsReinforcement(player.server, nationId,
                         player.level().dimension().location(), value.pos()))
                 .map(value -> new S2C_ReinforcementSnapshotPacket.Entry(value.pos(),
                         value.entry().material(), value.entry().durability(), value.entry().enabled(),
@@ -196,7 +196,7 @@ public final class ReinforcementService {
         NationSavedData nations = NationSavedData.get(player.server);
         java.util.UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         return nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)
-                && TerritorySavedData.get(player.server).controlsChunk(
+                && TerritorySavedData.get(player.server).allowsReinforcement(
                 player.server, nationId, player.level().dimension().location(), pos);
     }
 
@@ -275,7 +275,7 @@ public final class ReinforcementService {
         long radiusSquared = (long) SCAN_RADIUS * SCAN_RADIUS;
         for (BlockPos pos : pending.positions) {
             if (player.blockPosition().distSqr(pos) > radiusSquared
-                    || !territories.controlsChunk(player.server, nationId, pending.dimension, pos)) {
+                    || !territories.allowsReinforcement(player.server, nationId, pending.dimension, pos)) {
                 removals.add(pos);
                 continue;
             }

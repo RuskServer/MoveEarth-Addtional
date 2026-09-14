@@ -10,9 +10,14 @@ import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcem
 import com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Explosion;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.common.util.BlockSnapshot;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -21,14 +26,54 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
 import java.util.HashSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID)
 public final class ReinforcementEvents {
     private static final ReinforcementDamageLimiter DAMAGE_LIMITER = new ReinforcementDamageLimiter(5L);
+    private static final Map<Explosion, Map<BlockPos, BlockState>> CBC_EXPLOSION_SNAPSHOTS =
+            new WeakHashMap<>();
 
     private ReinforcementEvents() {
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onCbcExplosionStart(ExplosionEvent.Start event) {
+        if (!(event.getLevel() instanceof ServerLevel level)
+                || !CbcReinforcementCompat.isCbcExplosion(event.getExplosion())
+                || WarnauticsReinforcementCompat.handles(event.getExplosion())) return;
+        BlockPos center = BlockPos.containing(event.getExplosion().center());
+        int radius = com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.cbcProtectedBlastRadius();
+        Map<BlockPos, BlockState> snapshots = new LinkedHashMap<>();
+        for (ReinforcementSavedData.LocatedEntry located : ReinforcementSavedData.get(level)
+                .around(level, center, radius)) {
+            snapshots.put(located.pos().immutable(), level.getBlockState(located.pos()));
+        }
+        if (!snapshots.isEmpty()) CBC_EXPLOSION_SNAPSHOTS.put(event.getExplosion(), snapshots);
+    }
+
+    /** A newly placed block must never inherit reinforcement left behind at an empty position. */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onPlaced(BlockEvent.EntityPlaceEvent event) {
+        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel level)) return;
+        Set<BlockPos> stale = new java.util.LinkedHashSet<>();
+        if (event instanceof BlockEvent.EntityMultiPlaceEvent multiPlace) {
+            for (BlockSnapshot snapshot : multiPlace.getReplacedBlockSnapshots()) {
+                if (snapshot.getState().isAir()) stale.add(snapshot.getPos().immutable());
+            }
+        } else if (event.getBlockSnapshot().getState().isAir()) {
+            stale.add(event.getPos().immutable());
+        }
+        if (stale.isEmpty()) return;
+        ReinforcementSavedData data = ReinforcementSavedData.get(level);
+        stale.removeIf(pos -> data.get(pos).isEmpty());
+        if (stale.isEmpty()) return;
+        stale.forEach(data::remove);
+        TerritoryClosureRecheckManager.markPotentialOpenings(level, stale);
+        ReinforcementService.syncChangedNearbyManagers(level, stale);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -95,12 +140,18 @@ public final class ReinforcementEvents {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         // Warnautics publishes a later mutable blast-list event. Let that dedicated bridge
         // handle the blast once; otherwise generic protection would consume it first.
-        if (WarnauticsReinforcementCompat.handles(event.getExplosion())) return;
+        if (WarnauticsReinforcementCompat.handles(event.getExplosion())) {
+            CBC_EXPLOSION_SNAPSHOTS.remove(event.getExplosion());
+            return;
+        }
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         net.minecraft.world.entity.Entity source = event.getExplosion().getDirectSourceEntity();
         ServerPlayer attacker = SiegeService.attributablePlayer(source);
-        boolean cbc = CbcReinforcementCompat.isCbc(source);
-        CbcMunitionDamage.Kind munition = CbcReinforcementCompat.kind(source);
+        boolean sourceIsCbc = CbcReinforcementCompat.isCbc(source);
+        boolean cbc = sourceIsCbc || CbcReinforcementCompat.isCbcExplosion(event.getExplosion());
+        CbcMunitionDamage.Kind munition = sourceIsCbc
+                ? CbcReinforcementCompat.kind(source)
+                : CbcReinforcementCompat.kind(event.getExplosion());
         net.minecraft.core.BlockPos explosionCenter = net.minecraft.core.BlockPos.containing(
                 event.getExplosion().center());
         boolean preHandled = cbc && CbcReinforcementCompat.wasRecentlyPreHandled(
@@ -152,7 +203,30 @@ public final class ReinforcementEvents {
             }
             return result.remains();
         });
+        restoreCbcTransforms(level, data, event.getExplosion(), reinforcementChanges);
         ReinforcementService.syncChangedNearbyManagers(level, reinforcementChanges);
+    }
+
+    private static void restoreCbcTransforms(ServerLevel level, ReinforcementSavedData data,
+                                             Explosion explosion, Set<BlockPos> changes) {
+        Map<BlockPos, BlockState> snapshots = CBC_EXPLOSION_SNAPSHOTS.remove(explosion);
+        if (snapshots == null || snapshots.isEmpty()) return;
+        for (Map.Entry<BlockPos, BlockState> snapshot : snapshots.entrySet()) {
+            BlockPos pos = snapshot.getKey();
+            ReinforcementEntry remaining = data.get(pos).orElse(null);
+            if (remaining == null || !remaining.enabled()) continue;
+            BlockState original = snapshot.getValue();
+            BlockState current = level.getBlockState(pos);
+            if (current.equals(original)) continue;
+            if (original.hasBlockEntity()) {
+                // A state-only restore after a container was destroyed could duplicate its contents.
+                data.remove(pos);
+                TerritoryClosureRecheckManager.markPotentialOpening(level, pos);
+            } else {
+                level.setBlock(pos, original, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+            }
+            changes.add(pos.immutable());
+        }
     }
 
     @SubscribeEvent
@@ -199,6 +273,7 @@ public final class ReinforcementEvents {
         WeldingBrushServerState.clear();
         ReinforcementService.clearScanCache();
         CbcReinforcementCompat.clearRuntimeState();
+        CBC_EXPLOSION_SNAPSHOTS.clear();
         WarnauticsReinforcementCompat.clearRuntimeState();
     }
 }

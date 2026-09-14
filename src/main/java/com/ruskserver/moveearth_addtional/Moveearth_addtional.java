@@ -5,12 +5,15 @@ import com.ruskserver.moveearth_addtional.config.DelayedChunkCacheConfig;
 import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
+import com.ruskserver.moveearth_addtional.config.TipConfig;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
 import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcementCompat;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -20,11 +23,13 @@ public class Moveearth_addtional {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Moveearth_addtional(IEventBus modEventBus, ModContainer modContainer) {
-        modContainer.registerConfig(
-                ModConfig.Type.STARTUP,
-                DiscordBotConfig.SPEC,
-                "moveearth_addtional-discord.toml"
-        );
+        if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            modContainer.registerConfig(
+                    ModConfig.Type.STARTUP,
+                    DiscordBotConfig.SPEC,
+                    "moveearth_addtional-discord.toml"
+            );
+        }
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 DelayedChunkCacheConfig.SPEC,
@@ -39,6 +44,11 @@ public class Moveearth_addtional {
                 ModConfig.Type.SERVER,
                 S2TerritoryConfig.SPEC,
                 "moveearth_addtional-s2-territory.toml"
+        );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                TipConfig.SPEC,
+                "moveearth_addtional-tips.toml"
         );
 
         CbcReinforcementCompat.registerIfPresent();

@@ -10,6 +10,8 @@ import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementBrushPat
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementGreedyMesher;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
@@ -25,6 +27,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public final class ReinforcementOverlayRenderer {
@@ -163,13 +166,23 @@ public final class ReinforcementOverlayRenderer {
 
     @SubscribeEvent
     public static void renderHud(RenderGuiEvent.Post event) {
+        if (Minecraft.getInstance().screen != null) return;
+        renderHudPanel(event.getGuiGraphics());
+    }
+
+    @SubscribeEvent
+    public static void renderHudAboveChat(ScreenEvent.Render.Post event) {
+        if (!(event.getScreen() instanceof ChatScreen)) return;
+        renderHudPanel(event.getGuiGraphics());
+    }
+
+    private static void renderHudPanel(GuiGraphics graphics) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (!validWorld(minecraft) || minecraft.options.hideGui || minecraft.screen != null
+        if (!validWorld(minecraft) || minecraft.options.hideGui
                 || !minecraft.player.getMainHandItem().is(ModItems.WELDING_TOOL.get())) return;
         BlockPos target = targetPos(minecraft);
         if (target == null) return;
         var entry = ReinforcementClientState.at(target);
-        var graphics = event.getGuiGraphics();
         int boxWidth = 236;
         boxWidth = Math.min(boxWidth, Math.max(140, graphics.guiWidth() - 24));
         int x = Math.max(12, graphics.guiWidth() - boxWidth - 12);

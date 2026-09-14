@@ -91,6 +91,18 @@ supplied by JDA and its runtime dependencies. Runtime dependency packages are
 relocated into a MoveEarth-private namespace to prevent module conflicts with
 libraries supplied by NeoForge or other mods.
 
+## Cold Sweat API
+
+The optional client temperature HUD integrates with the public API of Cold
+Sweat. Cold Sweat code and assets are not copied into or bundled with this
+project.
+
+- Component: Cold Sweat 2.4.x for Minecraft 1.21.1
+- Source: https://github.com/Momo-Softworks/Cold-Sweat
+- Copyright: Momo Softworks / Mikul
+- License: GNU General Public License version 3 with the upstream additional
+  API/library-use permission
+
 ## Third-party dependencies
 
 Minecraft, NeoForge, TaCZ, FMIC, CIBR, Create and other third-party libraries,

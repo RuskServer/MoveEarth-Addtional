@@ -13,13 +13,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-@EventBusSubscriber(value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
+@EventBusSubscriber(value = Dist.CLIENT)
 public class OxygenClientOverlay {
+    private static float maskOpacity;
+    private static long previousFrameNanos;
 
     @SubscribeEvent
-    public static void onRenderGui(RenderGuiEvent.Post event) {
+    public static void onRenderGuiPre(RenderGuiEvent.Pre event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.player.isCreative() || mc.player.isSpectator()) {
+            maskOpacity = 0.0F;
+            previousFrameNanos = 0L;
             return;
         }
 
@@ -27,29 +31,48 @@ public class OxygenClientOverlay {
         Font font = mc.font;
         int screenWidth = mc.getWindow().getGuiScaledWidth();
         int screenHeight = mc.getWindow().getGuiScaledHeight();
-
         long now = System.currentTimeMillis();
+        long frameNanos = System.nanoTime();
+        float elapsedSeconds = previousFrameNanos == 0L
+                ? 1.0F / 60.0F : (frameNanos - previousFrameNanos) / 1_000_000_000.0F;
+        previousFrameNanos = frameNanos;
+        maskOpacity = GasMaskVisualPolicy.approach(maskOpacity,
+                OxygenClientState.hasGasMask ? 1.0F : 0.0F, elapsedSeconds);
 
-        // 1. ガスマスク装着時の視界オーバーレイ（レンズ枠 & 曇り）
-        if (OxygenClientState.hasGasMask) {
-            renderGasMaskVignette(guiGraphics, screenWidth, screenHeight, now);
+        // 1. Smooth procedural lenses, with the old rectangle frame retained as fallback.
+        boolean smoothMask = false;
+        if (maskOpacity > 0.01F) {
+            float fog = GasMaskVisualPolicy.fogStrength(OxygenClientState.filterPercent);
+            float panic = GasMaskVisualPolicy.panicStrength(OxygenClientState.oxygenPercent);
+            smoothMask = GasMaskShaderRenderer.render(guiGraphics, screenWidth, screenHeight,
+                    maskOpacity, fog, panic, now);
+            if (!smoothMask) renderGasMaskFallback(guiGraphics, screenWidth, screenHeight, fog, maskOpacity, now);
         }
 
         // 2. 低酸素時の危機演出（赤色パルス）
-        if (OxygenClientState.oxygenPercent < 0.4f) {
+        if (OxygenClientState.oxygenPercent < 0.4f && !smoothMask) {
             renderLowOxygenPanic(guiGraphics, screenWidth, screenHeight, now);
-        }
-
-        // 3. 酸素・フィルターHUDメーター（危険地帯 or マスク装着 or 酸素減少時）
-        if (OxygenClientState.isDangerZone || OxygenClientState.hasGasMask || OxygenClientState.oxygenPercent < 1.0f) {
-            renderOxygenMeter(guiGraphics, font, screenWidth, screenHeight, now);
         }
     }
 
-    private static void renderGasMaskVignette(GuiGraphics guiGraphics, int w, int h, long now) {
+    @SubscribeEvent
+    public static void onRenderGuiPost(RenderGuiEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.player.isCreative() || mc.player.isSpectator()) return;
+
+        // Draw the readable meter after vanilla HUD elements; the lens itself is rendered in Pre.
+        if (OxygenClientState.isDangerZone || OxygenClientState.hasGasMask || OxygenClientState.oxygenPercent < 1.0f) {
+            GuiGraphics guiGraphics = event.getGuiGraphics();
+            renderOxygenMeter(guiGraphics, mc.font, mc.getWindow().getGuiScaledWidth(),
+                    mc.getWindow().getGuiScaledHeight(), System.currentTimeMillis());
+        }
+    }
+
+    private static void renderGasMaskFallback(GuiGraphics guiGraphics, int w, int h,
+                                              float fogStrength, float opacity, long now) {
         // 四隅のダークフレーム
         int cornerSize = Math.min(w, h) / 5;
-        int frameAlpha = 0xAA;
+        int frameAlpha = Math.round(0xAA * opacity);
         int frameColor = (frameAlpha << 24) | 0x0A0A0A;
 
         guiGraphics.fill(0, 0, cornerSize, 12, frameColor);
@@ -62,9 +85,9 @@ public class OxygenClientOverlay {
         guiGraphics.fill(w - 12, h - cornerSize, w, h, frameColor);
 
         // フィルター残量低下時のレンズ曇り演出（20%以下で白っぽくパルス）
-        if (OxygenClientState.filterPercent <= 0.2f) {
+        if (fogStrength > 0.0F) {
             float pulse = (float) ((Math.sin(now / 200.0) + 1.0) / 2.0);
-            int fogAlpha = (int) (40 * (1.0f - (OxygenClientState.filterPercent / 0.2f)) * (0.6f + 0.4f * pulse));
+            int fogAlpha = (int) (40 * fogStrength * opacity * (0.6f + 0.4f * pulse));
             if (fogAlpha > 0) {
                 int fogColor = (fogAlpha << 24) | 0xCCCCCC;
                 guiGraphics.fill(0, 0, w, h, fogColor);

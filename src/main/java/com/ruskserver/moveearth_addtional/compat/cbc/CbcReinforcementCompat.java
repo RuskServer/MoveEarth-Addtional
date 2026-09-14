@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.server.level.ServerPlayer;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
@@ -99,6 +100,17 @@ public final class CbcReinforcementCompat {
         if (source == null) return false;
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(source.getType());
         return id != null && "createbigcannons".equals(id.getNamespace());
+    }
+
+    /** CBC custom explosions such as MortarStoneExplosion deliberately have no direct source entity. */
+    public static boolean isCbcExplosion(Explosion explosion) {
+        return explosion != null && explosion.getClass().getName()
+                .startsWith("rbasamoyai.createbigcannons.");
+    }
+
+    public static CbcMunitionDamage.Kind kind(Explosion explosion) {
+        return explosion == null ? CbcMunitionDamage.Kind.UTILITY
+                : CbcMunitionDamage.classifyExplosionClass(explosion.getClass().getSimpleName());
     }
 
     private static Entity nearbyMunition(ServerLevel level, BlockPos pos) {

@@ -5,7 +5,8 @@ import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkCodeRegistry;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
-import com.ruskserver.moveearth_addtional.s2.notification.discord.DiscordBotService;
+import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkAccess;
+import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkGateway;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -34,7 +35,7 @@ public record C2S_LinkNationDiscordPacket(int requestId, String code) implements
             NationSavedData nations = NationSavedData.get(player.server);
             UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
             NationNotificationSavedData notifications = NationNotificationSavedData.get(player.server);
-            DiscordBotService bot = DiscordBotService.instance();
+            DiscordLinkAccess bot = DiscordLinkGateway.access();
             boolean success = false;
             String result;
             if (!DiscordLinkAttemptLimiter.allow(player, "nation")) {
