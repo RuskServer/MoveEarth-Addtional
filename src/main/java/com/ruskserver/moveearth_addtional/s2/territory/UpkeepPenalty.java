@@ -14,4 +14,12 @@ public enum UpkeepPenalty {
     public boolean reinforcementProtectionEnabled() {
         return this != DISABLED;
     }
+
+    public boolean coreRegenerationEnabled() {
+        return this != DISABLED;
+    }
+
+    public boolean territoryRadiusReduced() {
+        return this == DISABLED;
+    }
 }

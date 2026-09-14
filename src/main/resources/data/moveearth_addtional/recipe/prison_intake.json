@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["IBI", "CRC", "IBI"],
+  "key": {
+    "I": { "item": "minecraft:iron_block" },
+    "B": { "item": "minecraft:blast_furnace" },
+    "C": { "item": "minecraft:chain" },
+    "R": { "item": "minecraft:redstone_block" }
+  },
+  "result": { "id": "moveearth_addtional:prison_intake", "count": 1 }
+}

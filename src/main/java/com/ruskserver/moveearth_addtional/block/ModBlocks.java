@@ -23,4 +23,7 @@ public class ModBlocks {
                     .lightLevel(state -> 9)
                     .requiresCorrectToolForDrops()
             ));
+    public static final DeferredHolder<Block, PrisonIntakeBlock> PRISON_INTAKE = BLOCKS.register("prison_intake",
+            () -> new PrisonIntakeBlock(BlockBehaviour.Properties.of()
+                    .strength(8.0F, 1200.0F).sound(SoundType.METAL).requiresCorrectToolForDrops()));
 }

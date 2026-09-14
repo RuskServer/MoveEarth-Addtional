@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.LinkedHashSet;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -93,15 +94,19 @@ public final class ReinforcementSavedData extends SavedData {
         List<BlockPos> progressed = new ArrayList<>();
         Set<BlockPos> removed = new LinkedHashSet<>();
         boolean changed = false;
-        for (BlockPos pos : List.copyOf(constructionEntries)) {
+        Iterator<BlockPos> iterator = constructionEntries.iterator();
+        while (iterator.hasNext()) {
+            BlockPos pos = iterator.next();
             ReinforcementEntry before = entries.get(pos);
             if (before == null) {
-                constructionEntries.remove(pos);
+                iterator.remove();
                 continue;
             }
             if (!level.hasChunkAt(pos)) continue;
             if (level.getBlockState(pos).isAir()) {
-                removeInternal(pos);
+                entries.remove(pos);
+                iterator.remove();
+                unindex(pos);
                 removed.add(pos.immutable());
                 changed = true;
                 continue;
@@ -110,7 +115,7 @@ public final class ReinforcementSavedData extends SavedData {
             ReinforcementEntry after = before.advance(gameTime);
             if (after.equals(before)) continue;
             entries.put(pos, after);
-            if (after.activatesAt() <= 0L) constructionEntries.remove(pos);
+            if (after.activatesAt() <= 0L) iterator.remove();
             changed = true;
             if (!before.enabled() && after.enabled() && after.damaged()) {
                 activated.add(pos.immutable());

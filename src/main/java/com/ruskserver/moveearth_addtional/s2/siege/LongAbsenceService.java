@@ -35,7 +35,7 @@ public final class LongAbsenceService {
 
     public static LongAbsencePolicy.Tier tierAt(ServerLevel level, BlockPos pos) {
         return TerritorySavedData.get(level.getServer()).controllingNation(
-                        level.dimension().location(), pos)
+                        level.getServer(), level.dimension().location(), pos)
                 .map(nationId -> tier(level.getServer(), nationId))
                 .orElse(LongAbsencePolicy.Tier.FULL);
     }

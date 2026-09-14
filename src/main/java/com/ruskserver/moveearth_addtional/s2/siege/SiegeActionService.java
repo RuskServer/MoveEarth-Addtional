@@ -185,8 +185,7 @@ public final class SiegeActionService {
             }
             if (!active.defenderNation().equals(nationId)) return Result.CONFLICT_NOT_FOUND;
             TerritorySavedData territories = TerritorySavedData.get(player.server);
-            TerritorySavedData.CoreRecord core = territories.cores().stream()
-                    .filter(value -> value.id().equals(active.coreId())).findFirst().orElse(null);
+            TerritorySavedData.CoreRecord core = territories.coreById(active.coreId()).orElse(null);
             if (core == null) return Result.CONFLICT_NOT_FOUND;
             TerritorySavedData.CoreRecord depleted = territories.damageCore(
                     core.dimension(), core.pos(), core.health()).orElse(core);

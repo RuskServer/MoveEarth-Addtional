@@ -261,6 +261,14 @@ public final class SiegeSavedData extends SavedData {
                 record.defenderNation, firstNation, secondNation));
     }
 
+    public boolean hasIndividualConflictBetween(UUID playerId, UUID defenderNation) {
+        if (playerId == null || defenderNation == null) return false;
+        return active.values().stream().anyMatch(record -> record.individualAttacker()
+                && record.attackerNation().equals(playerId) && record.defenderNation().equals(defenderNation))
+                || fallen.values().stream().anyMatch(record -> record.individualAttacker()
+                && record.attackerNation().equals(playerId) && record.defenderNation().equals(defenderNation));
+    }
+
     public java.util.Optional<SiegeRecord> activeById(UUID siegeId) {
         return active.values().stream().filter(record -> record.id.equals(siegeId)).findFirst();
     }

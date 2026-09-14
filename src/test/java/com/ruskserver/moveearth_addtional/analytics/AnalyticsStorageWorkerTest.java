@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -54,8 +55,9 @@ public class AnalyticsStorageWorkerTest {
         queue.enqueue(startEvent);
 
         // 停止時フラッシュ
-        worker.stopAndFlush(3000L);
+        assertTimeout(Duration.ofSeconds(1), () -> worker.stopAndFlush(3000L));
         assertFalse(worker.isRunning());
+        assertFalse(engine.isOpen());
 
         // DBに書き込まれているか検証
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
@@ -64,5 +66,12 @@ public class AnalyticsStorageWorkerTest {
             assertTrue(rs.next());
             assertEquals("WorkerTestPlayer", rs.getString("last_known_name"));
         }
+    }
+
+    @Test
+    public void testIdleWorkerStopDoesNotWaitForConfiguredTimeout() {
+        assertTimeout(Duration.ofSeconds(1), () -> worker.stopAndFlush(3000L));
+        assertFalse(worker.isRunning());
+        assertFalse(engine.isOpen());
     }
 }

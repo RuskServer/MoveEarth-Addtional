@@ -22,7 +22,7 @@ final class BastionService {
     static boolean isRestricted(ServerPlayer player, ServerLevel level, BlockPos pos) {
         NationSavedData nations = NationSavedData.get(player.server);
         var controllingNation = TerritorySavedData.get(player.server)
-                .controllingNation(level.dimension().location(), pos);
+                .controllingNation(level.getServer(), level.dimension().location(), pos);
         var actorNation = nations.nationIdFor(player.getUUID());
         boolean allied = controllingNation.isPresent() && actorNation.isPresent()
                 && nations.isAllied(controllingNation.get(), actorNation.get());

@@ -18,6 +18,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue CORE_REGEN_INTERVAL_SECONDS;
     private static final ModConfigSpec.DoubleValue CORE_REGEN_PERCENT;
     private static final ModConfigSpec.DoubleValue OVERDUE_DAMAGE_MULTIPLIER;
+    private static final ModConfigSpec.IntValue OVERDUE_TERRITORY_RADIUS_PERCENT;
     private static final ModConfigSpec.IntValue CBC_SHOT_DAMAGE;
     private static final ModConfigSpec.IntValue CBC_AP_SHOT_DAMAGE;
     private static final ModConfigSpec.IntValue CBC_HE_SHELL_DAMAGE;
@@ -58,6 +59,11 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue LONG_ABSENCE_HALF_DAYS;
     private static final ModConfigSpec.IntValue LONG_ABSENCE_QUARTER_DAYS;
     private static final ModConfigSpec.IntValue LONG_ABSENCE_DISABLE_DAYS;
+    private static final ModConfigSpec.IntValue COMBAT_TAG_SECONDS;
+    private static final ModConfigSpec.IntValue CAPTURE_PROTECTION_SECONDS;
+    private static final ModConfigSpec.IntValue RESTRAINT_SECONDS;
+    private static final ModConfigSpec.IntValue ESCORT_MAX_DISTANCE;
+    private static final ModConfigSpec.IntValue CAPTIVITY_MAX_SECONDS;
 
     public static final ModConfigSpec SPEC;
 
@@ -75,6 +81,10 @@ public final class S2TerritoryConfig {
                 .comment("Hours overdue before reinforcement protection and Bastion stop working.")
                 .defineInRange("disableAfterHours", 72, 1, 4320);
         OVERDUE_DAMAGE_MULTIPLIER = BUILDER.defineInRange("weakenedSiegeDamageMultiplier", 2.0D, 1.0D, 100.0D);
+        OVERDUE_TERRITORY_RADIUS_PERCENT = BUILDER
+                .comment("Effective territory radius percent while upkeep is in the disabled stage. "
+                        + "The core chunk always remains; the reserved placement area is unchanged.")
+                .defineInRange("disabledTerritoryRadiusPercent", 50, 0, 100);
         BUILDER.pop();
 
         BUILDER.push("core");
@@ -167,6 +177,16 @@ public final class S2TerritoryConfig {
         LONG_ABSENCE_QUARTER_DAYS = BUILDER.defineInRange("quarterStrengthAfterDays", 21, 0, 3650);
         LONG_ABSENCE_DISABLE_DAYS = BUILDER.defineInRange("disableProtectionAfterDays", 30, 1, 3650);
         BUILDER.pop();
+
+        BUILDER.push("captivity");
+        COMBAT_TAG_SECONDS = BUILDER.defineInRange("combatTagSeconds", 30, 1, 300);
+        CAPTURE_PROTECTION_SECONDS = BUILDER.defineInRange("captureProtectionSeconds", 10, 0, 120);
+        RESTRAINT_SECONDS = BUILDER.defineInRange("restraintSeconds", 3, 1, 30);
+        ESCORT_MAX_DISTANCE = BUILDER.defineInRange("escortMaxDistanceBlocks", 8, 3, 32);
+        CAPTIVITY_MAX_SECONDS = BUILDER.comment(
+                "Maximum combined escort and imprisonment time measured only during the JST 18:00-00:00 opening window.")
+                .defineInRange("maximumCaptivitySeconds", 10800, 60, 10800);
+        BUILDER.pop();
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
@@ -180,6 +200,7 @@ public final class S2TerritoryConfig {
     public static long upkeepWeakenMillis() { return UPKEEP_WEAKEN_AFTER_HOURS.getAsInt() * 3_600_000L; }
     public static long upkeepDisableMillis() { return UPKEEP_DISABLE_AFTER_HOURS.getAsInt() * 3_600_000L; }
     public static double overdueDamageMultiplier() { return OVERDUE_DAMAGE_MULTIPLIER.getAsDouble(); }
+    public static int overdueTerritoryRadiusPercent() { return OVERDUE_TERRITORY_RADIUS_PERCENT.getAsInt(); }
     public static int capitalCoreHealth() { return CAPITAL_CORE_HEALTH.getAsInt(); }
     public static int outpostCoreHealth() { return OUTPOST_CORE_HEALTH.getAsInt(); }
     public static long coreRegenDelayTicks() { return CORE_REGEN_DELAY_SECONDS.getAsInt() * 20L; }
@@ -225,6 +246,11 @@ public final class S2TerritoryConfig {
     public static long longAbsenceHalfStrengthMillis() { return daysToMillis(LONG_ABSENCE_HALF_DAYS.getAsInt()); }
     public static long longAbsenceQuarterStrengthMillis() { return daysToMillis(LONG_ABSENCE_QUARTER_DAYS.getAsInt()); }
     public static long longAbsenceDisableMillis() { return daysToMillis(LONG_ABSENCE_DISABLE_DAYS.getAsInt()); }
+    public static long combatTagTicks() { return COMBAT_TAG_SECONDS.getAsInt() * 20L; }
+    public static long captureProtectionTicks() { return CAPTURE_PROTECTION_SECONDS.getAsInt() * 20L; }
+    public static int restraintTicks() { return RESTRAINT_SECONDS.getAsInt() * 20; }
+    public static int escortMaxDistance() { return ESCORT_MAX_DISTANCE.getAsInt(); }
+    public static long captivityMaxTicks() { return CAPTIVITY_MAX_SECONDS.getAsInt() * 20L; }
 
     private static long daysToMillis(int days) { return days * 86_400_000L; }
 }

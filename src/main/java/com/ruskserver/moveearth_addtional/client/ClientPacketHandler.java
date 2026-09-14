@@ -62,6 +62,23 @@ public class ClientPacketHandler {
         Minecraft.getInstance().setScreen(new NationNotificationsScreen(packet));
     }
 
+    public static void handleOnboarding(S2C_OnboardingPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof NationOnboardingScreen screen) screen.update(packet);
+        else minecraft.setScreen(new NationOnboardingScreen(packet));
+    }
+
+    public static void handleCloseOnboarding() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof NationOnboardingScreen) minecraft.setScreen(null);
+    }
+
+    public static void handleNationApplications(S2C_NationApplicationsPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof NationApplicationsScreen screen) screen.update(packet);
+        else minecraft.setScreen(new NationApplicationsScreen(packet));
+    }
+
     public static void handleS2ActionResult(S2C_S2ActionResultPacket packet) {
         if (Minecraft.getInstance().screen instanceof S2HubScreen screen) {
             screen.handleResult(packet);

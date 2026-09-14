@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.siege;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.ServerSchedule;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
@@ -51,7 +52,7 @@ public final class SiegeService {
         NationSavedData nations = NationSavedData.get(level.getServer());
         UUID attackerNation = attribution.nationId();
         TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
-                .controllingCore(level.dimension().location(), target).orElse(null);
+                .controllingCore(level.getServer(), level.dimension().location(), target).orElse(null);
         SiegeSavedData siegeData = SiegeSavedData.get(level.getServer());
         boolean continuesIndividual = core != null && siegeData.hasActiveIndividualAttack(
                 attribution.actorId(), core.id());
@@ -109,7 +110,7 @@ public final class SiegeService {
         if (attribution == null || attribution.nationId() == null) return false;
         UUID attackerNation = attribution.nationId();
         UUID defenderNation = TerritorySavedData.get(level.getServer())
-                .controllingNation(level.dimension().location(), target).orElse(null);
+                .controllingNation(level.getServer(), level.dimension().location(), target).orElse(null);
         return attackerNation != null && defenderNation != null
                 && !attackerNation.equals(defenderNation)
                 && SiegeSavedData.get(level.getServer()).isPeaceTruceActive(
@@ -121,6 +122,7 @@ public final class SiegeService {
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         if (event.getServer().overworld().getGameTime() % 20L != 7L) return;
+        if (event.getServer().isDedicatedServer() && !ServerSchedule.isOpenNow()) return;
         long now = event.getServer().overworld().getGameTime();
         long retention = Math.max(20L, S2TerritoryConfig.siegeDuplicateLogTicks() * 4L);
         RECENT_LOGS.entrySet().removeIf(entry -> now - entry.getValue() > retention);

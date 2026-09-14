@@ -90,8 +90,7 @@ public final class S2NationViewService {
             boolean attacker = siege.attackerNation().equals(nation.id());
             var opponent = siege.individualAttacker() && !attacker ? null
                     : data.nation(attacker ? siege.defenderNation() : siege.attackerNation()).orElse(null);
-            var core = territories.cores().stream().filter(candidate -> candidate.id().equals(siege.coreId()))
-                    .findFirst().orElse(null);
+            var core = territories.coreById(siege.coreId()).orElse(null);
             net.minecraft.server.level.ServerLevel coreLevel = player.server.getLevel(
                     net.minecraft.resources.ResourceKey.create(
                             net.minecraft.core.registries.Registries.DIMENSION, siege.dimension()));
@@ -117,8 +116,7 @@ public final class S2NationViewService {
             boolean attacker = fallen.attackerNation().equals(nation.id());
             var opponent = fallen.individualAttacker() && !attacker ? null
                     : data.nation(attacker ? fallen.defenderNation() : fallen.attackerNation()).orElse(null);
-            var core = territories.cores().stream().filter(candidate -> candidate.id().equals(fallen.coreId()))
-                    .findFirst().orElse(null);
+            var core = territories.coreById(fallen.coreId()).orElse(null);
             UUID opponentId = attacker ? fallen.defenderNation() : fallen.attackerNation();
             return new S2NationSnapshot.SiegeView(fallen.siegeId(), opponentId,
                     fallen.individualAttacker() && !attacker
@@ -167,7 +165,8 @@ public final class S2NationViewService {
                     return new S2NationSnapshot.PrisonerView(prisoner.playerId(),
                             captive == null ? "Unknown" : captive.lastKnownName(), opponentId,
                             opponent == null ? "Unknown" : opponent.name(),
-                            opponent == null ? "" : opponent.tag(), heldByViewer);
+                            opponent == null ? "" : opponent.tag(), heldByViewer,
+                            prisoner.remainingTicks());
                 }).toList();
         TerritorySavedData.VaultChunk vault = territories.vaultChunk(nation.id()).orElse(null);
         long settlementTruce = Math.max(siegeData.nationSettlementTruceRemaining(nation.id()),
@@ -209,8 +208,7 @@ public final class S2NationViewService {
         java.util.List<S2NationSnapshot.SiegeView> result = new java.util.ArrayList<>();
         result.addAll(siegeData.activeForPlayer(player.getUUID()).stream().map(siege -> {
             NationSavedData.Nation defender = nations.nation(siege.defenderNation()).orElse(null);
-            TerritorySavedData.CoreRecord core = territories.cores().stream()
-                    .filter(candidate -> candidate.id().equals(siege.coreId())).findFirst().orElse(null);
+            TerritorySavedData.CoreRecord core = territories.coreById(siege.coreId()).orElse(null);
             net.minecraft.server.level.ServerLevel coreLevel = player.server.getLevel(
                     net.minecraft.resources.ResourceKey.create(
                             net.minecraft.core.registries.Registries.DIMENSION, siege.dimension()));
@@ -227,8 +225,7 @@ public final class S2NationViewService {
         }).toList());
         result.addAll(siegeData.fallenForPlayer(player.getUUID()).stream().map(fallen -> {
             NationSavedData.Nation defender = nations.nation(fallen.defenderNation()).orElse(null);
-            TerritorySavedData.CoreRecord core = territories.cores().stream()
-                    .filter(candidate -> candidate.id().equals(fallen.coreId())).findFirst().orElse(null);
+            TerritorySavedData.CoreRecord core = territories.coreById(fallen.coreId()).orElse(null);
             return new S2NationSnapshot.SiegeView(fallen.siegeId(), fallen.defenderNation(),
                     defender == null ? "Unknown" : defender.name(), defender == null ? "" : defender.tag(),
                     true, true, S2NationSnapshot.SiegePhase.FALLEN, fallen.remainingTicks(),

@@ -423,7 +423,8 @@ public final class TpaRequestManager {
         return player.isAlive()
                 && !player.isSpectator()
                 && !player.isPassenger()
-                && !PvpMatchManager.INSTANCE.isParticipant(player);
+                && !PvpMatchManager.INSTANCE.isParticipant(player)
+                && !com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(player);
     }
 
     private static TpaPolicy.Mode modeFor(ServerPlayer traveler, TpaUsageSavedData usage) {
@@ -470,7 +471,8 @@ public final class TpaRequestManager {
     }
 
     private boolean isCombatLocked(ServerPlayer player) {
-        return combatUntil.getOrDefault(player.getUUID(), 0) > player.server.getTickCount();
+        return combatUntil.getOrDefault(player.getUUID(), 0) > player.server.getTickCount()
+                || com.ruskserver.moveearth_addtional.s2.combat.CombatTagService.isTagged(player);
     }
 
     private void markCombat(ServerPlayer player, int durationTicks) {

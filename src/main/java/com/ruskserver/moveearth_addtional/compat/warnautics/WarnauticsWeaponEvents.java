@@ -12,6 +12,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
@@ -41,11 +42,15 @@ public final class WarnauticsWeaponEvents {
             ResourceLocation.fromNamespaceAndPath(MOD_ID, CRUISE_MISSILE);
     private static final Set<String> AERIAL_BOMBS = Set.of(
             "small_bomb", "sea_bomb", "medium_bomb", "large_bomb", "moab");
+    private static Map<EntityType<?>, String> aerialBombEntityPaths = Map.of();
+    private static EntityType<?> cruiseMissileEntityType;
+    private static boolean entityTypesResolved;
 
     private WarnauticsWeaponEvents() { }
 
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
+        resolveEntityTypes();
         removeCruiseMissileRecipe(event.getServer().getRecipeManager());
     }
 
@@ -105,15 +110,16 @@ public final class WarnauticsWeaponEvents {
     public static void onEntityJoin(EntityJoinLevelEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         Entity entity = event.getEntity();
-        String path = entityPath(entity);
-        if (CRUISE_MISSILE.equals(path)) {
+        resolveEntityTypes();
+        if (entity.getType() == cruiseMissileEntityType) {
             event.setCanceled(true);
             entity.discard();
             Moveearth_addtional.LOGGER.warn("Blocked a disabled Create Warnautics cruise missile entity at {}",
                     entity.blockPosition());
             return;
         }
-        if (!AERIAL_BOMBS.contains(path)) return;
+        String path = aerialBombEntityPaths.get(entity.getType());
+        if (path == null) return;
         CompoundTag persistent = entity.getPersistentData();
         if (persistent.hasUUID(ATTRIBUTION_NATION)) return;
         WarnauticsBombSavedData.Placement placement = WarnauticsBombSavedData.get(level)
@@ -135,6 +141,19 @@ public final class WarnauticsWeaponEvents {
     static String entityPath(Entity entity) {
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         return id != null && MOD_ID.equals(id.getNamespace()) ? id.getPath() : "";
+    }
+
+    private static synchronized void resolveEntityTypes() {
+        if (entityTypesResolved) return;
+        Map<EntityType<?>, String> bombs = new LinkedHashMap<>();
+        for (String path : AERIAL_BOMBS) {
+            BuiltInRegistries.ENTITY_TYPE.getOptional(
+                    ResourceLocation.fromNamespaceAndPath(MOD_ID, path))
+                    .ifPresent(type -> bombs.put(type, path));
+        }
+        cruiseMissileEntityType = BuiltInRegistries.ENTITY_TYPE.getOptional(CRUISE_RECIPE).orElse(null);
+        aerialBombEntityPaths = Map.copyOf(bombs);
+        entityTypesResolved = true;
     }
 
     private static boolean isRegistryPath(BlockState state, String path) {

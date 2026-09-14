@@ -23,6 +23,7 @@ public final class NationSavedData extends SavedData {
     private final Map<UUID, Nation> nationView = Collections.unmodifiableMap(nations);
     private final Map<UUID, UUID> nationByMember = new LinkedHashMap<>();
     private final Map<UUID, Invitation> invitations = new LinkedHashMap<>();
+    private final Map<UUID, JoinApplication> joinApplications = new LinkedHashMap<>();
     private final Map<NationPair, DiplomacyRecord> diplomacy = new LinkedHashMap<>();
     private long revision;
 
@@ -150,6 +151,94 @@ public final class NationSavedData extends SavedData {
         return Optional.ofNullable(invitations.get(playerId));
     }
 
+    public Optional<JoinApplication> joinApplicationFor(UUID playerId) {
+        return Optional.ofNullable(joinApplications.get(playerId));
+    }
+
+    public java.util.List<JoinApplication> joinApplicationsFor(UUID nationId) {
+        return joinApplications.values().stream()
+                .filter(application -> application.nationId.equals(nationId))
+                .sorted(java.util.Comparator.comparingLong(JoinApplication::requestedAt))
+                .toList();
+    }
+
+    public ApplicationResult applyToNation(UUID applicantId, String applicantName, UUID nationId,
+                                           long expectedRevision) {
+        if (expectedRevision != revision) return applicationResult(ApplicationStatus.STALE);
+        NationApplicationPolicy.Decision decision = NationApplicationPolicy.apply(
+                nationByMember.containsKey(applicantId), nations.containsKey(nationId),
+                joinApplications.containsKey(applicantId));
+        if (decision != NationApplicationPolicy.Decision.ALLOW_APPLY) {
+            return applicationResult(mapApplicationDecision(decision));
+        }
+        joinApplications.put(applicantId, new JoinApplication(nationId, applicantId,
+                safePlayerName(applicantName), System.currentTimeMillis()));
+        changed();
+        return applicationResult(ApplicationStatus.APPLIED);
+    }
+
+    public ApplicationResult cancelApplication(UUID applicantId, long expectedRevision) {
+        if (expectedRevision != revision) return applicationResult(ApplicationStatus.STALE);
+        if (joinApplications.remove(applicantId) == null) {
+            return applicationResult(ApplicationStatus.APPLICATION_NOT_FOUND);
+        }
+        changed();
+        return applicationResult(ApplicationStatus.CANCELLED);
+    }
+
+    public ApplicationResult decideApplication(UUID actorId, UUID applicantId, boolean approve,
+                                               long expectedRevision) {
+        if (expectedRevision != revision) return applicationResult(ApplicationStatus.STALE);
+        Nation actorNation = nationFor(actorId).orElse(null);
+        JoinApplication application = joinApplications.get(applicantId);
+        boolean canManage = actorNation != null
+                && hasPermission(actorNation, actorId, S2Permission.MANAGE_MEMBERS);
+        boolean applicationExists = application != null && actorNation != null
+                && application.nationId.equals(actorNation.id);
+        NationApplicationPolicy.Decision decision = NationApplicationPolicy.decide(
+                canManage, applicationExists, nationByMember.containsKey(applicantId), approve);
+        if (decision == NationApplicationPolicy.Decision.ALREADY_MEMBER && applicationExists) {
+            joinApplications.remove(applicantId);
+            changed();
+            return applicationResult(ApplicationStatus.ALREADY_MEMBER);
+        }
+        if (decision != NationApplicationPolicy.Decision.ALLOW_APPROVE
+                && decision != NationApplicationPolicy.Decision.ALLOW_REJECT) {
+            return applicationResult(mapApplicationDecision(decision));
+        }
+        joinApplications.remove(applicantId);
+        if (approve) {
+            actorNation.members.put(applicantId, new Member(applicantId, application.applicantName,
+                    MEMBER_ROLE, System.currentTimeMillis()));
+            nationByMember.put(applicantId, actorNation.id);
+            invitations.remove(applicantId);
+        }
+        changed();
+        return applicationResult(approve ? ApplicationStatus.APPROVED : ApplicationStatus.REJECTED);
+    }
+
+    private ApplicationResult applicationResult(ApplicationStatus status) {
+        return new ApplicationResult(status, revision);
+    }
+
+    private static ApplicationStatus mapApplicationDecision(NationApplicationPolicy.Decision decision) {
+        return switch (decision) {
+            case NO_PERMISSION -> ApplicationStatus.NO_PERMISSION;
+            case ALREADY_MEMBER -> ApplicationStatus.ALREADY_MEMBER;
+            case ALREADY_APPLIED -> ApplicationStatus.ALREADY_APPLIED;
+            case NATION_NOT_FOUND -> ApplicationStatus.NATION_NOT_FOUND;
+            case APPLICATION_NOT_FOUND -> ApplicationStatus.APPLICATION_NOT_FOUND;
+            case ALLOW_APPLY -> ApplicationStatus.APPLIED;
+            case ALLOW_APPROVE -> ApplicationStatus.APPROVED;
+            case ALLOW_REJECT -> ApplicationStatus.REJECTED;
+        };
+    }
+
+    private static String safePlayerName(String name) {
+        String value = name == null ? "" : name;
+        return value.length() <= 16 ? value : value.substring(0, 16);
+    }
+
     public MembershipResult invite(UUID actorId, UUID targetId, String targetName, long expectedRevision) {
         if (expectedRevision != revision) return membershipResult(MembershipStatus.STALE);
         Nation nation = nationFor(actorId).orElse(null);
@@ -177,6 +266,7 @@ public final class NationSavedData extends SavedData {
                 playerId, playerName, MEMBER_ROLE, System.currentTimeMillis()));
         nationByMember.put(playerId, nationId);
         invitations.remove(playerId);
+        joinApplications.remove(playerId);
         changed();
         return membershipResult(MembershipStatus.JOINED);
     }
@@ -334,6 +424,7 @@ public final class NationSavedData extends SavedData {
         UUID nationId = nation.id;
         nation.members.keySet().forEach(nationByMember::remove);
         invitations.values().removeIf(invitation -> invitation.nationId.equals(nationId));
+        joinApplications.values().removeIf(application -> application.nationId.equals(nationId));
         diplomacy.entrySet().removeIf(entry -> entry.getKey().first.equals(nationId)
                 || entry.getKey().second.equals(nationId));
         nations.remove(nationId);
@@ -393,6 +484,7 @@ public final class NationSavedData extends SavedData {
                 ownerId, ownerName, OWNER_ROLE, System.currentTimeMillis()));
         nations.put(nationId, nation);
         nationByMember.put(ownerId, nationId);
+        joinApplications.remove(ownerId);
         changed();
         return new CreateResult(Status.CREATED, nation, revision);
     }
@@ -467,6 +559,16 @@ public final class NationSavedData extends SavedData {
             inviteList.add(inviteTag);
         }
         tag.put("Invitations", inviteList);
+        ListTag applicationList = new ListTag();
+        for (JoinApplication application : joinApplications.values()) {
+            CompoundTag applicationTag = new CompoundTag();
+            applicationTag.putUUID("Nation", application.nationId);
+            applicationTag.putUUID("Applicant", application.applicantId);
+            applicationTag.putString("ApplicantName", application.applicantName);
+            applicationTag.putLong("RequestedAt", application.requestedAt);
+            applicationList.add(applicationTag);
+        }
+        tag.put("JoinApplications", applicationList);
         ListTag diplomacyList = new ListTag();
         for (DiplomacyRecord record : diplomacy.values()) {
             CompoundTag value = new CompoundTag();
@@ -534,6 +636,18 @@ public final class NationSavedData extends SavedData {
             } catch (IllegalArgumentException ignored) {
             }
         }
+        ListTag applicationList = tag.getList("JoinApplications", Tag.TAG_COMPOUND);
+        for (int index = 0; index < applicationList.size(); index++) {
+            CompoundTag applicationTag = applicationList.getCompound(index);
+            if (!applicationTag.hasUUID("Nation") || !applicationTag.hasUUID("Applicant")) continue;
+            UUID nationId = applicationTag.getUUID("Nation");
+            UUID applicantId = applicationTag.getUUID("Applicant");
+            if (data.nations.containsKey(nationId) && !data.nationByMember.containsKey(applicantId)) {
+                data.joinApplications.put(applicantId, new JoinApplication(nationId, applicantId,
+                        safePlayerName(applicationTag.getString("ApplicantName")),
+                        Math.max(0L, applicationTag.getLong("RequestedAt"))));
+            }
+        }
         ListTag diplomacyList = tag.getList("Diplomacy", Tag.TAG_COMPOUND);
         for (int index = 0; index < diplomacyList.size(); index++) {
             CompoundTag value = diplomacyList.getCompound(index);
@@ -567,6 +681,11 @@ public final class NationSavedData extends SavedData {
         INVITED, JOINED, DECLINED, LEFT, KICKED,
         STALE, NO_PERMISSION, TARGET_ALREADY_MEMBER, ALREADY_INVITED,
         INVITE_NOT_FOUND, NOT_MEMBER, OWNER_CANNOT_LEAVE, TARGET_OFFLINE, SIEGE_LOCKED
+    }
+
+    public enum ApplicationStatus {
+        APPLIED, CANCELLED, APPROVED, REJECTED, STALE, NO_PERMISSION,
+        ALREADY_MEMBER, ALREADY_APPLIED, NATION_NOT_FOUND, APPLICATION_NOT_FOUND
     }
 
     public enum RoleStatus {
@@ -613,6 +732,16 @@ public final class NationSavedData extends SavedData {
     }
 
     public record Invitation(UUID nationId, UUID targetId, String targetName) {
+    }
+
+    public record JoinApplication(UUID nationId, UUID applicantId, String applicantName, long requestedAt) {
+    }
+
+    public record ApplicationResult(ApplicationStatus status, long revision) {
+        public boolean success() {
+            return status == ApplicationStatus.APPLIED || status == ApplicationStatus.CANCELLED
+                    || status == ApplicationStatus.APPROVED || status == ApplicationStatus.REJECTED;
+        }
     }
 
     public record RoleResult(RoleStatus status, long revision, String roleId) {

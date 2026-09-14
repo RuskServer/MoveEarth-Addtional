@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui28");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui31");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -43,6 +43,11 @@ public class ModMessages {
         registrar.playToServer(C2S_LinkNationDiscordPacket.TYPE, C2S_LinkNationDiscordPacket.STREAM_CODEC, C2S_LinkNationDiscordPacket::handle);
         registrar.playToServer(C2S_LinkDiscordAccountPacket.TYPE, C2S_LinkDiscordAccountPacket.STREAM_CODEC, C2S_LinkDiscordAccountPacket::handle);
         registrar.playToClient(S2C_OpenNationNotificationsPacket.TYPE, S2C_OpenNationNotificationsPacket.STREAM_CODEC, S2C_OpenNationNotificationsPacket::handle);
+        registrar.playToClient(S2C_OnboardingPacket.TYPE, S2C_OnboardingPacket.STREAM_CODEC, S2C_OnboardingPacket::handle);
+        registrar.playToClient(S2C_CloseOnboardingPacket.TYPE, S2C_CloseOnboardingPacket.STREAM_CODEC, S2C_CloseOnboardingPacket::handle);
+        registrar.playToServer(C2S_OnboardingActionPacket.TYPE, C2S_OnboardingActionPacket.STREAM_CODEC, C2S_OnboardingActionPacket::handle);
+        registrar.playToClient(S2C_NationApplicationsPacket.TYPE, S2C_NationApplicationsPacket.STREAM_CODEC, S2C_NationApplicationsPacket::handle);
+        registrar.playToServer(C2S_NationApplicationActionPacket.TYPE, C2S_NationApplicationActionPacket.STREAM_CODEC, C2S_NationApplicationActionPacket::handle);
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);

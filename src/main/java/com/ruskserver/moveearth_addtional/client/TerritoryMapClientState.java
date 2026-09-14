@@ -15,33 +15,33 @@ import java.util.UUID;
 public final class TerritoryMapClientState {
     private static final long REFRESH_MILLIS = 5_000L;
     private static Map<ResourceLocation, List<S2C_TerritoryMapPacket.CoreEntry>> coresByDimension = Map.of();
-    private static Map<UUID, S2C_TerritoryMapPacket.NationEntry> nations = Map.of();
-    private static long lastRequestAt = Long.MIN_VALUE;
+    private static Map<ResourceLocation, Map<UUID, S2C_TerritoryMapPacket.NationEntry>> nationsByDimension = Map.of();
+    private static final Map<ResourceLocation, Long> lastRequests = new HashMap<>();
     private static boolean enabled = true;
     private static long version;
 
     private TerritoryMapClientState() { }
 
     public static void update(S2C_TerritoryMapPacket packet) {
-        Map<ResourceLocation, List<S2C_TerritoryMapPacket.CoreEntry>> grouped = new HashMap<>();
-        for (S2C_TerritoryMapPacket.CoreEntry core : packet.cores()) {
-            grouped.computeIfAbsent(core.dimension(), ignored -> new java.util.ArrayList<>()).add(core);
-        }
-        Map<ResourceLocation, List<S2C_TerritoryMapPacket.CoreEntry>> immutableGroups = new HashMap<>();
-        grouped.forEach((dimension, entries) -> immutableGroups.put(dimension, List.copyOf(entries)));
-        coresByDimension = Map.copyOf(immutableGroups);
+        Map<ResourceLocation, List<S2C_TerritoryMapPacket.CoreEntry>> updatedCores = new HashMap<>(coresByDimension);
+        updatedCores.put(packet.dimension(), packet.cores());
+        coresByDimension = Map.copyOf(updatedCores);
         Map<UUID, S2C_TerritoryMapPacket.NationEntry> indexed = new HashMap<>();
         packet.nations().forEach(nation -> indexed.put(nation.nationId(), nation));
-        nations = Map.copyOf(indexed);
+        Map<ResourceLocation, Map<UUID, S2C_TerritoryMapPacket.NationEntry>> updatedNations =
+                new HashMap<>(nationsByDimension);
+        updatedNations.put(packet.dimension(), Map.copyOf(indexed));
+        nationsByDimension = Map.copyOf(updatedNations);
         version++;
     }
 
-    public static void requestIfStale() {
+    public static void requestIfStale(ResourceLocation dimension) {
         if (!enabled || net.minecraft.client.Minecraft.getInstance().getConnection() == null) return;
         long now = Util.getMillis();
-        if (lastRequestAt != Long.MIN_VALUE && now - lastRequestAt < REFRESH_MILLIS) return;
-        lastRequestAt = now;
-        PacketDistributor.sendToServer(new C2S_RequestTerritoryMapPacket());
+        long previous = lastRequests.getOrDefault(dimension, Long.MIN_VALUE);
+        if (previous != Long.MIN_VALUE && now - previous < REFRESH_MILLIS) return;
+        lastRequests.put(dimension, now);
+        PacketDistributor.sendToServer(new C2S_RequestTerritoryMapPacket(dimension));
     }
 
     public static List<S2C_TerritoryMapPacket.CoreEntry> cores(ResourceLocation dimension) {
@@ -50,20 +50,22 @@ public final class TerritoryMapClientState {
 
     public static long version() { return version; }
 
-    public static S2C_TerritoryMapPacket.NationEntry nation(UUID id) { return nations.get(id); }
+    public static S2C_TerritoryMapPacket.NationEntry nation(ResourceLocation dimension, UUID id) {
+        return nationsByDimension.getOrDefault(dimension, Map.of()).get(id);
+    }
 
     public static boolean enabled() { return enabled; }
 
     public static boolean toggle() {
         enabled = !enabled;
-        if (enabled) lastRequestAt = Long.MIN_VALUE;
+        if (enabled) lastRequests.clear();
         return enabled;
     }
 
     public static void clear() {
         coresByDimension = Map.of();
-        nations = Map.of();
-        lastRequestAt = Long.MIN_VALUE;
+        nationsByDimension = Map.of();
+        lastRequests.clear();
         version++;
     }
 }

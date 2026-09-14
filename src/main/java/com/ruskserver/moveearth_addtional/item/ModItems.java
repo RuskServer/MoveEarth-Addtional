@@ -16,6 +16,12 @@ public class ModItems {
     public static final DeferredHolder<Item, BlockItem> TERRITORY_CORE = ITEMS.register("territory_core",
             () -> new TerritoryCoreBlockItem(ModBlocks.TERRITORY_CORE.get(),
                     new Item.Properties().rarity(net.minecraft.world.item.Rarity.EPIC)));
+    public static final DeferredHolder<Item, BlockItem> PRISON_INTAKE = ITEMS.register("prison_intake",
+            () -> new BlockItem(ModBlocks.PRISON_INTAKE.get(), new Item.Properties()
+                    .rarity(net.minecraft.world.item.Rarity.RARE)));
+    public static final DeferredHolder<Item, Item> RESTRAINTS = ITEMS.register("restraints",
+            () -> new Item(new Item.Properties().stacksTo(1).durability(64)
+                    .rarity(net.minecraft.world.item.Rarity.UNCOMMON)));
 
     public static final DeferredHolder<Item, Item> WEAPON_CRATE = ITEMS.register("weapon_crate",
             () -> new WeaponCrateItem(new Item.Properties().stacksTo(16).rarity(net.minecraft.world.item.Rarity.RARE)));

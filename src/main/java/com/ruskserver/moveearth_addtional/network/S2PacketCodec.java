@@ -91,6 +91,7 @@ final class S2PacketCodec {
             buffer.writeUtf(prisoner.opponentName(), 64);
             buffer.writeUtf(prisoner.opponentTag(), 12);
             buffer.writeBoolean(prisoner.heldByViewer());
+            buffer.writeVarLong(prisoner.remainingTicks());
         }
         buffer.writeVarInt(Math.min(value.members().size(), MAX_MEMBERS));
         for (int index = 0; index < Math.min(value.members().size(), MAX_MEMBERS); index++) {
@@ -186,7 +187,8 @@ final class S2PacketCodec {
         List<S2NationSnapshot.PrisonerView> prisoners = new ArrayList<>(prisonerCount);
         for (int index = 0; index < prisonerCount; index++) {
             prisoners.add(new S2NationSnapshot.PrisonerView(buffer.readUUID(), buffer.readUtf(16),
-                    buffer.readUUID(), buffer.readUtf(64), buffer.readUtf(12), buffer.readBoolean()));
+                    buffer.readUUID(), buffer.readUtf(64), buffer.readUtf(12), buffer.readBoolean(),
+                    Math.max(0L, buffer.readVarLong())));
         }
 
         int memberCount = checkedSize(buffer.readVarInt(), MAX_MEMBERS, "member");

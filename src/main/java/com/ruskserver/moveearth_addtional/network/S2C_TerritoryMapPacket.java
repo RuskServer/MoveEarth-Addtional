@@ -7,11 +7,13 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Compact public territory snapshot for client-side map overlays. */
-public record S2C_TerritoryMapPacket(List<NationEntry> nations, List<CoreEntry> cores)
+public record S2C_TerritoryMapPacket(ResourceLocation dimension, List<NationEntry> nations, List<CoreEntry> cores)
         implements CustomPacketPayload {
     private static final int MAX_NATIONS = 512;
     private static final int MAX_CORES = 4096;
@@ -20,8 +22,12 @@ public record S2C_TerritoryMapPacket(List<NationEntry> nations, List<CoreEntry> 
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "territory_map"));
     public static final StreamCodec<FriendlyByteBuf, S2C_TerritoryMapPacket> STREAM_CODEC = StreamCodec.of(
             (buffer, packet) -> {
+                buffer.writeResourceLocation(packet.dimension);
                 buffer.writeVarInt(packet.nations.size());
+                Map<UUID, Integer> nationIndexes = new HashMap<>();
+                int nationIndex = 0;
                 for (NationEntry nation : packet.nations) {
+                    nationIndexes.put(nation.nationId(), nationIndex++);
                     buffer.writeUUID(nation.nationId());
                     buffer.writeUtf(nation.name(), 64);
                     buffer.writeUtf(nation.tag(), 12);
@@ -29,8 +35,9 @@ public record S2C_TerritoryMapPacket(List<NationEntry> nations, List<CoreEntry> 
                 }
                 buffer.writeVarInt(packet.cores.size());
                 for (CoreEntry core : packet.cores) {
-                    buffer.writeUUID(core.nationId());
-                    buffer.writeResourceLocation(core.dimension());
+                    Integer index = nationIndexes.get(core.nationId());
+                    if (index == null) throw new IllegalArgumentException("Territory core references an unknown nation");
+                    buffer.writeVarInt(index);
                     buffer.writeInt(core.centerChunkX());
                     buffer.writeInt(core.centerChunkZ());
                     buffer.writeByte(core.radius());
@@ -39,6 +46,7 @@ public record S2C_TerritoryMapPacket(List<NationEntry> nations, List<CoreEntry> 
                 }
             },
             buffer -> {
+                ResourceLocation dimension = buffer.readResourceLocation();
                 int nationCount = checkedSize(buffer.readVarInt(), MAX_NATIONS, "nation");
                 List<NationEntry> nations = new ArrayList<>(nationCount);
                 for (int index = 0; index < nationCount; index++) {
@@ -48,18 +56,27 @@ public record S2C_TerritoryMapPacket(List<NationEntry> nations, List<CoreEntry> 
                 int coreCount = checkedSize(buffer.readVarInt(), MAX_CORES, "territory core");
                 List<CoreEntry> cores = new ArrayList<>(coreCount);
                 for (int index = 0; index < coreCount; index++) {
-                    cores.add(new CoreEntry(buffer.readUUID(), buffer.readResourceLocation(), buffer.readInt(),
+                    int nationIndex = checkedIndex(buffer.readVarInt(), nationCount);
+                    cores.add(new CoreEntry(nations.get(nationIndex).nationId(), dimension, buffer.readInt(),
                             buffer.readInt(), buffer.readUnsignedByte(),
                             CoreState.fromNetworkId(buffer.readUnsignedByte()), buffer.readBoolean()));
                 }
-                return new S2C_TerritoryMapPacket(nations, cores);
+                return new S2C_TerritoryMapPacket(dimension, nations, cores);
             });
 
     public S2C_TerritoryMapPacket {
+        if (dimension == null) dimension = ResourceLocation.withDefaultNamespace("overworld");
         nations = nations == null ? List.of() : List.copyOf(nations);
         cores = cores == null ? List.of() : List.copyOf(cores);
         if (nations.size() > MAX_NATIONS || cores.size() > MAX_CORES) {
             throw new IllegalArgumentException("Territory map snapshot exceeds protocol limits");
+        }
+        Map<UUID, NationEntry> indexedNations = new HashMap<>();
+        nations.forEach(nation -> indexedNations.put(nation.nationId(), nation));
+        ResourceLocation packetDimension = dimension;
+        if (cores.stream().anyMatch(core -> !packetDimension.equals(core.dimension())
+                || !indexedNations.containsKey(core.nationId()))) {
+            throw new IllegalArgumentException("Territory map snapshot contains an invalid core reference");
         }
     }
 
@@ -76,6 +93,11 @@ public record S2C_TerritoryMapPacket(List<NationEntry> nations, List<CoreEntry> 
     private static int checkedSize(int size, int maximum, String label) {
         if (size < 0 || size > maximum) throw new IllegalArgumentException("Invalid " + label + " count: " + size);
         return size;
+    }
+
+    private static int checkedIndex(int index, int size) {
+        if (index < 0 || index >= size) throw new IllegalArgumentException("Invalid territory nation index: " + index);
+        return index;
     }
 
     public record NationEntry(UUID nationId, String name, String tag, Relation relation) {

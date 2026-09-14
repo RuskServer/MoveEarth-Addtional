@@ -1,3 +1,93 @@
+# UNRELEASED
+
+## Season 2 Nations and Unified Interface
+
+- **Server-Authoritative Nations**: Added persistent nation creation, membership, invitations, ownership transfer, disbanding, customizable roles, and fine-grained permissions for members, territory, reinforcement, treasury, diplomacy, Siege, and notifications.
+- **Nation Applications**: New players can browse nations and submit one persistent join application. Applications require approval from a member with the member-management permission; approving an online applicant begins a safe national spawn search, while offline approvals resume on the applicant's next login.
+- **Diplomacy**: Added persistent inter-nation relations, alliance handling, hostile status, and relation-aware access and combat presentation.
+- **Dynamic Nameplates**: Nation tags and relation-dependent name colors now update dynamically for allies, enemies, and other players.
+- **Unified MoveEarth GUI**: Nation administration uses the same custom visual and interaction system as `/pvp`, including tabbed management screens, cards, confirmation states, scrollable lists, and chat-overlay suppression. Routine play no longer depends on entering Season 2-prefixed commands or vanilla container screens.
+- **Rich In-Game Messages**: Standardized system feedback around the green-gradient `[MoveEarth]` prefix and muted `>>>` separator.
+
+## First-Join Onboarding and Safe Spawning
+
+- **First-Join Choice**: Genuinely new players choose between a wilderness random spawn and applying to an existing nation. Existing players are migrated without being teleported or forced through onboarding.
+- **Approval-Only Nation Entry**: Nation applications are persistent and fully server-authoritative. Managers receive an in-game notification and, when configured, a Discord notification.
+- **Protected Waiting Screen**: Applicants remain in a locked custom screen instead of a physical lobby. Movement, damage, building, item use, and item dropping are blocked while the server preserves their position, food, and protection state.
+- **Waiting Minigame**: Added a reward-free, client-only Flappy-style minigame to the application waiting screen.
+- **Nation Spawn Search**: Approved players are placed through the non-blocking chunk search pipeline near an active national core or eligible online member. Unsafe, besieged, or unavailable destinations fall back to wilderness search without synchronously generating chunks.
+- **Persistent Recovery**: Pending onboarding, applications, and searches recover safely across reconnects and server restarts.
+
+## Territory Cores, Upkeep, and Presence
+
+- **Territory Core Block**: Added persistent capital and outpost cores with configurable square claim radii, placement validation, health, regeneration delays, exposed and fallen states, and a dedicated configuration GUI.
+- **Ground-Level Placement**: Territory cores may be installed at ground level; their activation depends on the reinforced enclosure rather than an arbitrary air-gap requirement.
+- **Reinforced Closure Validation**: Core activation uses a bounded, resumable flood-fill search distributed across multiple ticks. Reinforced doors and hatches count as sealed while open, while both halves of a two-block door must be reinforced.
+- **Closure Diagnostics**: Core managers can display likely leaks, unreinforced boundary blocks, and external paths through a world overlay instead of diagnosing failures by trial and error.
+- **Territory Presence Display**: Entering and leaving controlled land presents the nation name or wilderness state without relying on chat messages.
+- **Treasury Upkeep**: Nations can select an accessible Lightman's Currency bank account and pay configurable territory and outpost upkeep through the nation treasury GUI.
+- **Overdue Penalties**: Progressive non-payment penalties weaken defenses. Long-term non-payment stops core regeneration and shrinks effective controlled territory to a configurable percentage while retaining the underlying reserved claim and core chunk.
+- **Effective-Area Enforcement**: Protection, reinforcement management, Siege checks, Bastion behavior, presence tracking, and maps use the effective upkeep-adjusted radius. Shrunk outer territory cannot be used to install or manage reinforcement.
+- **Bastion and Offline Defense**: Added relation-aware territory restrictions, safe mounted-player recovery, offline-defense scaling, and long-absence degradation for abandoned nations.
+
+## Reinforcement and Welding
+
+- **Welding Tool**: Added the welding tool and material-based reinforcement using cobblestone, copper, iron, gold, and diamond tiers.
+- **Area Welding**: Mouse-wheel selection changes the welding brush size, allowing authorized players to reinforce or repair multiple blocks in one operation with server-side material and territory validation.
+- **Construction Period**: Newly reinforced blocks require an audible activation period and gain durability progressively instead of becoming fully effective immediately.
+- **Readable World State**: Reinforced, unreinforced, damaged, disabled, under-construction, and invalid blocks use distinct world overlays and visual treatment. The selected brush has a clearly defined green perimeter.
+- **Jade Integration**: Jade displays reinforcement state, durability, construction progress, and Siege-disabled status without exposing the removed directional debug value.
+- **Optimized Rendering**: Added an OpenGL 4.5 batched renderer with a compatible fallback, state-grouped geometry, greedy meshing, distance limits, delta synchronization, and cached scan signatures to substantially reduce overlay draw calls and network traffic.
+- **Bounded Maintenance**: Construction and stale-entry cleanup operate only on indexed pending entries with per-tick or per-second budgets rather than scanning every reinforced block.
+
+## Siege, Peace, and Territory Capture
+
+- **Two-Stage Siege**: An initial hostile attempt starts a short preparation lock. Only real reinforcement or core damage advances it into the rolling Siege timer and refreshes the active battle.
+- **Nation and Solo Attackers**: Nationless attackers can begin a personal Siege instead of being ignored. Their identity, timers, surrender behavior, and settlement outcome are persisted separately from nation attackers.
+- **Core Damage Rules**: Core health is not damaged through an intact reinforced wall. Rapid autocannon impacts are rate-limited and cannot bypass reinforcement to delete the wall or core in the same damage sequence.
+- **Weapon-Aware Balance**: Create Big Cannons and supported modded munitions use weapon-class damage, distance falloff, exposure multipliers, and per-impact limits, keeping heavy weapons useful without allowing machine-gun fire to erase fortifications instantly.
+- **Fallen-Core Phase**: Core depletion enters a persistent fallen phase with counteroffensive and capture progress, staged reinforcement disablement, territory loss or occupation settlement, and capital-specific recovery behavior.
+- **Peace and Prisoners**: Added peace terms, compensation transfer, surrender and withdrawal operations, retry cooldowns, prisoner state, release handling, and server-authoritative validation.
+- **Physical Prisoner Transport**: Downed PlayerRevive combatants now receive a short rescue window before enemies can restrain them. Captives must be physically escorted to a prison intake in valid holding-nation territory; an intake remains usable during an active Siege and can itself become a rescue target.
+- **Three-Hour Captivity Limit**: Escort and imprisonment share a non-resettable three-hour maximum measured only during the 18:00–00:00 JST server opening window. Offline captives continue consuming time while the server is open, while server shutdown and closed hours pause it.
+- **Combat Log Protection**: PvP combat tags are persistent and shared with TPA restrictions. Logging out leaves an attributable combat body that can be damaged, downed, restrained, rescued, and escorted, with the result restored on reconnect.
+- **Captivity Equipment and HUD**: Added craftable restraints and a prison-intake block, action-bar restraint/escort/captivity progress, movement and weapon restrictions, rescues, jail-loss release, and remaining-time display in the nation Siege GUI.
+- **Notifications**: Important Siege transitions, core damage thresholds, exposure changes, upkeep warnings, capture results, and conflict endings are delivered only to the appropriate participants.
+
+## Create Warnautics Integration
+
+- **C4 and Land Mines**: Added attributable C4 and mine handling tuned to support infantry attacks without replacing Create Big Cannons as the primary heavy breaching system.
+- **Aerial Bombs**: Added size-aware aerial-bomb damage, placement attribution, safe falloff, nation and actor ownership, and Sable sub-level-aware tracking hooks.
+- **Cruise Missiles Disabled**: Removed the cruise-missile recipe and block/item use, and reject cruise-missile entities at runtime because their current power and operating model are unsuitable for the Season 2 balance.
+- **Optional Compatibility**: Integration resolves Warnautics registry objects only when present and does not require a hard runtime dependency.
+
+## Territory Maps
+
+- **Vanilla Map Overlay**: Added colored territory fills, status borders, capital and outpost markers, and relation-aware labels between vanilla map pixels and decorations.
+- **Map Atlases Compatibility**: Map Atlases receives the same territory display through its reuse of the vanilla map renderer, without bundling or directly depending on its API.
+- **Map Recipe Adjustment**: Replaced the vanilla map recipe so players can craft maps without a compass.
+- **Efficient Synchronization**: Clients request only the dimension of the map being rendered. Core entries reference a packet-local nation index, unchanged snapshots are not resent, and request throttling remains transient instead of being written to player NBT.
+
+## Embedded Discord Bot
+
+- **Integrated JDA Runtime**: The Discord bot is embedded in the mod and configured from the automatically generated dedicated-server configuration. It is disabled by default until a token and settings are supplied.
+- **Nation-Scoped Linking**: One-time codes pair a Discord server and Minecraft nation and separately verify Discord users against Minecraft UUIDs. Management operations revalidate both Discord and in-game permissions.
+- **Embed-First Messages**: Status, linking, configuration, test, audit, success, warning, error, and nation-event responses use the shared MoveEarth embed design.
+- **Persistent Delivery Outbox**: Notifications use bounded persistence, deduplication, acknowledgement, retry limits, exponential backoff, expiry, audit history, and per-nation delivery settings.
+- **Safe Discord Content**: User-controlled text is length-limited and neutralizes Markdown and mentions. Allowed mentions are restricted explicitly, and notification channels must grant view, send-message, and embed-link permissions.
+- **Failure Isolation**: Synchronous embed or request-construction failures are contained per delivery, in-flight IDs are released correctly, and Discord failures cannot escape into the Minecraft server tick loop.
+- **Dependency Isolation**: JDA and its transitive runtime are relocated and verified during the build to prevent Java module package collisions with NeoForge or other installed mods.
+
+## Performance, Reliability, and Compatibility
+
+- **GunPack Startup Prompt Removed**: The client no longer scans for previously required TaCZ GunPacks or replaces the main menu with the missing-pack installer screen.
+- **Indexed Territory Lookups**: Added indexes for reserved chunks, controlled chunks, core positions, vault chunks, and core IDs. State-only core transitions update affected index entries instead of rebuilding all territory indexes.
+- **Tick-Level Upkeep Cache**: Repeated territory checks share one upkeep-penalty result per nation and server tick.
+- **Resumable Heavy Work**: Closure searches, chunk generation, cleanup, map synchronization, and reinforcement updates are bounded or split across ticks to avoid large server-thread spikes.
+- **Analytics Shutdown Fix**: Removed a shutdown lock inversion between `stopAndFlush`, `Thread.join`, and the storage worker's final flush. Remaining analytics events are flushed in bounded batches and the database is closed by the worker without holding the lifecycle monitor.
+- **Expanded Regression Coverage**: Added policy and rendering tests for nations, roles, applications, territory, upkeep, closure searches, reinforcement, Siege, Warnautics damage, Discord text and delivery, maps, and analytics shutdown.
+- **Network Compatibility**: Updated the network protocol to `3.0-detector-admin1-oxygen1-s2ui31`. Servers and clients must update to the same JAR because nation, onboarding, reinforcement, prisoner, and territory-map packet schemas have changed.
+
 # v3.0
 
 ## Server Opening Schedule

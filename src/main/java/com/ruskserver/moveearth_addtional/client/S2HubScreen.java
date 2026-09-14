@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.client;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_NationMembershipPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_NationApplicationActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_NationDiplomacyPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_NationTreasuryPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_S2HubActionPacket;
@@ -232,6 +233,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     private void drawMembers(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
         if (canManageMembers()) {
+            Rect applications = memberApplicationsBounds(content);
+            drawButton(graphics, font, applications,
+                    Component.translatable("screen.moveearth_addtional.onboarding.applications.open"), GOLD,
+                    applications.contains(mouseX, mouseY), true);
             Rect invite = memberInviteBounds(content);
             drawButton(graphics, font, invite,
                     Component.translatable("screen.moveearth_addtional.nation.invite_member"), SUCCESS,
@@ -385,7 +390,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                             : "screen.moveearth_addtional.prisoner.held_by_them", prisoner.playerName()),
                     card.x() + 13, card.y() + 12, TEXT, false);
             graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
-                            "screen.moveearth_addtional.prisoner.opponent", opponent).getString(),
+                            "screen.moveearth_addtional.prisoner.opponent", opponent).getString()
+                            + " • " + formatTicks(prisoner.remainingTicks()),
                             card.width() - 226),
                     card.x() + 13, card.y() + 31, color, false);
             if (canManageDiplomacy()) {
@@ -689,6 +695,11 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 minecraft.setScreen(new NationInviteScreen(snapshot.revision(), snapshot.inviteCandidates()));
                 return true;
             }
+            if (canManageMembers() && memberApplicationsBounds(content).contains(mouseX, mouseY)) {
+                PacketDistributor.sendToServer(new C2S_NationApplicationActionPacket(
+                        snapshot.revision(), C2S_NationApplicationActionPacket.Action.OPEN, null));
+                return true;
+            }
             Rect list = memberListBounds(content);
             if (pendingRequestId < 0 && list.contains(mouseX, mouseY)) {
                 for (int index = 0; index < snapshot.members().size(); index++) {
@@ -910,6 +921,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     private static Rect memberInviteBounds(Rect content) {
         return new Rect(content.right() - 132, content.y(), 132, 22);
+    }
+
+    private static Rect memberApplicationsBounds(Rect content) {
+        return new Rect(content.right() - 272, content.y(), 132, 22);
     }
 
     private static Rect memberListBounds(Rect content) {

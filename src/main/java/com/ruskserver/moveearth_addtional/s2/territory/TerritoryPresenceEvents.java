@@ -58,7 +58,7 @@ public final class TerritoryPresenceEvents {
 
     private static UUID controllingNation(ServerPlayer player) {
         return TerritorySavedData.get(player.server)
-                .controllingNation(player.serverLevel().dimension().location(), player.blockPosition())
+                .controllingNation(player.server, player.serverLevel().dimension().location(), player.blockPosition())
                 .orElse(null);
     }
 

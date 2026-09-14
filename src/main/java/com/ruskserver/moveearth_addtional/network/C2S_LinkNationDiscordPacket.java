@@ -37,7 +37,9 @@ public record C2S_LinkNationDiscordPacket(int requestId, String code) implements
             DiscordBotService bot = DiscordBotService.instance();
             boolean success = false;
             String result;
-            if (nationId == null || !nations.can(player.getUUID(), S2Permission.MANAGE_NOTIFICATIONS)) {
+            if (!DiscordLinkAttemptLimiter.allow(player, "nation")) {
+                result = "invalid_code";
+            } else if (nationId == null || !nations.can(player.getUUID(), S2Permission.MANAGE_NOTIFICATIONS)) {
                 result = "no_permission";
             } else if (!bot.isReady()) {
                 result = "bot_offline";

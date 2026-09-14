@@ -1,8 +1,16 @@
 package com.ruskserver.moveearth_addtional.handler;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.s2.nation.NationOnboardingService;
+import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
+import com.ruskserver.moveearth_addtional.s2.combat.CombatTagService;
+import com.ruskserver.moveearth_addtional.s2.siege.PrisonerService;
+import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
+import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService;
+import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -66,6 +74,10 @@ public final class RandomSpawnHandler {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         CompoundTag data = persistedData(player);
         if (data.getBoolean(NBT_KEY_SPAWNED)) return;
+        if (NationOnboardingService.pending(player)) {
+            NationOnboardingService.begin(player);
+            return;
+        }
         if (hasPriorPlayerHistory(player)) {
             data.putBoolean(NBT_KEY_SPAWNED, true);
             LOGGER.info("Player {} predates random-spawn tracking. Marking random spawn as initialized without teleporting.",
@@ -73,9 +85,9 @@ public final class RandomSpawnHandler {
             return;
         }
 
-        LOGGER.info("Player {} logged in for the first time. Starting a non-blocking random-spawn search.",
+        LOGGER.info("Player {} logged in for the first time. Opening the spawn and nation onboarding flow.",
                 player.getName().getString());
-        beginRandomSpawnSearch(player, true);
+        NationOnboardingService.begin(player);
     }
 
     @SubscribeEvent
@@ -177,6 +189,12 @@ public final class RandomSpawnHandler {
     }
 
     private static void beginRandomSpawnSearch(ServerPlayer player, boolean markInitializedOnSuccess) {
+        if (!canRelocate(player)) {
+            player.displayClientMessage(Component.literal(
+                    "戦闘中または拘束中はランダムスポーンを利用できません。"), true);
+            if (markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
+            return;
+        }
         ServerLevel level = player.server.overworld();
         SpawnSearch previous = PENDING_SEARCHES.remove(player.getUUID());
         if (previous != null) releaseTicket(level, player.getUUID(), previous);
@@ -213,13 +231,106 @@ public final class RandomSpawnHandler {
                     player.getName().getString());
             player.displayClientMessage(Component.literal(
                     "安全なランダムスポーン地点を選べなかったため、通常のスポーン地点を使用します。"), true);
+            if (markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
             return;
         }
 
         PENDING_SEARCHES.put(player.getUUID(), new SpawnSearch(
                 columns, lastSpawn, random.nextFloat() * 360.0F - 180.0F,
-                markInitializedOnSuccess, worldSpawn, minRadius, maxRadius, rejectedByBorder));
+                markInitializedOnSuccess, null, worldSpawn, minRadius, maxRadius, rejectedByBorder));
         player.displayClientMessage(Component.literal("安全なランダムスポーン地点を探索しています…"), true);
+    }
+
+    public static void beginInitialRandomSpawn(ServerPlayer player) {
+        beginRandomSpawnSearch(player, true);
+    }
+
+    public static void beginNationSpawnSearch(ServerPlayer player, UUID nationId) {
+        if (!canRelocate(player)) {
+            player.displayClientMessage(Component.literal(
+                    "戦闘中または拘束中は国家周辺へ移動できません。"), true);
+            NationOnboardingService.searchFailed(player);
+            return;
+        }
+        ServerLevel level = player.server.overworld();
+        NationSavedData nations = NationSavedData.get(player.server);
+        if (nations.nationIdFor(player.getUUID()).filter(nationId::equals).isEmpty()) {
+            NationOnboardingService.searchFailed(player);
+            return;
+        }
+        if (SiegeSavedData.get(player.server).isNationLocked(nationId)) {
+            player.sendSystemMessage(Component.literal("選択した国家がSiege中のため、国家周辺へは出現できません。"));
+            beginInitialRandomSpawn(player);
+            return;
+        }
+
+        SpawnSearch previous = PENDING_SEARCHES.remove(player.getUUID());
+        if (previous != null) releaseTicket(level, player.getUUID(), previous);
+        RandomSource random = player.getRandom();
+        List<SpawnColumn> columns = new ArrayList<>(MAX_CANDIDATES);
+        TerritorySavedData territories = TerritorySavedData.get(player.server);
+        var cores = territories.cores().stream()
+                .filter(core -> core.nationId().equals(nationId))
+                .filter(core -> core.dimension().equals(level.dimension().location()))
+                .filter(core -> core.state() == TerritorySavedData.CoreState.ACTIVE)
+                .toList();
+        int sourceIndex = 0;
+        while (!cores.isEmpty() && columns.size() < 16) {
+            TerritorySavedData.CoreRecord core = cores.get(sourceIndex++ % cores.size());
+            int radius = NationUpkeepService.effectiveTerritoryRadius(
+                    player.server, nationId, core.radius());
+            int minX = ((core.pos().getX() >> 4) - radius) << 4;
+            int maxX = ((((core.pos().getX() >> 4) + radius) + 1) << 4) - 1;
+            int minZ = ((core.pos().getZ() >> 4) - radius) << 4;
+            int maxZ = ((((core.pos().getZ() >> 4) + radius) + 1) << 4) - 1;
+            columns.add(new SpawnColumn(random.nextIntBetweenInclusive(minX, maxX),
+                    random.nextIntBetweenInclusive(minZ, maxZ), random.nextDouble() * 10_000.0D));
+        }
+        NationSavedData.Nation nation = nations.nation(nationId).orElse(null);
+        if (nation != null) {
+            var members = nation.members().keySet().stream()
+                    .map(id -> player.server.getPlayerList().getPlayer(id))
+                    .filter(java.util.Objects::nonNull)
+                    .filter(other -> other != player && other.level().dimension().equals(level.dimension()))
+                    .filter(other -> !other.isSpectator())
+                    .toList();
+            sourceIndex = 0;
+            while (!members.isEmpty() && columns.size() < 22) {
+                ServerPlayer member = members.get(sourceIndex++ % members.size());
+                double angle = random.nextDouble() * Math.PI * 2.0D;
+                double distance = 48.0D + random.nextDouble() * 80.0D;
+                columns.add(new SpawnColumn(MthFloor(member.getX() + Math.cos(angle) * distance),
+                        MthFloor(member.getZ() + Math.sin(angle) * distance), random.nextDouble() * 10_000.0D));
+            }
+        }
+        appendWildernessFallbacks(level, random, columns);
+        if (columns.isEmpty()) {
+            NationOnboardingService.searchFailed(player);
+            return;
+        }
+        BlockPos worldSpawn = level.getSharedSpawnPos();
+        PENDING_SEARCHES.put(player.getUUID(), new SpawnSearch(columns, null,
+                random.nextFloat() * 360.0F - 180.0F, true, nationId, worldSpawn,
+                0.0D, effectiveMaxRadius(level, worldSpawn), 0));
+        player.displayClientMessage(Component.literal("国家周辺の安全な出現地点を探索しています…"), true);
+    }
+
+    private static void appendWildernessFallbacks(ServerLevel level, RandomSource random,
+                                                   List<SpawnColumn> columns) {
+        BlockPos center = level.getSharedSpawnPos();
+        double minimum = effectiveMinRadius(level, center);
+        double maximum = effectiveMaxRadius(level, center);
+        int attempts = 0;
+        while (columns.size() < MAX_CANDIDATES && maximum > minimum && attempts++ < MAX_CANDIDATES * 2) {
+            double angle = random.nextDouble() * Math.PI * 2.0D;
+            double distance = Math.sqrt(random.nextDouble()
+                    * (maximum * maximum - minimum * minimum) + minimum * minimum);
+            int x = MthFloor(center.getX() + Math.cos(angle) * distance);
+            int z = MthFloor(center.getZ() + Math.sin(angle) * distance);
+            if (level.getWorldBorder().isWithinBounds(new BlockPos(x, center.getY(), z))) {
+                columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
+            }
+        }
     }
 
     private static boolean evaluateLoadedChunk(ServerPlayer player, ServerLevel level, UUID playerId,
@@ -228,7 +339,8 @@ public final class RandomSpawnHandler {
         BlockPos spawn = findSafeSurface(level, chunk, column.x, column.z);
 
         if (search.loadingFallback) {
-            boolean teleported = spawn != null && applyRandomTeleport(player, level, spawn, search.yaw);
+            boolean teleported = spawn != null && applyRandomTeleport(
+                    player, level, spawn, search.yaw, search.friendlyNationId);
             releaseTicket(level, playerId, search);
             if (teleported) {
                 finishSuccessfulSearch(player, search);
@@ -237,6 +349,7 @@ public final class RandomSpawnHandler {
                         player.getName().getString());
                 player.displayClientMessage(Component.literal(
                         "安全なランダムスポーン地点を確保できなかったため、通常のスポーン地点を使用します。"), true);
+                if (search.markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
             }
             return true;
         }
@@ -247,7 +360,7 @@ public final class RandomSpawnHandler {
             return false;
         }
 
-        List<ServerPlayer> nearbyThreats = eligibleOtherPlayers(player, level);
+        List<ServerPlayer> nearbyThreats = eligibleOtherPlayers(player, level, search.friendlyNationId);
         double playerDistance = minimumDistanceSqr(spawn, nearbyThreats);
         double lastDistance = search.lastSpawn == null
                 ? Double.POSITIVE_INFINITY : horizontalDistanceSqr(spawn, search.lastSpawn);
@@ -260,7 +373,7 @@ public final class RandomSpawnHandler {
         if (RandomSpawnPolicy.meetsDistanceRequirements(
                 playerDistance, lastDistance,
                 square(MIN_PLAYER_DISTANCE), square(MIN_LAST_SPAWN_DISTANCE))) {
-            boolean teleported = applyRandomTeleport(player, level, spawn, search.yaw);
+            boolean teleported = applyRandomTeleport(player, level, spawn, search.yaw, search.friendlyNationId);
             releaseTicket(level, playerId, search);
             if (teleported) {
                 finishSuccessfulSearch(player, search);
@@ -273,7 +386,10 @@ public final class RandomSpawnHandler {
     }
 
     private static void finishSuccessfulSearch(ServerPlayer player, SpawnSearch search) {
-        if (search.markInitializedOnSuccess) persistedData(player).putBoolean(NBT_KEY_SPAWNED, true);
+        if (search.markInitializedOnSuccess) {
+            persistedData(player).putBoolean(NBT_KEY_SPAWNED, true);
+            NationOnboardingService.complete(player);
+        }
     }
 
     private static void failSearch(ServerPlayer player, ServerLevel level, UUID playerId,
@@ -290,6 +406,7 @@ public final class RandomSpawnHandler {
                 Math.round(level.getWorldBorder().getMinZ()), Math.round(level.getWorldBorder().getMaxZ()));
         player.displayClientMessage(Component.literal(
                 "安全なランダムスポーン地点を確保できなかったため、通常のスポーン地点を使用します。"), true);
+        if (search.markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
     }
 
     private static void releaseTicket(ServerLevel level, UUID playerId, SpawnSearch search) {
@@ -309,7 +426,9 @@ public final class RandomSpawnHandler {
         return count;
     }
 
-    private static boolean applyRandomTeleport(ServerPlayer player, ServerLevel level, BlockPos spawn, float yaw) {
+    private static boolean applyRandomTeleport(ServerPlayer player, ServerLevel level, BlockPos spawn, float yaw,
+                                               UUID friendlyNationId) {
+        if (!canRelocate(player)) return false;
         double targetX = spawn.getX() + 0.5D;
         double targetY = spawn.getY();
         double targetZ = spawn.getZ() + 0.5D;
@@ -333,16 +452,20 @@ public final class RandomSpawnHandler {
         CompoundTag data = persistedData(player);
         data.putLong(NBT_KEY_LAST_POS, spawn.asLong());
         data.putString(NBT_KEY_LAST_DIMENSION, level.dimension().location().toString());
-        List<ServerPlayer> nearbyThreats = eligibleOtherPlayers(player, level);
+        List<ServerPlayer> nearbyThreats = eligibleOtherPlayers(player, level, friendlyNationId);
         LOGGER.info("Random-spawned {} at {}, {}, {}; nearest player distance={} blocks.",
                 player.getName().getString(), spawn.getX(), spawn.getY(), spawn.getZ(),
                 nearbyThreats.isEmpty() ? "none" : Math.round(Math.sqrt(minimumDistanceSqr(spawn, nearbyThreats))));
         return true;
     }
 
+    private static boolean canRelocate(ServerPlayer player) {
+        return !CombatTagService.isTagged(player) && !PrisonerService.isMovementRestricted(player);
+    }
+
     private static CompoundTag persistedData(ServerPlayer player) {
         CompoundTag root = player.getPersistentData();
-        if (!root.contains(net.minecraft.world.entity.player.Player.PERSISTED_NBT_TAG)) {
+        if (!root.contains(net.minecraft.world.entity.player.Player.PERSISTED_NBT_TAG, Tag.TAG_COMPOUND)) {
             root.put(net.minecraft.world.entity.player.Player.PERSISTED_NBT_TAG, new CompoundTag());
         }
         return root.getCompound(net.minecraft.world.entity.player.Player.PERSISTED_NBT_TAG);
@@ -425,11 +548,16 @@ public final class RandomSpawnHandler {
         return Math.max(0.0D, Math.min(MAX_WORLD_SPAWN_RADIUS, borderDistance - 16.0D));
     }
 
-    private static List<ServerPlayer> eligibleOtherPlayers(ServerPlayer player, ServerLevel level) {
+    private static List<ServerPlayer> eligibleOtherPlayers(ServerPlayer player, ServerLevel level,
+                                                           UUID friendlyNationId) {
+        NationSavedData nations = NationSavedData.get(player.server);
         return player.server.getPlayerList().getPlayers().stream()
                 .filter(other -> other != player)
                 .filter(other -> other.level().dimension().equals(level.dimension()))
                 .filter(other -> !other.isSpectator())
+                .filter(other -> friendlyNationId == null || nations.nationIdFor(other.getUUID())
+                        .filter(otherNation -> otherNation.equals(friendlyNationId)
+                                || nations.isAllied(friendlyNationId, otherNation)).isEmpty())
                 .toList();
     }
 
@@ -468,6 +596,7 @@ public final class RandomSpawnHandler {
         private final BlockPos lastSpawn;
         private final float yaw;
         private final boolean markInitializedOnSuccess;
+        private final UUID friendlyNationId;
         private final BlockPos worldSpawn;
         private final double minRadius;
         private final double maxRadius;
@@ -483,12 +612,13 @@ public final class RandomSpawnHandler {
         private ChunkPos requestedChunk;
 
         private SpawnSearch(List<SpawnColumn> columns, BlockPos lastSpawn, float yaw,
-                            boolean markInitializedOnSuccess, BlockPos worldSpawn,
+                            boolean markInitializedOnSuccess, UUID friendlyNationId, BlockPos worldSpawn,
                             double minRadius, double maxRadius, int rejectedByBorder) {
             this.columns = columns;
             this.lastSpawn = lastSpawn;
             this.yaw = yaw;
             this.markInitializedOnSuccess = markInitializedOnSuccess;
+            this.friendlyNationId = friendlyNationId;
             this.worldSpawn = worldSpawn;
             this.minRadius = minRadius;
             this.maxRadius = maxRadius;

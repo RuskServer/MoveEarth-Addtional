@@ -35,9 +35,9 @@ public final class TerritoryMapRenderer {
     private TerritoryMapRenderer() { }
 
     public static void render(PoseStack poseStack, MultiBufferSource buffers, MapItemSavedData mapData) {
-        TerritoryMapClientState.requestIfStale();
-        if (!TerritoryMapClientState.enabled()) return;
         ResourceLocation dimension = mapData.dimension.location();
+        TerritoryMapClientState.requestIfStale(dimension);
+        if (!TerritoryMapClientState.enabled()) return;
         List<S2C_TerritoryMapPacket.CoreEntry> dimensionCores = TerritoryMapClientState.cores(dimension);
         if (dimensionCores.isEmpty()) return;
         VertexConsumer vertices = buffers.getBuffer(RenderType.debugQuads());
@@ -50,7 +50,7 @@ public final class TerritoryMapRenderer {
         for (ProjectedCore projectedCore : projected) {
             S2C_TerritoryMapPacket.CoreEntry core = projectedCore.core;
             TerritoryMapProjection.ProjectedRect rect = projectedCore.rect;
-            S2C_TerritoryMapPacket.NationEntry nation = TerritoryMapClientState.nation(core.nationId());
+            S2C_TerritoryMapPacket.NationEntry nation = TerritoryMapClientState.nation(dimension, core.nationId());
             S2C_TerritoryMapPacket.Relation relation = nation == null
                     ? S2C_TerritoryMapPacket.Relation.FOREIGN : nation.relation();
             Color fill = relationColor(relation, fillAlpha(core.state()));

@@ -111,6 +111,11 @@ public final class PvpMatchManager {
 
     /** Registers for the next match, or immediately activates the player when a match is running. */
     public boolean join(ServerPlayer player, String loadoutId) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.CombatTagService.isTagged(player)
+                || com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(player)) {
+            player.sendSystemMessage(Component.literal("§c戦闘中または拘束中はPvPアリーナへ移動できません。"));
+            return false;
+        }
         PvpArenaSavedData arena = PvpArenaSavedData.get(player.server);
         if (!arena.hosting()) {
             player.sendSystemMessage(Component.literal("§c現在PvPイベントは開催されていません。"));

@@ -17,7 +17,8 @@ public final class OfflineDefenseService {
                 .anyMatch(reserved -> sieges.isNationSettlementProtected(reserved.nationId())
                         || sieges.isCoreSettlementProtected(reserved.id()));
         if (!settlementProtected) {
-            settlementProtected = territories.controllingNation(level.dimension().location(), pos)
+            settlementProtected = territories.controllingNation(
+                            level.getServer(), level.dimension().location(), pos)
                     .map(sieges::isNationSettlementProtected).orElse(false);
         }
         if (settlementProtected) {
@@ -25,7 +26,7 @@ public final class OfflineDefenseService {
             return OfflineDefensePolicy.applyRatio(rawDamage, 0, 1, 0);
         }
         TerritorySavedData.CoreRecord core = territories
-                .controllingCore(level.dimension().location(), pos).orElse(null);
+                .controllingCore(level.getServer(), level.dimension().location(), pos).orElse(null);
         if (core == null) {
             sieges.clearOfflineDamageCarry(level.dimension().location(), pos);
             return OfflineDefensePolicy.apply(rawDamage, 1, 0);
@@ -67,7 +68,7 @@ public final class OfflineDefenseService {
         return territories.reservedCores(level.dimension().location(), pos).stream()
                 .anyMatch(core -> sieges.isNationSettlementProtected(core.nationId())
                         || sieges.isCoreSettlementProtected(core.id()))
-                || territories.controllingNation(level.dimension().location(), pos)
+                || territories.controllingNation(level.getServer(), level.dimension().location(), pos)
                 .map(sieges::isNationSettlementProtected).orElse(false);
     }
 

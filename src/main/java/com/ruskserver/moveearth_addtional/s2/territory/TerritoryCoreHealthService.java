@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.territory;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.ServerSchedule;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryCoreHealthPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
@@ -49,10 +50,13 @@ public final class TerritoryCoreHealthService {
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         if (event.getServer().overworld().getGameTime() % 20L != 11L) return;
+        if (event.getServer().isDedicatedServer() && !ServerSchedule.isOpenNow()) return;
         TerritorySavedData data = TerritorySavedData.get(event.getServer());
         SiegeSavedData sieges = SiegeSavedData.get(event.getServer());
         for (TerritorySavedData.CoreRecord core : data.advanceCoreRegeneration(
-                20L, sieges::isCoreRegenPaused)) {
+                20L, sieges::isCoreRegenPaused,
+                nationId -> !NationUpkeepService.penalty(event.getServer(), nationId)
+                        .coreRegenerationEnabled())) {
             ServerLevel level = event.getServer().getLevel(net.minecraft.resources.ResourceKey.create(
                     net.minecraft.core.registries.Registries.DIMENSION, core.dimension()));
             if (level == null || !level.hasChunkAt(core.pos())) continue;

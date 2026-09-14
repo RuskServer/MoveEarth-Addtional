@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.analytics.storage;
 
+import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
 
@@ -20,7 +21,8 @@ public class AnalyticsStorageWorker implements Runnable {
     private final AnalyticsStorageEngine storageEngine;
     private final AnalyticsEventQueue queue;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private Thread thread;
+    private final Object lifecycleLock = new Object();
+    private volatile Thread thread;
 
     private long lastFlushTimeMs = 0L;
     private long lastFlushDurationMs = 0L;
@@ -32,11 +34,13 @@ public class AnalyticsStorageWorker implements Runnable {
         this.queue = queue;
     }
 
-    public synchronized void start() {
-        if (running.compareAndSet(false, true)) {
-            thread = new Thread(this, "MoveEarth-Analytics-Storage-Worker");
-            thread.setDaemon(true);
-            thread.start();
+    public void start() {
+        synchronized (lifecycleLock) {
+            if (running.compareAndSet(false, true)) {
+                thread = new Thread(this, "MoveEarth-Analytics-Storage-Worker");
+                thread.setDaemon(true);
+                thread.start();
+            }
         }
     }
 
@@ -101,7 +105,7 @@ public class AnalyticsStorageWorker implements Runnable {
             }
         }
 
-        // 停止時の最終残留フラッシュ（batchおよびqueue）
+        // 停止時の最終残留フラッシュとcloseはワーカースレッドだけが担当する。
         try {
             if (!batch.isEmpty()) {
                 storageEngine.writeBatch(batch);
@@ -110,6 +114,12 @@ public class AnalyticsStorageWorker implements Runnable {
             flushRemaining();
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            closeStorage();
+            running.set(false);
+            synchronized (lifecycleLock) {
+                if (thread == Thread.currentThread()) thread = null;
+            }
         }
     }
 
@@ -146,38 +156,56 @@ public class AnalyticsStorageWorker implements Runnable {
         }
     }
 
-    private synchronized void flushRemaining() {
-        List<AnalyticsEventQueue.AnalyticsEvent> remaining = new ArrayList<>();
-        queue.drainTo(remaining, Integer.MAX_VALUE);
-        if (!remaining.isEmpty() && storageEngine.isOpen()) {
+    private void flushRemaining() {
+        List<AnalyticsEventQueue.AnalyticsEvent> remaining = new ArrayList<>(BATCH_SIZE);
+        while (storageEngine.isOpen() && queue.drainTo(remaining, BATCH_SIZE) > 0) {
             try {
                 storageEngine.writeBatch(remaining);
             } catch (Exception e) {
                 e.printStackTrace();
+                queue.recordDropped(remaining.size());
+            } finally {
+                remaining.clear();
             }
+        }
+    }
+
+    private void closeStorage() {
+        try {
+            storageEngine.close();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
     /**
      * ワーカースレッドを停止し、残存イベントをすべてフラッシュしてDBを閉じる
      */
-    public synchronized void stopAndFlush(long timeoutMs) {
-        if (running.compareAndSet(true, false)) {
-            if (thread != null) {
-                thread.interrupt();
-                try {
-                    thread.join(timeoutMs);
-                } catch (InterruptedException ignored) {
-                }
-            }
+    public void stopAndFlush(long timeoutMs) {
+        Thread activeThread;
+        synchronized (lifecycleLock) {
+            running.set(false);
+            activeThread = thread;
+            if (activeThread != null && activeThread != Thread.currentThread()) activeThread.interrupt();
         }
 
-        flushRemaining();
+        if (activeThread == null) {
+            flushRemaining();
+            closeStorage();
+            return;
+        }
+        if (activeThread == Thread.currentThread()) return;
 
+        long waitMillis = Math.max(0L, timeoutMs);
         try {
-            storageEngine.close();
-        } catch (Exception e) {
-            e.printStackTrace();
+            if (waitMillis > 0L) activeThread.join(waitMillis);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
+        if (activeThread.isAlive()) {
+            Moveearth_addtional.LOGGER.warn(
+                    "Analytics storage worker did not stop within {} ms; it will finish and close storage asynchronously",
+                    waitMillis);
         }
     }
 

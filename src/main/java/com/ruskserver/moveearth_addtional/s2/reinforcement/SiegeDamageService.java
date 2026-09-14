@@ -222,7 +222,8 @@ public final class SiegeDamageService {
         if (!LongAbsenceService.tierAt(level, pos).reinforcementProtectionEnabled()) {
             return UpkeepPenalty.DISABLED;
         }
-        return TerritorySavedData.get(level.getServer()).controllingNation(level.dimension().location(), pos)
+        return TerritorySavedData.get(level.getServer()).controllingNation(
+                        level.getServer(), level.dimension().location(), pos)
                 .map(nation -> NationUpkeepService.penalty(level.getServer(), nation))
                 .orElse(UpkeepPenalty.DISABLED);
     }

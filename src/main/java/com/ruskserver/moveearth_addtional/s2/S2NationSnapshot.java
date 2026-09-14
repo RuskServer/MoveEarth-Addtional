@@ -198,13 +198,20 @@ public record S2NationSnapshot(
     }
 
     public record PrisonerView(UUID playerId, String playerName, UUID opponentNationId,
-                               String opponentName, String opponentTag, boolean heldByViewer) {
+                               String opponentName, String opponentTag, boolean heldByViewer,
+                               long remainingTicks) {
         public PrisonerView {
             if (playerId == null) playerId = new UUID(0L, 0L);
             if (opponentNationId == null) opponentNationId = new UUID(0L, 0L);
             playerName = safe(playerName);
             opponentName = safe(opponentName);
             opponentTag = safe(opponentTag);
+            remainingTicks = Math.max(0L, remainingTicks);
+        }
+
+        public PrisonerView(UUID playerId, String playerName, UUID opponentNationId,
+                            String opponentName, String opponentTag, boolean heldByViewer) {
+            this(playerId, playerName, opponentNationId, opponentName, opponentTag, heldByViewer, 0L);
         }
     }
 

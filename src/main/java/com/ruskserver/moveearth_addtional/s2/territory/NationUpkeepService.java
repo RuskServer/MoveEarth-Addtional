@@ -29,6 +29,9 @@ import java.util.HashMap;
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class NationUpkeepService {
     private static final Map<UUID, UpkeepPenalty> LAST_NOTIFIED_PENALTY = new HashMap<>();
+    private static final Map<UUID, UpkeepPenalty> TICK_PENALTIES = new HashMap<>();
+    private static MinecraftServer penaltyCacheServer;
+    private static long penaltyCacheTick = Long.MIN_VALUE;
     private NationUpkeepService() {
     }
 
@@ -72,6 +75,7 @@ public final class NationUpkeepService {
         if (reference != null && (!reference.isValid() || !reference.allowedAccess(player))) return false;
         NationUpkeepSavedData.get(player.server).configure(nationId, reference, enabled,
                 System.currentTimeMillis());
+        invalidatePenalty(nationId);
         return true;
     }
 
@@ -143,20 +147,40 @@ public final class NationUpkeepService {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         LAST_NOTIFIED_PENALTY.clear();
+        TICK_PENALTIES.clear();
+        penaltyCacheServer = null;
+        penaltyCacheTick = Long.MIN_VALUE;
     }
 
     /** Drops transient notification state when a nation is permanently removed. */
     public static void removeNation(UUID nationId) {
         LAST_NOTIFIED_PENALTY.remove(nationId);
+        invalidatePenalty(nationId);
     }
 
     public static UpkeepPenalty penalty(MinecraftServer server, UUID nationId) {
-        return penalty(NationUpkeepSavedData.get(server).state(nationId), System.currentTimeMillis());
+        long tick = server.overworld().getGameTime();
+        if (penaltyCacheServer != server || penaltyCacheTick != tick) {
+            TICK_PENALTIES.clear();
+            penaltyCacheServer = server;
+            penaltyCacheTick = tick;
+        }
+        return TICK_PENALTIES.computeIfAbsent(nationId, ignored ->
+                penalty(NationUpkeepSavedData.get(server).state(nationId), System.currentTimeMillis()));
+    }
+
+    public static int effectiveTerritoryRadius(MinecraftServer server, UUID nationId, int configuredRadius) {
+        return UpkeepPenaltyPolicy.effectiveTerritoryRadius(configuredRadius, penalty(server, nationId),
+                S2TerritoryConfig.overdueTerritoryRadiusPercent());
     }
 
     private static UpkeepPenalty penalty(NationUpkeepSavedData.AccountState state, long now) {
         return UpkeepPenaltyPolicy.evaluate(state.overdueSince(), now,
                 S2TerritoryConfig.upkeepWeakenMillis(), S2TerritoryConfig.upkeepDisableMillis());
+    }
+
+    private static void invalidatePenalty(UUID nationId) {
+        if (nationId != null) TICK_PENALTIES.remove(nationId);
     }
 
     private static void notifyPenaltyChange(MinecraftServer server, UUID nationId, UpkeepPenalty penalty) {
@@ -177,6 +201,7 @@ public final class NationUpkeepService {
                 territories.activeOutpostCount(nationId));
         if (amount <= 0L) {
             data.paymentSucceeded(nationId, now);
+            invalidatePenalty(nationId);
             return true;
         }
         try {
@@ -187,12 +212,14 @@ public final class NationUpkeepService {
             if (account != null && !fee.isEmpty() && account.getStoredMoney().containsValue(fee)
                     && BankAPI.getApi().BankWithdrawFromServer(account, fee).getFirst()) {
                 data.paymentSucceeded(nationId, now);
+                invalidatePenalty(nationId);
                 return true;
             }
         } catch (RuntimeException exception) {
             Moveearth_addtional.LOGGER.warn("Nation upkeep payment failed for {}", nationId, exception);
         }
         data.paymentFailed(nationId, now);
+        invalidatePenalty(nationId);
         return false;
     }
 }

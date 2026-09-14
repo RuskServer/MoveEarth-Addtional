@@ -1,7 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.client.gunpack.RequiredGunPackPrompt;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.network.C2S_SetWeldingBrushPacket;
@@ -17,7 +16,6 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
-import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -34,11 +32,6 @@ public class ClientEventHandler {
             tickCounter = 0;
             DiscordRPCManager.update();
         }
-    }
-
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onScreenOpening(ScreenEvent.Opening event) {
-        RequiredGunPackPrompt.onScreenOpening(event);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

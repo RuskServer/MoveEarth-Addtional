@@ -33,7 +33,9 @@ public record C2S_LinkDiscordAccountPacket(int requestId, String code) implement
             boolean success = false;
             String result;
             long discordId = 0L;
-            if (!bot.isReady()) {
+            if (!DiscordLinkAttemptLimiter.allow(player, "account")) {
+                result = "invalid_code";
+            } else if (!bot.isReady()) {
                 result = "bot_offline";
             } else {
                 Optional<DiscordLinkCodeRegistry.PendingLink> pending = bot.consumeAccountLinkCode(code);

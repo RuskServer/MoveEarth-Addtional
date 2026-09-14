@@ -469,6 +469,7 @@ public final class NationNotificationSavedData extends SavedData {
         TERRITORY_EXPOSED,
         TERRITORY_RESEALED,
         UPKEEP_WARNING,
+        JOIN_APPLICATION,
         COUNTEROFFENSIVE_STARTED,
         COUNTEROFFENSIVE_SUCCEEDED,
         COUNTEROFFENSIVE_FAILED,

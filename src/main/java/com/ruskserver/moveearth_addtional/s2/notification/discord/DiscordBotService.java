@@ -8,6 +8,7 @@ import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkCodeRegistr
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Message;
@@ -88,7 +89,12 @@ public final class DiscordBotService {
         if (minecraftServer != server || !isReady()) return;
         if (++deliveryTicks < DiscordBotConfig.deliveryIntervalTicks()) return;
         deliveryTicks = 0;
-        dispatchReady(minecraftServer);
+        try {
+            dispatchReady(minecraftServer);
+        } catch (RuntimeException exception) {
+            Moveearth_addtional.LOGGER.error("[MoveEarth] Discord delivery tick failed ({})",
+                    exception.getClass().getSimpleName());
+        }
     }
 
     public boolean isReady() {
@@ -120,7 +126,7 @@ public final class DiscordBotService {
         Guild guild = active.getGuildById(guildId);
         if (guild == null) return false;
         GuildMessageChannel channel = guild.getChannelById(GuildMessageChannel.class, channelId);
-        return channel != null && channel.canTalk();
+        return canEmbed(guild, channel);
     }
 
     void replyStatus(SlashCommandInteractionEvent event) {
@@ -165,7 +171,8 @@ public final class DiscordBotService {
         GuildMessageChannel target;
         try { target = option == null ? null : option.getAsChannel().asGuildMessageChannel(); }
         catch (IllegalStateException ignored) { target = null; }
-        if (target == null || target.getGuild().getIdLong() != event.getGuild().getIdLong() || !target.canTalk()) {
+        if (target == null || target.getGuild().getIdLong() != event.getGuild().getIdLong()
+                || !canEmbed(event.getGuild(), target)) {
             event.replyEmbeds(MoveEarthDiscordEmbeds.channelUnavailable()).setEphemeral(true).queue();
             return;
         }
@@ -245,11 +252,17 @@ public final class DiscordBotService {
                 hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation("送信できません", detail, false)).queue();
                 return;
             }
-            target.sendMessageEmbeds(MoveEarthDiscordEmbeds.operation("MoveEarth 通知テスト",
-                    "埋め込み通知は正常に送信されました。", true))
-                    .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).queue(
-                            ignored -> finishTest(activeServer, hook, nationId, minecraftId, discordId, true),
-                            failure -> finishTest(activeServer, hook, nationId, minecraftId, discordId, false));
+            try {
+                target.sendMessageEmbeds(MoveEarthDiscordEmbeds.operation("MoveEarth 通知テスト",
+                        "埋め込み通知は正常に送信されました。", true))
+                        .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)).queue(
+                                ignored -> finishTest(activeServer, hook, nationId, minecraftId, discordId, true),
+                                failure -> finishTest(activeServer, hook, nationId, minecraftId, discordId, false));
+            } catch (RuntimeException exception) {
+                Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord test delivery rejected ({})",
+                        exception.getClass().getSimpleName());
+                finishTest(activeServer, hook, nationId, minecraftId, discordId, false);
+            }
         }));
     }
 
@@ -344,27 +357,39 @@ public final class DiscordBotService {
         for (NationNotificationSavedData.Delivery delivery
                 : data.ready(now, DiscordBotConfig.deliveryBatchSize())) {
             if (!inFlight.add(delivery.id())) continue;
-            NationNotificationSavedData.Link link = data.link(delivery.nationId());
-            GuildMessageChannel channel = channel(link);
-            if (channel == null) {
+            try {
+                dispatchOne(activeServer, data, nations, delivery);
+            } catch (RuntimeException exception) {
                 inFlight.remove(delivery.id());
                 data.fail(delivery.id(), now);
-                continue;
+                Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord delivery {} rejected ({})",
+                        delivery.id(), exception.getClass().getSimpleName());
             }
-            String nationName = nations.nation(delivery.nationId())
-                    .map(NationSavedData.Nation::name).orElse("Unknown nation");
-            MessageCreateAction action = channel.sendMessageEmbeds(
-                    MoveEarthDiscordEmbeds.notification(nationName, delivery))
-                    .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
-            NationNotificationSavedData.Settings settings = data.settings(delivery.nationId());
-            if (settings.mentionOnSiege() && delivery.type() == NationNotificationSavedData.EventType.SIEGE_STARTED
-                    && link.mentionRoleId() > 0L) {
-                Role role = channel.getGuild().getRoleById(link.mentionRoleId());
-                if (role != null) action.setAllowedMentions(EnumSet.of(Message.MentionType.ROLE)).mention(role);
-            }
-            action.queue(ignored -> finish(activeServer, delivery.id(), true),
-                    failure -> finish(activeServer, delivery.id(), false));
         }
+    }
+
+    private void dispatchOne(MinecraftServer activeServer, NationNotificationSavedData data,
+                             NationSavedData nations, NationNotificationSavedData.Delivery delivery) {
+        NationNotificationSavedData.Link link = data.link(delivery.nationId());
+        GuildMessageChannel channel = channel(link);
+        if (channel == null) {
+            inFlight.remove(delivery.id());
+            data.fail(delivery.id(), System.currentTimeMillis());
+            return;
+        }
+        String nationName = nations.nation(delivery.nationId())
+                .map(NationSavedData.Nation::name).orElse("Unknown nation");
+        MessageCreateAction action = channel.sendMessageEmbeds(
+                MoveEarthDiscordEmbeds.notification(nationName, delivery))
+                .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
+        NationNotificationSavedData.Settings settings = data.settings(delivery.nationId());
+        if (settings.mentionOnSiege() && delivery.type() == NationNotificationSavedData.EventType.SIEGE_STARTED
+                && link.mentionRoleId() > 0L) {
+            Role role = channel.getGuild().getRoleById(link.mentionRoleId());
+            if (role != null) action.setAllowedMentions(EnumSet.of(Message.MentionType.ROLE)).mention(role);
+        }
+        action.queue(ignored -> finish(activeServer, delivery.id(), true),
+                failure -> finish(activeServer, delivery.id(), false));
     }
 
     private GuildMessageChannel channel(NationNotificationSavedData.Link link) {
@@ -373,7 +398,12 @@ public final class DiscordBotService {
         Guild guild = active.getGuildById(link.guildId());
         if (guild == null) return null;
         GuildMessageChannel channel = guild.getChannelById(GuildMessageChannel.class, link.channelId());
-        return channel != null && channel.canTalk() ? channel : null;
+        return canEmbed(guild, channel) ? channel : null;
+    }
+
+    private static boolean canEmbed(Guild guild, GuildMessageChannel channel) {
+        return channel != null && channel.canTalk()
+                && guild.getSelfMember().hasPermission(channel, Permission.MESSAGE_EMBED_LINKS);
     }
 
     private void finish(MinecraftServer expectedServer, UUID deliveryId, boolean success) {

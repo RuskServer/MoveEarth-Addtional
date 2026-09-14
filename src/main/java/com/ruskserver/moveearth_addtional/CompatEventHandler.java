@@ -18,6 +18,8 @@ public class CompatEventHandler {
     private static boolean reflectionInitialized = false;
     private static Method isBleedingMethod = null;
     private static Method reviveMethod = null;
+    private static Method knockOutMethod = null;
+    private static Method downedTimeMethod = null;
     private static Method getDataMethod = null;
     private static Object bleedingAttachment = null;
 
@@ -40,6 +42,9 @@ public class CompatEventHandler {
                 getDataMethod = Player.class.getMethod("getData", attachmentTypeClass);
                 isBleedingMethod = bleedingClass.getMethod("isBleeding");
                 reviveMethod = bleedingClass.getMethod("revive", Player.class);
+                knockOutMethod = bleedingClass.getMethod("knockOut", Player.class,
+                        net.minecraft.world.damagesource.DamageSource.class);
+                downedTimeMethod = bleedingClass.getMethod("downedTime");
             } catch (Exception e) {
                 System.err.println("[MoveEarth-Addtional] PlayerRevive Bleeding class reflection failed: " + e.getMessage());
             }
@@ -82,13 +87,43 @@ public class CompatEventHandler {
         }
     }
 
+    /** Restores a persisted combat-logout body to PlayerRevive's downed state. */
+    public static boolean knockOutPlayer(Player player) {
+        isPlayerDown(player); // Initializes the optional reflection bridge.
+        if (getDataMethod == null || bleedingAttachment == null || knockOutMethod == null) return false;
+        try {
+            Object bleedingCap = getDataMethod.invoke(player, bleedingAttachment);
+            if (bleedingCap == null || (isBleedingMethod != null
+                    && (boolean) isBleedingMethod.invoke(bleedingCap))) return bleedingCap != null;
+            knockOutMethod.invoke(bleedingCap, player, player.damageSources().generic());
+            return true;
+        } catch (Exception exception) {
+            System.err.println("[MoveEarth-Addtional] PlayerRevive knockOut invoke failed: "
+                    + exception.getMessage());
+            return false;
+        }
+    }
+
+    public static int playerDownedTicks(Player player) {
+        if (!isPlayerDown(player) || getDataMethod == null || bleedingAttachment == null
+                || downedTimeMethod == null) return -1;
+        try {
+            Object bleedingCap = getDataMethod.invoke(player, bleedingAttachment);
+            return bleedingCap == null ? -1 : (int) downedTimeMethod.invoke(bleedingCap);
+        } catch (Exception exception) {
+            return -1;
+        }
+    }
+
     /**
      * ダウン中のプレイヤーがメインハンドにTaCZの銃を持てないように強制的にスロットを変更する
      */
     @SubscribeEvent
     public static void onPlayerTick(net.neoforged.neoforge.event.tick.PlayerTickEvent.Post event) {
         Player player = event.getEntity();
-        if (isPlayerDown(player)) {
+        boolean movementRestricted = player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                && com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(serverPlayer);
+        if (isPlayerDown(player) || movementRestricted) {
             var mainHandStack = player.getMainHandItem();
             if (!mainHandStack.isEmpty() && mainHandStack.getItem().builtInRegistryHolder().key().location().getNamespace().equals("tacz")) {
                 int targetSlot = -1;
@@ -112,7 +147,8 @@ public class CompatEventHandler {
     @SubscribeEvent
     public static void onGunFire(GunFireEvent event) {
         if (event.getShooter() instanceof Player player) {
-            if (isPlayerDown(player)) {
+            if (isPlayerDown(player) || player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                    && com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(serverPlayer)) {
                 if (event instanceof net.neoforged.bus.api.ICancellableEvent cancellable) {
                     cancellable.setCanceled(true);
                 }
@@ -123,7 +159,8 @@ public class CompatEventHandler {
     @SubscribeEvent
     public static void onGunShoot(GunShootEvent event) {
         if (event.getShooter() instanceof Player player) {
-            if (isPlayerDown(player)) {
+            if (isPlayerDown(player) || player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                    && com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(serverPlayer)) {
                 if (event instanceof net.neoforged.bus.api.ICancellableEvent cancellable) {
                     cancellable.setCanceled(true);
                 }
@@ -134,7 +171,8 @@ public class CompatEventHandler {
     @SubscribeEvent
     public static void onGunMelee(GunMeleeEvent event) {
         if (event.getShooter() instanceof Player player) {
-            if (isPlayerDown(player)) {
+            if (isPlayerDown(player) || player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                    && com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(serverPlayer)) {
                 if (event instanceof net.neoforged.bus.api.ICancellableEvent cancellable) {
                     cancellable.setCanceled(true);
                 }
@@ -147,7 +185,9 @@ public class CompatEventHandler {
      */
     @SubscribeEvent
     public static void onPlayerInteract(PlayerInteractEvent.RightClickItem event) {
-        if (isPlayerDown(event.getEntity())) {
+        boolean movementRestricted = event.getEntity() instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                && com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(serverPlayer);
+        if (isPlayerDown(event.getEntity()) || movementRestricted) {
             // 持っているアイテムがTaCZの銃であればキャンセルする（ネームスペースで雑に判定）
             if (event.getItemStack().getItem().builtInRegistryHolder().key().location().getNamespace().equals("tacz")) {
                 if (event instanceof net.neoforged.bus.api.ICancellableEvent cancellable) {

@@ -53,7 +53,8 @@ public final class MoveEarthDiscordEmbeds {
     public static MessageEmbed audit(List<NationNotificationSavedData.AuditEntry> entries) {
         EmbedBuilder embed = base("Discord連携 監査ログ", MUTED);
         if (entries.isEmpty()) return embed.setDescription("記録はありません。").build();
-        for (NationNotificationSavedData.AuditEntry entry : entries) {
+        for (int index = 0; index < entries.size() && index < 8; index++) {
+            NationNotificationSavedData.AuditEntry entry = entries.get(index);
             String state = entry.success() ? "成功" : "失敗";
             String detail = DiscordText.safe(entry.detail());
             embed.addField("<t:" + (entry.atMillis() / 1000L) + ":R> • "
@@ -76,7 +77,7 @@ public final class MoveEarthDiscordEmbeds {
 
     public static MessageEmbed channelUnavailable() {
         return base("このチャンネルへ送信できません", DANGER)
-                .setDescription("Botに「チャンネルを見る」と「メッセージを送信」の権限を付与してください。")
+                .setDescription("Botに「チャンネルを見る」「メッセージを送信」「埋め込みリンク」の権限を付与してください。")
                 .build();
     }
 
@@ -120,6 +121,7 @@ public final class MoveEarthDiscordEmbeds {
             case TERRITORY_EXPOSED -> new EventPresentation("領土の漏出を検出", WARNING);
             case TERRITORY_RESEALED -> new EventPresentation("領土の封鎖を確認", SUCCESS);
             case UPKEEP_WARNING -> new EventPresentation("維持費警告", WARNING);
+            case JOIN_APPLICATION -> new EventPresentation("国家加入申請", ACCENT);
             case COUNTEROFFENSIVE_STARTED -> new EventPresentation("反攻開始", WARNING);
             case COUNTEROFFENSIVE_SUCCEEDED -> new EventPresentation("反攻成功", SUCCESS);
             case COUNTEROFFENSIVE_FAILED -> new EventPresentation("反攻失敗", DANGER);

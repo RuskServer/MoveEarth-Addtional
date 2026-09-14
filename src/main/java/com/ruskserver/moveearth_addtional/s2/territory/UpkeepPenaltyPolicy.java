@@ -19,4 +19,13 @@ public final class UpkeepPenaltyPolicy {
         return (int) Math.min(Integer.MAX_VALUE,
                 Math.max(1L, Math.round(damage * Math.max(1.0D, weakenedMultiplier))));
     }
+
+    /** Keeps the core chunk while reducing only the surrounding controlled chunk radius. */
+    public static int effectiveTerritoryRadius(int configuredRadius, UpkeepPenalty penalty,
+                                               int disabledRadiusPercent) {
+        int radius = Math.max(0, configuredRadius);
+        if (!penalty.territoryRadiusReduced()) return radius;
+        int percent = Math.max(0, Math.min(100, disabledRadiusPercent));
+        return (int) ((long) radius * percent / 100L);
+    }
 }
