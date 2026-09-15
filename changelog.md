@@ -5,6 +5,14 @@
 - **Unified Loading Screens**: Server connection, world data and resource preparation, level reception, chunk generation, and world saving now use the main menu's starfield and meteor presentation. A compact translucent bottom HUD combines rotating gameplay tips, live status, a progress bar, and the connection cancel action while leaving room for a larger central logo.
 - **Roomier Main Menu**: Increased outer, panel, control, and changelog spacing at normal resolutions. The navigation panel now fits its contents and floats vertically beside the changelog instead of stretching across all available height.
 
+## Gameplay
+
+- **Personal MoveEarth Guide**: Added persistent personal onboarding that teaches survival, Create basics, storage rules, JEI, infantry combat, territory, and reinforcement through real actions before nation founding. The former nation-shared technology and item-lock design was dropped so post-founding industry remains sandbox-driven.
+- **Icon-Based Guide UI and JEI Integration**: Guide topics use familiar item and block icons with hover descriptions, live objectives, progress, filtering, pan/zoom, and up to three tracked topics. Related icons open JEI output recipes; JEI remains client-provided and is not bundled into either distribution.
+- **Ender Chests Disabled**: Ender Chests can no longer be opened, placed, used, or crafted. Existing blocks and inventory items are preserved so administrators can remove them safely.
+- **Territory-Gated Storage**: Tagged persistent storage, including vanilla containers, storage minecarts and chest boats, can only be placed or used inside the owning nation's effective territory or its initial configuring reservation. Operators retain an emergency bypass, existing contents are never deleted, and modded storage can be extended through data tags.
+- **Capital-First Nation Creation**: The custom nation screen now includes an in-world capital selector with a green 3×3-chunk reservation preview. The server validates support, range, overlap, and moving sub-levels, then creates the nation, configuring capital core, and reserved territory as one rollback-safe operation.
+
 # v3.1 — Test Play Release
 
 This release establishes the Season 2 feature set as the v3.1 test-play baseline. Live testing will focus on gameplay balance, performance, compatibility, and operational reliability; the resulting fixes and refinements will target completion in v3.2.

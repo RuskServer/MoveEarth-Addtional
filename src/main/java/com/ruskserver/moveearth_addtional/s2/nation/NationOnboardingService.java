@@ -149,6 +149,13 @@ public final class NationOnboardingService {
                     "screen.moveearth_addtional.onboarding.application.rejected")));
             if (approve) {
                 UUID nationId = nations.nationIdFor(applicantId).orElse(null);
+                if (nationId != null) {
+                    com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData technology =
+                            com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(applicant.server);
+                    technology.recordObjective(applicant,
+                            com.ruskserver.moveearth_addtional.s2.technology.TechnologyDefinition.ObjectiveType.JOIN_OR_FOUND_NATION,
+                            null, 1L, applicant.blockPosition());
+                }
                 releaseForSearch(applicant);
                 if (nationId != null) RandomSpawnHandler.beginNationSpawnSearch(applicant, nationId);
             } else {

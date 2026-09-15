@@ -19,5 +19,7 @@ public abstract class GunSmithTableMenuMixin {
         if (!(player instanceof ServerPlayer serverPlayer)) return;
         ItemStack result = recipe.getResultItem(serverPlayer.registryAccess());
         GunSmithJobService.awardCraft(serverPlayer, result);
+        com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(serverPlayer.server)
+                .recordCraft(serverPlayer, result);
     }
 }

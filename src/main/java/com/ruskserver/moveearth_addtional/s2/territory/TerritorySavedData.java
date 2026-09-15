@@ -58,6 +58,15 @@ public final class TerritorySavedData extends SavedData {
         return new RegistrationResult(Status.REGISTERED, record);
     }
 
+    public Status validateRegistration(UUID nationId, ResourceLocation dimension, BlockPos pos, int radius) {
+        CoreRecord existing = cores.get(new CoreKey(dimension, pos));
+        if (existing != null) {
+            return existing.nationId.equals(nationId) ? Status.REGISTERED : Status.POSITION_OCCUPIED;
+        }
+        return conflicts(nationId, dimension, area(pos, radius), null)
+                ? Status.FOREIGN_TERRITORY_CONFLICT : Status.REGISTERED;
+    }
+
     public UpdateResult updateRadius(UUID nationId, ResourceLocation dimension, BlockPos pos, int radius) {
         if (radius < TerritoryPreviewArea.MIN_RADIUS || radius > TerritoryPreviewArea.MAX_RADIUS) {
             return new UpdateResult(Status.INVALID_RADIUS, null);
@@ -283,6 +292,20 @@ public final class TerritorySavedData extends SavedData {
             }
         }
         return TerritoryReinforcementAccessPolicy.canManage(controlled, configuringReservation);
+    }
+
+    /** Storage is nation infrastructure: effective home territory plus the initial configuring reservation. */
+    public boolean allowsStorage(MinecraftServer server, UUID nationId,
+                                 ResourceLocation dimension, BlockPos pos) {
+        if (nationId == null) return false;
+        if (controlsChunk(server, nationId, dimension, pos)) return true;
+        ChunkPos chunk = new ChunkPos(pos);
+        for (CoreKey key : indexed(reservedChunkIndex, dimension, chunk.x, chunk.z)) {
+            CoreRecord core = cores.get(key);
+            if (core != null && core.nationId.equals(nationId)
+                    && core.state == CoreState.CONFIGURING) return true;
+        }
+        return false;
     }
 
     /** Returns the nation whose ACTIVE or EXPOSED territory controls this chunk. */

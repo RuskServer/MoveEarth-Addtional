@@ -70,6 +70,16 @@ public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
             String messageKey = "screen.moveearth_addtional.nation.membership."
                     + result.status().name().toLowerCase(java.util.Locale.ROOT);
             if (result.success()) {
+                if (action == Action.ACCEPT) {
+                    UUID joinedNation = data.nationIdFor(player.getUUID()).orElse(null);
+                    if (joinedNation != null) {
+                        com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData technology =
+                                com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(player.server);
+                        technology.recordObjective(player,
+                                com.ruskserver.moveearth_addtional.s2.technology.TechnologyDefinition.ObjectiveType.JOIN_OR_FOUND_NATION,
+                                null, 1L, player.blockPosition());
+                    }
+                }
                 S2HubTab tab = action == Action.INVITE || action == Action.KICK
                         ? S2HubTab.MEMBERS : S2HubTab.OVERVIEW;
                 S2NationViewService.INSTANCE.sendHub(player, tab);

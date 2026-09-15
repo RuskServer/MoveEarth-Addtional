@@ -52,6 +52,13 @@ public class ClientPacketHandler {
         else minecraft.setScreen(new S2HubScreen(packet));
     }
 
+    public static void handleTechnologySnapshot(S2C_TechnologySnapshotPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        TechnologyClientState.update(packet.snapshot());
+        if (minecraft.screen instanceof TechnologyScreen screen) screen.update(packet.snapshot());
+        else if (packet.openScreen()) minecraft.setScreen(new TechnologyScreen(packet.snapshot()));
+    }
+
     public static void handleNationTreasury(S2C_NationTreasuryPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof NationTreasuryScreen screen) screen.update(packet);

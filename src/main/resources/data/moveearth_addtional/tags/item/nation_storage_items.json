@@ -1,0 +1,28 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:shulker_boxes",
+    "minecraft:chest",
+    "minecraft:trapped_chest",
+    "minecraft:barrel",
+    "minecraft:decorated_pot",
+    "minecraft:chiseled_bookshelf",
+    "minecraft:hopper",
+    "minecraft:dropper",
+    "minecraft:dispenser",
+    "minecraft:hopper_minecart",
+    "minecraft:chest_minecart",
+    { "id": "minecraft:oak_chest_boat", "required": false },
+    { "id": "minecraft:spruce_chest_boat", "required": false },
+    { "id": "minecraft:birch_chest_boat", "required": false },
+    { "id": "minecraft:jungle_chest_boat", "required": false },
+    { "id": "minecraft:acacia_chest_boat", "required": false },
+    { "id": "minecraft:dark_oak_chest_boat", "required": false },
+    { "id": "minecraft:mangrove_chest_boat", "required": false },
+    { "id": "minecraft:cherry_chest_boat", "required": false },
+    { "id": "minecraft:bamboo_chest_raft", "required": false },
+    "minecraft:bundle",
+    { "id": "create:item_vault", "required": false },
+    { "id": "#create:toolboxes", "required": false }
+  ]
+}

@@ -28,6 +28,10 @@ public record C2S_RequestS2HubPacket(S2HubTab tab) implements CustomPacketPayloa
     public void handle(net.neoforged.neoforge.network.handling.IPayloadContext context) {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer player) {
+                if (tab == S2HubTab.SIEGE) {
+                    com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(player.server)
+                            .recordAction(player, "combat_rules_viewed");
+                }
                 S2NationViewService.INSTANCE.sendHub(player, tab);
             }
         });

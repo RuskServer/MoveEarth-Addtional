@@ -10,11 +10,15 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui31");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui34");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
         registrar.playToClient(S2C_S2HubSnapshotPacket.TYPE, S2C_S2HubSnapshotPacket.STREAM_CODEC, S2C_S2HubSnapshotPacket::handle);
+        registrar.playToServer(C2S_RequestTechnologyPacket.TYPE, C2S_RequestTechnologyPacket.STREAM_CODEC, C2S_RequestTechnologyPacket::handle);
+        registrar.playToServer(C2S_TechnologyActionPacket.TYPE, C2S_TechnologyActionPacket.STREAM_CODEC, C2S_TechnologyActionPacket::handle);
+        registrar.playToServer(C2S_SetTechnologyTrackedPacket.TYPE, C2S_SetTechnologyTrackedPacket.STREAM_CODEC, C2S_SetTechnologyTrackedPacket::handle);
+        registrar.playToClient(S2C_TechnologySnapshotPacket.TYPE, S2C_TechnologySnapshotPacket.STREAM_CODEC, S2C_TechnologySnapshotPacket::handle);
         registrar.playToClient(S2C_NationNameplatesPacket.TYPE, S2C_NationNameplatesPacket.STREAM_CODEC, S2C_NationNameplatesPacket::handle);
         registrar.playToClient(S2C_NationTreasuryPacket.TYPE, S2C_NationTreasuryPacket.STREAM_CODEC, S2C_NationTreasuryPacket::handle);
         registrar.playToServer(C2S_NationTreasuryPacket.TYPE, C2S_NationTreasuryPacket.STREAM_CODEC, C2S_NationTreasuryPacket::handle);

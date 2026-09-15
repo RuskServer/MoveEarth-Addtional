@@ -12,13 +12,15 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
 
 public final class NationCreateScreen extends Screen implements SuppressesChatOverlay {
     private static final int PANEL_WIDTH = 430;
-    private static final int PANEL_HEIGHT = 248;
+    private static final int PANEL_HEIGHT = 286;
     private static int nextRequestId;
 
     private long revision;
@@ -27,10 +29,23 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
     private int pendingRequestId = -1;
     private Component toast;
     private int toastTicks;
+    private final String initialName;
+    private final String initialTag;
+    private final ResourceLocation selectedDimension;
+    private final BlockPos selectedCorePos;
 
     public NationCreateScreen(long revision) {
+        this(revision, "", "", null, null);
+    }
+
+    NationCreateScreen(long revision, String initialName, String initialTag,
+                       ResourceLocation selectedDimension, BlockPos selectedCorePos) {
         super(Component.translatable("screen.moveearth_addtional.nation.create_title"));
         this.revision = revision;
+        this.initialName = initialName;
+        this.initialTag = initialTag;
+        this.selectedDimension = selectedDimension;
+        this.selectedCorePos = selectedCorePos;
     }
 
     @Override
@@ -44,6 +59,8 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
         tagEdit.setMaxLength(NationNamePolicy.MAX_TAG_LENGTH);
         configure(nameEdit);
         configure(tagEdit);
+        nameEdit.setValue(initialName);
+        tagEdit.setValue(initialTag);
         addRenderableWidget(nameEdit);
         addRenderableWidget(tagEdit);
         setInitialFocus(nameEdit);
@@ -93,11 +110,27 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.tag_hint"),
                 panel.x() + 164, panel.y() + 132, MUTED, false);
 
+        Rect location = locationBounds(panel);
+        graphics.fill(location.x(), location.y(), location.right(), location.bottom(), CARD);
+        drawBorder(graphics, location, selectedCorePos == null ? BORDER : SUCCESS);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.foundation_location"),
+                location.x() + 9, location.y() + 6, MUTED, false);
+        Component locationText = selectedCorePos == null
+                ? Component.translatable("screen.moveearth_addtional.nation.foundation_unselected")
+                : Component.translatable("screen.moveearth_addtional.nation.foundation_selected",
+                selectedCorePos.getX(), selectedCorePos.getY(), selectedCorePos.getZ());
+        graphics.drawString(font, locationText, location.x() + 9, location.y() + 19,
+                selectedCorePos == null ? DANGER : TEXT, false);
+        Rect select = selectBounds(panel);
+        drawButton(graphics, font, select,
+                Component.translatable("screen.moveearth_addtional.nation.foundation_select"), ACCENT,
+                select.contains(mouseX, mouseY), pendingRequestId < 0);
+
         NationNamePolicy.Validation validation = validation();
         if (!validation.valid() && (!nameEdit.getValue().isEmpty() || !tagEdit.getValue().isEmpty())) {
             graphics.drawString(font, Component.translatable(
                             "screen.moveearth_addtional.nation.validation." + validation.reason()),
-                    panel.x() + 30, panel.y() + 158, DANGER, false);
+                    panel.x() + 30, panel.y() + 208, DANGER, false);
         }
 
         Rect cancel = cancelBounds(panel);
@@ -105,7 +138,8 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
         drawButton(graphics, font, cancel,
                 Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED,
                 cancel.contains(mouseX, mouseY), true);
-        boolean canCreate = validation.valid() && pendingRequestId < 0;
+        boolean canCreate = validation.valid() && selectedDimension != null && selectedCorePos != null
+                && pendingRequestId < 0;
         drawButton(graphics, font, create,
                 Component.translatable(pendingRequestId < 0
                         ? "screen.moveearth_addtional.nation.create" : "screen.moveearth_addtional.nation.creating"),
@@ -131,11 +165,17 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
                 return true;
             }
             NationNamePolicy.Validation validation = validation();
+            if (pendingRequestId < 0 && validation.valid() && selectBounds(panel).contains(mouseX, mouseY)) {
+                NationFoundationClientState.begin(revision, validation.name(), validation.tag());
+                return true;
+            }
             if (pendingRequestId < 0 && validation.valid()
+                    && selectedDimension != null && selectedCorePos != null
                     && createBounds(panel).contains(mouseX, mouseY)) {
                 pendingRequestId = ++nextRequestId;
                 PacketDistributor.sendToServer(new C2S_CreateNationPacket(
-                        pendingRequestId, revision, validation.name(), validation.tag()));
+                        pendingRequestId, revision, validation.name(), validation.tag(),
+                        selectedDimension, selectedCorePos));
                 return true;
             }
         }
@@ -167,6 +207,14 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
 
     private static Rect createBounds(Rect panel) {
         return new Rect(panel.right() - 140, panel.bottom() - 39, 120, 23);
+    }
+
+    private static Rect locationBounds(Rect panel) {
+        return new Rect(panel.x() + 30, panel.y() + 155, panel.width() - 176, 43);
+    }
+
+    private static Rect selectBounds(Rect panel) {
+        return new Rect(panel.right() - 136, panel.y() + 164, 106, 25);
     }
 
     @Override

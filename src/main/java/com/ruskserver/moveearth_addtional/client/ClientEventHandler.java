@@ -14,6 +14,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiLayerEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
@@ -25,8 +26,22 @@ public class ClientEventHandler {
     private static int tickCounter = 0;
 
     @SubscribeEvent
+    public static void onItemTooltip(ItemTooltipEvent event) {
+        var id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem());
+        var node = TechnologyClientState.forItem(id);
+        if (node == null) return;
+        String key = switch (node.state()) {
+            case LOCKED, DISABLED -> "tooltip.moveearth_addtional.technology.required";
+            case AVAILABLE, IN_PROGRESS -> "tooltip.moveearth_addtional.technology.objective";
+            case COMPLETED, INHERITED -> "tooltip.moveearth_addtional.technology.unlocked";
+        };
+        event.getToolTip().add(Component.translatable(key, Component.translatable(node.titleKey())));
+    }
+
+    @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         S2ClientKeys.clientTick();
+        NationFoundationClientState.tick();
         tickCounter++;
         if (tickCounter >= 100) { // 5秒ごとに更新 (100 ticks)
             tickCounter = 0;
@@ -54,6 +69,14 @@ public class ClientEventHandler {
         minecraft.player.displayClientMessage(MoveEarthMessage.info(Component.translatable(
                 "message.moveearth_addtional.welding.brush_changed",
                 WeldingBrushClientState.size(), WeldingBrushClientState.size())), true);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onInteractionKey(InputEvent.InteractionKeyMappingTriggered event) {
+        if (!NationFoundationClientState.active() || (!event.isAttack() && !event.isUseItem())) return;
+        event.setCanceled(true);
+        event.setSwingHand(false);
+        NationFoundationClientState.handleInteraction(event.isAttack(), event.isUseItem());
     }
 
     @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)

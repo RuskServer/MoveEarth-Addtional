@@ -469,14 +469,9 @@ public final class NationSavedData extends SavedData {
 
     public CreateResult create(UUID ownerId, String ownerName, String rawName, String rawTag,
                                long expectedRevision) {
-        if (expectedRevision != revision) return new CreateResult(Status.STALE, null, revision);
-        if (nationByMember.containsKey(ownerId)) return new CreateResult(Status.ALREADY_MEMBER, null, revision);
+        Status status = validateCreate(ownerId, rawName, rawTag, expectedRevision);
+        if (status != Status.CREATED) return new CreateResult(status, null, revision);
         NationNamePolicy.Validation validation = NationNamePolicy.validate(rawName, rawTag);
-        if (!validation.valid()) return new CreateResult(Status.INVALID, null, revision);
-        boolean duplicate = nations.values().stream().anyMatch(nation ->
-                NationNamePolicy.normalizedName(nation.name).equals(NationNamePolicy.normalizedName(validation.name()))
-                        || nation.tag.equalsIgnoreCase(validation.tag()));
-        if (duplicate) return new CreateResult(Status.DUPLICATE, null, revision);
 
         UUID nationId = UUID.randomUUID();
         Nation nation = new Nation(nationId, validation.name(), validation.tag(), ownerId);
@@ -487,6 +482,30 @@ public final class NationSavedData extends SavedData {
         joinApplications.remove(ownerId);
         changed();
         return new CreateResult(Status.CREATED, nation, revision);
+    }
+
+    /** Performs every nation-side creation check without mutating persistent state. */
+    public Status validateCreate(UUID ownerId, String rawName, String rawTag, long expectedRevision) {
+        if (expectedRevision != revision) return Status.STALE;
+        if (nationByMember.containsKey(ownerId)) return Status.ALREADY_MEMBER;
+        NationNamePolicy.Validation validation = NationNamePolicy.validate(rawName, rawTag);
+        if (!validation.valid()) return Status.INVALID;
+        boolean duplicate = nations.values().stream().anyMatch(nation ->
+                NationNamePolicy.normalizedName(nation.name).equals(NationNamePolicy.normalizedName(validation.name()))
+                        || nation.tag.equalsIgnoreCase(validation.tag()));
+        return duplicate ? Status.DUPLICATE : Status.CREATED;
+    }
+
+    /** Internal compensation used when capital-core creation fails in the same server task. */
+    boolean rollbackFreshCreation(UUID nationId, UUID ownerId) {
+        Nation nation = nations.get(nationId);
+        if (nation == null || !nation.ownerId.equals(ownerId) || nation.members.size() != 1
+                || !nation.members.containsKey(ownerId)) return false;
+        nations.remove(nationId);
+        nationByMember.remove(ownerId, nationId);
+        revision = Math.max(0L, revision - 1L);
+        setDirty();
+        return true;
     }
 
     public void updateKnownName(UUID playerId, String name) {

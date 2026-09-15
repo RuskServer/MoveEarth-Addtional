@@ -129,6 +129,13 @@ ordering = "AFTER"
 side = "BOTH"
 
 [[dependencies."${mod_id}"]]
+modId = "jei"
+type = "optional"
+versionRange = "[19.21.1.248,)"
+ordering = "AFTER"
+side = "CLIENT"
+
+[[dependencies."${mod_id}"]]
 modId = "cold_sweat"
 type = "optional"
 versionRange = "[2.4,)"

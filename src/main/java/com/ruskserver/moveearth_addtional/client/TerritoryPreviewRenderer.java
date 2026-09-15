@@ -39,7 +39,8 @@ public final class TerritoryPreviewRenderer {
                 && minecraft.level.dimension().location().equals(packet.dimension());
         boolean showClosure = closure != null
                 && minecraft.level.dimension().location().equals(closure.dimension());
-        if (!showPreview && !showClosure) return;
+        boolean showFoundation = NationFoundationClientState.active();
+        if (!showPreview && !showClosure && !showFoundation) return;
 
         Vec3 camera = event.getCamera().getPosition();
         PoseStack poseStack = event.getPoseStack();
@@ -51,8 +52,24 @@ public final class TerritoryPreviewRenderer {
             renderVault(vault, minecraft, poseStack, buffers, camera);
         }
         if (showClosure) renderClosure(closure, poseStack, buffers, camera);
+        if (showFoundation) renderFoundation(poseStack, buffers, camera);
         buffers.endBatch(RenderType.debugFilledBox());
         buffers.endBatch();
+    }
+
+    private static void renderFoundation(PoseStack poseStack, MultiBufferSource.BufferSource buffers, Vec3 camera) {
+        BlockPos pos = NationFoundationClientState.candidate();
+        if (pos == null) return;
+        VertexConsumer outline = buffers.getBuffer(RenderType.lines());
+        LevelRenderer.renderLineBox(poseStack, outline,
+                new AABB(pos).inflate(0.012D).move(-camera.x, -camera.y, -camera.z),
+                0.22F, 1.0F, 0.48F, 1.0F);
+        TerritoryPreviewArea area = new TerritoryPreviewArea(pos.getX() >> 4, pos.getZ() >> 4, 1);
+        double y = pos.getY() + 0.035D;
+        AABB reserved = new AABB(area.minBlockX(), y, area.minBlockZ(),
+                area.maxBlockXExclusive(), y + 0.16D, area.maxBlockZExclusive())
+                .move(-camera.x, -camera.y, -camera.z);
+        LevelRenderer.renderLineBox(poseStack, outline, reserved, 0.22F, 1.0F, 0.48F, 1.0F);
     }
 
     private static void renderVault(VaultClientState.VaultMarker vault, Minecraft minecraft,
@@ -161,10 +178,24 @@ public final class TerritoryPreviewRenderer {
                 && minecraft.level.dimension().location().equals(packet.dimension());
         boolean showClosure = closure != null
                 && minecraft.level.dimension().location().equals(closure.dimension());
-        if (!showPreview && !showClosure) return;
+        boolean showFoundation = NationFoundationClientState.active();
+        if (!showPreview && !showClosure && !showFoundation) return;
         var graphics = event.getGuiGraphics();
         int x = 12;
         int y = 12;
+        if (showFoundation) {
+            graphics.fill(x, y, x + 300, y + 48, 0xD012161D);
+            graphics.fill(x, y, x + 3, y + 48, 0xFF68E09B);
+            graphics.drawString(minecraft.font,
+                    Component.translatable("overlay.moveearth_addtional.nation.foundation.title"),
+                    x + 11, y + 8, 0xFF68E09B, false);
+            graphics.drawString(minecraft.font,
+                    Component.translatable(NationFoundationClientState.candidate() == null
+                            ? "overlay.moveearth_addtional.nation.foundation.invalid"
+                            : "overlay.moveearth_addtional.nation.foundation.confirm"),
+                    x + 11, y + 23, 0xFFE8EDF3, false);
+            return;
+        }
         boolean showLeakCount = showClosure && !closure.unreinforcedLeakBlocks().isEmpty();
         int panelHeight = (showPreview && showClosure ? 80 : 52) + (showLeakCount ? 13 : 0);
         graphics.fill(x, y, x + 266, y + panelHeight, 0xD012161D);

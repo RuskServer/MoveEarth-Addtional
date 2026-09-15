@@ -45,6 +45,11 @@ repositories {
             includeGroup "maven.modrinth"
         }
     }
+    maven {
+        name = "BlameJared"
+        url = "https://maven.blamejared.com"
+        content { includeGroup "mezz.jei" }
+    }
     exclusiveContent {
         forRepository {
             maven {
@@ -203,6 +208,9 @@ dependencies {
     compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
     // Optional Cold Sweat API integration. Never bundle Cold Sweat or its assets.
     compileOnly('curse.maven:cold-sweat-506194:8872715') { transitive = false }
+    // JEI is supplied by the client modpack. Only its public plugin API is compiled against.
+    compileOnly 'mezz.jei:jei-1.21.1-common-api:19.21.1.248'
+    compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.21.1.248'
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -387,7 +395,8 @@ var verifyPackagedDiscordRuntime = tasks.register('verifyPackagedDiscordRuntime'
     doLast {
         new java.util.zip.ZipFile(serverJarFile.get().asFile).withCloseable { zip ->
             def bundledClientLibraries = zip.entries().findAll { entry ->
-                !entry.directory && entry.name.startsWith('com/momosoftworks/coldsweat/')
+                !entry.directory && (entry.name.startsWith('com/momosoftworks/coldsweat/') ||
+                        entry.name.startsWith('mezz/jei/'))
             }.collect { it.name }.take(10)
             if (!bundledClientLibraries.empty) {
                 throw new GradleException("Server JAR unexpectedly bundles optional client library classes: ${bundledClientLibraries}")
@@ -419,6 +428,7 @@ var verifyPlayerDistribution = tasks.register('verifyPlayerDistribution') {
                 !entry.directory && (entry.name.startsWith('META-INF/jarjar/') ||
                         entry.name.startsWith('net/dv8tion/jda/') ||
                         entry.name.startsWith('com/momosoftworks/coldsweat/') ||
+                        entry.name.startsWith('mezz/jei/') ||
                         entry.name.startsWith('com/ruskserver/moveearth_addtional/s2/notification/discord/'))
             }.collect { it.name }.take(10)
             if (!forbidden.empty) {

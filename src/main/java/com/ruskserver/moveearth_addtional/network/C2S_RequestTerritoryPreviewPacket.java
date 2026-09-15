@@ -61,6 +61,8 @@ public record C2S_RequestTerritoryPreviewPacket(int radius, boolean coreBound, B
                 chunk = new net.minecraft.world.level.ChunkPos(corePos);
             }
             TerritoryPreviewArea area = new TerritoryPreviewArea(chunk.x, chunk.z, safeRadius);
+            com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(player.server)
+                    .recordAction(player, "territory_previewed");
             PacketDistributor.sendToPlayer(player, new S2C_TerritoryPreviewPacket(
                     player.level().dimension().location(), area.centerChunkX(), area.centerChunkZ(),
                     area.radius(), area.chunkCount()));

@@ -21,6 +21,18 @@ public final class TerritoryCoreEvents {
     }
 
     @SubscribeEvent
+    public static void onPlace(BlockEvent.EntityPlaceEvent event) {
+        if (!event.getPlacedBlock().is(ModBlocks.TERRITORY_CORE.get())
+                || !(event.getEntity() instanceof ServerPlayer player)
+                || player.hasPermissions(2)) return;
+        if (NationSavedData.get(player.server).nationIdFor(player.getUUID()).isEmpty()) {
+            event.setCanceled(true);
+            player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
+                    "message.moveearth_addtional.territory_core.foundation_required")));
+        }
+    }
+
+    @SubscribeEvent
     public static void onBreak(BlockEvent.BreakEvent event) {
         if (!event.getState().is(ModBlocks.TERRITORY_CORE.get())
                 || !(event.getPlayer() instanceof ServerPlayer player)
