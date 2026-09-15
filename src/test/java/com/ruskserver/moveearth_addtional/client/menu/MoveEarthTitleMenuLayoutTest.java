@@ -13,11 +13,13 @@ class MoveEarthTitleMenuLayoutTest {
         assertEquals(MoveEarthTitleMenuLayout.BUTTON_COUNT, layout.buttons().size());
         assertEquals(480, layout.logo().x() + layout.logo().width() / 2);
         assertTrue(layout.logo().bottom() < layout.left().y());
-        assertEquals(layout.left().y(), layout.right().y());
-        assertEquals(layout.left().bottom(), layout.right().bottom());
+        assertTrue(layout.left().y() > layout.right().y());
+        assertTrue(layout.left().bottom() < layout.right().bottom());
         assertTrue(layout.left().right() < layout.changelog().x());
         assertTrue(layout.changelog().width() > layout.left().width());
         assertTrue(layout.discord().y() > layout.changelog().y());
+        assertTrue(layout.buttons().get(1).y() - layout.buttons().get(0).bottom() >= 6);
+        assertTrue(layout.buttons().getFirst().x() - layout.left().x() >= 16);
         assertTrue(Math.abs(layout.logo().width() / (double) layout.logo().height()
                 - 1024.0D / 269.0D) < 0.04D);
     }

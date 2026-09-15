@@ -105,14 +105,15 @@ public final class MoveEarthTitleScreen extends Screen {
     private void renderChangelog(GuiGraphics graphics, MoveEarthTitleMenuLayout.Layout layout,
                                  int mouseX, int mouseY) {
         MoveEarthUi.Rect panel = layout.changelog();
+        int padding = changelogPadding(panel);
         drawMenuPanel(graphics, panel);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.main_menu.changelog"),
-                panel.x() + 12, panel.y() + 10, SUCCESS, false);
+                panel.x() + padding, panel.y() + 14, SUCCESS, false);
         String version = ModList.get().getModContainerById(Moveearth_addtional.MODID)
                 .map(container -> "v" + container.getModInfo().getVersion())
                 .orElse("v3.1");
-        graphics.drawString(font, version, panel.right() - font.width(version) - 12,
-                panel.y() + 10, MUTED, false);
+        graphics.drawString(font, version, panel.right() - font.width(version) - padding,
+                panel.y() + 14, MUTED, false);
 
         MoveEarthUi.Rect viewport = changelogViewport(panel);
         ensureWrapped(viewport.width() - 8);
@@ -130,7 +131,7 @@ public final class MoveEarthTitleScreen extends Screen {
         MoveEarthUi.Rect track = scrollbarTrack(panel);
         MoveEarthUi.drawScrollbar(graphics, track, viewport.height(), changelogContentHeight, changelogScroll);
         if (viewport.contains(mouseX, mouseY) && changelogContentHeight > viewport.height()) {
-            graphics.drawString(font, "↕", track.x() - 9, panel.y() + 10, MUTED, false);
+            graphics.drawString(font, "↕", track.x() - 9, panel.y() + 14, MUTED, false);
         }
     }
 
@@ -289,13 +290,20 @@ public final class MoveEarthTitleScreen extends Screen {
     }
 
     private static MoveEarthUi.Rect changelogViewport(MoveEarthUi.Rect panel) {
-        return new MoveEarthUi.Rect(panel.x() + 12, panel.y() + 30,
-                Math.max(1, panel.width() - 28), Math.max(1, panel.height() - 40));
+        int padding = changelogPadding(panel);
+        return new MoveEarthUi.Rect(panel.x() + padding, panel.y() + 38,
+                Math.max(1, panel.width() - padding * 2 - 4),
+                Math.max(1, panel.height() - 38 - padding));
     }
 
     private static MoveEarthUi.Rect scrollbarTrack(MoveEarthUi.Rect panel) {
-        return new MoveEarthUi.Rect(panel.right() - 9, panel.y() + 30, 3,
-                Math.max(1, panel.height() - 40));
+        int padding = changelogPadding(panel);
+        return new MoveEarthUi.Rect(panel.right() - padding + 3, panel.y() + 38, 3,
+                Math.max(1, panel.height() - 38 - padding));
+    }
+
+    private static int changelogPadding(MoveEarthUi.Rect panel) {
+        return Math.max(12, Math.min(18, panel.width() / 36));
     }
 
     private void playClick() {

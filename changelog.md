@@ -1,3 +1,10 @@
+# v3.2 — Unreleased
+
+## Interface
+
+- **Unified Loading Screens**: Server connection, world data and resource preparation, level reception, chunk generation, and world saving now use the main menu's starfield and meteor presentation. A compact translucent bottom HUD combines rotating gameplay tips, live status, a progress bar, and the connection cancel action while leaving room for a larger central logo.
+- **Roomier Main Menu**: Increased outer, panel, control, and changelog spacing at normal resolutions. The navigation panel now fits its contents and floats vertically beside the changelog instead of stretching across all available height.
+
 # v3.1 — Test Play Release
 
 This release establishes the Season 2 feature set as the v3.1 test-play baseline. Live testing will focus on gameplay balance, performance, compatibility, and operational reliability; the resulting fixes and refinements will target completion in v3.2.

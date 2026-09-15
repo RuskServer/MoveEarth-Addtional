@@ -16,7 +16,13 @@
   "client": [
     "client.CustomHeadLayerMixin",
     "client.HumanoidArmorLayerMixin",
-    "client.MapInstanceTerritoryOverlayMixin"
+    "client.MapInstanceTerritoryOverlayMixin",
+    "client.ConnectScreenMixin",
+    "client.LevelLoadingScreenMixin",
+    "client.ReceivingLevelScreenMixin",
+    "client.LoadingButtonMixin",
+    "client.GenericMessageScreenMixin",
+    "client.ProgressScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

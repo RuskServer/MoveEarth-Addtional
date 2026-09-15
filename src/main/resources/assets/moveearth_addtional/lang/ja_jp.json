@@ -623,5 +623,7 @@
   "screen.moveearth_addtional.main_menu.moveearth": "MoveEarth",
   "screen.moveearth_addtional.main_menu.changelog": "CHANGELOG",
   "screen.moveearth_addtional.main_menu.changelog_unavailable": "更新履歴を読み込めませんでした",
-  "screen.moveearth_addtional.main_menu.discord": "Discordに参加"
+  "screen.moveearth_addtional.main_menu.discord": "Discordに参加",
+  "screen.moveearth_addtional.loading.tip": "TIP",
+  "screen.moveearth_addtional.loading.world": "ワールドを構築中"
 }

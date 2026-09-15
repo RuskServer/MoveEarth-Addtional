@@ -16,7 +16,7 @@ import org.joml.Matrix4f;
 import java.util.List;
 
 /** Dependency-free title background: one static texture and a single batched meteor draw. */
-final class StaticMeteorBackground {
+public final class StaticMeteorBackground {
     private static final ResourceLocation BACKGROUND = ResourceLocation.fromNamespaceAndPath(
             Moveearth_addtional.MODID, "menu/static_background.png");
     private static final float SOURCE_ASPECT = 16.0F / 9.0F;
@@ -25,7 +25,10 @@ final class StaticMeteorBackground {
     private final List<MeteorShowerModel.Meteor> meteors =
             MeteorShowerModel.create(MeteorShowerModel.DEFAULT_SEED);
 
-    void render(GuiGraphics graphics, int width, int height) {
+    public StaticMeteorBackground() {
+    }
+
+    public void render(GuiGraphics graphics, int width, int height) {
         drawBackground(graphics, width, height);
         drawMeteors(graphics, width, height, Util.getMillis() / 1_000.0D);
     }
