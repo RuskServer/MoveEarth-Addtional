@@ -151,6 +151,9 @@ public final class ReinforcementService {
                         player.level().dimension().location(), value.pos())
                         || SableVehicleTopology.at(player.serverLevel(), value.pos())
                         .map(context -> nationId.equals(context.vehicle().nationId())).orElse(false))
+                .sorted(java.util.Comparator.comparingDouble(value -> SableVehicleTopology.distanceSquared(
+                        player.serverLevel(), player, value.pos())))
+                .limit(8192)
                 .map(value -> new S2C_ReinforcementSnapshotPacket.Entry(value.pos(),
                         value.entry().material(), value.entry().durability(), value.entry().enabled(),
                         (int) Math.min(Integer.MAX_VALUE,

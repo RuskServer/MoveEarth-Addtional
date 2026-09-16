@@ -7,7 +7,12 @@
 
 ## Gameplay
 
+- **Dedicated-Server Vehicle Assembly**: Moved the assembly snapshot out of the reserved mixin package and use public accessors from transformed Sable code, fixing an IllegalClassLoadError when assembling swivel-bearing vehicles.
+
+- **Mobile Welding Overlay Fix**: Nearby vehicle armor now synchronizes for players standing outside the craft. Moving armor faces and selection outlines render in local coordinates to avoid precision loss at remote Sable plots, and progress labels follow the interpolated world position.
+
 - **Sable Vehicle Cores and Mobile Reinforcement**: Added nation-owned vehicle cores with configurable core health and recurring nation upkeep. Reinforcement metadata now follows Sable assembly into moving plots, uses Sable-aware reach and damage checks, and recognizes hinge/swivel-connected body chains as one vehicle while detached coreless fragments lose protection. A dedicated vehicle console reports HP, upkeep, connected bodies, and armor count; direct CBC and Warnautics core hits now damage vehicle-core HP without allowing blast-radius damage through intact armor.
+- **Vehicle-Core Placement Coordinates**: Placing a core directly on an assembled Sable craft now validates the craft's physical world position instead of its remote plot coordinates, then immediately binds that body to the new vehicle identity.
 - **Personal MoveEarth Guide**: Added persistent personal onboarding for MoveEarth-specific rules and nation entry, with optional practical lessons for survival, Create, JEI, infantry combat, and reinforcement. The former nation-shared technology and item-lock design was dropped so post-founding industry remains sandbox-driven.
 - **Beginner-Friendly Guide Paths**: Reduced the mandatory founder path to MoveEarth-specific storage rules, capital territory preview, and an explicit core/upkeep confirmation. Joining an existing nation is now a separate path, while Create, temperature, JEI, infantry, and post-membership reinforcement lessons remain optional.
 - **Icon-Based Guide UI and JEI Integration**: Guide topics use familiar item and block icons with hover descriptions, live objectives, progress, filtering, pan/zoom, and up to three tracked topics. Related icons open JEI output recipes; JEI remains client-provided and is not bundled into either distribution.

@@ -912,6 +912,7 @@
   "block.moveearth_addtional.vehicle_core": "Vehicle Core",
   "item.moveearth_addtional.vehicle_core": "Vehicle Core",
   "message.moveearth_addtional.vehicle_core.requires_shipyard": "A nation member with reinforcement permission must place vehicle cores inside effective home territory",
+  "message.moveearth_addtional.vehicle_core.no_permission": "Placing a vehicle core requires nation membership and reinforcement management permission",
   "message.moveearth_addtional.vehicle_core.registered": "Vehicle core registered. Vehicle upkeep will be included in the next nation payment",
   "message.moveearth_addtional.vehicle_core.not_owner": "This vehicle core is not owned by your nation",
   "message.moveearth_addtional.vehicle_core.break_denied": "An operational vehicle core cannot be mined. Reduce its core HP to zero with weapons first",

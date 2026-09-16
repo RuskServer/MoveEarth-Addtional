@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.mixin;
 import com.ruskserver.moveearth_addtional.block.entity.VehicleCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 import com.ruskserver.moveearth_addtional.compat.vehicle.VehicleAssemblyGuard;
+import com.ruskserver.moveearth_addtional.compat.vehicle.AssemblyState;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
 import com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData;
@@ -14,6 +15,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -30,6 +32,7 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 @Pseudo
 @Mixin(value = SubLevelAssemblyHelper.class, remap = false)
 public abstract class SableVehicleAssemblyMixin {
+    @Unique
     private static final ThreadLocal<ArrayDeque<AssemblyState>> MOVEARTH$ASSEMBLIES =
             ThreadLocal.withInitial(ArrayDeque::new);
 
@@ -76,29 +79,26 @@ public abstract class SableVehicleAssemblyMixin {
         if (stack.isEmpty()) MOVEARTH$ASSEMBLIES.remove();
         VehicleAssemblyGuard.end();
         ServerSubLevel subLevel = callback.getReturnValue();
-        if (state == null || subLevel == null || state.vehicleId == null) return;
+        if (state == null || subLevel == null || state.vehicleId() == null) return;
         BlockPos destinationAnchor = subLevel.getPlot().getCenterBlock();
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
-        for (Map.Entry<BlockPos, ReinforcementEntry> value : state.reinforcements.entrySet()) {
-            BlockPos destination = destinationAnchor.offset(value.getKey().subtract(state.anchor));
+        for (Map.Entry<BlockPos, ReinforcementEntry> value : state.reinforcements().entrySet()) {
+            BlockPos destination = destinationAnchor.offset(value.getKey().subtract(state.anchor()));
             data.remove(value.getKey());
             data.put(destination, value.getValue());
         }
-        SableVehicleTopology.bind(subLevel, state.vehicleId);
-        if (state.containsCore) {
-            for (BlockPos source : state.positions) {
-                BlockPos destination = destinationAnchor.offset(source.subtract(state.anchor));
+        SableVehicleTopology.bind(subLevel, state.vehicleId());
+        if (state.containsCore()) {
+            for (BlockPos source : state.positions()) {
+                BlockPos destination = destinationAnchor.offset(source.subtract(state.anchor()));
                 if (!(level.getBlockEntity(destination) instanceof VehicleCoreBlockEntity core)
-                        || !state.vehicleId.equals(core.vehicleId())) continue;
+                        || !state.vehicleId().equals(core.vehicleId())) continue;
                 VehicleSavedData.VehicleRecord moved = VehicleSavedData.get(level.getServer()).move(
-                        state.vehicleId, level.dimension().location(), destination, subLevel.getUniqueId());
+                        state.vehicleId(), level.dimension().location(), destination, subLevel.getUniqueId());
                 if (moved != null) core.bind(moved);
                 break;
             }
         }
     }
 
-    private record AssemblyState(BlockPos anchor, List<BlockPos> positions,
-                                 Map<BlockPos, ReinforcementEntry> reinforcements,
-                                 UUID vehicleId, boolean containsCore) { }
 }

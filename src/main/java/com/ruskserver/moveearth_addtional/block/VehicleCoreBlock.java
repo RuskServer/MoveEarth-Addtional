@@ -46,10 +46,15 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
                 || !(level.getBlockEntity(pos) instanceof VehicleCoreBlockEntity core)) return;
         NationSavedData nations = NationSavedData.get(player.server);
         UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
-        boolean allowed = nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)
-                && TerritorySavedData.get(player.server).allowsReinforcement(player.server, nationId,
-                level.dimension().location(), pos);
-        if (!allowed) {
+        if (nationId == null || !nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)) {
+            player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
+                    "message.moveearth_addtional.vehicle_core.no_permission")));
+            serverLevel.destroyBlock(pos, true);
+            return;
+        }
+        SableVehicleTopology.Placement placement = SableVehicleTopology.placement(serverLevel, pos);
+        if (!TerritorySavedData.get(player.server).allowsReinforcement(player.server, nationId,
+                level.dimension().location(), placement.worldPos())) {
             player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
                     "message.moveearth_addtional.vehicle_core.requires_shipyard")));
             serverLevel.destroyBlock(pos, true);
@@ -57,6 +62,7 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
         }
         VehicleSavedData.VehicleRecord record = VehicleSavedData.get(player.server).register(
                 nationId, player.getUUID(), level.dimension().location(), pos);
+        record = SableVehicleTopology.bindPlacedCore(serverLevel, pos, record);
         core.bind(record);
         player.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
                 "message.moveearth_addtional.vehicle_core.registered")));

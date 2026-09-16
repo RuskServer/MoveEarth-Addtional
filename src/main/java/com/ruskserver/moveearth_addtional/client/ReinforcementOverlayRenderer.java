@@ -71,10 +71,8 @@ public final class ReinforcementOverlayRenderer {
             for (ReinforcementClientState.MergedFace merged : chunk.faces()) {
                 ReinforcementGreedyMesher.Quad quad = merged.quad();
                 S2C_ReinforcementSnapshotPacket.Entry entry = merged.style();
-                ClientSubLevel movingLevel = Sable.HELPER.getContainingClient(BlockPos.containing(
-                        quad.x() + quad.sizeX() * 0.5D,
-                        quad.y() + quad.sizeY() * 0.5D,
-                        quad.z() + quad.sizeZ() * 0.5D));
+                // Use a source block, not the surface plane (which can lie outside the plot).
+                ClientSubLevel movingLevel = Sable.HELPER.getContainingClient(entry.pos());
                 if (movingLevel != null) {
                     if (rendered + movingRendered >= renderLimit) break outer;
                     movingFaces.computeIfAbsent(movingLevel, ignored -> new java.util.ArrayList<>())
@@ -131,7 +129,7 @@ public final class ReinforcementOverlayRenderer {
         BlockPos target = targetHit == null ? null : targetHit.getBlockPos();
         if (target != null && minecraft.level != null) {
             poseStack.pushPose();
-            applyTargetSpace(poseStack, target, camera, event.getPartialTick().getGameTimeDeltaPartialTick(false));
+            applyLocalSpace(poseStack, target, camera, event.getPartialTick().getGameTimeDeltaPartialTick(false));
             Direction clickedFace = targetHit.getDirection();
             ReinforcementBrushPattern.Axis axis = switch (targetHit.getDirection().getAxis()) {
                 case X -> ReinforcementBrushPattern.Axis.X;
@@ -150,10 +148,10 @@ public final class ReinforcementOverlayRenderer {
                 float blue = selectedEntry == null || selectedEntry.siegeDisabled() ? 0.12F : !selectedEntry.enabled() ? 1.0F
                         : selectedEntry.constructionInProgress() ? 0.12F : 0.30F;
                 DebugRenderer.renderFilledBox(poseStack, buffers,
-                        new AABB(selected).inflate(0.008D),
+                        new AABB(selected.subtract(target)).inflate(0.008D),
                         red, green, blue, detailed ? 0.31F : 0.22F);
             }
-            AABB faceBounds = selectionFaceBounds(target, clickedFace, WeldingBrushClientState.radius())
+            AABB faceBounds = selectionFaceBounds(BlockPos.ZERO, clickedFace, WeldingBrushClientState.radius())
                     ;
             VertexConsumer outline = buffers.getBuffer(RenderType.lines());
             LevelRenderer.renderLineBox(poseStack, outline, faceBounds.inflate(0.012D),
@@ -165,24 +163,28 @@ public final class ReinforcementOverlayRenderer {
         if (detailed && target != null && minecraft.level != null
                 && !minecraft.level.getBlockState(target).isAir()) {
             poseStack.pushPose();
-            applyTargetSpace(poseStack, target, camera, event.getPartialTick().getGameTimeDeltaPartialTick(false));
+            applyLocalSpace(poseStack, target, camera, event.getPartialTick().getGameTimeDeltaPartialTick(false));
             var entry = ReinforcementClientState.at(target);
             boolean reinforced = entry != null;
             int targetColor = entry != null && entry.siegeDisabled() ? 0xFFFF3D30
                     : entry != null && !entry.enabled() ? 0xFFC67AFF
                     : reinforced ? 0xFF68E09B : 0xFFFF6577;
             DebugRenderer.renderFilledBox(poseStack, buffers,
-                    new AABB(target).inflate(0.012D),
+                    new AABB(BlockPos.ZERO).inflate(0.012D),
                     entry != null && entry.siegeDisabled() ? 1.0F : reinforced ? 0.50F : 1.0F,
                     entry != null && entry.siegeDisabled() ? 0.18F
                             : entry != null && !entry.enabled() ? 0.28F : reinforced ? 0.94F : 0.30F,
                     entry != null && entry.siegeDisabled() ? 0.12F
                             : entry != null && !entry.enabled() ? 0.92F : reinforced ? 0.63F : 0.22F, 0.24F);
             String marker = entry == null ? "×" : progressBar(entry) + " " + Math.round(progress(entry) * 100.0F) + "%";
-            DebugRenderer.renderFloatingText(poseStack, buffers, marker,
-                    target.getX() + 0.5D, target.getY() + 1.18D, target.getZ() + 0.5D,
-                    targetColor, 0.024F, true, 0.0F, true);
             poseStack.popPose();
+            Vec3 markerPos = new Vec3(target.getX() + 0.5D, target.getY() + 1.18D, target.getZ() + 0.5D);
+            ClientSubLevel markerBody = Sable.HELPER.getContainingClient(target);
+            if (markerBody != null) markerPos = markerBody.renderPose(
+                    event.getPartialTick().getGameTimeDeltaPartialTick(false)).transformPosition(markerPos);
+            DebugRenderer.renderFloatingText(poseStack, buffers, marker,
+                    markerPos.x, markerPos.y, markerPos.z,
+                    targetColor, 0.024F, true, 0.0F, true);
         }
         buffers.endBatch(RenderType.debugFilledBox());
         buffers.endBatch();
@@ -275,18 +277,17 @@ public final class ReinforcementOverlayRenderer {
         return minecraft.hitResult instanceof BlockHitResult hit ? hit : null;
     }
 
-    private static void applyTargetSpace(PoseStack poseStack, BlockPos target, Vec3 camera, float partialTick) {
+    private static void applyLocalSpace(PoseStack poseStack, BlockPos target, Vec3 camera, float partialTick) {
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(target);
         if (subLevel == null) {
-            poseStack.translate(-camera.x, -camera.y, -camera.z);
+            poseStack.translate(target.getX() - camera.x, target.getY() - camera.y, target.getZ() - camera.z);
             return;
         }
         var pose = subLevel.renderPose(partialTick);
-        poseStack.translate(pose.position().x() - camera.x,
-                pose.position().y() - camera.y, pose.position().z() - camera.z);
+        Vec3 worldOrigin = pose.transformPosition(Vec3.atLowerCornerOf(target));
+        poseStack.translate(worldOrigin.x - camera.x, worldOrigin.y - camera.y, worldOrigin.z - camera.z);
         poseStack.mulPose(new Quaternionf(pose.orientation()));
         poseStack.scale((float) pose.scale().x(), (float) pose.scale().y(), (float) pose.scale().z());
-        poseStack.translate(-pose.rotationPoint().x(), -pose.rotationPoint().y(), -pose.rotationPoint().z());
     }
 
     private static void renderMovingFaces(PoseStack poseStack, MultiBufferSource.BufferSource buffers,
@@ -295,19 +296,20 @@ public final class ReinforcementOverlayRenderer {
         for (var group : groups.entrySet()) {
             ClientSubLevel subLevel = group.getKey();
             var pose = subLevel.renderPose(partialTick);
+            BlockPos origin = subLevel.getPlot().getCenterBlock();
             poseStack.pushPose();
-            poseStack.translate(pose.position().x() - camera.x,
-                    pose.position().y() - camera.y, pose.position().z() - camera.z);
-            poseStack.mulPose(new Quaternionf(pose.orientation()));
-            poseStack.scale((float) pose.scale().x(), (float) pose.scale().y(), (float) pose.scale().z());
-            poseStack.translate(-pose.rotationPoint().x(), -pose.rotationPoint().y(), -pose.rotationPoint().z());
+            applyLocalSpace(poseStack, origin, camera, partialTick);
             for (MovingFace face : group.getValue()) {
                 ReinforcementGreedyMesher.Quad quad = face.merged().quad();
                 S2C_ReinforcementSnapshotPacket.Entry entry = face.style();
+                Vec3 worldCenter = pose.transformPosition(new Vec3(quad.x() + quad.sizeX() * 0.5D,
+                        quad.y() + quad.sizeY() * 0.5D, quad.z() + quad.sizeZ() * 0.5D));
+                if (worldCenter.distanceToSqr(camera) > MAX_RENDER_DISTANCE_SQUARED) continue;
                 ReinforcementVisualStyle.Style style = ReinforcementVisualStyle.forEntry(
                         entry.material(), entry.durability(), entry.enabled(), detailed, now);
                 DebugRenderer.renderFilledBox(poseStack, buffers,
-                        mergedFaceBounds(quad.x(), quad.y(), quad.z(), quad.sizeX(), quad.sizeY(),
+                        mergedFaceBounds(quad.x() - origin.getX(), quad.y() - origin.getY(),
+                                quad.z() - origin.getZ(), quad.sizeX(), quad.sizeY(),
                                 quad.sizeZ(), quad.face().ordinal()),
                         entry.siegeDisabled() ? 1.0F : style.red(),
                         entry.siegeDisabled() ? 0.18F : style.green(),

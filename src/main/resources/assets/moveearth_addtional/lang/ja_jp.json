@@ -912,6 +912,7 @@
   "block.moveearth_addtional.vehicle_core": "車両コア",
   "item.moveearth_addtional.vehicle_core": "車両コア",
   "message.moveearth_addtional.vehicle_core.requires_shipyard": "車両コアは補強管理権限を持つ国家メンバーが、自国の有効領土内で設置してください",
+  "message.moveearth_addtional.vehicle_core.no_permission": "車両コアの設置には国家所属と補強管理権限が必要です",
   "message.moveearth_addtional.vehicle_core.registered": "車両コアを国家へ登録しました。次回から車両維持費が加算されます",
   "message.moveearth_addtional.vehicle_core.not_owner": "この車両コアは自国の所有ではありません",
   "message.moveearth_addtional.vehicle_core.break_denied": "稼働中の車両コアは採掘できません。兵器でコアHPを0にしてください",
