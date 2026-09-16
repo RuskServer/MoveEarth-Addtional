@@ -15,8 +15,19 @@ public final class TerritoryUpkeepPolicy {
     }
 
     public static long calculateConfigured(int uniqueControlledChunks, int activeOutposts) {
-        return calculate(uniqueControlledChunks, activeOutposts,
-                S2TerritoryConfig.chunksPerCoin(), S2TerritoryConfig.outpostBaseCost());
+        return calculateConfigured(uniqueControlledChunks, activeOutposts, 0);
+    }
+
+    public static long calculateConfigured(int uniqueControlledChunks, int activeOutposts, int vehicleCores) {
+        return calculate(uniqueControlledChunks, activeOutposts, vehicleCores,
+                S2TerritoryConfig.chunksPerCoin(), S2TerritoryConfig.outpostBaseCost(),
+                S2TerritoryConfig.vehicleCoreCost());
+    }
+
+    static long calculate(int uniqueControlledChunks, int activeOutposts, int vehicleCores,
+                          int chunksPerCoin, long outpostBaseCost, long vehicleCoreCost) {
+        return calculate(uniqueControlledChunks, activeOutposts, chunksPerCoin, outpostBaseCost)
+                + Math.max(0L, vehicleCores) * Math.max(0L, vehicleCoreCost);
     }
 
     static long calculate(int uniqueControlledChunks, int activeOutposts,

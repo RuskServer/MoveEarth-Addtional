@@ -88,6 +88,24 @@ public final class ReinforcementSavedData extends SavedData {
                 .toList();
     }
 
+    public List<LocatedEntry> inside(ServerLevel level, int minX, int minY, int minZ,
+                                     int maxX, int maxY, int maxZ) {
+        List<LocatedEntry> result = new ArrayList<>();
+        for (int chunkX = minX >> 4; chunkX <= maxX >> 4; chunkX++) {
+            for (int chunkZ = minZ >> 4; chunkZ <= maxZ >> 4; chunkZ++) {
+                Set<BlockPos> indexed = entriesByChunk.get(net.minecraft.world.level.ChunkPos.asLong(chunkX, chunkZ));
+                if (indexed == null) continue;
+                for (BlockPos pos : indexed) {
+                    if (pos.getX() < minX || pos.getX() > maxX || pos.getY() < minY || pos.getY() > maxY
+                            || pos.getZ() < minZ || pos.getZ() > maxZ || level.getBlockState(pos).isAir()) continue;
+                    result.add(new LocatedEntry(pos, entries.get(pos)));
+                    if (result.size() >= MAX_SYNC_ENTRIES) return List.copyOf(result);
+                }
+            }
+        }
+        return List.copyOf(result);
+    }
+
     public AdvanceResult advance(ServerLevel level, long gameTime) {
         List<BlockPos> activated = new ArrayList<>();
         List<BlockPos> completed = new ArrayList<>();

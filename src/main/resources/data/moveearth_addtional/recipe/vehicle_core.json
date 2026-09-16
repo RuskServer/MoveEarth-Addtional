@@ -1,0 +1,6 @@
+{
+  "type":"minecraft:crafting_shaped","category":"misc",
+  "key":{"C":{"item":"minecraft:copper_block"},"D":{"item":"minecraft:diamond"},"I":{"item":"minecraft:iron_block"},"O":{"item":"minecraft:observer"}},
+  "pattern":["CIC","DOD","CIC"],
+  "result":{"count":1,"id":"moveearth_addtional:vehicle_core"}
+}

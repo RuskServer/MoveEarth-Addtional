@@ -26,4 +26,8 @@ public class ModBlocks {
     public static final DeferredHolder<Block, PrisonIntakeBlock> PRISON_INTAKE = BLOCKS.register("prison_intake",
             () -> new PrisonIntakeBlock(BlockBehaviour.Properties.of()
                     .strength(8.0F, 1200.0F).sound(SoundType.METAL).requiresCorrectToolForDrops()));
+    public static final DeferredHolder<Block, VehicleCoreBlock> VEHICLE_CORE = BLOCKS.register("vehicle_core",
+            () -> new VehicleCoreBlock(BlockBehaviour.Properties.of()
+                    .strength(10.0F, 1200.0F).sound(SoundType.METAL)
+                    .lightLevel(state -> 6).requiresCorrectToolForDrops()));
 }

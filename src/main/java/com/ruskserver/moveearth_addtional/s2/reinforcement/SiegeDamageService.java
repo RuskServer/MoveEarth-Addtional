@@ -86,6 +86,13 @@ public final class SiegeDamageService {
             if (result.appliedDamage() > 0) SiegeService.recordAttack(attacker, level, pos, true);
             return true;
         }
+        var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
+                .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
+        if (vehicleCore != null) {
+            com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
+                    level, pos, configuredCoreDamage(kind));
+            return true;
+        }
         TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
                 .core(level.dimension().location(), pos).orElse(null);
         if (core != null) {
@@ -110,11 +117,18 @@ public final class SiegeDamageService {
         boolean reinforcementChanged = false;
         Set<BlockPos> changedPositions = new LinkedHashSet<>();
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
+        Set<BlockPos> blastBarriers = ReinforcementBlastOcclusion.barriersAround(
+                level, reinforcements, center, safeRadius + 2);
+        net.minecraft.world.phys.Vec3 blastOrigin = center.getCenter();
         Map<Long, UpkeepPenalty> penaltiesByChunk = new HashMap<>();
         for (ReinforcementSavedData.LocatedEntry located : reinforcements.around(level, center, safeRadius)) {
             ReinforcementEntry entry = located.entry();
             if (!entry.enabled()) continue;
             if (SiegeService.peaceTruceBlocks(attacker, level, located.pos())) {
+                intercepted = true;
+                continue;
+            }
+            if (ReinforcementBlastOcclusion.blocked(blastOrigin, located.pos(), blastBarriers)) {
                 intercepted = true;
                 continue;
             }
@@ -135,6 +149,17 @@ public final class SiegeDamageService {
                 }
             }
         }
+        // Vehicle cores are deliberately point-hit only. Do not search the blast radius here,
+        // otherwise a shell striking intact armor could drain the core behind it.
+        var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
+                .get(level.getServer()).at(level.dimension().location(), center).orElse(null);
+        if (vehicleCore != null) {
+            intercepted = true;
+            if (!SiegeService.peaceTruceBlocks(attacker, level, center)) {
+                com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
+                        level, center, configuredCoreDamage(kind));
+            }
+        }
         long radiusSquared = (long) safeRadius * safeRadius;
         for (TerritorySavedData.CoreRecord core : TerritorySavedData.get(level.getServer())
                 .coresNear(level.dimension().location(), center, safeRadius)) {
@@ -142,6 +167,7 @@ public final class SiegeDamageService {
                     || core.state() != TerritorySavedData.CoreState.EXPOSED || core.health() <= 0) continue;
             intercepted = true;
             if (SiegeService.peaceTruceBlocks(attacker, level, core.pos())) continue;
+            if (ReinforcementBlastOcclusion.blocked(blastOrigin, core.pos(), blastBarriers)) continue;
             SiegeService.recordAttack(attacker, level, core.pos(), false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, core.pos(), configuredCoreDamage(kind));
@@ -216,6 +242,11 @@ public final class SiegeDamageService {
     }
 
     public static UpkeepPenalty penaltyAt(ServerLevel level, BlockPos pos) {
+        var vehicle = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology.at(level, pos)
+                .orElse(null);
+        if (vehicle != null) {
+            return NationUpkeepService.penalty(level.getServer(), vehicle.vehicle().nationId());
+        }
         if (OfflineDefenseService.settlementProtected(level, pos)) return UpkeepPenalty.CURRENT;
         if (SiegeSavedData.get(level.getServer()).isReinforcementDisabled(
                 level.dimension().location(), pos)) return UpkeepPenalty.DISABLED;

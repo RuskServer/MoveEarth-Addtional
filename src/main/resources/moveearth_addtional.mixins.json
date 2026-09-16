@@ -11,7 +11,9 @@
     "GunSmithTableMenuMixin",
     "CrushingWheelControllerBlockEntityMixin",
     "EntityDataAccessorMixin",
-    "WarnauticsDropBombAssemblyMixin"
+    "WarnauticsDropBombAssemblyMixin",
+    "SwivelBearingConstraintMixin",
+    "SableVehicleAssemblyMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",

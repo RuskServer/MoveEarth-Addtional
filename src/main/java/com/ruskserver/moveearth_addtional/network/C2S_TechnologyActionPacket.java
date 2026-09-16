@@ -13,7 +13,8 @@ import java.util.Set;
 /** Records harmless UI tutorial actions; gameplay achievements never trust this packet. */
 public record C2S_TechnologyActionPacket(String action) implements CustomPacketPayload {
     private static final Set<String> ALLOWED = Set.of(
-            "jei_recipe_opened", "combat_rules_viewed", "storage_rules_viewed");
+            "jei_recipe_opened", "combat_rules_viewed", "storage_rules_viewed",
+            "founder_rules_confirmed");
     public static final Type<C2S_TechnologyActionPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "technology_action"));
     public static final StreamCodec<FriendlyByteBuf, C2S_TechnologyActionPacket> STREAM_CODEC = StreamCodec.of(

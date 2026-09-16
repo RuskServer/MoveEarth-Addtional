@@ -1,9 +1,9 @@
 {
-  "schema": 2, "required_mods": ["create"], "scope": "personal", "category": "industry", "chapter": "personal",
+  "schema": 2, "required_mods": ["create"], "scope": "personal", "category": "industry", "chapter": "optional",
   "icon": "create:andesite_alloy",
   "title_key": "technology.moveearth_addtional.create_introduction.title",
-  "description_key": "technology.moveearth_addtional.create_introduction.description", "x": 3, "y": 2,
-  "prerequisites": ["moveearth_addtional:personal/field_furnace"],
+  "description_key": "technology.moveearth_addtional.create_introduction.description", "x": 3, "y": 1,
+  "prerequisites": ["moveearth_addtional:personal/welcome"],
   "objectives": [{"id": "alloy", "type": "craft_item", "target": "create:andesite_alloy", "count": 4,
     "description_key": "technology.moveearth_addtional.objective.andesite_alloy"}],
   "unlocks": ["moveearth:personal_create"], "jei_items": ["create:andesite_alloy"]

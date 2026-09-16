@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import net.minecraft.resources.ResourceLocation;
+import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 
 public final class ReinforcementService {
     public static final int SCAN_RADIUS = 64;
@@ -45,7 +46,7 @@ public final class ReinforcementService {
                     "自国の予約領土内で補強を管理する権限が必要です。"));
             return InteractionResult.FAIL;
         }
-        if (player.distanceToSqr(pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D) > 36.0D) {
+        if (SableVehicleTopology.distanceSquared(player.serverLevel(), player, pos) > 36.0D) {
             return InteractionResult.FAIL;
         }
         ItemStack materialStack = player.getOffhandItem();
@@ -133,14 +134,23 @@ public final class ReinforcementService {
         int radius = Math.max(1, Math.min(SCAN_RADIUS, requestedRadius));
         NationSavedData nations = NationSavedData.get(player.server);
         java.util.UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
-        boolean allowed = nationId != null && canManage(player, player.blockPosition());
+        boolean allowed = nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT);
         TerritorySavedData territories = TerritorySavedData.get(player.server);
         SiegeSavedData sieges = SiegeSavedData.get(player.server);
+        ReinforcementSavedData reinforcementData = ReinforcementSavedData.get(player.serverLevel());
+        java.util.LinkedHashMap<BlockPos, ReinforcementSavedData.LocatedEntry> visible = new java.util.LinkedHashMap<>();
+        if (allowed) {
+            reinforcementData.around(player.serverLevel(), player.blockPosition(), radius)
+                    .forEach(value -> visible.put(value.pos(), value));
+            SableVehicleTopology.entriesForPlayer(player, reinforcementData)
+                    .forEach(value -> visible.put(value.pos(), value));
+        }
         List<S2C_ReinforcementSnapshotPacket.Entry> entries = allowed
-                ? ReinforcementSavedData.get(player.serverLevel())
-                .around(player.serverLevel(), player.blockPosition(), radius).stream()
+                ? visible.values().stream()
                 .filter(value -> territories.allowsReinforcement(player.server, nationId,
-                        player.level().dimension().location(), value.pos()))
+                        player.level().dimension().location(), value.pos())
+                        || SableVehicleTopology.at(player.serverLevel(), value.pos())
+                        .map(context -> nationId.equals(context.vehicle().nationId())).orElse(false))
                 .map(value -> new S2C_ReinforcementSnapshotPacket.Entry(value.pos(),
                         value.entry().material(), value.entry().durability(), value.entry().enabled(),
                         (int) Math.min(Integer.MAX_VALUE,
@@ -202,14 +212,19 @@ public final class ReinforcementService {
     public static boolean canManage(ServerPlayer player, BlockPos pos) {
         NationSavedData nations = NationSavedData.get(player.server);
         java.util.UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
-        return nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)
-                && TerritorySavedData.get(player.server).allowsReinforcement(
+        if (nationId == null || !nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)) return false;
+        var vehicle = SableVehicleTopology.at(player.serverLevel(), pos).orElse(null);
+        if (vehicle != null) return vehicle.vehicle().health() > 0
+                && nationId.equals(vehicle.vehicle().nationId())
+                && com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService
+                .penalty(player.server, nationId).reinforcementProtectionEnabled();
+        return TerritorySavedData.get(player.server).allowsReinforcement(
                 player.server, nationId, player.level().dimension().location(), pos);
     }
 
     public static void syncNearbyManagers(ServerLevel level, BlockPos pos) {
         for (ServerPlayer player : level.players()) {
-            if (player.blockPosition().distSqr(pos) <= (long) SCAN_RADIUS * SCAN_RADIUS
+            if (SableVehicleTopology.distanceSquared(level, player, pos) <= (long) SCAN_RADIUS * SCAN_RADIUS
                     && canManage(player)) {
                 PENDING_SCANS.add(player.getUUID());
                 PENDING_DELTAS.remove(player.getUUID());
@@ -231,7 +246,7 @@ public final class ReinforcementService {
                 continue;
             }
             for (BlockPos pos : changedPositions) {
-                if (player.blockPosition().distSqr(pos) > radiusSquared) continue;
+                if (SableVehicleTopology.distanceSquared(level, player, pos) > radiusSquared) continue;
                 if (pending == null) {
                     pending = new PendingDelta(dimension, new LinkedHashSet<>());
                     PENDING_DELTAS.put(player.getUUID(), pending);
@@ -269,7 +284,7 @@ public final class ReinforcementService {
         }
         NationSavedData nations = NationSavedData.get(player.server);
         UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
-        if (nationId == null || !canManage(player, player.blockPosition())) {
+        if (nationId == null || !canManage(player)) {
             sendScan(player, SCAN_RADIUS);
             return;
         }
@@ -281,8 +296,11 @@ public final class ReinforcementService {
         long now = player.serverLevel().getGameTime();
         long radiusSquared = (long) SCAN_RADIUS * SCAN_RADIUS;
         for (BlockPos pos : pending.positions) {
-            if (player.blockPosition().distSqr(pos) > radiusSquared
-                    || !territories.allowsReinforcement(player.server, nationId, pending.dimension, pos)) {
+            boolean ownedVehicle = SableVehicleTopology.at(player.serverLevel(), pos)
+                    .map(context -> nationId.equals(context.vehicle().nationId())).orElse(false);
+            if (SableVehicleTopology.distanceSquared(player.serverLevel(), player, pos) > radiusSquared
+                    || (!ownedVehicle && !territories.allowsReinforcement(
+                    player.server, nationId, pending.dimension, pos))) {
                 removals.add(pos);
                 continue;
             }

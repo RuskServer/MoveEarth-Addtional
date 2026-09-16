@@ -5,6 +5,7 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementService;
+import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementBlastOcclusion;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.SiegeDamageService;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.WarnauticsWeaponDamage;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
@@ -126,6 +127,18 @@ public final class WarnauticsReinforcementCompat {
         Set<BlockPos> processed = new HashSet<>();
         Map<Long, UpkeepPenalty> penaltiesByChunk = new HashMap<>();
         Map<BlockPos, BlockState> protectedStates = new HashMap<>();
+        BlockPos centerPos = BlockPos.containing(center);
+        int snapshotRadius = 2;
+        for (Object value : rawToBlow) {
+            if (value instanceof BlockPos affected) {
+                snapshotRadius = Math.max(snapshotRadius, Math.max(Math.abs(affected.getX() - centerPos.getX()),
+                        Math.max(Math.abs(affected.getY() - centerPos.getY()),
+                                Math.abs(affected.getZ() - centerPos.getZ()))) + 2);
+            }
+        }
+        snapshotRadius = Math.min(64, snapshotRadius);
+        Set<BlockPos> blastBarriers = ReinforcementBlastOcclusion.barriersAround(
+                level, reinforcements, centerPos, snapshotRadius);
 
         Iterator<?> iterator = rawToBlow.iterator();
         while (iterator.hasNext()) {
@@ -141,9 +154,29 @@ public final class WarnauticsReinforcementCompat {
                 iterator.remove();
                 continue;
             }
+            var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
+                    .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
+            if (vehicleCore != null) {
+                if (ReinforcementBlastOcclusion.blocked(center, pos, blastBarriers)) {
+                    iterator.remove();
+                    continue;
+                }
+                int coreDamage = SiegeDamageService.configuredWarnauticsCoreDamage(kind);
+                if (kind != WarnauticsWeaponDamage.Kind.C4 || pos.equals(c4Primary)) {
+                    com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
+                            level, pos, coreDamage);
+                }
+                iterator.remove();
+                continue;
+            }
 
             ReinforcementEntry entry = reinforcements.get(pos).orElse(null);
             if (entry == null) continue;
+            if (ReinforcementBlastOcclusion.blocked(center, pos, blastBarriers)) {
+                iterator.remove();
+                protectedStates.put(pos.immutable(), level.getBlockState(pos));
+                continue;
+            }
             SiegeService.recordAttack(attribution, level, pos, false);
             if (!entry.enabled()) {
                 reinforcements.remove(pos);
@@ -166,7 +199,7 @@ public final class WarnauticsReinforcementCompat {
             if (result.remains()) protectedStates.put(pos.immutable(), level.getBlockState(pos));
         }
 
-        damageExposedCores(level, center, kind, attribution, c4Primary);
+        damageExposedCores(level, center, kind, attribution, c4Primary, blastBarriers);
         scheduleScuffRepair(level, protectedStates, 1);
         // MOAB surface scuff is deferred by Warnautics; recheck after its delayed pass too.
         scheduleScuffRepair(level, protectedStates, 10);
@@ -188,7 +221,8 @@ public final class WarnauticsReinforcementCompat {
     }
 
     private static void damageExposedCores(ServerLevel level, Vec3 center, WarnauticsWeaponDamage.Kind kind,
-                                           SiegeService.AttackAttribution attribution, BlockPos c4Primary) {
+                                           SiegeService.AttackAttribution attribution, BlockPos c4Primary,
+                                           Set<BlockPos> blastBarriers) {
         if (!WarnauticsWeaponDamage.canDamageCore(kind)) return;
         if (kind == WarnauticsWeaponDamage.Kind.C4 && c4Primary == null) return;
         int maximum = SiegeDamageService.configuredWarnauticsCoreDamage(kind);
@@ -200,6 +234,7 @@ public final class WarnauticsReinforcementCompat {
                 .coresNear(level.dimension().location(), centerPos, (int) Math.ceil(radius))) {
             if (core.state() != TerritorySavedData.CoreState.EXPOSED || core.health() <= 0
                     || SiegeService.peaceTruceBlocks(attribution, level, core.pos())) continue;
+            if (ReinforcementBlastOcclusion.blocked(center, core.pos(), blastBarriers)) continue;
             int damage = kind == WarnauticsWeaponDamage.Kind.C4
                     ? (core.pos().equals(c4Primary) ? maximum : 0)
                     : WarnauticsWeaponDamage.distanceScaledDamage(
@@ -220,6 +255,8 @@ public final class WarnauticsReinforcementCompat {
                     || !(chipPos.invoke(event) instanceof BlockPos pos)) return;
             boolean protectedBlock = ReinforcementSavedData.get(level).get(pos)
                     .filter(ReinforcementEntry::enabled).isPresent()
+                    || com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(level.getServer())
+                    .at(level.dimension().location(), pos).isPresent()
                     || TerritorySavedData.get(level.getServer())
                     .core(level.dimension().location(), pos).isPresent();
             if (protectedBlock) cancellable.setCanceled(true);

@@ -83,7 +83,8 @@ public final class S2NationViewService {
         int controlledChunks = territories.controlledChunkCount(nation.id());
         int controlledCores = territories.controlledCoreCount(nation.id());
         long upkeep = TerritoryUpkeepPolicy.calculateConfigured(controlledChunks,
-                territories.activeOutpostCount(nation.id()));
+                territories.activeOutpostCount(nation.id()),
+                com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(player.server).count(nation.id()));
         SiegeSavedData siegeData = SiegeSavedData.get(player.server);
         java.util.List<S2NationSnapshot.SiegeView> sieges = new java.util.ArrayList<>();
         sieges.addAll(siegeData.activeFor(nation.id()).stream().map(siege -> {

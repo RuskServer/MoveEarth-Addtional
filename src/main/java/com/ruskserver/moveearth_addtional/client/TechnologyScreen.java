@@ -30,6 +30,10 @@ import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
 
 /** Personal onboarding guide presented as familiar item-icon quests. */
 public final class TechnologyScreen extends Screen implements SuppressesChatOverlay {
+    private static final ResourceLocation STORAGE_RULES = ResourceLocation.fromNamespaceAndPath(
+            "moveearth_addtional", "personal/storage_rules");
+    private static final ResourceLocation CIVIC_READINESS = ResourceLocation.fromNamespaceAndPath(
+            "moveearth_addtional", "personal/civic_readiness");
     private static final int NODE_SIZE = 52;
     private static final int NODE_STEP_X = 90;
     private static final int NODE_STEP_Y = 70;
@@ -229,6 +233,12 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
                     objective.current() >= objective.required() ? SUCCESS : TEXT, false);
             y += 13;
         }
+        GuideAction action = guideAction(node);
+        if (action != null) {
+            Rect button = guideActionButton(area);
+            drawButton(graphics, font, button, Component.translatable(action.labelKey()), SUCCESS,
+                    button.contains(mouseX, mouseY), true);
+        }
         if (!node.jeiItems().isEmpty()) {
             y += 6;
             graphics.drawString(font, Component.translatable("screen.moveearth_addtional.technology.jei"),
@@ -279,6 +289,11 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         Rect details = detailArea(panel);
         if (node != null && pinButton(details).contains(mouseX, mouseY)) {
             PacketDistributor.sendToServer(new C2S_SetTechnologyTrackedPacket(node.id(), !node.tracked()));
+            return true;
+        }
+        GuideAction guideAction = node == null ? null : guideAction(node);
+        if (guideAction != null && guideActionButton(details).contains(mouseX, mouseY)) {
+            PacketDistributor.sendToServer(new C2S_TechnologyActionPacket(guideAction.action()));
             return true;
         }
         if (node != null && !node.jeiItems().isEmpty()) {
@@ -418,6 +433,27 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
     }
 
     private static Rect pinButton(Rect area) { return new Rect(area.right() - 84, area.y() + 7, 72, 18); }
+    private static Rect guideActionButton(Rect area) {
+        return new Rect(area.x() + 12, area.bottom() - 30, area.width() - 24, 20);
+    }
+
+    private static GuideAction guideAction(TechnologySnapshot.Node node) {
+        if (node.state() == TechnologySnapshot.State.LOCKED
+                || node.state() == TechnologySnapshot.State.COMPLETED
+                || node.state() == TechnologySnapshot.State.INHERITED
+                || node.state() == TechnologySnapshot.State.DISABLED) return null;
+        if (STORAGE_RULES.equals(node.id())) {
+            return new GuideAction("storage_rules_viewed",
+                    "screen.moveearth_addtional.technology.confirm_storage_rules");
+        }
+        if (CIVIC_READINESS.equals(node.id())) {
+            return new GuideAction("founder_rules_confirmed",
+                    "screen.moveearth_addtional.technology.confirm_founding");
+        }
+        return null;
+    }
+
+    private record GuideAction(String action, String labelKey) { }
     private void resetView() { panX = 12.0D; panY = 12.0D; zoom = 1.0D; }
     @Override public void onClose() { PacketDistributor.sendToServer(new C2S_RequestS2HubPacket(S2HubTab.OVERVIEW)); }
     @Override public boolean isPauseScreen() { return false; }

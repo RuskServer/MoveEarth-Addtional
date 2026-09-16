@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.HashMap;
+import com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class NationUpkeepService {
@@ -62,7 +63,7 @@ public final class NationUpkeepService {
         int selected = state.reference() == null ? -1 : references.indexOf(state.reference());
         TerritorySavedData territories = TerritorySavedData.get(player.server);
         long upkeep = TerritoryUpkeepPolicy.calculateConfigured(territories.controlledChunkCount(nationId),
-                territories.activeOutpostCount(nationId));
+                territories.activeOutpostCount(nationId), VehicleSavedData.get(player.server).count(nationId));
         PacketDistributor.sendToPlayer(player, new S2C_NationTreasuryPacket(canManage(player), upkeep,
                 state.enabled(), state.nextDueAt(), state.failedPayments(), state.overdueSince(),
                 penalty(state, System.currentTimeMillis()), selected, references, names));
@@ -132,9 +133,10 @@ public final class NationUpkeepService {
         long now = System.currentTimeMillis();
         NationUpkeepSavedData data = NationUpkeepSavedData.get(server);
         TerritorySavedData territories = TerritorySavedData.get(server);
+        VehicleSavedData vehicles = VehicleSavedData.get(server);
         for (NationSavedData.Nation nation : NationSavedData.get(server).nations().values()) {
             UUID nationId = nation.id();
-            if (territories.controlledCoreCount(nationId) <= 0) continue;
+            if (territories.controlledCoreCount(nationId) <= 0 && vehicles.count(nationId) <= 0) continue;
             data.ensureScheduled(nationId, now);
             var state = data.state(nationId);
             if (now >= state.nextDueAt() && now >= state.nextAttemptAt()) {
@@ -198,7 +200,7 @@ public final class NationUpkeepService {
         NationUpkeepSavedData.AccountState state = data.state(nationId);
         TerritorySavedData territories = TerritorySavedData.get(server);
         long amount = TerritoryUpkeepPolicy.calculateConfigured(territories.controlledChunkCount(nationId),
-                territories.activeOutpostCount(nationId));
+                territories.activeOutpostCount(nationId), VehicleSavedData.get(server).count(nationId));
         if (amount <= 0L) {
             data.paymentSucceeded(nationId, now);
             invalidatePenalty(nationId);

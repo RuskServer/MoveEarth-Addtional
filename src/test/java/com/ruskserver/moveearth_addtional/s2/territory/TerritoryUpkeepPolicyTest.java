@@ -13,4 +13,10 @@ class TerritoryUpkeepPolicyTest {
         assertEquals(10L, TerritoryUpkeepPolicy.calculate(9, 1));
         assertEquals(26L, TerritoryUpkeepPolicy.calculate(9, 2));
     }
+
+    @Test
+    void addsAFlatCostForEveryRegisteredVehicleCore() {
+        assertEquals(20L, TerritoryUpkeepPolicy.calculate(9, 1, 2, 8, 8L, 5L));
+        assertEquals(10L, TerritoryUpkeepPolicy.calculate(9, 1, -3, 8, 8L, 5L));
+    }
 }

@@ -157,16 +157,37 @@ public final class ReinforcementEvents {
         boolean preHandled = cbc && CbcReinforcementCompat.wasRecentlyPreHandled(
                 source, level, explosionCenter);
         Set<net.minecraft.core.BlockPos> reinforcementChanges = new java.util.LinkedHashSet<>();
+        int snapshotRadius = 2;
+        for (net.minecraft.core.BlockPos affected : event.getAffectedBlocks()) {
+            snapshotRadius = Math.max(snapshotRadius, Math.max(
+                    Math.abs(affected.getX() - explosionCenter.getX()), Math.max(
+                            Math.abs(affected.getY() - explosionCenter.getY()),
+                            Math.abs(affected.getZ() - explosionCenter.getZ()))) + 2);
+        }
+        java.util.Set<net.minecraft.core.BlockPos> blastBarriers = ReinforcementBlastOcclusion.barriersAround(
+                level, data, explosionCenter, Math.min(64, snapshotRadius));
+        net.minecraft.world.phys.Vec3 blastOrigin = event.getExplosion().center();
         Map<Long, com.ruskserver.moveearth_addtional.s2.territory.UpkeepPenalty> penaltiesByChunk =
                 new HashMap<>();
         event.getAffectedBlocks().removeIf(pos -> {
             if (SiegeService.peaceTruceBlocks(attacker, level, pos)) return true;
+            var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
+                    .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
+            if (vehicleCore != null) {
+                if (!preHandled && cbc) {
+                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
+                    com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
+                            level, pos, SiegeDamageService.configuredCoreDamage(munition));
+                }
+                return true;
+            }
             TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
                     .core(level.dimension().location(), pos).orElse(null);
             if (core != null) {
                 if (preHandled) return true;
                 SiegeService.recordAttack(attacker, level, pos, false);
                 if (cbc) {
+                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
                     int beforeHealth = core.health();
                     TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, pos,
                             SiegeDamageService.configuredCoreDamage(munition));
@@ -179,6 +200,7 @@ public final class ReinforcementEvents {
             ReinforcementEntry entry = data.get(pos).orElse(null);
             if (entry == null) return false;
             if (preHandled) return true;
+            if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
             SiegeService.recordAttack(attacker, level, pos, false);
             if (!entry.enabled()) {
                 data.remove(pos);

@@ -19,6 +19,9 @@ public class ModItems {
     public static final DeferredHolder<Item, BlockItem> PRISON_INTAKE = ITEMS.register("prison_intake",
             () -> new BlockItem(ModBlocks.PRISON_INTAKE.get(), new Item.Properties()
                     .rarity(net.minecraft.world.item.Rarity.RARE)));
+    public static final DeferredHolder<Item, BlockItem> VEHICLE_CORE = ITEMS.register("vehicle_core",
+            () -> new BlockItem(ModBlocks.VEHICLE_CORE.get(), new Item.Properties()
+                    .rarity(net.minecraft.world.item.Rarity.EPIC)));
     public static final DeferredHolder<Item, Item> RESTRAINTS = ITEMS.register("restraints",
             () -> new Item(new Item.Properties().stacksTo(1).durability(64)
                     .rarity(net.minecraft.world.item.Rarity.UNCOMMON)));

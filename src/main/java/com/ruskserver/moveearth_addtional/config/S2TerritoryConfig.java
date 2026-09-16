@@ -8,6 +8,8 @@ public final class S2TerritoryConfig {
 
     private static final ModConfigSpec.IntValue CHUNKS_PER_COIN;
     private static final ModConfigSpec.LongValue OUTPOST_BASE_COST;
+    private static final ModConfigSpec.LongValue VEHICLE_CORE_COST;
+    private static final ModConfigSpec.IntValue VEHICLE_CORE_HEALTH;
     private static final ModConfigSpec.IntValue UPKEEP_CYCLE_HOURS;
     private static final ModConfigSpec.IntValue UPKEEP_RETRY_MINUTES;
     private static final ModConfigSpec.IntValue UPKEEP_WEAKEN_AFTER_HOURS;
@@ -78,6 +80,8 @@ public final class S2TerritoryConfig {
         BUILDER.push("upkeep");
         CHUNKS_PER_COIN = BUILDER.defineInRange("chunksPerGoldCoin", 8, 1, 4096);
         OUTPOST_BASE_COST = BUILDER.defineInRange("outpostBaseGoldCost", 8L, 0L, 1_000_000L);
+        VEHICLE_CORE_COST = BUILDER.comment("Gold coins charged per registered vehicle core each upkeep cycle.")
+                .defineInRange("vehicleCoreGoldCost", 6L, 0L, 1_000_000L);
         UPKEEP_CYCLE_HOURS = BUILDER.defineInRange("cycleHours", 24, 1, 720);
         UPKEEP_RETRY_MINUTES = BUILDER.defineInRange("retryMinutes", 60, 1, 1440);
         UPKEEP_WEAKEN_AFTER_HOURS = BUILDER
@@ -96,6 +100,7 @@ public final class S2TerritoryConfig {
         BUILDER.push("core");
         CAPITAL_CORE_HEALTH = BUILDER.defineInRange("capitalMaxHealth", 2000, 1, 10_000_000);
         OUTPOST_CORE_HEALTH = BUILDER.defineInRange("outpostMaxHealth", 1000, 1, 10_000_000);
+        VEHICLE_CORE_HEALTH = BUILDER.defineInRange("vehicleMaxHealth", 600, 1, 10_000_000);
         CORE_REGEN_DELAY_SECONDS = BUILDER.defineInRange("regenDelaySeconds", 300, 0, 86400);
         CORE_REGEN_INTERVAL_SECONDS = BUILDER.defineInRange("regenIntervalSeconds", 60, 1, 3600);
         CORE_REGEN_PERCENT = BUILDER.defineInRange("regenPercentPerInterval", 1.0D, 0.0D, 100.0D);
@@ -215,6 +220,7 @@ public final class S2TerritoryConfig {
 
     public static int chunksPerCoin() { return CHUNKS_PER_COIN.getAsInt(); }
     public static long outpostBaseCost() { return OUTPOST_BASE_COST.getAsLong(); }
+    public static long vehicleCoreCost() { return VEHICLE_CORE_COST.getAsLong(); }
     public static long upkeepCycleMillis() { return UPKEEP_CYCLE_HOURS.getAsInt() * 3_600_000L; }
     public static long upkeepRetryMillis() { return UPKEEP_RETRY_MINUTES.getAsInt() * 60_000L; }
     public static long upkeepWeakenMillis() { return UPKEEP_WEAKEN_AFTER_HOURS.getAsInt() * 3_600_000L; }
@@ -223,6 +229,7 @@ public final class S2TerritoryConfig {
     public static int overdueTerritoryRadiusPercent() { return OVERDUE_TERRITORY_RADIUS_PERCENT.getAsInt(); }
     public static int capitalCoreHealth() { return CAPITAL_CORE_HEALTH.getAsInt(); }
     public static int outpostCoreHealth() { return OUTPOST_CORE_HEALTH.getAsInt(); }
+    public static int vehicleCoreHealth() { return VEHICLE_CORE_HEALTH.getAsInt(); }
     public static long coreRegenDelayTicks() { return CORE_REGEN_DELAY_SECONDS.getAsInt() * 20L; }
     public static long coreRegenIntervalTicks() { return CORE_REGEN_INTERVAL_SECONDS.getAsInt() * 20L; }
     public static double coreRegenPercent() { return CORE_REGEN_PERCENT.getAsDouble(); }

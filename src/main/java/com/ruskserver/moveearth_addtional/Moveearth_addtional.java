@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional;
 
 import com.mojang.logging.LogUtils;
 import com.ruskserver.moveearth_addtional.config.DelayedChunkCacheConfig;
+import com.ruskserver.moveearth_addtional.config.AeronauticsSwivelConfig;
 import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
@@ -34,6 +35,11 @@ public class Moveearth_addtional {
                 ModConfig.Type.SERVER,
                 DelayedChunkCacheConfig.SPEC,
                 "moveearth_addtional-dcc.toml"
+        );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                AeronauticsSwivelConfig.SPEC,
+                "moveearth_addtional-aeronautics.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,

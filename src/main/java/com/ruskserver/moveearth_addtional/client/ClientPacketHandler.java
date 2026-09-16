@@ -37,6 +37,10 @@ public class ClientPacketHandler {
         }
     }
 
+    public static void handleOpenVehicleCore(S2C_OpenVehicleCoreScreenPacket packet) {
+        Minecraft.getInstance().setScreen(new VehicleCoreScreen(packet));
+    }
+
     public static void handlePrisonerSnapshot(S2C_PrisonerSnapshotPacket packet) {
         PrisonerClientState.update(packet);
         Minecraft minecraft = Minecraft.getInstance();

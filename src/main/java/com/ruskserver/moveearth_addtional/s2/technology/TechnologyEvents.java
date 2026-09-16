@@ -11,7 +11,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
-import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
@@ -39,12 +38,7 @@ public final class TechnologyEvents {
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            if (com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(player.server)
-                    .nationIdFor(player.getUUID()).isPresent()) {
-                NationTechnologySavedData.get(player.server).recordObjective(player,
-                        TechnologyDefinition.ObjectiveType.JOIN_OR_FOUND_NATION, null, 1L, player.blockPosition());
-            }
-            TechnologyViewService.sync(player);
+            syncGuideMembership(player);
         }
     }
 
@@ -67,18 +61,10 @@ public final class TechnologyEvents {
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
-    public static void onAttackEntity(AttackEntityEvent event) {
-        if (event.isCanceled() || !(event.getEntity() instanceof ServerPlayer player)
-                || player.isCreative() || player.isSpectator()) return;
-        NationTechnologySavedData.get(player.server).recordObjective(player,
-                TechnologyDefinition.ObjectiveType.DAMAGE_TRAINING_TARGET,
-                BuiltInRegistries.ENTITY_TYPE.getKey(event.getTarget().getType()), 1L, event.getTarget().blockPosition());
-    }
-
-    @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onDamage(LivingDamageEvent.Post event) {
         if (!(event.getEntity() instanceof ArmorStand)
                 || !(event.getSource().getEntity() instanceof ServerPlayer player)
+                || event.getSource().getDirectEntity() == player
                 || player.isCreative() || player.isSpectator()) return;
         NationTechnologySavedData.get(player.server).recordObjective(player,
                 TechnologyDefinition.ObjectiveType.DAMAGE_TRAINING_TARGET,
@@ -105,9 +91,18 @@ public final class TechnologyEvents {
     @SubscribeEvent
     public static void onDatapackSync(OnDatapackSyncEvent event) {
         if (event.getPlayer() != null) {
-            TechnologyViewService.sync(event.getPlayer());
+            syncGuideMembership(event.getPlayer());
         } else {
-            event.getPlayerList().getPlayers().forEach(TechnologyViewService::sync);
+            event.getPlayerList().getPlayers().forEach(TechnologyEvents::syncGuideMembership);
         }
+    }
+
+    private static void syncGuideMembership(ServerPlayer player) {
+        if (com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(player.server)
+                .nationIdFor(player.getUUID()).isPresent()) {
+            NationTechnologySavedData.get(player.server).recordObjective(player,
+                    TechnologyDefinition.ObjectiveType.JOIN_OR_FOUND_NATION, null, 1L, player.blockPosition());
+        }
+        TechnologyViewService.sync(player);
     }
 }

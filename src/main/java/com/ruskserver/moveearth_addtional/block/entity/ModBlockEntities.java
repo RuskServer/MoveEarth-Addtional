@@ -14,4 +14,6 @@ public class ModBlockEntities {
             () -> BlockEntityType.Builder.of(PlayerDetectorBlockEntity::new, ModBlocks.PLAYER_DETECTOR.get()).build(null));
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TerritoryCoreBlockEntity>> TERRITORY_CORE = BLOCK_ENTITIES.register("territory_core",
             () -> BlockEntityType.Builder.of(TerritoryCoreBlockEntity::new, ModBlocks.TERRITORY_CORE.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VehicleCoreBlockEntity>> VEHICLE_CORE = BLOCK_ENTITIES.register("vehicle_core",
+            () -> BlockEntityType.Builder.of(VehicleCoreBlockEntity::new, ModBlocks.VEHICLE_CORE.get()).build(null));
 }

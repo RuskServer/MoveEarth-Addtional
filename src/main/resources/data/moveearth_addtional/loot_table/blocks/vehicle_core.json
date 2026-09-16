@@ -1,0 +1,5 @@
+{
+  "type":"minecraft:block",
+  "pools":[{"bonus_rolls":0.0,"conditions":[{"condition":"minecraft:survives_explosion"}],"entries":[{"type":"minecraft:item","name":"moveearth_addtional:vehicle_core"}],"rolls":1.0}],
+  "random_sequence":"moveearth_addtional:blocks/vehicle_core"
+}
