@@ -37,6 +37,15 @@ public class ClientPacketHandler {
         }
     }
 
+    public static void handlePrisonerSnapshot(S2C_PrisonerSnapshotPacket packet) {
+        PrisonerClientState.update(packet);
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof PrisonerScreen screen) {
+            if (packet.openScreen()) screen.update(packet); else screen.updateState(packet);
+        }
+        else if (packet.openScreen()) minecraft.setScreen(new PrisonerScreen(packet));
+    }
+
     public static void handleReinforcementSnapshot(S2C_ReinforcementSnapshotPacket packet) {
         ReinforcementClientState.update(packet);
     }

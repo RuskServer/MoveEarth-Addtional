@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.network.C2S_SetWeldingBrushPacket;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.Minecraft;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
@@ -27,6 +28,18 @@ public class ClientEventHandler {
 
     @SubscribeEvent
     public static void onItemTooltip(ItemTooltipEvent event) {
+        if (event.getItemStack().is(ModItems.RESTRAINTS.get())) {
+            Minecraft minecraft = Minecraft.getInstance();
+            event.getToolTip().add(Component.translatable(
+                    "tooltip.moveearth_addtional.restraints.capture",
+                    minecraft.options.keyUse.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
+            event.getToolTip().add(Component.translatable(
+                    "tooltip.moveearth_addtional.restraints.rescue",
+                    minecraft.options.keyShift.getTranslatedKeyMessage(),
+                    minecraft.options.keyUse.getTranslatedKeyMessage()).withStyle(ChatFormatting.GRAY));
+            event.getToolTip().add(Component.translatable(
+                    "tooltip.moveearth_addtional.restraints.rule").withStyle(ChatFormatting.DARK_GRAY));
+        }
         var id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem());
         var node = TechnologyClientState.forItem(id);
         if (node == null) return;

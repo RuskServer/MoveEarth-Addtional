@@ -15,7 +15,8 @@ public enum S2Permission {
     MANAGE_REINFORCEMENT(7),
     BASTION_ACCESS(8),
     MANAGE_NOTIFICATIONS(9),
-    MANAGE_TECHNOLOGY(10);
+    MANAGE_TECHNOLOGY(10),
+    MANAGE_PRISONERS(11);
 
     private final long mask;
 

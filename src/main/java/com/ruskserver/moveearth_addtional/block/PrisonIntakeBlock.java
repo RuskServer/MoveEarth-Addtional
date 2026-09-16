@@ -17,8 +17,8 @@ public final class PrisonIntakeBlock extends Block {
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,
                                                 Player player, BlockHitResult hit) {
         if (level.isClientSide()) return InteractionResult.SUCCESS;
-        return player instanceof ServerPlayer serverPlayer && PrisonerService.tryImprisonAt(serverPlayer, pos)
-                ? InteractionResult.SUCCESS : InteractionResult.CONSUME;
+        if (player instanceof ServerPlayer serverPlayer) PrisonerService.openIntakeScreen(serverPlayer, pos);
+        return InteractionResult.CONSUME;
     }
 
     @Override

@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui34");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui35-prisoners1");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -52,6 +52,9 @@ public class ModMessages {
         registrar.playToServer(C2S_OnboardingActionPacket.TYPE, C2S_OnboardingActionPacket.STREAM_CODEC, C2S_OnboardingActionPacket::handle);
         registrar.playToClient(S2C_NationApplicationsPacket.TYPE, S2C_NationApplicationsPacket.STREAM_CODEC, S2C_NationApplicationsPacket::handle);
         registrar.playToServer(C2S_NationApplicationActionPacket.TYPE, C2S_NationApplicationActionPacket.STREAM_CODEC, C2S_NationApplicationActionPacket::handle);
+        registrar.playToServer(C2S_RequestPrisonerScreenPacket.TYPE, C2S_RequestPrisonerScreenPacket.STREAM_CODEC, C2S_RequestPrisonerScreenPacket::handle);
+        registrar.playToServer(C2S_PrisonerActionPacket.TYPE, C2S_PrisonerActionPacket.STREAM_CODEC, C2S_PrisonerActionPacket::handle);
+        registrar.playToClient(S2C_PrisonerSnapshotPacket.TYPE, S2C_PrisonerSnapshotPacket.STREAM_CODEC, S2C_PrisonerSnapshotPacket::handle);
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);

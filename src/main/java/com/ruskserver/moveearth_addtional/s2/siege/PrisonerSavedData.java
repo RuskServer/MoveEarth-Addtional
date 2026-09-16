@@ -28,9 +28,9 @@ public final class PrisonerSavedData extends SavedData {
         if (playerId == null || homeNation == null || holdingNation == null || capturedBy == null
                 || homeNation.equals(holdingNation)) return CaptureResult.INVALID;
         if (held.containsKey(playerId)) return CaptureResult.ALREADY_HELD;
-        held.put(playerId, new Prisoner(playerId, homeNation, holdingNation, capturedBy,
+        held.put(playerId, new Prisoner(playerId, homeNation, homeNation, holdingNation, capturedBy,
                 Math.max(0L, capturedAt), S2TerritoryConfig.captivityMaxTicks(), null, null));
-        captivityWindows.put(playerId, new CaptivityWindow(playerId, homeNation, holdingNation,
+        captivityWindows.put(playerId, new CaptivityWindow(playerId, homeNation, homeNation, holdingNation,
                 S2TerritoryConfig.captivityMaxTicks()));
         pendingReleaseHome.remove(playerId);
         setDirty();
@@ -50,20 +50,21 @@ public final class PrisonerSavedData extends SavedData {
         return Optional.ofNullable(removed);
     }
 
-    public CustodyResult beginCustody(UUID playerId, UUID homeNation, UUID holdingNation,
+    public CustodyResult beginCustody(UUID playerId, UUID homeNation, UUID conflictNation, UUID holdingNation,
                                       UUID captor, ResourceLocation dimension, BlockPos position) {
-        if (playerId == null || homeNation == null || holdingNation == null || captor == null
-                || dimension == null || position == null || homeNation.equals(holdingNation)) {
+        if (playerId == null || homeNation == null || conflictNation == null || holdingNation == null || captor == null
+                || dimension == null || position == null || conflictNation.equals(holdingNation)) {
             return CustodyResult.INVALID;
         }
         if (held.containsKey(playerId) || custody.containsKey(playerId)) return CustodyResult.ALREADY_RESTRAINED;
         CaptivityWindow existing = captivityWindows.get(playerId);
         long remaining = existing != null && existing.homeNation.equals(homeNation)
+                && existing.conflictNation.equals(conflictNation)
                 && existing.holdingNation.equals(holdingNation)
                 ? existing.remainingTicks : S2TerritoryConfig.captivityMaxTicks();
         if (remaining <= 0L) return CustodyResult.INVALID;
-        captivityWindows.put(playerId, new CaptivityWindow(playerId, homeNation, holdingNation, remaining));
-        custody.put(playerId, new Custody(playerId, homeNation, holdingNation, captor,
+        captivityWindows.put(playerId, new CaptivityWindow(playerId, homeNation, conflictNation, holdingNation, remaining));
+        custody.put(playerId, new Custody(playerId, homeNation, conflictNation, holdingNation, captor,
                 remaining, dimension, position.immutable()));
         setDirty();
         return CustodyResult.RESTRAINED;
@@ -78,7 +79,7 @@ public final class PrisonerSavedData extends SavedData {
     public void moveCustody(UUID playerId, ResourceLocation dimension, BlockPos position) {
         Custody old = custody.get(playerId);
         if (old == null || dimension == null || position == null) return;
-        custody.put(playerId, new Custody(old.playerId, old.homeNation, old.holdingNation,
+        custody.put(playerId, new Custody(old.playerId, old.homeNation, old.conflictNation, old.holdingNation,
                 old.captor, old.remainingTicks, dimension, position.immutable()));
         setDirty();
     }
@@ -89,11 +90,33 @@ public final class PrisonerSavedData extends SavedData {
         return Optional.ofNullable(removed);
     }
 
+    /** Formal release: unlike a field rescue, an offline captive must return to their home destination. */
+    public Optional<Custody> releaseCustodyToHome(UUID playerId) {
+        Custody removed = custody.remove(playerId);
+        if (removed != null) {
+            pendingReleaseHome.put(playerId, removed.homeNation);
+            setDirty();
+        }
+        return Optional.ofNullable(removed);
+    }
+
+    /** Transfers an active escort without changing the original captivity window. */
+    public boolean transferCustody(UUID playerId, UUID expectedCaptor, UUID newCaptor) {
+        Custody old = custody.get(playerId);
+        if (old == null || expectedCaptor == null || newCaptor == null
+                || expectedCaptor.equals(newCaptor) || !old.captor.equals(expectedCaptor)
+                || custodyByCaptor(newCaptor).isPresent()) return false;
+        custody.put(playerId, new Custody(old.playerId, old.homeNation, old.conflictNation, old.holdingNation,
+                newCaptor, old.remainingTicks, old.dimension, old.position));
+        setDirty();
+        return true;
+    }
+
     public CaptureResult imprison(UUID playerId, ResourceLocation jailDimension, BlockPos jailPos,
                                   long capturedAt) {
         Custody value = custody.remove(playerId);
         if (value == null || jailDimension == null || jailPos == null) return CaptureResult.INVALID;
-        held.put(playerId, new Prisoner(value.playerId, value.homeNation, value.holdingNation,
+        held.put(playerId, new Prisoner(value.playerId, value.homeNation, value.conflictNation, value.holdingNation,
                 value.captor, Math.max(0L, capturedAt), value.remainingTicks,
                 jailDimension, jailPos.immutable()));
         pendingReleaseHome.remove(playerId);
@@ -108,33 +131,33 @@ public final class PrisonerSavedData extends SavedData {
         for (var entry : new java.util.ArrayList<>(captivityWindows.entrySet())) {
             CaptivityWindow old = entry.getValue();
             captivityWindows.put(entry.getKey(), new CaptivityWindow(old.playerId, old.homeNation,
-                    old.holdingNation, CaptivityPolicy.advance(old.remainingTicks, ticks)));
+                    old.conflictNation, old.holdingNation, CaptivityPolicy.advance(old.remainingTicks, ticks)));
         }
         for (var entry : new java.util.ArrayList<>(custody.entrySet())) {
             Custody old = entry.getValue();
             long remaining = captivityWindows.getOrDefault(old.playerId,
-                    new CaptivityWindow(old.playerId, old.homeNation, old.holdingNation,
+                    new CaptivityWindow(old.playerId, old.homeNation, old.conflictNation, old.holdingNation,
                             CaptivityPolicy.advance(old.remainingTicks, ticks))).remainingTicks;
             if (remaining == 0L) {
                 custody.remove(entry.getKey());
                 pendingReleaseHome.put(old.playerId, old.homeNation);
                 released.add(new TimedRelease(old.playerId, old.homeNation));
             } else {
-                custody.put(entry.getKey(), new Custody(old.playerId, old.homeNation, old.holdingNation,
+                custody.put(entry.getKey(), new Custody(old.playerId, old.homeNation, old.conflictNation, old.holdingNation,
                         old.captor, remaining, old.dimension, old.position));
             }
         }
         for (var entry : new java.util.ArrayList<>(held.entrySet())) {
             Prisoner old = entry.getValue();
             long remaining = captivityWindows.getOrDefault(old.playerId,
-                    new CaptivityWindow(old.playerId, old.homeNation, old.holdingNation,
+                    new CaptivityWindow(old.playerId, old.homeNation, old.conflictNation, old.holdingNation,
                             CaptivityPolicy.advance(old.remainingTicks, ticks))).remainingTicks;
             if (remaining == 0L) {
                 held.remove(entry.getKey());
                 pendingReleaseHome.put(old.playerId, old.homeNation);
                 released.add(new TimedRelease(old.playerId, old.homeNation));
             } else {
-                held.put(entry.getKey(), new Prisoner(old.playerId, old.homeNation, old.holdingNation,
+                held.put(entry.getKey(), new Prisoner(old.playerId, old.homeNation, old.conflictNation, old.holdingNation,
                         old.capturedBy, old.capturedAt, remaining, old.jailDimension, old.jailPos));
             }
         }
@@ -144,7 +167,7 @@ public final class PrisonerSavedData extends SavedData {
 
     public List<Prisoner> between(UUID firstNation, UUID secondNation) {
         return held.values().stream().filter(value -> samePair(
-                value.homeNation, value.holdingNation, firstNation, secondNation)).toList();
+                value.conflictNation, value.holdingNation, firstNation, secondNation)).toList();
     }
 
     public int countBetween(UUID firstNation, UUID secondNation) {
@@ -154,7 +177,7 @@ public final class PrisonerSavedData extends SavedData {
     public List<Prisoner> betweenNation(UUID nationId) {
         if (nationId == null) return List.of();
         return held.values().stream().filter(value -> value.homeNation.equals(nationId)
-                || value.holdingNation.equals(nationId)).toList();
+                || value.conflictNation.equals(nationId) || value.holdingNation.equals(nationId)).toList();
     }
 
     public List<Prisoner> prisoners() { return List.copyOf(held.values()); }
@@ -168,9 +191,9 @@ public final class PrisonerSavedData extends SavedData {
     public boolean hasNation(UUID nationId) {
         if (nationId == null) return false;
         return held.values().stream().anyMatch(value -> value.homeNation.equals(nationId)
-                || value.holdingNation.equals(nationId))
+                || value.conflictNation.equals(nationId) || value.holdingNation.equals(nationId))
                 || custody.values().stream().anyMatch(value -> value.homeNation.equals(nationId)
-                || value.holdingNation.equals(nationId));
+                || value.conflictNation.equals(nationId) || value.holdingNation.equals(nationId));
     }
 
     public void removePendingReleaseNation(UUID nationId) {
@@ -203,6 +226,7 @@ public final class PrisonerSavedData extends SavedData {
             CompoundTag value = new CompoundTag();
             value.putUUID("Player", prisoner.playerId);
             value.putUUID("HomeNation", prisoner.homeNation);
+            value.putUUID("ConflictNation", prisoner.conflictNation);
             value.putUUID("HoldingNation", prisoner.holdingNation);
             value.putUUID("CapturedBy", prisoner.capturedBy);
             value.putLong("CapturedAt", prisoner.capturedAt);
@@ -217,6 +241,7 @@ public final class PrisonerSavedData extends SavedData {
             CompoundTag entry = new CompoundTag();
             entry.putUUID("Player", value.playerId);
             entry.putUUID("HomeNation", value.homeNation);
+            entry.putUUID("ConflictNation", value.conflictNation);
             entry.putUUID("HoldingNation", value.holdingNation);
             entry.putUUID("Captor", value.captor);
             entry.putLong("Remaining", value.remainingTicks);
@@ -230,6 +255,7 @@ public final class PrisonerSavedData extends SavedData {
             CompoundTag entry = new CompoundTag();
             entry.putUUID("Player", value.playerId);
             entry.putUUID("HomeNation", value.homeNation);
+            entry.putUUID("ConflictNation", value.conflictNation);
             entry.putUUID("HoldingNation", value.holdingNation);
             entry.putLong("Remaining", value.remainingTicks);
             windowList.add(entry);
@@ -256,7 +282,8 @@ public final class PrisonerSavedData extends SavedData {
             UUID player = value.getUUID("Player");
             UUID home = value.getUUID("HomeNation");
             UUID holding = value.getUUID("HoldingNation");
-            if (!home.equals(holding)) data.held.put(player, new Prisoner(player, home, holding,
+            UUID conflict = value.hasUUID("ConflictNation") ? value.getUUID("ConflictNation") : home;
+            if (!conflict.equals(holding)) data.held.put(player, new Prisoner(player, home, conflict, holding,
                     value.getUUID("CapturedBy"), Math.max(0L, value.getLong("CapturedAt")),
                     value.contains("Remaining") ? Math.max(1L, value.getLong("Remaining"))
                             : S2TerritoryConfig.captivityMaxTicks(),
@@ -272,7 +299,9 @@ public final class PrisonerSavedData extends SavedData {
             ResourceLocation dimension = ResourceLocation.tryParse(value.getString("Dimension"));
             if (dimension == null) continue;
             UUID player = value.getUUID("Player");
-            data.custody.put(player, new Custody(player, value.getUUID("HomeNation"),
+            UUID home = value.getUUID("HomeNation");
+            data.custody.put(player, new Custody(player, home,
+                    value.hasUUID("ConflictNation") ? value.getUUID("ConflictNation") : home,
                     value.getUUID("HoldingNation"), value.getUUID("Captor"),
                     Math.max(1L, value.getLong("Remaining")), dimension,
                     BlockPos.of(value.getLong("Position"))));
@@ -283,17 +312,19 @@ public final class PrisonerSavedData extends SavedData {
             if (!value.hasUUID("Player") || !value.hasUUID("HomeNation")
                     || !value.hasUUID("HoldingNation")) continue;
             UUID player = value.getUUID("Player");
-            data.captivityWindows.put(player, new CaptivityWindow(player,
-                    value.getUUID("HomeNation"), value.getUUID("HoldingNation"),
+            UUID home = value.getUUID("HomeNation");
+            data.captivityWindows.put(player, new CaptivityWindow(player, home,
+                    value.hasUUID("ConflictNation") ? value.getUUID("ConflictNation") : home,
+                    value.getUUID("HoldingNation"),
                     Math.max(0L, value.getLong("Remaining"))));
         }
         for (Prisoner prisoner : data.held.values()) {
             data.captivityWindows.putIfAbsent(prisoner.playerId, new CaptivityWindow(prisoner.playerId,
-                    prisoner.homeNation, prisoner.holdingNation, prisoner.remainingTicks));
+                    prisoner.homeNation, prisoner.conflictNation, prisoner.holdingNation, prisoner.remainingTicks));
         }
         for (Custody value : data.custody.values()) {
             data.captivityWindows.putIfAbsent(value.playerId, new CaptivityWindow(value.playerId,
-                    value.homeNation, value.holdingNation, value.remainingTicks));
+                    value.homeNation, value.conflictNation, value.holdingNation, value.remainingTicks));
         }
         ListTag releaseList = tag.getList("PendingReleases", Tag.TAG_COMPOUND);
         for (int index = 0; index < releaseList.size(); index++) {
@@ -317,17 +348,17 @@ public final class PrisonerSavedData extends SavedData {
 
     public enum CaptureResult { CAPTURED, ALREADY_HELD, INVALID }
     public enum CustodyResult { RESTRAINED, ALREADY_RESTRAINED, INVALID }
-    public record Custody(UUID playerId, UUID homeNation, UUID holdingNation, UUID captor,
+    public record Custody(UUID playerId, UUID homeNation, UUID conflictNation, UUID holdingNation, UUID captor,
                           long remainingTicks, ResourceLocation dimension, BlockPos position) { }
-    public record CaptivityWindow(UUID playerId, UUID homeNation, UUID holdingNation,
+    public record CaptivityWindow(UUID playerId, UUID homeNation, UUID conflictNation, UUID holdingNation,
                                   long remainingTicks) { }
     public record TimedRelease(UUID playerId, UUID homeNation) { }
-    public record Prisoner(UUID playerId, UUID homeNation, UUID holdingNation,
+    public record Prisoner(UUID playerId, UUID homeNation, UUID conflictNation, UUID holdingNation,
                            UUID capturedBy, long capturedAt, long remainingTicks,
                            ResourceLocation jailDimension, BlockPos jailPos) {
         public Prisoner(UUID playerId, UUID homeNation, UUID holdingNation,
                         UUID capturedBy, long capturedAt) {
-            this(playerId, homeNation, holdingNation, capturedBy, capturedAt,
+            this(playerId, homeNation, homeNation, holdingNation, capturedBy, capturedAt,
                     S2TerritoryConfig.captivityMaxTicks(), null, null);
         }
     }

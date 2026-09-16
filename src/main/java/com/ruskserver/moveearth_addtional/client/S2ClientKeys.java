@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestReinforcementScanPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.ruskserver.moveearth_addtional.item.ModItems;
@@ -26,6 +27,9 @@ public final class S2ClientKeys {
     public static final KeyMapping TOGGLE_MAP_TERRITORIES = new KeyMapping(
             "key.moveearth_addtional.map_territories", InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_UNKNOWN, "key.categories.moveearth_addtional");
+    public static final KeyMapping OPEN_PRISONERS = new KeyMapping(
+            "key.moveearth_addtional.prisoners", InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_J, "key.categories.moveearth_addtional");
     private static int reinforcementScanTicks;
     private static boolean wasHoldingWelder;
     private static net.minecraft.core.BlockPos lastReinforcementScanPos;
@@ -39,6 +43,7 @@ public final class S2ClientKeys {
         event.register(CLEAR_TERRITORY_PREVIEW);
         event.register(TOGGLE_REINFORCEMENT_OVERLAY);
         event.register(TOGGLE_MAP_TERRITORIES);
+        event.register(OPEN_PRISONERS);
     }
 
     public static void clientTick() {
@@ -57,6 +62,11 @@ public final class S2ClientKeys {
         while (OPEN_HUB.consumeClick()) {
             if (minecraft.player != null && minecraft.getConnection() != null && minecraft.screen == null) {
                 PacketDistributor.sendToServer(new C2S_RequestS2HubPacket(S2HubTab.OVERVIEW));
+            }
+        }
+        while (OPEN_PRISONERS.consumeClick()) {
+            if (minecraft.player != null && minecraft.screen == null) {
+                PacketDistributor.sendToServer(new C2S_RequestPrisonerScreenPacket(null));
             }
         }
         while (CLEAR_TERRITORY_PREVIEW.consumeClick()) {

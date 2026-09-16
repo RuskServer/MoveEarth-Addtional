@@ -9,6 +9,7 @@ import com.ruskserver.moveearth_addtional.network.C2S_NationTreasuryPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_S2HubActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_SiegeActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestTechnologyPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
@@ -327,6 +328,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private void drawSieges(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.siege.detail"),
                 content.x(), content.y() + 4, MUTED, false);
+        Rect prisoners = prisonerManagementBounds(content);
+        drawButton(graphics, font, prisoners,
+                Component.translatable("screen.moveearth_addtional.prisoner.open"), GOLD,
+                prisoners.contains(mouseX, mouseY), true);
         Rect list = diplomacyListBounds(content);
         if (snapshot.sieges().isEmpty() && snapshot.peaceProposals().isEmpty()
                 && snapshot.truces().isEmpty() && snapshot.prisoners().isEmpty()) {
@@ -762,7 +767,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         if (tab == S2HubTab.SIEGE
                 && (snapshot.member() || !snapshot.sieges().isEmpty())
                 && pendingRequestId < 0) {
-            Rect list = diplomacyListBounds(contentBounds(panel));
+            Rect content = contentBounds(panel);
+            if (prisonerManagementBounds(content).contains(mouseX, mouseY)) {
+                PacketDistributor.sendToServer(new C2S_RequestPrisonerScreenPacket(null));
+                return true;
+            }
+            Rect list = diplomacyListBounds(content);
             if (list.contains(mouseX, mouseY)) {
                 int row = 0;
                 for (S2NationSnapshot.PeaceView peace : snapshot.peaceProposals()) {
@@ -954,6 +964,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     private static Rect diplomacyListBounds(Rect content) {
         return new Rect(content.x(), content.y() + 24, content.width(), Math.max(0, content.height() - 24));
+    }
+
+    private static Rect prisonerManagementBounds(Rect content) {
+        return new Rect(content.right() - 136, content.y(), 136, 20);
     }
 
     private Rect diplomacyCard(Rect list, int index) {

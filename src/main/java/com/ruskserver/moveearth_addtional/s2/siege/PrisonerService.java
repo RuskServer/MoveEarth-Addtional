@@ -8,14 +8,18 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.s2.combat.CombatTagSavedData;
 import com.ruskserver.moveearth_addtional.s2.combat.CombatTagService;
+import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import com.ruskserver.moveearth_addtional.network.C2S_PrisonerActionPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PrisonerSnapshotPacket;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,6 +31,8 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -36,6 +42,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +54,8 @@ import java.util.UUID;
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class PrisonerService {
     private static final Map<UUID, RestraintAttempt> ATTEMPTS = new HashMap<>();
+    private static final Map<UUID, Integer> LAST_PATH_WARNING = new HashMap<>();
+    private static final Map<UUID, Integer> LAST_RESTRICTION_NOTICE = new HashMap<>();
     private static final double INTAKE_DISTANCE_SQR = 36.0D;
     private static final double JAIL_RADIUS_SQR = 100.0D;
 
@@ -65,41 +74,69 @@ public final class PrisonerService {
                 .filter(custody.homeNation()::equals).isPresent()) {
             prisoners.releaseCustody(targetId);
             CombatTagService.releaseBody(actor.server, targetId, true);
+            CombatTagSavedData.get(actor.server).consume(targetId);
             ATTEMPTS.values().removeIf(value -> value.targetId.equals(targetId));
             actor.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
                     "message.moveearth_addtional.prisoner.rescued")));
+            if (event.getTarget() instanceof ServerPlayer captive) captive.sendSystemMessage(
+                    MoveEarthMessage.success(Component.translatable(
+                            "message.moveearth_addtional.prisoner.rescued_captive",
+                            actor.getGameProfile().getName())));
             event.setCanceled(true);
             return;
         }
 
-        if (!actor.getMainHandItem().is(ModItems.RESTRAINTS.get()) || !isDowned(actor.server, event.getTarget(), targetId)) return;
-        if (prisoners.prisoner(actor.getUUID()).isPresent() || prisoners.custody(actor.getUUID()).isPresent()
-                || prisoners.prisoner(targetId).isPresent() || custody != null
-                || prisoners.custodyByCaptor(actor.getUUID()).isPresent()) {
-            actor.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
-                    "message.moveearth_addtional.prisoner.already_held")));
-            event.setCanceled(true);
+        if (!actor.getMainHandItem().is(ModItems.RESTRAINTS.get())) return;
+        event.setCanceled(true);
+        if (prisoners.prisoner(actor.getUUID()).isPresent() || prisoners.custody(actor.getUUID()).isPresent()) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.captor_unavailable");
+            return;
+        }
+        if (prisoners.custodyByCaptor(actor.getUUID()).isPresent()) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.already_escorting");
+            return;
+        }
+        if (prisoners.prisoner(targetId).isPresent() || custody != null) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.already_held");
+            return;
+        }
+        if (ATTEMPTS.values().stream().anyMatch(value -> value.targetId.equals(targetId))) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.restraint_in_progress");
+            return;
+        }
+        if (!isDowned(actor.server, event.getTarget(), targetId)) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.target_not_downed");
             return;
         }
         NationSavedData nations = NationSavedData.get(actor.server);
-        UUID actorNation = nations.nationIdFor(actor.getUUID()).orElse(null);
+        UUID actorHomeNation = nations.nationIdFor(actor.getUUID()).orElse(null);
         UUID targetNation = nations.nationIdFor(targetId).orElse(null);
-        if (actorNation == null || actorNation.equals(targetNation)
-                || !hasCaptureConflict(actor.server, targetId, targetNation, actorNation)) return;
+        UUID actorNation = operationalNation(actor.server, actor.getUUID(), actorHomeNation);
+        UUID targetConflictNation = operationalNation(actor.server, targetId, targetNation);
+        if (actorNation == null) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.captor_requires_nation");
+            return;
+        }
+        if (actorNation.equals(targetConflictNation)) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.target_friendly");
+            return;
+        }
+        if (!hasCaptureConflict(actor.server, targetId, targetConflictNation, actorNation)) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.no_capture_conflict");
+            return;
+        }
         UUID targetHome = targetNation == null ? targetId : targetNation;
         int downedTicks = event.getTarget() instanceof ServerPlayer player
                 ? CompatEventHandler.playerDownedTicks(player) : event.getTarget().tickCount;
         if (downedTicks >= 0 && downedTicks < S2TerritoryConfig.captureProtectionTicks()) {
             actor.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.prisoner.capture_protected")));
-            event.setCanceled(true);
             return;
         }
         ATTEMPTS.put(actor.getUUID(), new RestraintAttempt(targetId, actor.server.getTickCount(),
-                actorNation, targetHome));
+                actorNation, targetHome, targetConflictNation == null ? targetHome : targetConflictNation));
         actor.sendSystemMessage(MoveEarthMessage.info(Component.translatable(
                 "message.moveearth_addtional.prisoner.restraining")));
-        event.setCanceled(true);
     }
 
     @SubscribeEvent
@@ -115,40 +152,50 @@ public final class PrisonerService {
             player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 1, false, false, false));
         }
         if (isMovementRestricted(player)) {
+            boolean restrictedMovement = player.isPassenger() || player.getAbilities().flying;
             player.stopRiding();
             if (player.getAbilities().flying) {
                 player.getAbilities().flying = false;
                 player.onUpdateAbilities();
             }
+            if (restrictedMovement && player.server.getTickCount()
+                    - LAST_RESTRICTION_NOTICE.getOrDefault(player.getUUID(), -100) >= 60) {
+                LAST_RESTRICTION_NOTICE.put(player.getUUID(), player.server.getTickCount());
+                player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
+                        "message.moveearth_addtional.prisoner.movement_restricted")));
+            }
         }
+        if (player.tickCount % 20 == 0) sendSnapshot(player, false, null);
     }
 
     private static void tickAttempt(ServerPlayer captor) {
         RestraintAttempt attempt = ATTEMPTS.get(captor.getUUID());
         if (attempt == null) return;
         Entity target = findCaptiveEntity(captor.server, attempt.targetId);
-        if (target == null || !captor.getMainHandItem().is(ModItems.RESTRAINTS.get())
-                || captor.distanceToSqr(target) > 16.0D || !isDowned(captor.server, target, attempt.targetId)
-                || !hasCaptureConflict(captor.server, attempt.targetId,
-                NationSavedData.get(captor.server).nationIdFor(attempt.targetId).orElse(null),
-                attempt.captorNation)) {
+        String cancellationKey = restraintCancellationKey(captor, target, attempt);
+        if (cancellationKey != null) {
             ATTEMPTS.remove(captor.getUUID());
-            captor.displayClientMessage(Component.translatable(
-                    "message.moveearth_addtional.prisoner.restraint_cancelled").withStyle(ChatFormatting.RED), true);
+            captor.sendSystemMessage(MoveEarthMessage.error(Component.translatable(cancellationKey)));
+            if (target instanceof ServerPlayer captive) captive.sendSystemMessage(MoveEarthMessage.info(
+                    Component.translatable("message.moveearth_addtional.prisoner.restraint_stopped_captive")));
             return;
         }
         int elapsed = captor.server.getTickCount() - attempt.startedTick;
         int required = S2TerritoryConfig.restraintTicks();
         if (elapsed < required) {
-            captor.displayClientMessage(Component.literal("拘束中 " + Math.min(100, elapsed * 100 / required) + "%")
+            captor.displayClientMessage(Component.translatable(
+                            "message.moveearth_addtional.prisoner.status.restraining",
+                            Math.min(100, elapsed * 100 / Math.max(1, required)))
                     .withStyle(ChatFormatting.GOLD), true);
             return;
         }
         PrisonerSavedData data = PrisonerSavedData.get(captor.server);
-        if (data.beginCustody(attempt.targetId, attempt.captiveNation, attempt.captorNation,
+        if (data.beginCustody(attempt.targetId, attempt.captiveNation, attempt.captiveConflictNation,
+                attempt.captorNation,
                 captor.getUUID(), target.level().dimension().location(), target.blockPosition())
                 != PrisonerSavedData.CustodyResult.RESTRAINED) {
             ATTEMPTS.remove(captor.getUUID());
+            sendFailure(captor, "message.moveearth_addtional.prisoner.state_changed");
             return;
         }
         if (target instanceof ServerPlayer captive && !CompatEventHandler.revivePlayer(captive)) {
@@ -161,6 +208,9 @@ public final class PrisonerService {
             captor.getMainHandItem().hurtAndBreak(1, captor, EquipmentSlot.MAINHAND);
             captor.server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.prisoner.escorting", captiveName(target))), false);
+            if (target instanceof ServerPlayer captive) captive.sendSystemMessage(MoveEarthMessage.warning(
+                    Component.translatable("message.moveearth_addtional.prisoner.escort_started_captive",
+                            captor.getGameProfile().getName(), formatTicks(S2TerritoryConfig.captivityMaxTicks()))));
         }
         ATTEMPTS.remove(captor.getUUID());
     }
@@ -168,21 +218,21 @@ public final class PrisonerService {
     private static void tickEscort(ServerPlayer captor, PrisonerSavedData.Custody custody,
                                    PrisonerSavedData data) {
         Entity captive = findCaptiveEntity(captor.server, custody.playerId());
-        if (captive == null || captive.level() != captor.level()
-                || captor.distanceToSqr(captive) > Math.pow(S2TerritoryConfig.escortMaxDistance(), 2.0D)
-                || !captor.isAlive() || CompatEventHandler.isPlayerDown(captor)
-                || !hasCaptureConflict(captor.server, custody.playerId(),
-                NationSavedData.get(captor.server).nationIdFor(custody.playerId()).orElse(null),
-                custody.holdingNation())) {
-            data.releaseCustody(custody.playerId());
-            CombatTagService.releaseBody(captor.server, custody.playerId(), true);
+        String cancellationKey = escortCancellationKey(captor, captive, custody);
+        if (cancellationKey != null) {
+            cancelCustody(captor, captive, custody, data, cancellationKey);
             return;
         }
         captor.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 0, false, false, false));
         if (captor.distanceToSqr(captive) > 6.25D) {
-            double x = captor.getX() - Math.sin(Math.toRadians(captor.getYRot())) * 1.5D;
-            double z = captor.getZ() + Math.cos(Math.toRadians(captor.getYRot())) * 1.5D;
-            captive.teleportTo(x, captor.getY(), z);
+            Vec3 destination = safeEscortPosition(captor, captive);
+            if (destination != null) {
+                captive.teleportTo(destination.x, destination.y, destination.z);
+            } else if (captor.server.getTickCount() - LAST_PATH_WARNING.getOrDefault(captor.getUUID(), -100) >= 40) {
+                LAST_PATH_WARNING.put(captor.getUUID(), captor.server.getTickCount());
+                captor.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
+                        "message.moveearth_addtional.prisoner.escort_path_blocked")));
+            }
         }
         if (captor.tickCount % 20 == 0) {
             data.moveCustody(custody.playerId(), captive.level().dimension().location(), captive.blockPosition());
@@ -192,12 +242,14 @@ public final class PrisonerService {
                 if (state != null) tags.updateBody(custody.playerId(), captive.level().dimension().location(),
                         captive.blockPosition(), state.health(), state.downed(), state.killed());
             }
-            captor.displayClientMessage(Component.literal("護送中: " + captiveName(captive)
-                            + "・残り " + formatTicks(custody.remainingTicks()))
+            captor.displayClientMessage(Component.translatable(
+                            "message.moveearth_addtional.prisoner.status.escort_captor",
+                            captiveName(captive), formatTicks(custody.remainingTicks()))
                     .withStyle(ChatFormatting.GOLD), true);
-            if (captive instanceof ServerPlayer player) player.displayClientMessage(Component.literal(
-                    "拘束中: " + captor.getGameProfile().getName() + "・残り "
-                            + formatTicks(custody.remainingTicks())).withStyle(ChatFormatting.RED), true);
+            if (captive instanceof ServerPlayer player) player.displayClientMessage(Component.translatable(
+                    "message.moveearth_addtional.prisoner.status.escort_captive",
+                    nationName(captor.server, custody.holdingNation()), captor.getGameProfile().getName(),
+                    formatTicks(custody.remainingTicks())).withStyle(ChatFormatting.RED), true);
         }
     }
 
@@ -209,39 +261,231 @@ public final class PrisonerService {
             return;
         }
         if (player.level() != jail.level || player.distanceToSqr(jail.pos.getCenter()) > JAIL_RADIUS_SQR) teleport(player, jail);
-        if (player.tickCount % 20 == 0) player.displayClientMessage(Component.literal(
-                "捕虜・残り " + formatTicks(prisoner.remainingTicks())).withStyle(ChatFormatting.RED), true);
+        if (player.tickCount % 20 == 0) player.displayClientMessage(Component.translatable(
+                "message.moveearth_addtional.prisoner.status.imprisoned",
+                nationName(player.server, prisoner.holdingNation()), formatTicks(prisoner.remainingTicks()))
+                .withStyle(ChatFormatting.RED), true);
     }
 
     public static boolean tryImprisonAt(ServerPlayer captor, BlockPos intake) {
         PrisonerSavedData data = PrisonerSavedData.get(captor.server);
         PrisonerSavedData.Custody custody = data.custodyByCaptor(captor.getUUID()).orElse(null);
-        if (custody == null) return false;
+        if (custody == null) {
+            sendFailure(captor, "message.moveearth_addtional.prisoner.intake.no_escort");
+            return false;
+        }
         UUID owner = TerritorySavedData.get(captor.server).controllingNation(captor.server,
                 captor.level().dimension().location(), intake).orElse(null);
-        if (owner == null || !owner.equals(custody.holdingNation())) {
-            captor.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
-                    "message.moveearth_addtional.prisoner.invalid_intake")));
+        if (owner == null) {
+            sendFailure(captor, "message.moveearth_addtional.prisoner.intake.inactive_territory");
+            return false;
+        }
+        if (!owner.equals(custody.holdingNation())) {
+            sendFailure(captor, "message.moveearth_addtional.prisoner.intake.foreign_territory");
             return false;
         }
         if (!hasJailSpace(captor.serverLevel(), intake)) {
-            captor.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
-                    "message.moveearth_addtional.prisoner.invalid_intake")));
+            sendFailure(captor, "message.moveearth_addtional.prisoner.intake.unsafe_space");
             return false;
         }
         Entity captive = findCaptiveEntity(captor.server, custody.playerId());
-        if (captive == null || captive.level() != captor.level()
-                || captive.distanceToSqr(intake.getCenter()) > INTAKE_DISTANCE_SQR) return false;
+        if (captive == null) {
+            sendFailure(captor, "message.moveearth_addtional.prisoner.intake.captive_unavailable");
+            return false;
+        }
+        if (captive.level() != captor.level()) {
+            sendFailure(captor, "message.moveearth_addtional.prisoner.intake.wrong_dimension");
+            return false;
+        }
+        if (captive.distanceToSqr(intake.getCenter()) > INTAKE_DISTANCE_SQR) {
+            captor.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
+                    "message.moveearth_addtional.prisoner.intake.too_far",
+                    (int) Math.ceil(Math.sqrt(captive.distanceToSqr(intake.getCenter()))),
+                    (int) Math.sqrt(INTAKE_DISTANCE_SQR))));
+            return false;
+        }
         if (data.imprison(custody.playerId(), captor.level().dimension().location(), intake,
-                System.currentTimeMillis()) != PrisonerSavedData.CaptureResult.CAPTURED) return false;
+                System.currentTimeMillis()) != PrisonerSavedData.CaptureResult.CAPTURED) {
+            sendFailure(captor, "message.moveearth_addtional.prisoner.state_changed");
+            return false;
+        }
         String name = captiveName(captive);
-        if (captive instanceof ServerPlayer player) teleport(player, new Destination(captor.serverLevel(), intake.above()));
+        if (captive instanceof ServerPlayer player) {
+            teleport(player, new Destination(captor.serverLevel(), intake.above()));
+            player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
+                    "message.moveearth_addtional.prisoner.imprisoned_captive", nationName(captor.server, owner),
+                    formatTicks(custody.remainingTicks()))));
+        }
         else captive.discard();
         CombatTagService.releaseBody(captor.server, custody.playerId(), false);
         captor.server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
                 "message.moveearth_addtional.prisoner.captured", name,
                 NationSavedData.get(captor.server).nation(owner).map(NationSavedData.Nation::name).orElse("?"))), false);
         return true;
+    }
+
+    public static void openIntakeScreen(ServerPlayer player, BlockPos intake) {
+        sendSnapshot(player, true, intake);
+    }
+
+    public static void handleAction(ServerPlayer actor, C2S_PrisonerActionPacket.Action action,
+                                    UUID targetId, BlockPos intake) {
+        if (action == null) return;
+        switch (action) {
+            case IMPRISON -> {
+                if (intake == null || actor.distanceToSqr(intake.getCenter()) > 64.0D
+                        || !actor.level().getBlockState(intake).is(ModBlocks.PRISON_INTAKE.get())) {
+                    sendFailure(actor, "message.moveearth_addtional.prisoner.intake.invalid_remote");
+                } else {
+                    tryImprisonAt(actor, intake);
+                }
+            }
+            case RELEASE -> releaseBy(actor, targetId);
+            case TRANSFER -> transferEscort(actor, targetId);
+        }
+        sendSnapshot(actor, true, intake);
+    }
+
+    public static void sendSnapshot(ServerPlayer viewer, boolean openScreen, BlockPos intakePos) {
+        PrisonerSavedData data = PrisonerSavedData.get(viewer.server);
+        NationSavedData nations = NationSavedData.get(viewer.server);
+        PrisonerSavedData.Custody escorting = data.custodyByCaptor(viewer.getUUID()).orElse(null);
+        PrisonerSavedData.Custody escorted = data.custody(viewer.getUUID()).orElse(null);
+        PrisonerSavedData.Prisoner imprisoned = data.prisoner(viewer.getUUID()).orElse(null);
+        int state = escorting != null ? 1 : escorted != null ? 2 : imprisoned != null ? 3 : 0;
+        String counterpart = escorting != null ? playerName(viewer.server, escorting.playerId())
+                : escorted != null ? playerName(viewer.server, escorted.captor()) : "";
+        UUID holdingId = escorting != null ? escorting.holdingNation()
+                : escorted != null ? escorted.holdingNation()
+                : imprisoned != null ? imprisoned.holdingNation() : null;
+        long remaining = escorting != null ? escorting.remainingTicks()
+                : escorted != null ? escorted.remainingTicks()
+                : imprisoned != null ? imprisoned.remainingTicks() : 0L;
+        String holdingName = holdingId == null ? "" : nationName(viewer.server, holdingId);
+        ResourceLocation jailDimension = imprisoned == null ? null : imprisoned.jailDimension();
+        BlockPos jailPos = imprisoned == null ? null : imprisoned.jailPos();
+
+        List<S2C_PrisonerSnapshotPacket.EntryView> entries = new java.util.ArrayList<>();
+        List<S2C_PrisonerSnapshotPacket.CandidateView> candidates = new java.util.ArrayList<>();
+        UUID viewerNation = nations.nationIdFor(viewer.getUUID()).orElse(null);
+        boolean manager = viewer.hasPermissions(2) || nations.can(viewer.getUUID(), S2Permission.MANAGE_PRISONERS);
+        if (openScreen && viewerNation != null) {
+            for (PrisonerSavedData.Custody value : data.custodyRecords()) {
+                if (!viewerNation.equals(value.holdingNation()) && !viewerNation.equals(value.homeNation())
+                        && !viewerNation.equals(value.conflictNation())) continue;
+                boolean heldByViewer = viewerNation.equals(value.holdingNation());
+                entries.add(new S2C_PrisonerSnapshotPacket.EntryView(value.playerId(),
+                        playerName(viewer.server, value.playerId()), 0, heldByViewer,
+                        nationName(viewer.server, heldByViewer ? value.homeNation() : value.holdingNation()),
+                        value.remainingTicks(), heldByViewer && (manager || value.captor().equals(viewer.getUUID()))));
+            }
+            for (PrisonerSavedData.Prisoner value : data.prisoners()) {
+                if (!viewerNation.equals(value.holdingNation()) && !viewerNation.equals(value.homeNation())
+                        && !viewerNation.equals(value.conflictNation())) continue;
+                boolean heldByViewer = viewerNation.equals(value.holdingNation());
+                entries.add(new S2C_PrisonerSnapshotPacket.EntryView(value.playerId(),
+                        playerName(viewer.server, value.playerId()), 1, heldByViewer,
+                        nationName(viewer.server, heldByViewer ? value.homeNation() : value.holdingNation()),
+                        value.remainingTicks(), heldByViewer && manager));
+            }
+        }
+        if (openScreen && escorting != null) {
+            for (ServerPlayer candidate : viewer.server.getPlayerList().getPlayers()) {
+                UUID candidateHome = nations.nationIdFor(candidate.getUUID()).orElse(null);
+                boolean sameNation = escorting.holdingNation().equals(operationalNation(
+                        viewer.server, candidate.getUUID(), candidateHome));
+                if (!PrisonerTransferPolicy.allowed(true, true, candidate != viewer,
+                        candidate.level() == viewer.level(), viewer.distanceToSqr(candidate), candidate.isAlive(),
+                        candidate.isShiftKeyDown(), sameNation, isMovementRestricted(candidate),
+                        data.custodyByCaptor(candidate.getUUID()).isPresent())) continue;
+                candidates.add(new S2C_PrisonerSnapshotPacket.CandidateView(candidate.getUUID(),
+                        candidate.getGameProfile().getName()));
+            }
+        }
+        S2C_PrisonerSnapshotPacket.IntakeView intakeView = intakeView(viewer, intakePos, escorting);
+        PacketDistributor.sendToPlayer(viewer, new S2C_PrisonerSnapshotPacket(openScreen, state,
+                counterpart, holdingName, remaining, jailDimension, jailPos, intakePos,
+                intakeView, entries, candidates));
+    }
+
+    private static S2C_PrisonerSnapshotPacket.IntakeView intakeView(ServerPlayer viewer, BlockPos intake,
+                                                                     PrisonerSavedData.Custody custody) {
+        if (intake == null || viewer.distanceToSqr(intake.getCenter()) > 64.0D
+                || !viewer.level().getBlockState(intake).is(ModBlocks.PRISON_INTAKE.get())) {
+            return new S2C_PrisonerSnapshotPacket.IntakeView(false, "", false,
+                    false, false, false, 0, false);
+        }
+        UUID owner = TerritorySavedData.get(viewer.server).controllingNation(viewer.server,
+                viewer.level().dimension().location(), intake).orElse(null);
+        boolean correctTerritory = custody != null && custody.holdingNation().equals(owner);
+        boolean safe = hasJailSpace(viewer.serverLevel(), intake);
+        Entity captive = custody == null ? null : findCaptiveEntity(viewer.server, custody.playerId());
+        boolean sameDimension = captive != null && captive.level() == viewer.level();
+        int distance = captive == null || !sameDimension ? 0
+                : (int) Math.ceil(Math.sqrt(captive.distanceToSqr(intake.getCenter())));
+        return new S2C_PrisonerSnapshotPacket.IntakeView(true,
+                owner == null ? "" : nationName(viewer.server, owner), correctTerritory, safe,
+                captive != null, sameDimension, distance,
+                correctTerritory && safe && sameDimension && distance <= (int) Math.sqrt(INTAKE_DISTANCE_SQR));
+    }
+
+    private static void releaseBy(ServerPlayer actor, UUID targetId) {
+        if (targetId == null) return;
+        PrisonerSavedData data = PrisonerSavedData.get(actor.server);
+        NationSavedData nations = NationSavedData.get(actor.server);
+        UUID actorNation = nations.nationIdFor(actor.getUUID()).orElse(null);
+        PrisonerSavedData.Custody custody = data.custody(targetId).orElse(null);
+        PrisonerSavedData.Prisoner prisoner = data.prisoner(targetId).orElse(null);
+        UUID holding = custody != null ? custody.holdingNation() : prisoner != null ? prisoner.holdingNation() : null;
+        boolean ownEscort = custody != null && custody.captor().equals(actor.getUUID());
+        boolean manager = actor.hasPermissions(2) || nations.can(actor.getUUID(), S2Permission.MANAGE_PRISONERS);
+        if (holding == null || (!ownEscort && (!manager || !holding.equals(actorNation)))) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.release_denied");
+            return;
+        }
+        UUID home = custody != null ? custody.homeNation() : prisoner.homeNation();
+        if (custody != null) data.releaseCustodyToHome(targetId); else data.release(targetId);
+        CombatTagService.releaseBody(actor.server, targetId, true);
+        CombatTagSavedData.get(actor.server).consume(targetId);
+        ServerPlayer captive = actor.server.getPlayerList().getPlayer(targetId);
+        if (captive != null) {
+            releaseDestination(actor.server, home).ifPresent(destination -> teleport(captive, destination));
+            data.acknowledgeRelease(targetId);
+            captive.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
+                    "message.moveearth_addtional.prisoner.voluntarily_released")));
+            sendSnapshot(captive, false, null);
+        }
+        actor.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
+                "message.moveearth_addtional.prisoner.release_success", playerName(actor.server, targetId))));
+    }
+
+    private static void transferEscort(ServerPlayer actor, UUID newCaptorId) {
+        PrisonerSavedData data = PrisonerSavedData.get(actor.server);
+        PrisonerSavedData.Custody custody = data.custodyByCaptor(actor.getUUID()).orElse(null);
+        ServerPlayer newCaptor = newCaptorId == null ? null : actor.server.getPlayerList().getPlayer(newCaptorId);
+        NationSavedData nations = NationSavedData.get(actor.server);
+        UUID candidateHome = newCaptorId == null ? null : nations.nationIdFor(newCaptorId).orElse(null);
+        boolean sameNation = custody != null && newCaptorId != null && custody.holdingNation().equals(
+                operationalNation(actor.server, newCaptorId, candidateHome));
+        if (!PrisonerTransferPolicy.allowed(custody != null, newCaptor != null, newCaptor != actor,
+                newCaptor != null && newCaptor.level() == actor.level(),
+                newCaptor == null ? Double.MAX_VALUE : actor.distanceToSqr(newCaptor),
+                newCaptor != null && newCaptor.isAlive(), newCaptor != null && newCaptor.isShiftKeyDown(),
+                sameNation, newCaptor != null && isMovementRestricted(newCaptor),
+                newCaptorId != null && data.custodyByCaptor(newCaptorId).isPresent())
+                || !data.transferCustody(custody.playerId(), actor.getUUID(), newCaptorId)) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.transfer_invalid");
+            return;
+        }
+        actor.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
+                "message.moveearth_addtional.prisoner.transfer_success", newCaptor.getGameProfile().getName())));
+        newCaptor.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
+                "message.moveearth_addtional.prisoner.transfer_received",
+                playerName(actor.server, custody.playerId()), formatTicks(custody.remainingTicks()))));
+        ServerPlayer captive = actor.server.getPlayerList().getPlayer(custody.playerId());
+        if (captive != null) captive.sendSystemMessage(MoveEarthMessage.info(Component.translatable(
+                "message.moveearth_addtional.prisoner.transfer_captive", newCaptor.getGameProfile().getName())));
+        sendSnapshot(newCaptor, false, null);
     }
 
     public static void onPrisonIntakeRemoved(Level level, BlockPos pos) {
@@ -268,6 +512,7 @@ public final class PrisonerService {
         PrisonerSavedData data = PrisonerSavedData.get(server);
         for (PrisonerSavedData.TimedRelease release : data.advanceCaptivity(20L)) {
             CombatTagService.releaseBody(server, release.playerId(), true);
+            CombatTagSavedData.get(server).consume(release.playerId());
             ServerPlayer player = server.getPlayerList().getPlayer(release.playerId());
             if (player != null) {
                 releaseDestination(server, release.homeNation()).ifPresent(dest -> teleport(player, dest));
@@ -278,9 +523,9 @@ public final class PrisonerService {
         }
         for (PrisonerSavedData.CaptivityWindow window : data.captivityWindows()) {
             if (data.custody(window.playerId()).isPresent() || data.prisoner(window.playerId()).isPresent()) continue;
-            boolean homeIsNation = NationSavedData.get(server).nation(window.homeNation()).isPresent();
-            boolean activeConflict = homeIsNation
-                    ? SiegeSavedData.get(server).hasConflictBetween(window.homeNation(), window.holdingNation())
+            boolean conflictIsNation = NationSavedData.get(server).nation(window.conflictNation()).isPresent();
+            boolean activeConflict = conflictIsNation
+                    ? SiegeSavedData.get(server).hasConflictBetween(window.conflictNation(), window.holdingNation())
                     : SiegeSavedData.get(server).hasIndividualConflictBetween(
                     window.playerId(), window.holdingNation());
             if (!activeConflict) data.clearCaptivityWindow(window.playerId());
@@ -313,8 +558,8 @@ public final class PrisonerService {
     public static void onRestrictedBlockUse(PlayerInteractEvent.RightClickBlock event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (player.level().getBlockState(event.getPos()).is(ModBlocks.PRISON_INTAKE.get())
-                && PrisonerSavedData.get(player.server).custodyByCaptor(player.getUUID()).isPresent()) {
-            if (!player.level().isClientSide()) tryImprisonAt(player, event.getPos());
+                && !player.level().isClientSide()) {
+            openIntakeScreen(player, event.getPos());
             event.setCanceled(true);
             return;
         }
@@ -350,8 +595,13 @@ public final class PrisonerService {
                     "message.moveearth_addtional.prisoner.released")));
             return;
         }
-        data.prisoner(player.getUUID()).flatMap(prisoner -> jailDestination(player.server, prisoner))
-                .ifPresent(destination -> teleport(player, destination));
+        PrisonerSavedData.Prisoner prisoner = data.prisoner(player.getUUID()).orElse(null);
+        if (prisoner != null) {
+            jailDestination(player.server, prisoner).ifPresent(destination -> teleport(player, destination));
+            player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
+                    "message.moveearth_addtional.prisoner.imprisoned_captive",
+                    nationName(player.server, prisoner.holdingNation()), formatTicks(prisoner.remainingTicks()))));
+        }
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -362,21 +612,30 @@ public final class PrisonerService {
         if (escorted != null) {
             data.releaseCustody(escorted.playerId());
             CombatTagService.releaseBody(player.server, escorted.playerId(), true);
+            CombatTagSavedData.get(player.server).consume(escorted.playerId());
+            ServerPlayer captive = player.server.getPlayerList().getPlayer(escorted.playerId());
+            if (captive != null) captive.sendSystemMessage(MoveEarthMessage.info(Component.translatable(
+                    "message.moveearth_addtional.prisoner.escort_released_logout")));
         }
         ATTEMPTS.remove(player.getUUID());
     }
 
     public static boolean canReturnAll(MinecraftServer server, UUID firstNation, UUID secondNation) {
         NationSavedData nations = NationSavedData.get(server);
-        return PrisonerSavedData.get(server).between(firstNation, secondNation).stream()
+        PrisonerSavedData data = PrisonerSavedData.get(server);
+        boolean heldReady = data.between(firstNation, secondNation).stream()
                 .allMatch(prisoner -> nations.nation(prisoner.homeNation()).isPresent()
                         && nations.nation(prisoner.holdingNation()).isPresent()
                         && releaseDestination(server, prisoner.homeNation()).isPresent());
+        return heldReady && data.custodyRecords().stream()
+                .filter(custody -> sameConflictPair(custody, firstNation, secondNation))
+                .allMatch(custody -> releaseDestination(server, custody.homeNation()).isPresent());
     }
 
     public static int returnAll(MinecraftServer server, UUID firstNation, UUID secondNation) {
         PrisonerSavedData data = PrisonerSavedData.get(server);
         List<PrisonerSavedData.Prisoner> released = data.releaseBetween(firstNation, secondNation);
+        int custodyReleased = 0;
         for (PrisonerSavedData.Prisoner prisoner : released) {
             ServerPlayer online = server.getPlayerList().getPlayer(prisoner.playerId());
             if (online != null) {
@@ -385,13 +644,27 @@ public final class PrisonerService {
             }
         }
         for (PrisonerSavedData.Custody custody : data.custodyRecords()) {
-            if ((custody.homeNation().equals(firstNation) && custody.holdingNation().equals(secondNation))
-                    || (custody.homeNation().equals(secondNation) && custody.holdingNation().equals(firstNation))) {
-                data.releaseCustody(custody.playerId());
+            if (sameConflictPair(custody, firstNation, secondNation)) {
+                data.releaseCustodyToHome(custody.playerId());
                 CombatTagService.releaseBody(server, custody.playerId(), true);
+                CombatTagSavedData.get(server).consume(custody.playerId());
+                ServerPlayer online = server.getPlayerList().getPlayer(custody.playerId());
+                if (online != null) {
+                    releaseDestination(server, custody.homeNation()).ifPresent(destination -> teleport(online, destination));
+                    data.acknowledgeRelease(custody.playerId());
+                    online.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
+                            "message.moveearth_addtional.prisoner.released")));
+                }
+                custodyReleased++;
             }
         }
-        return released.size();
+        return released.size() + custodyReleased;
+    }
+
+    private static boolean sameConflictPair(PrisonerSavedData.Custody custody,
+                                            UUID firstNation, UUID secondNation) {
+        return (custody.conflictNation().equals(firstNation) && custody.holdingNation().equals(secondNation))
+                || (custody.conflictNation().equals(secondNation) && custody.holdingNation().equals(firstNation));
     }
 
     private static void releaseOrphan(ServerPlayer player, PrisonerSavedData data,
@@ -415,6 +688,103 @@ public final class PrisonerService {
         return targetNation == null
                 ? sieges.hasIndividualConflictBetween(targetPlayer, holdingNation)
                 : sieges.hasConflictBetween(targetNation, holdingNation);
+    }
+
+    private static String restraintCancellationKey(ServerPlayer captor, Entity target,
+                                                   RestraintAttempt attempt) {
+        if (target == null) return "message.moveearth_addtional.prisoner.restraint_cancelled.target_missing";
+        if (!captor.getMainHandItem().is(ModItems.RESTRAINTS.get())) {
+            return "message.moveearth_addtional.prisoner.restraint_cancelled.tool_changed";
+        }
+        if (captor.distanceToSqr(target) > 16.0D) {
+            return "message.moveearth_addtional.prisoner.restraint_cancelled.too_far";
+        }
+        if (!isDowned(captor.server, target, attempt.targetId)) {
+            return "message.moveearth_addtional.prisoner.restraint_cancelled.target_recovered";
+        }
+        return hasCaptureConflict(captor.server, attempt.targetId,
+                attempt.captiveConflictNation,
+                attempt.captorNation) ? null
+                : "message.moveearth_addtional.prisoner.restraint_cancelled.conflict_ended";
+    }
+
+    private static String escortCancellationKey(ServerPlayer captor, Entity captive,
+                                                PrisonerSavedData.Custody custody) {
+        if (captive == null) return "message.moveearth_addtional.prisoner.escort_cancelled.captive_missing";
+        if (captive.level() != captor.level()) {
+            return "message.moveearth_addtional.prisoner.escort_cancelled.dimension";
+        }
+        if (captor.distanceToSqr(captive) > Math.pow(S2TerritoryConfig.escortMaxDistance(), 2.0D)) {
+            return "message.moveearth_addtional.prisoner.escort_cancelled.too_far";
+        }
+        if (!captor.isAlive() || CompatEventHandler.isPlayerDown(captor)) {
+            return "message.moveearth_addtional.prisoner.escort_cancelled.captor_incapacitated";
+        }
+        return hasCaptureConflict(captor.server, custody.playerId(),
+                custody.conflictNation(),
+                custody.holdingNation()) ? null
+                : "message.moveearth_addtional.prisoner.escort_cancelled.conflict_ended";
+    }
+
+    private static void cancelCustody(ServerPlayer captor, Entity captive,
+                                      PrisonerSavedData.Custody custody, PrisonerSavedData data,
+                                      String reasonKey) {
+        data.releaseCustody(custody.playerId());
+        CombatTagService.releaseBody(captor.server, custody.playerId(), true);
+        CombatTagSavedData.get(captor.server).consume(custody.playerId());
+        captor.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(reasonKey)));
+        if (captive instanceof ServerPlayer player) player.sendSystemMessage(MoveEarthMessage.info(
+                Component.translatable("message.moveearth_addtional.prisoner.escort_released_captive")));
+    }
+
+    private static void sendFailure(ServerPlayer player, String translationKey) {
+        player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(translationKey)));
+    }
+
+    private static String nationName(MinecraftServer server, UUID nationId) {
+        return NationSavedData.get(server).nation(nationId).map(NationSavedData.Nation::name)
+                .orElseGet(() -> playerName(server, nationId));
+    }
+
+    private static UUID operationalNation(MinecraftServer server, UUID playerId, UUID fallback) {
+        return SiegeParticipationSavedData.get(server).forPlayer(playerId)
+                .map(SiegeParticipationSavedData.Participation::combatNation).orElse(fallback);
+    }
+
+    private static String playerName(MinecraftServer server, UUID playerId) {
+        ServerPlayer online = server.getPlayerList().getPlayer(playerId);
+        if (online != null) return online.getGameProfile().getName();
+        for (NationSavedData.Nation nation : NationSavedData.get(server).nations().values()) {
+            NationSavedData.Member member = nation.members().get(playerId);
+            if (member != null && !member.lastKnownName().isBlank()) return member.lastKnownName();
+        }
+        return playerId.toString().substring(0, 8);
+    }
+
+    private static Vec3 safeEscortPosition(ServerPlayer captor, Entity captive) {
+        ServerLevel level = captor.serverLevel();
+        double yaw = Math.toRadians(captor.getYRot());
+        double backX = -Math.sin(yaw);
+        double backZ = Math.cos(yaw);
+        double sideX = Math.cos(yaw);
+        double sideZ = Math.sin(yaw);
+        double[][] offsets = {
+                {backX * 1.5D, 0.0D, backZ * 1.5D},
+                {backX * 1.5D + sideX, 0.0D, backZ * 1.5D + sideZ},
+                {backX * 1.5D - sideX, 0.0D, backZ * 1.5D - sideZ},
+                {backX * 1.5D, 1.0D, backZ * 1.5D},
+                {backX * 1.5D, -1.0D, backZ * 1.5D}
+        };
+        for (double[] offset : offsets) {
+            Vec3 candidate = new Vec3(captor.getX() + offset[0], captor.getY() + offset[1],
+                    captor.getZ() + offset[2]);
+            BlockPos feet = BlockPos.containing(candidate);
+            if (!level.hasChunkAt(feet) || !level.getFluidState(feet).isEmpty()) continue;
+            AABB moved = captive.getBoundingBox().move(candidate.x - captive.getX(),
+                    candidate.y - captive.getY(), candidate.z - captive.getZ());
+            if (level.noCollision(captive, moved)) return candidate;
+        }
+        return null;
     }
 
     private static UUID captiveId(Entity entity) {
@@ -488,6 +858,7 @@ public final class PrisonerService {
         return "%d:%02d:%02d".formatted(seconds / 3600L, seconds / 60L % 60L, seconds % 60L);
     }
 
-    private record RestraintAttempt(UUID targetId, int startedTick, UUID captorNation, UUID captiveNation) { }
+    private record RestraintAttempt(UUID targetId, int startedTick, UUID captorNation,
+                                    UUID captiveNation, UUID captiveConflictNation) { }
     private record Destination(ServerLevel level, BlockPos pos) { }
 }
