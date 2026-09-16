@@ -10,6 +10,7 @@ import com.ruskserver.moveearth_addtional.network.C2S_S2HubActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_SiegeActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestTechnologyPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_RequestRecoveryDispatchPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
@@ -201,6 +202,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         drawButton(graphics, font, treasury,
                 Component.translatable("screen.moveearth_addtional.treasury.open"), GOLD,
                 treasury.contains(mouseX, mouseY), true);
+        Rect recovery = recoveryDispatchBounds(content);
+        drawButton(graphics, font, recovery,
+                Component.translatable("screen.moveearth_addtional.recovery.open"), SUCCESS,
+                recovery.contains(mouseX, mouseY), true);
         Rect vault = vaultBounds(content);
         Component vaultLabel = snapshot.vaultConfigured()
                 ? snapshot.vaultChangeCooldownTicks() > 0L
@@ -687,6 +692,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         C2S_NationTreasuryPacket.Action.OPEN, null));
                 return true;
             }
+            if (snapshot.member() && recoveryDispatchBounds(content).contains(mouseX, mouseY)) {
+                PacketDistributor.sendToServer(new C2S_RequestRecoveryDispatchPacket(true));
+                return true;
+            }
             if (snapshot.member() && isOwner() && memberLeaveBounds(content).contains(mouseX, mouseY)) {
                 minecraft.setScreen(new NationSettingsScreen(snapshot));
                 return true;
@@ -916,6 +925,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     private static Rect vaultBounds(Rect content) {
         return new Rect(content.right() - 436, content.bottom() - 23, 122, 22);
+    }
+
+    private static Rect recoveryDispatchBounds(Rect content) {
+        return new Rect(content.x() + 120, content.bottom() - 23, 120, 22);
     }
 
     private static Rect memberLeaveBounds(Rect content) {

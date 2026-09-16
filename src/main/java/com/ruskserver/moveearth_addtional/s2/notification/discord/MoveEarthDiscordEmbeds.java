@@ -128,6 +128,15 @@ public final class MoveEarthDiscordEmbeds {
             case SIEGE_ENDED -> new EventPresentation("Siege終了", MUTED);
             case TERRITORY_LOST -> new EventPresentation("領土喪失", DANGER);
             case TERRITORY_OCCUPIED -> new EventPresentation("領土占領", ACCENT);
+            case RECOVERY_STARTED -> new EventPresentation("復興計画開始", WARNING);
+            case RECOVERY_OBJECTIVE -> new EventPresentation("復興目標達成", SUCCESS);
+            case RECOVERY_COMPLETED -> new EventPresentation("復興完了", SUCCESS);
+            case RECOVERY_EXPIRED -> new EventPresentation("復興支援期限終了", MUTED);
+            case DISPATCH_CREATED -> new EventPresentation("派遣契約作成", ACCENT);
+            case DISPATCH_ACTIVATED -> new EventPresentation("派遣契約発効", WARNING);
+            case DISPATCH_COMPLETED -> new EventPresentation("派遣契約完了", SUCCESS);
+            case DISPATCH_CANCELLED -> new EventPresentation("派遣契約終了", MUTED);
+            case RIVAL_UPDATED -> new EventPresentation("宿敵設定更新", DANGER);
             case SYSTEM -> new EventPresentation("システム通知", ACCENT);
         };
     }

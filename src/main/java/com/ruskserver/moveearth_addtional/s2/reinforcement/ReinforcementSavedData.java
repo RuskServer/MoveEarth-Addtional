@@ -97,7 +97,8 @@ public final class ReinforcementSavedData extends SavedData {
                 if (indexed == null) continue;
                 for (BlockPos pos : indexed) {
                     if (pos.getX() < minX || pos.getX() > maxX || pos.getY() < minY || pos.getY() > maxY
-                            || pos.getZ() < minZ || pos.getZ() > maxZ || level.getBlockState(pos).isAir()) continue;
+                            || pos.getZ() < minZ || pos.getZ() > maxZ || !level.hasChunkAt(pos)
+                            || level.getBlockState(pos).isAir()) continue;
                     result.add(new LocatedEntry(pos, entries.get(pos)));
                     if (result.size() >= MAX_SYNC_ENTRIES) return List.copyOf(result);
                 }

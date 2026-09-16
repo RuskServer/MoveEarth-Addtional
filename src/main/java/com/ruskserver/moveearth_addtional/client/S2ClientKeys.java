@@ -94,10 +94,10 @@ public final class S2ClientKeys {
         }
         while (TOGGLE_MAP_TERRITORIES.consumeClick()) {
             boolean enabled = TerritoryMapClientState.toggle();
-            if (minecraft.player != null) minecraft.player.displayClientMessage(MoveEarthMessage.info(
-                    Component.translatable(enabled
-                            ? "message.moveearth_addtional.map_territories.enabled"
-                            : "message.moveearth_addtional.map_territories.disabled")), true);
+            if (minecraft.player != null) minecraft.player.displayClientMessage(MoveEarthMessage.info(enabled
+                    ? Component.translatable("message.moveearth_addtional.map_territories.enabled",
+                    OPEN_HUB.getTranslatedKeyMessage())
+                    : Component.translatable("message.moveearth_addtional.map_territories.disabled")), true);
         }
         if (holdingWelder && minecraft.player != null) {
             reinforcementScanTicks++;

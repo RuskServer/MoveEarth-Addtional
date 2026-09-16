@@ -107,7 +107,8 @@ public final class WarnauticsReinforcementCompat {
             WarnauticsC4SavedData.Charge charge = kind == WarnauticsWeaponDamage.Kind.C4
                     ? WarnauticsC4SavedData.get(level).consume(BlockPos.containing(center)) : null;
             SiegeService.AttackAttribution attribution = charge != null
-                    ? new SiegeService.AttackAttribution(charge.nationId(), charge.placerId(), "warnautics_c4")
+                    ? new SiegeService.AttackAttribution(charge.nationId(), charge.placerId(), "warnautics_c4",
+                    charge.contractId(), charge.siegeId(), true)
                     : sourceAttribution(level, center, source, attacker);
             processDetonation(level, center, rawToBlow, kind, attribution,
                     charge == null ? null : charge.support());
@@ -278,6 +279,10 @@ public final class WarnauticsReinforcementCompat {
     private static SiegeService.AttackAttribution sourceAttribution(ServerLevel level, Vec3 center,
                                                                     Entity source, ServerPlayer fallbackPlayer) {
         if (source != null) {
+            SiegeService.AttackAttribution frozen =
+                    com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService
+                            .attribution(source, "warnautics_projectile");
+            if (frozen != null) return frozen;
             var persistent = source.getPersistentData();
             if (persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_NATION)
                     || persistent.hasUUID(WarnauticsWeaponEvents.ATTRIBUTION_ACTOR)) {
@@ -294,7 +299,8 @@ public final class WarnauticsReinforcementCompat {
                         .claimNearest(level, center, weaponPath, level.getGameTime());
                 if (placement != null) {
                     return new SiegeService.AttackAttribution(
-                            placement.nationId(), placement.placerId(), "warnautics_sable_bomb");
+                            placement.nationId(), placement.placerId(), "warnautics_sable_bomb",
+                            placement.contractId(), placement.siegeId(), true);
                 }
             }
         }

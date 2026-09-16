@@ -26,6 +26,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.HashMap;
 import com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData;
+import com.ruskserver.moveearth_addtional.s2.recovery.RecoveryService;
+import com.ruskserver.moveearth_addtional.s2.recovery.EconomyGateway;
+import com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData;
+import com.ruskserver.moveearth_addtional.s2.recovery.RecoveryFundSavedData;
+import com.ruskserver.moveearth_addtional.s2.recovery.RecoveryFundService;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class NationUpkeepService {
@@ -206,20 +211,45 @@ public final class NationUpkeepService {
             invalidatePenalty(nationId);
             return true;
         }
+        UUID aidTransaction = null;
+        UUID episodeId = null;
+        long subsidy = 0L;
+        NationRecoverySavedData.Episode episode = NationRecoverySavedData.get(server)
+                .eligibleForNation(nationId, com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server))
+                .orElse(null);
+        if (episode != null) {
+            UUID chargeId = UUID.nameUUIDFromBytes((nationId + ":" + state.nextDueAt())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            RecoveryFundService.Result aid = RecoveryFundService.reserveAid(server, episode, chargeId, amount,
+                    RecoveryFundSavedData.Type.UPKEEP_SUBSIDY);
+            if (aid.success()) {
+                aidTransaction = aid.transactionId();
+                episodeId = episode.id();
+                subsidy = RecoveryFundSavedData.get(server).transaction(aidTransaction)
+                        .map(RecoveryFundSavedData.Transaction::amount).orElse(0L);
+            }
+        }
+        long ownAmount = Math.max(0L, amount - subsidy);
         try {
-            BankReference reference = state.reference();
-            IBankAccount account = reference == null || !reference.isValid() ? null : reference.get();
-            MoneyValue fee = MoneyValueParser.ParseConfigString(
-                    "coin;" + amount + "-lightmanscurrency:coin_gold", MoneyValue::empty);
-            if (account != null && !fee.isEmpty() && account.getStoredMoney().containsValue(fee)
-                    && BankAPI.getApi().BankWithdrawFromServer(account, fee).getFirst()) {
+            EconomyGateway.Result withdrawal = EconomyGateway.withdraw(server, nationId, ownAmount);
+            if (withdrawal == EconomyGateway.Result.SUCCESS) {
+                if (aidTransaction != null && !RecoveryFundService.consumeAid(server, episodeId,
+                        aidTransaction, subsidy)) {
+                    EconomyGateway.deposit(server, nationId, ownAmount);
+                    Moveearth_addtional.LOGGER.error("Failed to commit upkeep recovery aid for nation {}", nationId);
+                    data.paymentFailed(nationId, now);
+                    invalidatePenalty(nationId);
+                    return false;
+                }
                 data.paymentSucceeded(nationId, now);
                 invalidatePenalty(nationId);
+                RecoveryService.onUpkeepPaid(server, nationId, amount);
                 return true;
             }
         } catch (RuntimeException exception) {
             Moveearth_addtional.LOGGER.warn("Nation upkeep payment failed for {}", nationId, exception);
         }
+        if (aidTransaction != null) RecoveryFundService.refundAid(server, episodeId, aidTransaction);
         data.paymentFailed(nationId, now);
         invalidatePenalty(nationId);
         return false;

@@ -79,6 +79,10 @@ public final class NationAdministrationService {
                     net.minecraft.core.registries.Registries.DIMENSION, core.dimension()));
             if (level != null) level.removeBlock(core.pos(), false);
         }
+        com.ruskserver.moveearth_addtional.s2.dispatch.DispatchContractService
+                .terminateNation(actor.server, nationId);
+        com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData
+                .get(actor.server).closeNation(nationId);
         NationUpkeepSavedData.get(actor.server).removeNation(nationId);
         NationTechnologySavedData.get(actor.server).removeNation(nationId);
         com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(actor.server).removeNation(nationId);

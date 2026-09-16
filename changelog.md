@@ -2,10 +2,18 @@
 
 ## Interface
 
+- **Expanded Guide Canvas**: Removed the chapter sidebar so the node canvas can use the full left side of the guide. Added a framed canvas, stronger node cards, wider spacing, and shorter edge-to-edge dependency lines for clearer progression at a glance.
 - **Unified Loading Screens**: Server connection, world data and resource preparation, level reception, chunk generation, and world saving now use the main menu's starfield and meteor presentation. A compact translucent bottom HUD combines rotating gameplay tips, live status, a progress bar, and the connection cancel action while leaving room for a larger central logo.
 - **Roomier Main Menu**: Increased outer, panel, control, and changelog spacing at normal resolutions. The navigation panel now fits its contents and floats vertically beside the changelog instead of stretching across all available height.
 
 ## Gameplay
+
+- **Post-War Recovery**: Capital defeat now opens a persistent recovery episode measured in server-opening time. The nation hub shows resealing, restored reinforcement, upkeep, support eligibility, rebuilding-protection waiver, optional rival designation, and bounded public or nation-only war history.
+- **Recovery Fund**: Added a server-controlled recovery fund with admin allocation, treasury donations, objective-gated and cooldown-limited aid, upkeep subsidies, dispatch subsidies, global/nation/episode caps, reserved-balance accounting, and conservative review handling for interrupted external transactions. Fund and money movement remain disabled by default until configured.
+- **Dispatch Contracts**: Nations can prepare offensive or defensive mercenary contracts through a custom GUI with bilateral approval, participant consent, optional subsidy review, pre-funded maximum cost, server-open-time billing, battlefield and activity checks, cancellation, expiry, and settlement. Dispatch remains disabled by default for staged rollout.
+- **Scoped Combat Affiliation**: Active mercenaries receive contract-scoped combat allegiance and a dispatch nameplate marker only for the bound Siege. CBC projectiles, Warnautics bombs and C4, generic delayed explosions, prisoners, and combat-log flows preserve launch/capture-time Siege and contract attribution; unrelated targets never inherit employer rights.
+- **Mercenary Siege Rules**: Attacking mercenaries can contest counteroffensives, while defending mercenaries can block an enemy presence but cannot complete a recapture without a real member of the former owner. Contracts never grant storage, treasury, building, diplomacy, or territorial ownership rights.
+- **Recovery and Dispatch Records**: Siege starts, core falls, counteroffensive victories, peace, recovery milestones, rivals, and contract lifecycle changes are retained in a privacy-filtered history and use the existing embed-first Discord notification path without publishing treasury or live-location details.
 
 - **Dedicated-Server Vehicle Assembly**: Moved the assembly snapshot out of the reserved mixin package and use public accessors from transformed Sable code, fixing an IllegalClassLoadError when assembling swivel-bearing vehicles.
 
@@ -130,7 +138,7 @@ This release establishes the Season 2 feature set as the v3.1 test-play baseline
 - **Resumable Heavy Work**: Closure searches, chunk generation, cleanup, map synchronization, and reinforcement updates are bounded or split across ticks to avoid large server-thread spikes.
 - **Analytics Shutdown Fix**: Removed a shutdown lock inversion between `stopAndFlush`, `Thread.join`, and the storage worker's final flush. Remaining analytics events are flushed in bounded batches and the database is closed by the worker without holding the lifecycle monitor.
 - **Expanded Regression Coverage**: Added policy and rendering tests for nations, roles, applications, territory, upkeep, closure searches, reinforcement, Siege, Warnautics damage, Discord text and delivery, maps, and analytics shutdown.
-- **Network Compatibility**: Updated the network protocol to `3.0-detector-admin1-oxygen1-s2ui31`. Servers and clients must update to the same JAR because nation, onboarding, reinforcement, prisoner, and territory-map packet schemas have changed.
+- **Network Compatibility**: Updated the network protocol to `3.0-detector-admin1-oxygen1-s2ui37-prisoners1-recovery1`. Servers and clients must update together because nation, onboarding, reinforcement, prisoner, territory-map, recovery, and dispatch packet schemas have changed.
 
 # v3.0
 

@@ -147,6 +147,15 @@ public final class ReinforcementEvents {
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         net.minecraft.world.entity.Entity source = event.getExplosion().getDirectSourceEntity();
         ServerPlayer attacker = SiegeService.attributablePlayer(source);
+        SiegeService.AttackAttribution attribution =
+                com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService
+                        .attribution(source, "delayed_explosion");
+        if (attribution == null && attacker != null) {
+            attribution = new SiegeService.AttackAttribution(
+                    com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
+                            .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "explosion");
+        }
+        SiegeService.AttackAttribution attack = attribution;
         boolean sourceIsCbc = CbcReinforcementCompat.isCbc(source);
         boolean cbc = sourceIsCbc || CbcReinforcementCompat.isCbcExplosion(event.getExplosion());
         CbcMunitionDamage.Kind munition = sourceIsCbc
@@ -170,7 +179,7 @@ public final class ReinforcementEvents {
         Map<Long, com.ruskserver.moveearth_addtional.s2.territory.UpkeepPenalty> penaltiesByChunk =
                 new HashMap<>();
         event.getAffectedBlocks().removeIf(pos -> {
-            if (SiegeService.peaceTruceBlocks(attacker, level, pos)) return true;
+            if (SiegeService.peaceTruceBlocks(attack, level, pos)) return true;
             var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
                     .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
             if (vehicleCore != null) {
@@ -185,14 +194,14 @@ public final class ReinforcementEvents {
                     .core(level.dimension().location(), pos).orElse(null);
             if (core != null) {
                 if (preHandled) return true;
-                SiegeService.recordAttack(attacker, level, pos, false);
+                SiegeService.recordAttack(attack, level, pos, false);
                 if (cbc) {
                     if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
                     int beforeHealth = core.health();
                     TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, pos,
                             SiegeDamageService.configuredCoreDamage(munition));
                     if (after != null && after.health() < beforeHealth) {
-                        SiegeService.recordAttack(attacker, level, pos, true);
+                        SiegeService.recordAttack(attack, level, pos, true);
                     }
                 }
                 return true;
@@ -201,7 +210,7 @@ public final class ReinforcementEvents {
             if (entry == null) return false;
             if (preHandled) return true;
             if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
-            SiegeService.recordAttack(attacker, level, pos, false);
+            SiegeService.recordAttack(attack, level, pos, false);
             if (!entry.enabled()) {
                 data.remove(pos);
                 reinforcementChanges.add(pos.immutable());
@@ -220,7 +229,7 @@ public final class ReinforcementEvents {
             SiegeDamageService.ReinforcementDamage result = SiegeDamageService.damageReinforcement(
                     level, pos, entry, munition, penalty);
             if (result.appliedDamage() > 0) {
-                SiegeService.recordAttack(attacker, level, pos, true);
+                SiegeService.recordAttack(attack, level, pos, true);
                 reinforcementChanges.add(pos.immutable());
             }
             return result.remains();

@@ -111,6 +111,15 @@ public final class SiegeDamageService {
      */
     public static boolean interceptCbcProtectedArea(ServerPlayer attacker, ServerLevel level, BlockPos center,
                                                      CbcMunitionDamage.Kind kind, int radius) {
+        SiegeService.AttackAttribution attribution = attacker == null ? null : new SiegeService.AttackAttribution(
+                com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
+                        .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "cbc");
+        return interceptCbcProtectedArea(attribution, level, center, kind, radius);
+    }
+
+    public static boolean interceptCbcProtectedArea(SiegeService.AttackAttribution attribution,
+                                                     ServerLevel level, BlockPos center,
+                                                     CbcMunitionDamage.Kind kind, int radius) {
         int safeRadius = Math.max(0, radius);
         int damage = configuredDamage(kind);
         boolean intercepted = false;
@@ -124,7 +133,7 @@ public final class SiegeDamageService {
         for (ReinforcementSavedData.LocatedEntry located : reinforcements.around(level, center, safeRadius)) {
             ReinforcementEntry entry = located.entry();
             if (!entry.enabled()) continue;
-            if (SiegeService.peaceTruceBlocks(attacker, level, located.pos())) {
+            if (SiegeService.peaceTruceBlocks(attribution, level, located.pos())) {
                 intercepted = true;
                 continue;
             }
@@ -138,12 +147,12 @@ public final class SiegeDamageService {
                     chunkKey, ignored -> penaltyAt(level, located.pos()));
             if (!penalty.reinforcementProtectionEnabled()) continue;
             intercepted = true;
-            SiegeService.recordAttack(attacker, level, located.pos(), false);
+            SiegeService.recordAttack(attribution, level, located.pos(), false);
             if (damage > 0) {
                 ReinforcementDamage result = damageReinforcement(
                         level, located.pos(), entry, kind, penalty, false);
                 if (result.appliedDamage() > 0) {
-                    SiegeService.recordAttack(attacker, level, located.pos(), true);
+                    SiegeService.recordAttack(attribution, level, located.pos(), true);
                     reinforcementChanged = true;
                     changedPositions.add(located.pos().immutable());
                 }
@@ -155,7 +164,7 @@ public final class SiegeDamageService {
                 .get(level.getServer()).at(level.dimension().location(), center).orElse(null);
         if (vehicleCore != null) {
             intercepted = true;
-            if (!SiegeService.peaceTruceBlocks(attacker, level, center)) {
+            if (!SiegeService.peaceTruceBlocks(attribution, level, center)) {
                 com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
                         level, center, configuredCoreDamage(kind));
             }
@@ -166,13 +175,13 @@ public final class SiegeDamageService {
             if (core.pos().distSqr(center) > radiusSquared
                     || core.state() != TerritorySavedData.CoreState.EXPOSED || core.health() <= 0) continue;
             intercepted = true;
-            if (SiegeService.peaceTruceBlocks(attacker, level, core.pos())) continue;
+            if (SiegeService.peaceTruceBlocks(attribution, level, core.pos())) continue;
             if (ReinforcementBlastOcclusion.blocked(blastOrigin, core.pos(), blastBarriers)) continue;
-            SiegeService.recordAttack(attacker, level, core.pos(), false);
+            SiegeService.recordAttack(attribution, level, core.pos(), false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, core.pos(), configuredCoreDamage(kind));
             if (after != null && after.health() < core.health()) {
-                SiegeService.recordAttack(attacker, level, core.pos(), true);
+                SiegeService.recordAttack(attribution, level, core.pos(), true);
             }
         }
         if (reinforcementChanged) ReinforcementService.syncChangedNearbyManagers(level, changedPositions);

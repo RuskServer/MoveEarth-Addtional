@@ -475,7 +475,16 @@ public final class NationNotificationSavedData extends SavedData {
         COUNTEROFFENSIVE_FAILED,
         SIEGE_ENDED,
         TERRITORY_LOST,
-        TERRITORY_OCCUPIED
+        TERRITORY_OCCUPIED,
+        RECOVERY_STARTED,
+        RECOVERY_OBJECTIVE,
+        RECOVERY_COMPLETED,
+        RECOVERY_EXPIRED,
+        DISPATCH_CREATED,
+        DISPATCH_ACTIVATED,
+        DISPATCH_COMPLETED,
+        DISPATCH_CANCELLED,
+        RIVAL_UPDATED
     }
 
     public record Delivery(UUID id, UUID nationId, EventType type, ResourceLocation dimension,

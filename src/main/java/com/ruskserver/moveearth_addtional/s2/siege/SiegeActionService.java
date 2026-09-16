@@ -122,6 +122,11 @@ public final class SiegeActionService {
                 "message.moveearth_addtional.peace.accepted", proposerName, receiverName,
                 proposal.goldCompensation(), returnedPrisoners,
                 formatTicks(S2TerritoryConfig.peaceTruceTicks()))), false);
+        com.ruskserver.moveearth_addtional.s2.recovery.WarHistorySavedData.get(player.server).append(
+                com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server),
+                com.ruskserver.moveearth_addtional.s2.recovery.WarHistorySavedData.Type.PEACE_ESTABLISHED,
+                com.ruskserver.moveearth_addtional.s2.recovery.WarHistorySavedData.Visibility.PUBLIC,
+                proposal.proposerNation(), proposal.receiverNation(), proposal.id(), java.util.List.of());
         return Result.PEACE_ACCEPTED;
     }
 

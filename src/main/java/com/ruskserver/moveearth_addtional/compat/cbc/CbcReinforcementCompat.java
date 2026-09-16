@@ -57,6 +57,14 @@ public final class CbcReinforcementCompat {
             String entityPath = entityPath(munition);
             CbcMunitionDamage.Kind kind = CbcMunitionDamage.classify(entityPath);
             ServerPlayer attacker = SiegeService.attributablePlayer(munition);
+            SiegeService.AttackAttribution attribution =
+                    com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService
+                            .attribution(munition, "cbc_projectile");
+            if (attribution == null && attacker != null) {
+                attribution = new SiegeService.AttackAttribution(
+                        com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
+                                .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "cbc_projectile");
+            }
             long gameTime = level.getGameTime();
             purgeOldImpacts(gameTime);
             boolean duplicate = munition != null && INTERCEPTED_MUNITIONS.getOrDefault(
@@ -71,7 +79,7 @@ public final class CbcReinforcementCompat {
             int radius = CbcMunitionDamage.usesBlastArea(entityPath)
                     ? S2TerritoryConfig.cbcProtectedBlastRadius() : 0;
             boolean intercepted = duplicate || SiegeDamageService.interceptCbcProtectedArea(
-                    attacker, level, pos, kind, radius);
+                    attribution, level, pos, kind, radius);
             if (intercepted && !duplicate) {
                 long expires = gameTime + DUPLICATE_IMPACT_TICKS;
                 if (munition != null) INTERCEPTED_MUNITIONS.put(munition.getUUID(), expires);

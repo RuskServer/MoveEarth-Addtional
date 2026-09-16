@@ -19,10 +19,18 @@ import java.util.UUID;
  */
 public final class SiegeParticipationSavedData extends SavedData {
     private final Map<UUID, Participation> participants = new LinkedHashMap<>();
+    private long revision;
 
     public void register(UUID playerId, UUID homeNation, UUID combatNation, UUID siegeId) {
+        register(playerId, homeNation, combatNation, siegeId, null, "");
+    }
+
+    public void register(UUID playerId, UUID homeNation, UUID combatNation, UUID siegeId,
+                         UUID contractId, String side) {
         if (playerId == null || homeNation == null || combatNation == null || siegeId == null) return;
-        participants.put(playerId, new Participation(playerId, homeNation, combatNation, siegeId));
+        participants.put(playerId, new Participation(playerId, homeNation, combatNation, siegeId,
+                contractId, side == null ? "" : side));
+        revision++;
         setDirty();
     }
 
@@ -30,6 +38,7 @@ public final class SiegeParticipationSavedData extends SavedData {
         Participation current = participants.get(playerId);
         if (current != null && (siegeId == null || current.siegeId.equals(siegeId))) {
             participants.remove(playerId);
+            revision++;
             setDirty();
         }
     }
@@ -37,6 +46,19 @@ public final class SiegeParticipationSavedData extends SavedData {
     public Optional<Participation> forPlayer(UUID playerId) {
         return Optional.ofNullable(participants.get(playerId));
     }
+
+    public java.util.List<Participation> forSiege(UUID siegeId) {
+        return participants.values().stream().filter(value -> value.siegeId().equals(siegeId)).toList();
+    }
+
+    public void removeSiege(UUID siegeId) {
+        if (siegeId != null && participants.values().removeIf(value -> value.siegeId().equals(siegeId))) {
+            revision++;
+            setDirty();
+        }
+    }
+
+    public long revision() { return revision; }
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
@@ -47,6 +69,8 @@ public final class SiegeParticipationSavedData extends SavedData {
             entry.putUUID("HomeNation", value.homeNation);
             entry.putUUID("CombatNation", value.combatNation);
             entry.putUUID("Siege", value.siegeId);
+            if (value.contractId != null) entry.putUUID("Contract", value.contractId);
+            entry.putString("Side", value.side);
             list.add(entry);
         }
         tag.put("Participants", list);
@@ -61,9 +85,12 @@ public final class SiegeParticipationSavedData extends SavedData {
             if (!entry.hasUUID("Player") || !entry.hasUUID("HomeNation")
                     || !entry.hasUUID("CombatNation") || !entry.hasUUID("Siege")) continue;
             Participation value = new Participation(entry.getUUID("Player"), entry.getUUID("HomeNation"),
-                    entry.getUUID("CombatNation"), entry.getUUID("Siege"));
+                    entry.getUUID("CombatNation"), entry.getUUID("Siege"),
+                    entry.hasUUID("Contract") ? entry.getUUID("Contract") : null,
+                    entry.getString("Side"));
             data.participants.put(value.playerId, value);
         }
+        data.revision = data.participants.size();
         return data;
     }
 
@@ -73,5 +100,6 @@ public final class SiegeParticipationSavedData extends SavedData {
                 "moveearth_siege_participation");
     }
 
-    public record Participation(UUID playerId, UUID homeNation, UUID combatNation, UUID siegeId) { }
+    public record Participation(UUID playerId, UUID homeNation, UUID combatNation, UUID siegeId,
+                                UUID contractId, String side) { }
 }

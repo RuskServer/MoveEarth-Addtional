@@ -62,7 +62,8 @@ public final class WarnauticsC4Placement {
                 || core != null && core.state() == TerritorySavedData.CoreState.EXPOSED;
         if (!protectedTarget) return false;
         NationSavedData nations = NationSavedData.get(level.getServer());
-        UUID actorNation = nations.nationIdFor(player.getUUID()).orElse(null);
+        UUID actorNation = com.ruskserver.moveearth_addtional.s2.dispatch.SiegeAttributionService
+                .nationForTarget(player, level, support);
         UUID defenderNation = TerritorySavedData.get(level.getServer())
                 .controllingNation(level.getServer(), level.dimension().location(), support).orElse(null);
         if (defenderNation == null || defenderNation.equals(actorNation)
@@ -87,8 +88,8 @@ public final class WarnauticsC4Placement {
                 .or(() -> TerritorySavedData.get(level.getServer())
                         .controllingNation(level.getServer(), level.dimension().location(), chargePos))
                 .orElse(null);
-        UUID actorNation = NationSavedData.get(level.getServer())
-                .nationIdFor(player.getUUID()).orElse(null);
+        UUID actorNation = com.ruskserver.moveearth_addtional.s2.dispatch.SiegeAttributionService
+                .nationForTarget(player, level, support);
         boolean foreignTerritory = defenderNation != null
                 && (actorNation == null || !defenderNation.equals(actorNation));
         if (foreignTerritory && !player.hasPermissions(2)
@@ -100,7 +101,7 @@ public final class WarnauticsC4Placement {
                             "C4は敵対国家の補強された外面にだけ設置できます。")));
             return;
         }
-        record(level, chargePos, support, player, actorNation);
+        record(level, chargePos, support, player);
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -109,20 +110,22 @@ public final class WarnauticsC4Placement {
                 || !(event.getEntity() instanceof ServerPlayer player)
                 || !(event.getLevel() instanceof ServerLevel level)
                 || !isC4(event.getPlacedBlock())) return;
-        UUID nationId = NationSavedData.get(level.getServer()).nationIdFor(player.getUUID()).orElse(null);
         BlockPos support = support(event.getPos(), event.getPlacedBlock());
-        record(level, event.getPos(), support, player, nationId);
+        record(level, event.getPos(), support, player);
     }
 
     private static void record(ServerLevel level, BlockPos chargePos, BlockPos support,
-                               ServerPlayer player, UUID nationId) {
+                               ServerPlayer player) {
+        var snapshot = com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService.capture(player);
         WarnauticsC4SavedData.get(level).put(
-                chargePos, support, player.getUUID(), nationId, level.getGameTime());
+                chargePos, support, player.getUUID(), snapshot.nationId(), snapshot.contractId(),
+                snapshot.siegeId(), level.getGameTime());
         if (TerritorySavedData.get(level.getServer())
                 .controllingNation(level.getServer(), level.dimension().location(), support)
-                .filter(defender -> nationId == null || !defender.equals(nationId)).isPresent()) {
+                .filter(defender -> snapshot.nationId() == null || !defender.equals(snapshot.nationId())).isPresent()) {
             SiegeService.recordAttack(new SiegeService.AttackAttribution(
-                    nationId, player.getUUID(), "warnautics_c4_placed"), level, support, false);
+                    snapshot.nationId(), player.getUUID(), "warnautics_c4_placed",
+                    snapshot.contractId(), snapshot.siegeId(), true), level, support, false);
         }
     }
 

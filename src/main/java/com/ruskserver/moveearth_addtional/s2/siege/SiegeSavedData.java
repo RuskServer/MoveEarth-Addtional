@@ -539,7 +539,7 @@ public final class SiegeSavedData extends SavedData {
 
     public enum AttemptStatus {
         INITIAL_STARTED, ROLLING_STARTED, ROLLING_EXTENDED, ACTIVE_UNCHANGED, RETRY_COOLDOWN,
-        SETTLEMENT_TRUCE, PEACE_TRUCE, IGNORED
+        SETTLEMENT_TRUCE, PEACE_TRUCE, RECOVERY_PROTECTED, IGNORED
     }
 
     public record AttemptResult(AttemptStatus status, SiegeRecord siege) { }

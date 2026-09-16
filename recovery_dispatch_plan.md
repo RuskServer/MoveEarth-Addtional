@@ -1,8 +1,15 @@
 # MoveEarth 敗戦後の復興・派遣契約計画
 
 更新日: 2026-09-16
-状態: 実装前の設計案。数値は試験用であり、既存configを自動変更しない。
+状態: 段階0〜Eを実装済み。金銭・派遣機能は安全な段階導入のため既定無効で、実サーバー試験と数値調整待ち。
 対象: v3.2以降。各段階を個別に検証して導入する。
+
+実装メモ（2026-09-17）:
+
+- 共通開放tick、復興目標、基金ジャーナル、派遣状態機械、専用GUI・通信、権限、戦史、Discord通知を追加した。
+- 直接攻撃、CBC、Warnautics、汎用遅延爆発は発射・設置時帰属を保持し、捕虜記録も契約／Siege IDを固定保存する。
+- TaCZのブロック破壊は共通Explosion/Projectile経路を使う場合に帰属対象となる。独自に地形を書き換える追加GunPackは個別互換試験が必要。
+- 自動テストとoffline assembleを公開条件とし、専用サーバーでの複数国家・外部Mod実機試験は引き続き実施する。
 
 ## 1. 目的と境界
 
@@ -27,7 +34,7 @@
 | 国家金庫、賠償取引、捕虜返還 | 契約精算の設計参考。再起動時の一貫性は別途検証する |
 | 国家ハブ、領土プレビュー、Discord Embed | 復興・契約・戦史の入口として利用 |
 
-主要接続先は `SiegeService.finalizeFall`、`SiegeSavedData.resolveFallen`、`TerritorySavedData`、`PeaceSavedData`、`PrisonerService`。陥落処理の再実行で支援が重複しないよう、元のSiege／陥落イベントIDを保存する。
+主要接続先は `SiegeService.finalizeFall`、`SiegeSavedData.resolveFallen`、`TerritorySavedData`、`PeaceSavedData`、`PrisonerService`。正式参戦の最小台帳である `SiegeParticipationSavedData` は既に存在し、捕虜判定も参照しているため、新しい台帳を並立させず契約IDと対象Siegeを持てる形へ拡張する。陥落処理の再実行で支援が重複しないよう、元のSiege IDを復興エピソードの一意キーとして保存する。
 
 ## 3. 敗戦後の体験
 
@@ -51,8 +58,8 @@
 | 防壁の復旧 | エピソード開始時に固定した補強目標を達成 | 追加20% |
 | 運営再開 | 首都稼働と実際の維持費決済が一周期成立 | 追加20% |
 
-- 防壁目標は陥落時の補強記録に基づき、上限付きで固定する。記録不足時は再封鎖維持へ振り替え、達成不能にしない。
-- 同一座標、同一補強の修復・再設置は重複加算しない。目標数のために破壊するほど得する設計にしない。
+- 防壁目標は陥落確定直前の首都コア範囲と補強数を上限付きで固定する。座標ごとの累積加算ではなく、固定範囲内に現存する有効な補強数を再計測して判定する。記録不足時は再封鎖維持へ振り替え、達成不能にしない。
+- 同一座標、同一補強の修復・再設置は重複加算しない。現在値で判定するため、目標数のために破壊して置き直しても得をしない。
 - 基本保護・通常HP回復は目標未達でも維持する。新たな敗戦専用の防御弱体化は追加しない。
 - 自動回復の加速は初期導入から外し、既存の回復速度と再建時間を測って判断する。
 - 寄付・支援者募集は任意とし、他国プレイヤーに倉庫や国家権限を自動付与しない。
@@ -96,7 +103,7 @@
 
 ### 7.1 契約内容
 
-国家間契約として、雇用国、派遣元国、参加するプレイヤーUUID、対象Siegeの陣営、人数上限、時間単価、上限時間、補助、途中終了条件を固定する。
+国家間契約として、雇用国、派遣元国、参加するプレイヤーUUID、対象コア・想定相手国・攻撃／防衛陣営、人数上限、時間単価、上限時間、補助、途中終了条件を固定する。Siege開始後は一致したSiege IDへ一度だけ紐付ける。
 
 - 両国の専用契約管理権限者と、参加プレイヤー本人の同意を要求する。
 - 戦闘支援が対象。NPC兵士や自動戦闘は追加しない。復旧作業の業務委託は後続検討とする。
@@ -142,7 +149,7 @@
 
 ## 9. 時間・UI・記録
 
-- ゲーム内の復興資格期限、反復受給待機、契約上限は18:00〜翌0:00の既存サーバー開放判定に従う。停止中・閉鎖中は消費しない。
+- ゲーム内の復興資格期限、反復受給待機、契約上限は18:00〜翌0:00の既存サーバー開放判定に従う。停止中・閉鎖中は消費しない。各機能が独自に時刻を減算せず、永続化した単一の「累積開放tick」を基準に期限を保存する。
 - 試験値: 支援資格42開放時間、反復受給窓84開放時間、契約上限1開放時間。実日数とは区別して表示する。
 - 再建保護の長さは既存configを継承する。宿敵表示は契約や支援期限を延長しない。
 - 国家ハブに復興・契約一覧を追加し、既存 `/pvp` のパネル、確認モーダル、アイコン、ホバー説明を採用する。
@@ -152,35 +159,158 @@
 - Discord通知は既存方針どおりEmbedを使用し、国家連携先への通知規則を継承する。
 - 地図では既存の領土表示から公開戦史を参照する導線を後続追加する。敵の活動地点を漏らす表示はしない。
 
-## 10. データ・取引・運用
+## 10. 実装アーキテクチャ
 
-追加候補: `NationRecoverySavedData`、`RecoveryFundSavedData`、`DispatchContractSavedData`、`SiegeParticipationService`、`WarHistoryService`。
+### 10.1 永続データ
 
-- 復興記録はエピソードID、元陥落ID、国家ID、攻撃主体、当時の所属、目標、期限、支援上限・使用・予約額を保存する。
-- 契約状態は `DRAFT → FUNDED → ACTIVE → SETTLING → COMPLETED/CANCELLED`。両国承認、本人承諾、資金予約、参戦成立を別々に記録する。
-- 全変更をサーバー側の権限・revision・重複防止キーで検証する。
-- 国庫と基金の引落し、預かり、支払い、返金には永続取引IDと復旧可能な処理記録を設ける。複数SavedDataを順に更新しただけで原子的とは扱わない。
-- 起動時に未完了取引を照合し、二重支払いを防ぐ。判定できない取引は資金を保留して管理画面へ出す。
-- 国庫APIの取引再開を安全に実装できない場合は金銭機能を公開しない。
-- 国家解散・役職変更・死亡・移籍・切断・再起動時の契約処理を共通サービスへ集約する。
-- 維持費支援は実請求だけに充当し、同じ請求へ二重補助しない。
-- 計測・公開戦史の書込みは既存の非同期保存基盤を利用し、主スレッドからDB完了を待たない。停止時のデッドロック回帰も検証する。
-
-## 11. 実装順と受入条件
-
-| 段階 | 内容 | 完了条件 |
+| データ | 役割 | 主な一意キー |
 |---|---|---|
-| A | 復興記録、案内GUI、公開範囲を絞った戦史 | 完全陥落後に残存領域・保護時間・復旧手順が表示され、再起動しても重複しない |
-| B | 再建目標、基金、用途限定支援、維持費充当 | 基金不足・二重要求・取消・再起動で通貨複製や残高消失が起きない |
-| C | 自己負担の派遣契約、正式参戦台帳 | 味方判定、攻城帰属、反攻、捕虜、停戦が全兵器経路で一致する |
-| D | 派遣費補助、任意の宿敵表示、講和連携 | 補助上限と返金元が守られ、談合保留・保護放棄・停戦が機能する |
-| E | 地図導線、バランス調整 | 敗戦後の行動と契約利用を観測し、支援額・期限を調整できる |
+| `OpenTimeSavedData` | サーバー開放中だけ増える共通時刻 | ワールドに1件 |
+| `NationRecoverySavedData` | 復興エピソード、目標、支援資格、宿敵 | episode ID、source Siege ID |
+| `RecoveryFundSavedData` | 基金残高、用途別予約、支出上限 | transaction ID |
+| `DispatchContractSavedData` | 契約本文、承認、参加者、課金時間、精算状態 | contract ID |
+| `WarHistorySavedData` | GUI用の限定件数の戦史索引 | event ID |
+| `SiegeParticipationSavedData` | 既存の正式参戦台帳を拡張 | player ID、Siege ID、contract ID |
 
-各段階でconfigによる個別有効化を可能にする。Aはv3.2の実装候補、B以降は各受入条件を満たしてから順次公開する。派遣の帰属が未完成の段階で補助契約だけ先行公開しない。
+復興エピソードには `schemaVersion`、`revision`、`episodeId`、`sourceSiegeId`、敗戦国家ID、攻撃主体種別とID、首都コアID・dimension・位置・陥落時半径、開始時の累積開放tick、期限、状態、目標スナップショット、支援の獲得・予約・使用額を保存する。`sourceSiegeId` には一意制約相当の索引を持たせ、`finalizeFall` が再実行されても二件目を作らない。
 
-必須検証: 同時契約、反復敗戦、同盟経由の資金還流、自己負担不足、基金不足、引落し直後の停止、二重返金、国主交代、解散、捕虜のまま契約終了、18時／0時境界、閉鎖中再起動、間接弾の遅延着弾、保護国からの代理攻撃。
+派遣契約には `revision`、雇用国、派遣元国、参加者UUID、対象コアID、想定相手国、攻撃／防衛陣営、単価、上限開放tick、自己負担・補助・エスクロー内訳、各国承認、各参加者同意、紐付いたSiege ID、参加者別課金tick、状態と終了理由を保存する。予約時点ではSiege IDが存在しないため、対象をコアIDと相手国で固定し、Siege開始時に一度だけSiege IDへbindする。
 
-## 12. 効果の評価
+### 10.2 サービス境界
+
+- `OpenTimeService`: `ServerSchedule.isOpenNow()` を一か所で評価し、1秒ごとに累積開放tickを進める。復興・契約・戦史の期限計算はこの値だけを使う。
+- `RecoveryService`: 首都陥落の重複防止付き生成、目標再評価、完了・期限切れ・手動終了、保護放棄判定を担当する。
+- `RecoveryObjectivePolicy`: Minecraft型を持たない純粋判定。再封鎖、補強数、維持費決済の入力から達成状態と支援割合を返す。
+- `RecoveryFundService`: 支援資格、基金上限、用途制限、予約・充当・返金を担当する。GUIや維持費処理から直接SavedDataを変更しない。
+- `DispatchContractService`: 作成、承認、本人同意、資金確保、Siegeへのbind、稼働tick計測、終了、取消、精算を一つの状態機械として扱う。
+- `SiegeAttributionService`: 通常所属と契約上の戦闘所属を解決する。対象Siege／コア外では必ず通常所属へ戻す。
+- `WarHistoryService`: 公開用と国家限定用のpayloadを分け、座標や審査理由などの機密値を公開側へ渡さない。
+- `RecoveryDispatchViewService`: 権限に応じた専用snapshotを構築する。クライアントはSavedDataや金額を推測しない。
+
+### 10.3 状態機械
+
+復興は `ACTIVE → COMPLETED / EXPIRED / CLOSED` とし、終端状態から戻さない。契約は次の遷移だけを許可する。
+
+`DRAFT → APPROVAL_PENDING → CONSENT_PENDING → FUNDING → FUNDED → ACTIVE → SETTLING → COMPLETED`
+
+途中終了は `DRAFT/APPROVAL_PENDING/CONSENT_PENDING → CANCELLED`、資金確保後は必ず `SETTLING` を経由して `COMPLETED/CANCELLED` へ進める。復旧不能な取引は `REVIEW_REQUIRED` とし、自動再試行で二重入出金を起こさない。状態変更ごとに期待revisionと操作IDを検証し、同じパケットの再送は同じ結果を返す。
+
+### 10.4 通貨と取引ジャーナル
+
+現在の `NationUpkeepService.transferGold` は単発の引落し・入金と補償処理であり、クラッシュをまたぐエスクロー機能ではない。派遣契約へそのまま流用しない。
+
+1. `EconomyGateway` を作り、残高確認、引落し、入金を契約コードから隔離する。
+2. `RecoveryFundSavedData` に `PREPARED / WITHDRAWN / RESERVED / PAID / REFUNDED / REVIEW_REQUIRED` の取引ジャーナルを保存する。
+3. Lightman's Currency側で取引IDまたは履歴照合が可能かを先に検証する。照合不能なら、クラッシュ窓を完全には消せないことを前提に、曖昧な処理を自動再実行せず `REVIEW_REQUIRED` へ隔離する。
+4. 基金補助は内部残高から契約エスクローへ予約し、取消時は基金へ直接戻す。プレイヤーや国家口座へ補助分を払い戻さない。
+5. 維持費補助は `upkeep charge ID = nationId + dueAt` を作り、一請求につき一回だけ充当する。`NationUpkeepService.charge` は先に補助額を問い合わせ、自己負担成功後に補助を確定する。
+
+この取引層の再起動試験が通るまで、基金投入・派遣資金確保・精算のconfigは既定無効にする。自己負担契約でもエスクローが必要なため、金銭なしの参戦台帳だけを先行公開しない。
+
+## 11. サーバー処理への接続
+
+### 11.1 首都陥落と復興
+
+1. `SiegeService.finalizeFall` で settlement が `CAPITAL_REBUILDING` と確定した直後に `RecoveryService.openEpisode` を呼ぶ。
+2. 呼出しには settlement前に取得した首都半径と補強集計を渡す。解決不能な陥落や前哨地陥落では作らない。
+3. `TerritoryClosureService` の閉鎖判定結果をイベント化し、首都再封鎖の連続10分を共通開放tickで計る。
+4. 補強目標は旧首都範囲内の「現在存在し、有効化済みで、HPが規定割合以上」の件数を低頻度・分割走査で再評価する。チャンクを一括強制ロードしない。
+5. `NationUpkeepSavedData.paymentSucceeded` 相当の成功イベントへ請求IDを付け、復興開始後の実決済一回で運営再開を達成する。額0の周期は達成扱いにしない。
+6. 作成・目標達成・完了・期限切れを国家通知と戦史へ一度だけ発行する。
+
+### 11.2 派遣とSiege
+
+1. 契約作成時に、雇用国・派遣元国が別国家であること、同盟／停戦／保護、対象コア所有、同時契約、参加者の実所属を検証する。
+2. 雇用国の `MANAGE_SIEGE`、派遣元の新規 `MANAGE_DISPATCH`、参加者本人の同意を要求する。資金操作はさらに `MANAGE_TREASURY` を要求し、国主は既存どおり全権限を持つ。
+3. `SiegeSavedData.registerAttempt` が新規Siegeを作った時点で、条件一致するFUNDED契約だけをbindする。複数候補がある場合は自動選択せず作成時刻順と明示優先度で一件へ確定する。
+4. bind時に `SiegeParticipationSavedData` へ home nation、combat nation、Siege ID、contract ID、sideを登録する。
+5. `SiegeAttributionService` を `SiegeService.recordAttack`、CBC、Warnautics、TaCZ、爆発・設置物の発射時スナップショットへ接続する。対象外の攻撃へcombat nationを適用しない。
+6. 発射体は発射／設置時の `AttributionSnapshot` を保持し、着弾時の所属変更や契約終了で帰属を変えない。帰属不能な攻撃は通常ダメージとして扱えてもSiege進行には加算しない。
+7. 反攻presenceを「旧所有国本人がいる」「防衛傭兵がいる」「攻撃側がいる」に分解する。進捗を増やせるのは旧所有国本人のみ、防衛傭兵は防衛に参加できるが単独で奪還完了できない。
+8. `PrisonerService` は既存のoperational nation参照を維持し、捕虜作成時にcontract IDとSiege IDを記録へコピーする。契約終了後もコピー済みの拘束関係は変更しない。
+9. Siege終了、講和、上限時間、全参加者離脱、国家解散を終了理由として `SETTLING` へ遷移し、参加者別の有効稼働tickだけを精算する。
+
+### 11.3 課金tick
+
+一秒ごとに全プレイヤーを総当たりせず、ACTIVE契約だけを走査する。参加者がオンライン、非AFK、非死亡、非ダウン、非捕虜、対象dimension、戦域半径内、かつサーバー開放中のときだけ加算する。条件結果は参加者ごとに保存せず、累積課金tickと最後に評価した開放tickだけを保存する。単価計算の端数規則は「最後にまとめて切捨て」など一つに固定し、GUIにも表示する。
+
+## 12. UI・通信・権限
+
+国家ハブの概要とSiegeタブに「復興・派遣」ボタンを追加し、詳細は専用の `RecoveryDispatchScreen` で表示する。巨大な契約一覧を既存 `S2NationSnapshot` へ常時混ぜず、以下の専用通信を使う。
+
+- `C2S_RequestRecoveryDispatchPacket`: ページ、フィルタ、対象IDを要求。
+- `S2C_RecoveryDispatchSnapshotPacket`: 閲覧者向けに秘匿済みの復興・契約・戦史・基金概要を返す。
+- `C2S_RecoveryDispatchActionPacket`: request ID、expected revision、action、対象ID、入力値を送る。
+- `S2C_RecoveryDispatchActionResultPacket`: 成否、最新revision、翻訳キーを返し、成功後だけ再取得する。
+
+画面は既存 `/pvp` と `MoveEarthUi` のパネル、枠、スクロール、確認モーダル、ホバー説明を使う。構成は上部の状態要約、中央の `復興 / 派遣 / 戦史` 切替、右側またはモーダルの詳細とする。通常操作にコマンドやバニラコンテナGUIを要求しない。チャットより後に重ねるHUDは追加せず、通知はMoveEarth形式の短いチャット＋開くボタン相当の導線に限定する。
+
+クライアントから送る金額、達成状態、所属、残高、権限は信用しない。すべてのactionでサーバー側から再取得し、国家ID、権限、契約状態、revision、上限を検証する。`ModMessages` のプロトコル文字列は新packet追加時に更新する。
+
+## 13. Configと既定値
+
+専用のSERVER config `moveearth_addtional-recovery-dispatch.toml` を追加し、少なくとも次を分離する。
+
+- `recovery.enabled`
+- `recovery.eligibility_open_hours = 42`
+- `recovery.repeat_cooldown_open_hours = 84`
+- `recovery.reseal_open_minutes = 10`
+- `recovery.wall_target_cap`
+- `fund.enabled = false`
+- `fund.loss_cap_per_episode`、`fund.nation_window_cap`、`fund.global_window_cap`
+- `dispatch.enabled = false`
+- `dispatch.money_enabled = false`
+- `dispatch.max_open_minutes = 60`
+- `dispatch.battlefield_radius`
+- `dispatch.require_subsidy_admin_approval = true`
+- `rival.enabled`
+- `history.retention_entries`
+
+既存config値を移動・改名しない。新機能を無効化しても既存Siege、講和、捕虜、維持費が同じ挙動を保つ。途中で無効化した場合、ACTIVE契約は新規課金を停止してSETTLINGへ送り、既存捕虜は通常ルールで残す。
+
+## 14. 実装順と受入条件
+
+| 段階 | 実装内容 | 完了条件・公開条件 |
+|---|---|---|
+| 0 | `OpenTimeSavedData`、純粋Policy、config、データschema/version | 18時・0時境界、閉鎖中、再起動で累積開放tickが正しい。全feature offで現行挙動と一致 |
+| A1 | 復興エピソード生成、重複防止、基本通知 | 首都完全陥落だけで一件生成され、前哨地・反攻成功・再実行では生成されない |
+| A2 | 再建目標、専用GUI、国家限定戦史 | 再封鎖・補強・維持費目標が再起動をまたぎ、達成不能時に代替目標へ移る |
+| B1 | `EconomyGateway`、基金台帳、取引ジャーナル | 基金投入、予約、取消、維持費充当をテスト口座で再現でき、曖昧取引は自動再実行されない |
+| B2 | 支援資格と上限、管理者審査GUI | 基金不足、上限超過、反復受給、関係者還流が拒否または保留される |
+| C1 | 派遣契約の作成・両国承認・本人同意・資金確保 | stale revision、権限喪失、二重同意、同時契約、期限切れが安全に処理される |
+| C2 | Siege bind、参戦台帳、名札、直接攻撃帰属 | 対象Siege内だけ味方／敵色と帰属が変わり、通常国家権限は増えない |
+| C3 | CBC・Warnautics・TaCZ・設置物帰属、反攻、捕虜、終了精算 | 遅延着弾、ログアウト、捕虜中終了、講和、再起動の全経路で帰属と精算が一致 |
+| D | 派遣費補助、保護放棄、宿敵、講和連携 | 補助返金元、停戦迂回拒否、宿敵解除、代理攻撃防止が成立 |
+| E | 公開戦史、地図導線、Discord Embed、分析指標 | 機密値を漏らさず、敗戦後継続と契約利用を観測・調整できる |
+
+A2までは資金を動かさずに先行検証できる。B1完了後に初めて金銭機能を有効化し、C3完了前は実サーバーで派遣を公開しない。各段階を別コミットに分け、データschema変更とUI変更を同一の巨大コミットへまとめない。
+
+## 15. 変更ファイルの目安
+
+- 新規server: `s2/recovery/*`、`s2/dispatch/*`、`config/RecoveryDispatchConfig.java`
+- 既存server修正: `SiegeService`、`SiegeSavedData`、`SiegeParticipationSavedData`、`PrisonerSavedData`、`PrisonerService`、`NationUpkeepService`、`TerritoryClosureService`、`NationNotificationSavedData`
+- 権限: `S2Permission` に `MANAGE_DISPATCH` を末尾追加。既存bitは変更しない
+- client: `RecoveryDispatchScreen`、`RecoveryDispatchClientState`、`S2HubScreen` の導線
+- network: 専用request/snapshot/action/result packet、`ModMessages` の登録とprotocol更新
+- resource: `ja_jp.json`、`en_us.json`。Discordは `MoveEarthDiscordEmbeds` に専用Embedを追加
+- test: `s2/recovery/*Test`、`s2/dispatch/*Test`、packet codec test、再起動fixture test、既存Siege／捕虜／維持費の回帰test
+
+## 16. 検証マトリクス
+
+必須の自動テストは、状態機械、権限、時刻境界、重複防止、金額計算をMinecraft非依存Policyへ寄せる。統合試験では次を通す。
+
+- 同一Siegeの二重finalize、反復敗戦、国家名変更、国主交代、国家解散。
+- 17:59、18:00、23:59、0:00、閉鎖中再起動、複数日停止後の復帰。
+- 基金不足、自己負担不足、引落し各段階での強制停止、二重パケット、二重返金、管理者保留。
+- 同時契約、敵対契約、所属移動、権限剥奪、本人同意撤回、Siegeが開始しなかった予約。
+- 直接攻撃、CBC、Warnautics、TaCZ、地雷・C4、発射後ログアウト、契約終了後着弾、帰属不能弾。
+- 防衛傭兵だけ、旧所有国だけ、攻防混在時の反攻進捗。
+- 傭兵のダウン、護送、収監、講和返還、最大3開放時間、契約終了後も続く拘束。
+- 公開戦史、国家限定戦史、Discord Embed、地図から座標・残高・審査理由が漏れないこと。
+
+各段階で対象JUnit、S2/Jade関連テスト、`gradlew assemble --offline` を実行する。専用サーバーでは機能off、復興のみ、基金込み、派遣込みの4構成で起動・保存・再起動を確認する。
+
+## 17. 効果の評価
 
 - 敗戦時点の所属メンバーを固定し、実時間7日・30日後のログイン有無、活動時間、他国への移籍を観測する。
 - 再封鎖までの開放時間、復興画面閲覧、支援利用、基金枯渇、契約成立率・未成立理由を測る。

@@ -34,12 +34,11 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
             "moveearth_addtional", "personal/storage_rules");
     private static final ResourceLocation CIVIC_READINESS = ResourceLocation.fromNamespaceAndPath(
             "moveearth_addtional", "personal/civic_readiness");
-    private static final int NODE_SIZE = 52;
-    private static final int NODE_STEP_X = 90;
-    private static final int NODE_STEP_Y = 70;
+    private static final int NODE_SIZE = 56;
+    private static final int NODE_STEP_X = 104;
+    private static final int NODE_STEP_Y = 82;
 
     private TechnologySnapshot snapshot;
-    private String filter = "all";
     private ResourceLocation selected;
     private double panX = 12.0D;
     private double panY = 12.0D;
@@ -62,7 +61,8 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
     @Override
     protected void init() {
         Rect panel = panel();
-        search = new EditBox(font, panel.x() + 144, panel.y() + 10, 210, 20,
+        Rect searchBounds = searchBounds(panel);
+        search = new EditBox(font, searchBounds.x(), searchBounds.y(), searchBounds.width(), searchBounds.height(),
                 Component.translatable("screen.moveearth_addtional.technology.search"));
         search.setHint(Component.translatable("screen.moveearth_addtional.technology.search"));
         search.setMaxLength(64);
@@ -86,7 +86,6 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         drawButton(graphics, font, refresh, Component.translatable("screen.moveearth_addtional.s2.refresh"),
                 ACCENT, refresh.contains(mouseX, mouseY), true);
 
-        drawFilters(graphics, panel, mouseX, mouseY);
         TechnologySnapshot.Node hovered = drawQuestCanvas(graphics, listArea(panel), mouseX, mouseY);
         drawDetails(graphics, detailArea(panel), mouseX, mouseY);
         drawTracked(graphics, panel);
@@ -94,33 +93,20 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         if (hovered != null) drawNodeTooltip(graphics, hovered, mouseX, mouseY);
     }
 
-    private void drawFilters(GuiGraphics graphics, Rect panel, int mouseX, int mouseY) {
-        Rect area = filterArea(panel);
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.technology.guide_chapters"),
-                area.x(), area.y(), MUTED, false);
-        int y = area.y() + 16;
-        for (String value : filters()) {
-            Rect button = new Rect(area.x(), y, area.width(), 21);
-            Component label = Component.translatable("screen.moveearth_addtional.technology.category." + value);
-            drawButton(graphics, font, button, label, value.equals(filter) ? SUCCESS : MUTED,
-                    button.contains(mouseX, mouseY), true);
-            y += 24;
-        }
-    }
-
     private TechnologySnapshot.Node drawQuestCanvas(GuiGraphics graphics, Rect graph, int mouseX, int mouseY) {
         List<TechnologySnapshot.Node> nodes = visible();
         TechnologySnapshot.Node hovered = null;
-        graphics.enableScissor(graph.x(), graph.y(), graph.right(), graph.bottom());
+        graphics.fill(graph.x(), graph.y(), graph.right(), graph.bottom(), 0xA00E1319);
+        drawBorder(graphics, graph, BORDER);
+        graphics.fill(graph.x() + 1, graph.y() + 1, graph.right() - 1, graph.y() + 3, 0x805DCBFF);
+        graphics.enableScissor(graph.x() + 2, graph.y() + 2, graph.right() - 2, graph.bottom() - 2);
         for (TechnologySnapshot.Node node : nodes) {
             Rect card = nodeBounds(graph, node);
             for (ResourceLocation prerequisiteId : node.prerequisites()) {
                 TechnologySnapshot.Node prerequisite = node(prerequisiteId);
                 if (prerequisite == null || !nodes.contains(prerequisite)) continue;
                 Rect from = nodeBounds(graph, prerequisite);
-                drawGuideLine(graphics, from.x() + from.width() / 2, from.y() + from.height() / 2,
-                        card.x() + card.width() / 2, card.y() + card.height() / 2,
-                        0xFF000000 | stateColor(node.state()));
+                drawGuideConnection(graphics, from, card, 0xFF000000 | stateColor(node.state()));
             }
         }
         for (TechnologySnapshot.Node node : nodes) {
@@ -135,18 +121,55 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         return hovered;
     }
 
-    private static void drawGuideLine(GuiGraphics graphics, int startX, int startY, int endX, int endY, int color) {
+    private static void drawGuideConnection(GuiGraphics graphics, Rect from, Rect to, int color) {
+        int fromCenterX = from.x() + from.width() / 2;
+        int fromCenterY = from.y() + from.height() / 2;
+        int toCenterX = to.x() + to.width() / 2;
+        int toCenterY = to.y() + to.height() / 2;
+        int deltaX = toCenterX - fromCenterX;
+        int deltaY = toCenterY - fromCenterY;
+        int gap = 5;
+        int startX;
+        int startY;
+        int endX;
+        int endY;
+        if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+            boolean right = deltaX >= 0;
+            startX = right ? from.right() + gap : from.x() - gap;
+            endX = right ? to.x() - gap : to.right() + gap;
+            startY = fromCenterY;
+            endY = toCenterY;
+        } else {
+            boolean down = deltaY >= 0;
+            startX = fromCenterX;
+            endX = toCenterX;
+            startY = down ? from.bottom() + gap : from.y() - gap;
+            endY = down ? to.y() - gap : to.bottom() + gap;
+        }
+        drawGuideLine(graphics, startX, startY, endX, endY, 0xD0080C10, 5);
+        drawGuideLine(graphics, startX, startY, endX, endY, color, 2);
+    }
+
+    private static void drawGuideLine(GuiGraphics graphics, int startX, int startY, int endX, int endY,
+                                      int color, int thickness) {
         int middleX = (startX + endX) / 2;
-        graphics.fill(Math.min(startX, middleX), startY - 1, Math.max(startX, middleX) + 1, startY + 1, color);
-        graphics.fill(middleX - 1, Math.min(startY, endY), middleX + 1, Math.max(startY, endY) + 1, color);
-        graphics.fill(Math.min(middleX, endX), endY - 1, Math.max(middleX, endX) + 1, endY + 1, color);
+        int half = thickness / 2;
+        graphics.fill(Math.min(startX, middleX), startY - half,
+                Math.max(startX, middleX) + 1, startY - half + thickness, color);
+        graphics.fill(middleX - half, Math.min(startY, endY),
+                middleX - half + thickness, Math.max(startY, endY) + 1, color);
+        graphics.fill(Math.min(middleX, endX), endY - half,
+                Math.max(middleX, endX) + 1, endY - half + thickness, color);
     }
 
     private void drawIconNode(GuiGraphics graphics, Rect card, TechnologySnapshot.Node node, int color,
                               boolean selectedNode, boolean hovered) {
-        int background = selectedNode ? 0xD02A3632 : hovered ? 0xD0262E2C : 0xB0181D1C;
-        graphics.fill(card.x(), card.y(), card.right(), card.bottom(), 0xFF000000 | color);
-        graphics.fill(card.x() + 2, card.y() + 2, card.right() - 2, card.bottom() - 2, background);
+        int background = selectedNode ? 0xF02A3632 : hovered ? 0xEC263038 : 0xE0181E25;
+        graphics.fill(card.x() + 3, card.y() + 4, card.right() + 3, card.bottom() + 4, 0x78000000);
+        graphics.fill(card.x(), card.y(), card.right(), card.bottom(), selectedNode ? color : BORDER);
+        graphics.fill(card.x() + 2, card.y() + 2, card.right() - 2, card.bottom() - 2,
+                selectedNode || hovered ? 0xFF000000 | color : BORDER_HOVER);
+        graphics.fill(card.x() + 4, card.y() + 4, card.right() - 4, card.bottom() - 4, background);
         ResourceLocation icon = BuiltInRegistries.ITEM.containsKey(node.icon())
                 ? node.icon() : ResourceLocation.withDefaultNamespace("knowledge_book");
         ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(icon));
@@ -194,9 +217,9 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
                 .filter(node -> node.scope() == TechnologyDefinition.Scope.PERSONAL)
                 .filter(TechnologySnapshot.Node::tracked).limit(3).toList();
         if (tracked.isEmpty()) return;
-        int available = panel.width() - 176;
+        int available = panel.width() - 48;
         int cardWidth = Math.max(110, Math.min(220, (available - 8 * (tracked.size() - 1)) / tracked.size()));
-        int x = panel.x() + 144;
+        int x = panel.x() + 16;
         int y = panel.bottom() - 30;
         for (TechnologySnapshot.Node node : tracked) {
             Rect card = new Rect(x, y, cardWidth, 20);
@@ -267,17 +290,6 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
             PacketDistributor.sendToServer(new C2S_RequestTechnologyPacket());
             return true;
         }
-        Rect filters = filterArea(panel);
-        int y = filters.y() + 16;
-        for (String value : filters()) {
-            if (new Rect(filters.x(), y, filters.width(), 21).contains(mouseX, mouseY)) {
-                filter = value;
-                resetView();
-                selected = visible().stream().findFirst().map(TechnologySnapshot.Node::id).orElse(null);
-                return true;
-            }
-            y += 24;
-        }
         Rect graph = listArea(panel);
         for (TechnologySnapshot.Node node : visible()) {
             if (nodeBounds(graph, node).contains(mouseX, mouseY)) {
@@ -346,18 +358,9 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
-    private List<String> filters() {
-        List<String> result = new ArrayList<>();
-        result.add("all");
-        snapshot.nodes().stream().filter(node -> node.scope() == TechnologyDefinition.Scope.PERSONAL)
-                .map(TechnologySnapshot.Node::category).distinct().sorted().forEach(result::add);
-        return result;
-    }
-
     private List<TechnologySnapshot.Node> visible() {
         String query = search == null ? "" : search.getValue().trim().toLowerCase(Locale.ROOT);
         return snapshot.nodes().stream().filter(node -> node.scope() == TechnologyDefinition.Scope.PERSONAL)
-                .filter(node -> "all".equals(filter) || node.category().equals(filter))
                 .filter(node -> query.isEmpty()
                         || Component.translatable(node.titleKey()).getString().toLowerCase(Locale.ROOT).contains(query)
                         || node.id().toString().toLowerCase(Locale.ROOT).contains(query))
@@ -394,13 +397,17 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
     }
 
     private static Rect refreshButton(Rect panel) { return new Rect(panel.right() - 120, panel.y() + 10, 82, 20); }
-    private static Rect filterArea(Rect panel) { return new Rect(panel.x() + 16, panel.y() + 58, 112, panel.height() - 108); }
+    private static Rect searchBounds(Rect panel) {
+        int x = panel.x() + Math.min(320, Math.max(190, panel.width() / 4));
+        int right = refreshButton(panel).x() - 10;
+        return new Rect(x, panel.y() + 10, Math.max(110, right - x), 20);
+    }
     private static Rect listArea(Rect panel) {
-        int details = Math.min(292, Math.max(230, panel.width() / 3));
-        return new Rect(panel.x() + 144, panel.y() + 58, panel.width() - 176 - details, panel.height() - 108);
+        int details = Math.min(320, Math.max(250, panel.width() / 3));
+        return new Rect(panel.x() + 16, panel.y() + 58, panel.width() - 48 - details, panel.height() - 108);
     }
     private static Rect detailArea(Rect panel) {
-        int details = Math.min(292, Math.max(230, panel.width() / 3));
+        int details = Math.min(320, Math.max(250, panel.width() / 3));
         return new Rect(panel.right() - details - 16, panel.y() + 58, details, panel.height() - 108);
     }
 

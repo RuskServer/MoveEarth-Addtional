@@ -21,9 +21,9 @@ public final class WarnauticsBombSavedData extends SavedData {
     private final Map<Long, Placement> placements = new HashMap<>();
 
     public void put(BlockPos pos, String weaponPath, UUID placerId, UUID nationId,
-                    UUID subLevelId, long placedTick) {
+                    UUID contractId, UUID siegeId, UUID subLevelId, long placedTick) {
         placements.put(pos.asLong(), new Placement(
-                pos.immutable(), weaponPath, placerId, nationId, subLevelId, placedTick));
+                pos.immutable(), weaponPath, placerId, nationId, contractId, siegeId, subLevelId, placedTick));
         setDirty();
     }
 
@@ -38,8 +38,8 @@ public final class WarnauticsBombSavedData extends SavedData {
         if (placement == null) return;
         source.setDirty();
         get(destinationLevel).put(destinationPos, placement.weaponPath(), placement.placerId(),
-                placement.nationId(), WarnauticsSableBombCompat.subLevelId(destinationLevel, destinationPos),
-                placement.placedTick());
+                placement.nationId(), placement.contractId(), placement.siegeId(),
+                WarnauticsSableBombCompat.subLevelId(destinationLevel, destinationPos), placement.placedTick());
     }
 
     public Placement claimNearest(ServerLevel level, Vec3 worldPosition, String weaponPath, long now) {
@@ -67,6 +67,8 @@ public final class WarnauticsBombSavedData extends SavedData {
             entry.putString("Weapon", placement.weaponPath());
             entry.putUUID("Placer", placement.placerId());
             if (placement.nationId() != null) entry.putUUID("Nation", placement.nationId());
+            if (placement.contractId() != null) entry.putUUID("Contract", placement.contractId());
+            if (placement.siegeId() != null) entry.putUUID("Siege", placement.siegeId());
             if (placement.subLevelId() != null) entry.putUUID("SubLevel", placement.subLevelId());
             entry.putLong("PlacedTick", placement.placedTick());
             list.add(entry);
@@ -86,6 +88,8 @@ public final class WarnauticsBombSavedData extends SavedData {
             data.placements.put(pos.asLong(), new Placement(
                     pos, weapon, entry.getUUID("Placer"),
                     entry.hasUUID("Nation") ? entry.getUUID("Nation") : null,
+                    entry.hasUUID("Contract") ? entry.getUUID("Contract") : null,
+                    entry.hasUUID("Siege") ? entry.getUUID("Siege") : null,
                     entry.hasUUID("SubLevel") ? entry.getUUID("SubLevel") : null,
                     entry.getLong("PlacedTick")));
         }
@@ -104,5 +108,5 @@ public final class WarnauticsBombSavedData extends SavedData {
     }
 
     public record Placement(BlockPos pos, String weaponPath, UUID placerId, UUID nationId,
-                            UUID subLevelId, long placedTick) { }
+                            UUID contractId, UUID siegeId, UUID subLevelId, long placedTick) { }
 }

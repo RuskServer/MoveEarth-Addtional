@@ -16,9 +16,10 @@ import java.util.UUID;
 public final class WarnauticsC4SavedData extends SavedData {
     private final Map<Long, Charge> charges = new HashMap<>();
 
-    public void put(BlockPos chargePos, BlockPos supportPos, UUID placerId, UUID nationId, long placedTick) {
+    public void put(BlockPos chargePos, BlockPos supportPos, UUID placerId, UUID nationId,
+                    UUID contractId, UUID siegeId, long placedTick) {
         charges.put(chargePos.asLong(), new Charge(
-                chargePos.immutable(), supportPos.immutable(), placerId, nationId, placedTick));
+                chargePos.immutable(), supportPos.immutable(), placerId, nationId, contractId, siegeId, placedTick));
         setDirty();
     }
 
@@ -41,6 +42,8 @@ public final class WarnauticsC4SavedData extends SavedData {
             entry.putLong("Support", charge.support().asLong());
             entry.putUUID("Placer", charge.placerId());
             if (charge.nationId() != null) entry.putUUID("Nation", charge.nationId());
+            if (charge.contractId() != null) entry.putUUID("Contract", charge.contractId());
+            if (charge.siegeId() != null) entry.putUUID("Siege", charge.siegeId());
             entry.putLong("PlacedTick", charge.placedTick());
             list.add(entry);
         }
@@ -57,7 +60,9 @@ public final class WarnauticsC4SavedData extends SavedData {
             BlockPos pos = BlockPos.of(entry.getLong("Pos"));
             data.charges.put(pos.asLong(), new Charge(
                     pos, BlockPos.of(entry.getLong("Support")), entry.getUUID("Placer"),
-                    entry.hasUUID("Nation") ? entry.getUUID("Nation") : null, entry.getLong("PlacedTick")));
+                    entry.hasUUID("Nation") ? entry.getUUID("Nation") : null,
+                    entry.hasUUID("Contract") ? entry.getUUID("Contract") : null,
+                    entry.hasUUID("Siege") ? entry.getUUID("Siege") : null, entry.getLong("PlacedTick")));
         }
         return data;
     }
@@ -68,5 +73,6 @@ public final class WarnauticsC4SavedData extends SavedData {
                 "moveearth_warnautics_c4");
     }
 
-    public record Charge(BlockPos pos, BlockPos support, UUID placerId, UUID nationId, long placedTick) { }
+    public record Charge(BlockPos pos, BlockPos support, UUID placerId, UUID nationId,
+                         UUID contractId, UUID siegeId, long placedTick) { }
 }

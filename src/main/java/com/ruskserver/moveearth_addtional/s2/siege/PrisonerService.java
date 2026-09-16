@@ -126,6 +126,9 @@ public final class PrisonerService {
             return;
         }
         UUID targetHome = targetNation == null ? targetId : targetNation;
+        SiegeParticipationSavedData.Participation battle = SiegeParticipationSavedData.get(actor.server)
+                .forPlayer(targetId).orElseGet(() -> SiegeParticipationSavedData.get(actor.server)
+                        .forPlayer(actor.getUUID()).orElse(null));
         int downedTicks = event.getTarget() instanceof ServerPlayer player
                 ? CompatEventHandler.playerDownedTicks(player) : event.getTarget().tickCount;
         if (downedTicks >= 0 && downedTicks < S2TerritoryConfig.captureProtectionTicks()) {
@@ -134,7 +137,8 @@ public final class PrisonerService {
             return;
         }
         ATTEMPTS.put(actor.getUUID(), new RestraintAttempt(targetId, actor.server.getTickCount(),
-                actorNation, targetHome, targetConflictNation == null ? targetHome : targetConflictNation));
+                actorNation, targetHome, targetConflictNation == null ? targetHome : targetConflictNation,
+                battle == null ? null : battle.siegeId(), battle == null ? null : battle.contractId()));
         actor.sendSystemMessage(MoveEarthMessage.info(Component.translatable(
                 "message.moveearth_addtional.prisoner.restraining")));
     }
@@ -192,7 +196,8 @@ public final class PrisonerService {
         PrisonerSavedData data = PrisonerSavedData.get(captor.server);
         if (data.beginCustody(attempt.targetId, attempt.captiveNation, attempt.captiveConflictNation,
                 attempt.captorNation,
-                captor.getUUID(), target.level().dimension().location(), target.blockPosition())
+                captor.getUUID(), target.level().dimension().location(), target.blockPosition(),
+                attempt.siegeId, attempt.contractId)
                 != PrisonerSavedData.CustodyResult.RESTRAINED) {
             ATTEMPTS.remove(captor.getUUID());
             sendFailure(captor, "message.moveearth_addtional.prisoner.state_changed");
@@ -859,6 +864,7 @@ public final class PrisonerService {
     }
 
     private record RestraintAttempt(UUID targetId, int startedTick, UUID captorNation,
-                                    UUID captiveNation, UUID captiveConflictNation) { }
+                                    UUID captiveNation, UUID captiveConflictNation,
+                                    UUID siegeId, UUID contractId) { }
     private record Destination(ServerLevel level, BlockPos pos) { }
 }

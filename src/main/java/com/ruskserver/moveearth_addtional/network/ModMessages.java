@@ -10,7 +10,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui36-prisoners1");
+        final PayloadRegistrar registrar = event.registrar("3.0-detector-admin1-oxygen1-s2ui37-prisoners1-recovery1");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -56,6 +56,10 @@ public class ModMessages {
         registrar.playToServer(C2S_RequestPrisonerScreenPacket.TYPE, C2S_RequestPrisonerScreenPacket.STREAM_CODEC, C2S_RequestPrisonerScreenPacket::handle);
         registrar.playToServer(C2S_PrisonerActionPacket.TYPE, C2S_PrisonerActionPacket.STREAM_CODEC, C2S_PrisonerActionPacket::handle);
         registrar.playToClient(S2C_PrisonerSnapshotPacket.TYPE, S2C_PrisonerSnapshotPacket.STREAM_CODEC, S2C_PrisonerSnapshotPacket::handle);
+        registrar.playToServer(C2S_RequestRecoveryDispatchPacket.TYPE, C2S_RequestRecoveryDispatchPacket.STREAM_CODEC, C2S_RequestRecoveryDispatchPacket::handle);
+        registrar.playToServer(C2S_RecoveryDispatchActionPacket.TYPE, C2S_RecoveryDispatchActionPacket.STREAM_CODEC, C2S_RecoveryDispatchActionPacket::handle);
+        registrar.playToClient(S2C_RecoveryDispatchSnapshotPacket.TYPE, S2C_RecoveryDispatchSnapshotPacket.STREAM_CODEC, S2C_RecoveryDispatchSnapshotPacket::handle);
+        registrar.playToClient(S2C_RecoveryDispatchActionResultPacket.TYPE, S2C_RecoveryDispatchActionResultPacket.STREAM_CODEC, S2C_RecoveryDispatchActionResultPacket::handle);
 
         registrar.playToClient(S2C_AnnouncementPacket.TYPE, S2C_AnnouncementPacket.STREAM_CODEC, S2C_AnnouncementPacket::handle);
         registrar.playToClient(S2C_OpenDetectorScreenPacket.TYPE, S2C_OpenDetectorScreenPacket.STREAM_CODEC, S2C_OpenDetectorScreenPacket::handle);

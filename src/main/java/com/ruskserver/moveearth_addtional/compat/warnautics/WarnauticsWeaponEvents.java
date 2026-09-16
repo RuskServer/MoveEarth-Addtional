@@ -1,7 +1,6 @@
 package com.ruskserver.moveearth_addtional.compat.warnautics;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -75,9 +74,10 @@ public final class WarnauticsWeaponEvents {
                 || !(event.getEntity() instanceof ServerPlayer player)) return;
         String path = blockPath(event.getPlacedBlock());
         if (!AERIAL_BOMBS.contains(path)) return;
-        UUID nationId = NationSavedData.get(level.getServer()).nationIdFor(player.getUUID()).orElse(null);
+        var attribution = com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService.capture(player);
         WarnauticsBombSavedData.get(level).put(
-                event.getPos(), path, player.getUUID(), nationId,
+                event.getPos(), path, player.getUUID(), attribution.nationId(),
+                attribution.contractId(), attribution.siegeId(),
                 WarnauticsSableBombCompat.subLevelId(level, event.getPos()), level.getGameTime());
     }
 
@@ -127,6 +127,9 @@ public final class WarnauticsWeaponEvents {
         if (placement == null) return;
         if (placement.nationId() != null) persistent.putUUID(ATTRIBUTION_NATION, placement.nationId());
         persistent.putUUID(ATTRIBUTION_ACTOR, placement.placerId());
+        com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService.write(entity,
+                new com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService.Snapshot(
+                        placement.placerId(), placement.nationId(), placement.contractId(), placement.siegeId()));
     }
 
     static boolean isBombBlock(BlockState state, String expectedPath) {

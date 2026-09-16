@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.config.TipConfig;
+import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
 import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcementCompat;
 import net.neoforged.bus.api.IEventBus;
@@ -55,6 +56,11 @@ public class Moveearth_addtional {
                 ModConfig.Type.SERVER,
                 TipConfig.SPEC,
                 "moveearth_addtional-tips.toml"
+        );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                RecoveryDispatchConfig.SPEC,
+                "moveearth_addtional-recovery-dispatch.toml"
         );
 
         CbcReinforcementCompat.registerIfPresent();

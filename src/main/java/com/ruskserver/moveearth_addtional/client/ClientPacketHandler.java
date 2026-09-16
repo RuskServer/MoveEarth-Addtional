@@ -50,6 +50,16 @@ public class ClientPacketHandler {
         else if (packet.openScreen()) minecraft.setScreen(new PrisonerScreen(packet));
     }
 
+    public static void handleRecoveryDispatch(S2C_RecoveryDispatchSnapshotPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof RecoveryDispatchScreen screen) screen.update(packet);
+        else if (packet.openScreen()) minecraft.setScreen(new RecoveryDispatchScreen(packet));
+    }
+
+    public static void handleRecoveryDispatchResult(S2C_RecoveryDispatchActionResultPacket packet) {
+        if (Minecraft.getInstance().screen instanceof RecoveryDispatchScreen screen) screen.handleResult(packet);
+    }
+
     public static void handleReinforcementSnapshot(S2C_ReinforcementSnapshotPacket packet) {
         ReinforcementClientState.update(packet);
     }
