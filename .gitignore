@@ -4,6 +4,9 @@ build/
 out/
 bin/
 
+# Repository-local JDK and Gradle user home
+/.local-tools/
+
 # Local game/runtime data
 run/
 logs/
@@ -39,3 +42,15 @@ lib/
 # Operating-system metadata
 .DS_Store
 Thumbs.db
+
+# Generated from the development environment's Minecraft resources by
+# tools/terrain/make_noise_settings.py. Holds vanilla surface rules verbatim, so
+# it is regenerated rather than committed.
+/src/main/resources/data/minecraft/worldgen/noise_settings/overworld.json
+
+# Python bytecode from the terrain tooling
+__pycache__/
+*.pyc
+
+# World saves captured from the live server for analysis
+/archive-*.tar.gz
