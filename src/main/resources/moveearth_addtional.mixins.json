@@ -25,7 +25,8 @@
     "client.ReceivingLevelScreenMixin",
     "client.LoadingButtonMixin",
     "client.GenericMessageScreenMixin",
-    "client.ProgressScreenMixin"
+    "client.ProgressScreenMixin",
+    "client.MinecraftAccessibilityOnboardingMixin"
   ],
   "injectors": {
     "defaultRequire": 1

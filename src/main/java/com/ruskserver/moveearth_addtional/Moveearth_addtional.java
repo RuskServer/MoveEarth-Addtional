@@ -8,6 +8,7 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.config.TipConfig;
 import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
+import com.ruskserver.moveearth_addtional.config.StartupClientConfig;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
 import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcementCompat;
 import net.neoforged.bus.api.IEventBus;
@@ -30,6 +31,13 @@ public class Moveearth_addtional {
                     ModConfig.Type.STARTUP,
                     DiscordBotConfig.SPEC,
                     "moveearth_addtional-discord.toml"
+            );
+        }
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            modContainer.registerConfig(
+                    ModConfig.Type.CLIENT,
+                    StartupClientConfig.SPEC,
+                    "moveearth_addtional-startup.toml"
             );
         }
         modContainer.registerConfig(

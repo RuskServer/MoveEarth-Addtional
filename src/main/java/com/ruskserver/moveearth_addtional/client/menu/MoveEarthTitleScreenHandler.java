@@ -9,13 +9,20 @@ import net.neoforged.neoforge.client.event.ScreenEvent;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, value = Dist.CLIENT)
 public final class MoveEarthTitleScreenHandler {
+    private static boolean startupPresented;
+
     private MoveEarthTitleScreenHandler() {
     }
 
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         if (event.getNewScreen() instanceof TitleScreen) {
-            event.setNewScreen(new MoveEarthTitleScreen());
+            if (!startupPresented) {
+                startupPresented = true;
+                event.setNewScreen(new MoveEarthStartupScreen());
+            } else {
+                event.setNewScreen(new MoveEarthTitleScreen());
+            }
         }
     }
 }

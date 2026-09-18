@@ -2,6 +2,8 @@ package com.ruskserver.moveearth_addtional.client.menu;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
+import com.ruskserver.moveearth_addtional.config.StartupClientConfig;
+import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.ConnectScreen;
@@ -49,6 +51,8 @@ public final class MoveEarthTitleScreen extends Screen {
     private int changelogScroll;
     private int selectedButton;
     private boolean draggingScrollbar;
+    private final long entranceStartedAt = Util.getMillis();
+    private final float[] buttonHighlights = new float[MenuAction.values().length];
 
     public MoveEarthTitleScreen() {
         super(Component.translatable("screen.moveearth_addtional.main_menu.title"));
@@ -63,19 +67,36 @@ public final class MoveEarthTitleScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        animatedBackground.render(graphics, width, height);
+        boolean reducedMotion = StartupClientConfig.reducedMotion();
+        animatedBackground.render(graphics, width, height, !reducedMotion);
         graphics.fillGradient(0, 0, width, height, 0x35000000, 0xA0000000);
 
         MoveEarthTitleMenuLayout.Layout layout = layout();
-        drawMenuPanel(graphics, layout.left());
-        renderLogo(graphics, layout.logo());
-        renderMenuButtons(graphics, layout, mouseX, mouseY);
-        renderChangelog(graphics, layout, mouseX, mouseY);
+        float progress = reducedMotion ? 1.0F : StartupFlowPolicy.easedProgress(
+                Util.getMillis() - entranceStartedAt, StartupFlowPolicy.MENU_ENTRANCE_MILLIS);
+        int logoOffset = Math.round((1.0F - progress) * -10.0F);
+        int leftOffset = Math.round((1.0F - progress) * -28.0F);
+        int rightOffset = Math.round((1.0F - progress) * 28.0F);
 
-        boolean discordHovered = layout.discord().contains(mouseX, mouseY);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, logoOffset, 0.0F);
+        renderLogo(graphics, layout.logo());
+        graphics.pose().popPose();
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(leftOffset, 0.0F, 0.0F);
+        drawMenuPanel(graphics, layout.left());
+        renderMenuButtons(graphics, layout, mouseX - leftOffset, mouseY);
+        graphics.pose().popPose();
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(rightOffset, 0.0F, 0.0F);
+        renderChangelog(graphics, layout, mouseX - rightOffset, mouseY);
+
         MoveEarthUi.drawButton(graphics, font, layout.discord(),
                 Component.translatable("screen.moveearth_addtional.main_menu.discord"),
-                DISCORD, discordHovered, true);
+                DISCORD, layout.discord().contains(mouseX - rightOffset, mouseY), true);
+        graphics.pose().popPose();
     }
 
     private void renderLogo(GuiGraphics graphics, MoveEarthUi.Rect bounds) {
@@ -99,6 +120,13 @@ public final class MoveEarthTitleScreen extends Screen {
             MoveEarthUi.drawButton(graphics, font, bounds,
                     Component.translatable(actions.get(index).translationKey), accent,
                     hovered || selectedButton == index, true);
+            float target = hovered || selectedButton == index ? 1.0F : 0.0F;
+            buttonHighlights[index] += (target - buttonHighlights[index]) * 0.22F;
+            int lineWidth = Math.round((bounds.width() - 6) * buttonHighlights[index]);
+            if (lineWidth > 0) {
+                graphics.fill(bounds.x() + 3, bounds.bottom() - 2,
+                        bounds.x() + 3 + lineWidth, bounds.bottom() - 1, accent);
+            }
         }
     }
 
@@ -137,6 +165,7 @@ public final class MoveEarthTitleScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!entranceReady()) return true;
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return super.mouseClicked(mouseX, mouseY, button);
         MoveEarthTitleMenuLayout.Layout layout = layout();
         for (int index = 0; index < layout.buttons().size(); index++) {
@@ -190,6 +219,7 @@ public final class MoveEarthTitleScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!entranceReady()) return true;
         if (keyCode == GLFW.GLFW_KEY_UP) {
             selectedButton = Math.floorMod(selectedButton - 1, MenuAction.values().length);
             playClick();
@@ -226,7 +256,7 @@ public final class MoveEarthTitleScreen extends Screen {
             case OPTIONS -> minecraft.setScreen(new OptionsScreen(this, minecraft.options));
             case LANGUAGE -> minecraft.setScreen(new LanguageSelectScreen(
                     this, minecraft.options, minecraft.getLanguageManager()));
-            case ACCESSIBILITY -> minecraft.setScreen(new AccessibilityOptionsScreen(this, minecraft.options));
+            case ACCESSIBILITY -> minecraft.setScreen(MoveEarthStartupScreen.settings(this));
             case QUIT -> minecraft.stop();
         }
     }
@@ -312,6 +342,11 @@ public final class MoveEarthTitleScreen extends Screen {
 
     private MoveEarthTitleMenuLayout.Layout layout() {
         return MoveEarthTitleMenuLayout.calculate(width, height);
+    }
+
+    private boolean entranceReady() {
+        return StartupClientConfig.reducedMotion()
+                || Util.getMillis() - entranceStartedAt >= StartupFlowPolicy.MENU_ENTRANCE_MILLIS;
     }
 
     @Override

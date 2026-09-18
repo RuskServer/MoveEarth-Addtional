@@ -22,18 +22,57 @@ public final class StaticMeteorBackground {
     private static final float SOURCE_ASPECT = 16.0F / 9.0F;
     private static final double DIAGONAL = Math.sqrt(0.5D);
 
+    /**
+     * How much of the picture is held back on each side for the pan to use.
+     *
+     * <p>It is spent whether the cursor moves or not, so the framing is this
+     * much tighter than before: anything that has to stay in shot needs to be
+     * clear of the outer three percent.
+     */
+    private static final float PARALLAX_MARGIN = 0.03F;
+    /**
+     * How far the meteors move, as a fraction of the screen.
+     *
+     * <p>Larger than the background's margin on purpose. Two layers that shift
+     * together are one layer; it is the difference between them that reads as
+     * depth, and the meteors are the nearer of the two.
+     */
+    private static final float METEOR_PARALLAX = 0.05F;
+
     private final List<MeteorShowerModel.Meteor> meteors =
             MeteorShowerModel.create(MeteorShowerModel.DEFAULT_SEED);
+    private final ParallaxTracker parallax = new ParallaxTracker();
 
     public StaticMeteorBackground() {
     }
 
     public void render(GuiGraphics graphics, int width, int height) {
-        drawBackground(graphics, width, height);
-        drawMeteors(graphics, width, height, Util.getMillis() / 1_000.0D);
+        render(graphics, width, height, true);
     }
 
-    private static void drawBackground(GuiGraphics graphics, int width, int height) {
+    /** Renders looking straight ahead, easing back if it was panned. */
+    public void render(GuiGraphics graphics, int width, int height, boolean animate) {
+        parallax.recentre();
+        draw(graphics, width, height, animate);
+    }
+
+    /** Renders panned towards the cursor. */
+    public void render(GuiGraphics graphics, int width, int height, boolean animate,
+                       double mouseX, double mouseY) {
+        parallax.aim(mouseX, mouseY, width, height);
+        draw(graphics, width, height, animate);
+    }
+
+    private void draw(GuiGraphics graphics, int width, int height, boolean animate) {
+        long now = Util.getMillis();
+        parallax.advance(now);
+        drawBackground(graphics, width, height, parallax.x(), parallax.y());
+        if (animate) drawMeteors(graphics, width, height, now / 1_000.0D,
+                parallax.x(), parallax.y());
+    }
+
+    private static void drawBackground(GuiGraphics graphics, int width, int height,
+                                       float panX, float panY) {
         float screenAspect = width / (float) Math.max(1, height);
         float u0 = 0.0F;
         float u1 = 1.0F;
@@ -48,6 +87,16 @@ public final class StaticMeteorBackground {
             v0 = (1.0F - visible) * 0.5F;
             v1 = 1.0F - v0;
         }
+
+        // Reserve the margin inside whatever the aspect fit left, then spend it.
+        // Doing it in this order means the pan can never run off the picture,
+        // whatever the window shape, so no border is ever exposed.
+        float[] horizontal = ParallaxTracker.pan(u0, u1, PARALLAX_MARGIN, panX);
+        float[] vertical = ParallaxTracker.pan(v0, v1, PARALLAX_MARGIN, panY);
+        u0 = horizontal[0];
+        u1 = horizontal[1];
+        v0 = vertical[0];
+        v1 = vertical[1];
 
         graphics.flush();
         try {
@@ -70,9 +119,15 @@ public final class StaticMeteorBackground {
         }
     }
 
-    private void drawMeteors(GuiGraphics graphics, int width, int height, double elapsedSeconds) {
+    private void drawMeteors(GuiGraphics graphics, int width, int height, double elapsedSeconds,
+                             float panX, float panY) {
         float scale = Math.max(1.0F, Math.min(width, height));
         graphics.flush();
+        // Shifted the way the picture went, only further, so the sky has depth
+        // rather than sliding as one board.
+        graphics.pose().pushPose();
+        graphics.pose().translate(-panX * width * METEOR_PARALLAX,
+                -panY * height * METEOR_PARALLAX, 0.0F);
         try {
             RenderSystem.disableDepthTest();
             RenderSystem.depthMask(false);
@@ -112,6 +167,7 @@ public final class StaticMeteorBackground {
             RenderSystem.depthMask(true);
             RenderSystem.enableDepthTest();
             RenderSystem.disableBlend();
+            graphics.pose().popPose();
         }
     }
 
