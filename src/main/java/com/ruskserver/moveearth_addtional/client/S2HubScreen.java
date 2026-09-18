@@ -189,11 +189,14 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 104, cardWidth, 58),
                 "screen.moveearth_addtional.s2.upkeep", Component.translatable(
                         "screen.moveearth_addtional.s2.upkeep_value", snapshot.upkeep()).getString());
-        Rect siege = new Rect(content.x(), content.y() + 170, content.width(), 47);
+        S2HubOverviewLayout.Actions actions = S2HubOverviewLayout.calculate(content);
+        int siegeY = content.y() + 166;
+        int siegeHeight = Math.max(1, actions.treasury().y() - 3 - siegeY);
+        Rect siege = new Rect(content.x(), siegeY, content.width(), siegeHeight);
         drawCard(graphics, siege, DANGER, false, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.siege"),
-                siege.x() + 13, siege.y() + 9, MUTED, false);
-        graphics.drawString(font, snapshot.siegeStatus(), siege.x() + 13, siege.y() + 25, TEXT, false);
+                siege.x() + 13, siege.y() + 5, MUTED, false);
+        graphics.drawString(font, snapshot.siegeStatus(), siege.x() + 13, siege.y() + 17, TEXT, false);
         Rect preview = memberPreviewBounds(content);
         drawButton(graphics, font, preview,
                 Component.translatable("screen.moveearth_addtional.territory.preview"), SUCCESS,
@@ -916,23 +919,23 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     private static Rect memberPreviewBounds(Rect content) {
-        return new Rect(content.right() - 148, content.bottom() - 23, 148, 22);
+        return S2HubOverviewLayout.calculate(content).preview();
     }
 
     private static Rect treasuryBounds(Rect content) {
-        return new Rect(content.right() - 306, content.bottom() - 23, 122, 22);
+        return S2HubOverviewLayout.calculate(content).treasury();
     }
 
     private static Rect vaultBounds(Rect content) {
-        return new Rect(content.right() - 436, content.bottom() - 23, 122, 22);
+        return S2HubOverviewLayout.calculate(content).vault();
     }
 
     private static Rect recoveryDispatchBounds(Rect content) {
-        return new Rect(content.x() + 120, content.bottom() - 23, 120, 22);
+        return S2HubOverviewLayout.calculate(content).recovery();
     }
 
     private static Rect memberLeaveBounds(Rect content) {
-        return new Rect(content.x(), content.bottom() - 23, 112, 22);
+        return S2HubOverviewLayout.calculate(content).membership();
     }
 
     private static Rect invitationBounds(Rect content) {
