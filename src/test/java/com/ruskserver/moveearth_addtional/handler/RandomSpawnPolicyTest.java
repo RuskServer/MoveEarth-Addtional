@@ -22,4 +22,20 @@ class RandomSpawnPolicyTest {
     void capsDistanceTermsSoExtremeCoordinatesDoNotDominate() {
         assertEquals(138.5D, RandomSpawnPolicy.score(500.0D, 800.0D, 3.5D, 100.0D));
     }
+
+    @Test
+    void retryCooldownIsInclusiveAndTreatsMissingDeadlineAsReady() {
+        assertTrue(RandomSpawnPolicy.retryAllowed(100L, 0L));
+        assertFalse(RandomSpawnPolicy.retryAllowed(99L, 100L));
+        assertTrue(RandomSpawnPolicy.retryAllowed(100L, 100L));
+    }
+
+    @Test
+    void onlyPersistedFullChunksPassTheStorageProbe() {
+        assertTrue(RandomSpawnPolicy.isStoredFullChunk("minecraft:full"));
+        assertTrue(RandomSpawnPolicy.isStoredFullChunk("full"));
+        assertFalse(RandomSpawnPolicy.isStoredFullChunk("minecraft:features"));
+        assertFalse(RandomSpawnPolicy.isStoredFullChunk(""));
+        assertFalse(RandomSpawnPolicy.isStoredFullChunk(null));
+    }
 }

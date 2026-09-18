@@ -28,6 +28,7 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -37,12 +38,18 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class RandomSpawnHandler {
@@ -50,14 +57,16 @@ public final class RandomSpawnHandler {
     private static final String NBT_KEY_SPAWNED = "MoveEarthRandomSpawned";
     private static final String NBT_KEY_LAST_POS = "MoveEarthLastRandomSpawn";
     private static final String NBT_KEY_LAST_DIMENSION = "MoveEarthLastRandomSpawnDimension";
+    private static final String NBT_KEY_RETRY_AFTER = "MoveEarthRandomSpawnRetryAfter";
 
     private static final int MIN_WORLD_SPAWN_RADIUS = 750;
     private static final int MAX_WORLD_SPAWN_RADIUS = 4_000;
     private static final int MIN_PLAYER_DISTANCE = 384;
     private static final int MIN_LAST_SPAWN_DISTANCE = 768;
     private static final int MAX_CANDIDATES = 24;
-    private static final int MAX_CONCURRENT_CHUNK_LOADS = 2;
+    private static final int MAX_CONCURRENT_CHUNK_LOADS = 1;
     private static final int SEARCH_TIMEOUT_TICKS = 20 * 20;
+    private static final int RETRY_COOLDOWN_TICKS = 2 * 60 * 20;
     // Distance 0 requests only a FULL target chunk. Distance 1 would promote the
     // target to BLOCK_TICKING and needlessly increase the generated region.
     private static final int RANDOM_SPAWN_TICKET_DISTANCE = 0;
@@ -67,6 +76,25 @@ public final class RandomSpawnHandler {
     private static final Map<UUID, SpawnSearch> PENDING_SEARCHES = new HashMap<>();
 
     private RandomSpawnHandler() {
+    }
+
+    @SubscribeEvent
+    public static void onChunkLoaded(ChunkEvent.Load event) {
+        if (!(event.getLevel() instanceof ServerLevel level)
+                || level != level.getServer().overworld()
+                || !(event.getChunk() instanceof LevelChunk chunk)) return;
+
+        int baseX = chunk.getPos().getMinBlockX();
+        int baseZ = chunk.getPos().getMinBlockZ();
+        int[][] offsets = {{4, 4}, {12, 12}, {4, 12}, {12, 4}};
+        for (int[] offset : offsets) {
+            int x = baseX + offset[0];
+            int z = baseZ + offset[1];
+            BlockPos safe = findSafeSurface(level, chunk, x, z);
+            if (safe == null || !level.getWorldBorder().isWithinBounds(safe)) continue;
+            RandomSpawnSavedData.get(level.getServer()).remember(safe);
+            break;
+        }
     }
 
     @SubscribeEvent
@@ -127,6 +155,27 @@ public final class RandomSpawnHandler {
             }
             if (player.isRemoved()) continue;
 
+            if (search.storageProbe != null && search.storageProbe.isDone()) {
+                Optional<CompoundTag> stored = Optional.empty();
+                try {
+                    stored = search.storageProbe.join();
+                } catch (CompletionException exception) {
+                    LOGGER.debug("Could not inspect stored random-spawn chunk {}", search.requestedChunk,
+                            exception.getCause());
+                }
+                search.storageProbe = null;
+                if (stored.filter(tag -> RandomSpawnPolicy.isStoredFullChunk(tag.getString("Status"))).isEmpty()) {
+                    search.rejectedByStorage++;
+                    search.requestedChunk = null;
+                    search.requestedColumn = null;
+                } else {
+                    search.ticketActive = true;
+                    level.getChunkSource().addRegionTicket(
+                            RANDOM_SPAWN_TICKET, search.requestedChunk,
+                            RANDOM_SPAWN_TICKET_DISTANCE, playerId);
+                }
+            }
+
             if (search.ticketActive) {
                 LevelChunk chunk = level.getChunkSource().getChunkNow(
                         search.requestedChunk.x, search.requestedChunk.z);
@@ -142,7 +191,7 @@ public final class RandomSpawnHandler {
             }
         }
 
-        int availableSlots = MAX_CONCURRENT_CHUNK_LOADS - activeTicketCount();
+        int availableSlots = MAX_CONCURRENT_CHUNK_LOADS - activeRequestCount();
         if (availableSlots <= 0 || PENDING_SEARCHES.isEmpty()) return;
 
         iterator = PENDING_SEARCHES.entrySet().iterator();
@@ -150,7 +199,7 @@ public final class RandomSpawnHandler {
             Map.Entry<UUID, SpawnSearch> entry = iterator.next();
             UUID playerId = entry.getKey();
             SpawnSearch search = entry.getValue();
-            if (search.ticketActive) continue;
+            if (search.ticketActive || search.storageProbe != null) continue;
 
             ServerPlayer player = event.getServer().getPlayerList().getPlayer(playerId);
             if (player == null) {
@@ -168,10 +217,19 @@ public final class RandomSpawnHandler {
 
             search.requestedColumn = next;
             search.requestedChunk = new ChunkPos(next.x >> 4, next.z >> 4);
-            search.ticketActive = true;
             if (search.startedTick < 0) search.startedTick = currentTick;
-            level.getChunkSource().addRegionTicket(
-                    RANDOM_SPAWN_TICKET, search.requestedChunk, RANDOM_SPAWN_TICKET_DISTANCE, playerId);
+            LevelChunk alreadyLoaded = level.getChunkSource().getChunkNow(
+                    search.requestedChunk.x, search.requestedChunk.z);
+            if (alreadyLoaded != null) {
+                if (evaluateLoadedChunk(player, level, playerId, search, alreadyLoaded)) {
+                    iterator.remove();
+                }
+                continue;
+            }
+            // ChunkStorage.read is asynchronous and returns Optional.empty for an
+            // ungenerated coordinate. A FULL ticket is issued only after a saved
+            // full chunk is confirmed, so this search cannot trigger worldgen.
+            search.storageProbe = level.getChunkSource().chunkMap.read(search.requestedChunk);
             availableSlots--;
         }
     }
@@ -189,6 +247,10 @@ public final class RandomSpawnHandler {
     }
 
     private static void beginRandomSpawnSearch(ServerPlayer player, boolean markInitializedOnSuccess) {
+        if (PENDING_SEARCHES.containsKey(player.getUUID())) {
+            player.displayClientMessage(Component.literal("安全な出現地点を探索中です…"), true);
+            return;
+        }
         if (!canRelocate(player)) {
             player.displayClientMessage(Component.literal(
                     "戦闘中または拘束中はランダムスポーンを利用できません。"), true);
@@ -196,10 +258,16 @@ public final class RandomSpawnHandler {
             return;
         }
         ServerLevel level = player.server.overworld();
-        SpawnSearch previous = PENDING_SEARCHES.remove(player.getUUID());
-        if (previous != null) releaseTicket(level, player.getUUID(), previous);
-
         CompoundTag data = persistedData(player);
+        long currentTick = level.getGameTime();
+        long retryAfter = data.getLong(NBT_KEY_RETRY_AFTER);
+        if (!RandomSpawnPolicy.retryAllowed(currentTick, retryAfter)) {
+            long seconds = Math.max(1L, (retryAfter - currentTick + 19L) / 20L);
+            player.displayClientMessage(Component.literal(
+                    "ランダムスポーンの再試行はあと" + seconds + "秒後に利用できます。"), true);
+            if (markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
+            return;
+        }
         BlockPos worldSpawn = level.getSharedSpawnPos();
         BlockPos lastSpawn = null;
         if (data.contains(NBT_KEY_LAST_POS)
@@ -210,34 +278,22 @@ public final class RandomSpawnHandler {
         RandomSource random = player.getRandom();
         double minRadius = effectiveMinRadius(level, worldSpawn);
         double maxRadius = effectiveMaxRadius(level, worldSpawn);
-        List<SpawnColumn> columns = new ArrayList<>(MAX_CANDIDATES);
-        int rejectedByBorder = 0;
-        for (int attempt = 0; attempt < MAX_CANDIDATES; attempt++) {
-            double angle = random.nextDouble() * Math.PI * 2.0D;
-            double distance = Math.sqrt(random.nextDouble()
-                    * (maxRadius * maxRadius - minRadius * minRadius) + minRadius * minRadius);
-            int x = MthFloor(worldSpawn.getX() + Math.cos(angle) * distance);
-            int z = MthFloor(worldSpawn.getZ() + Math.sin(angle) * distance);
-            BlockPos column = new BlockPos(x, worldSpawn.getY(), z);
-            if (!level.getWorldBorder().isWithinBounds(column)) {
-                rejectedByBorder++;
-                continue;
-            }
-            columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
-        }
+        List<SpawnColumn> columns = cachedColumns(level, random, position -> {
+            double distance = horizontalDistanceSqr(position, worldSpawn);
+            return distance >= square(minRadius) && distance <= square(maxRadius);
+        }, MAX_CANDIDATES);
+
+        appendRandomColumns(level, random, columns, worldSpawn, minRadius, maxRadius);
 
         if (columns.isEmpty()) {
-            LOGGER.warn("Could not queue a random-spawn search for {} because every candidate was outside the world border.",
-                    player.getName().getString());
-            player.displayClientMessage(Component.literal(
-                    "安全なランダムスポーン地点を選べなかったため、通常のスポーン地点を使用します。"), true);
-            if (markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
+            finishWithoutRandomSpawn(player, markInitializedOnSuccess,
+                    "no generated safe positions were available");
             return;
         }
 
         PENDING_SEARCHES.put(player.getUUID(), new SpawnSearch(
                 columns, lastSpawn, random.nextFloat() * 360.0F - 180.0F,
-                markInitializedOnSuccess, null, worldSpawn, minRadius, maxRadius, rejectedByBorder));
+                markInitializedOnSuccess, null, worldSpawn, minRadius, maxRadius, 0));
         player.displayClientMessage(Component.literal("安全なランダムスポーン地点を探索しています…"), true);
     }
 
@@ -246,6 +302,10 @@ public final class RandomSpawnHandler {
     }
 
     public static void beginNationSpawnSearch(ServerPlayer player, UUID nationId) {
+        if (PENDING_SEARCHES.containsKey(player.getUUID())) {
+            player.displayClientMessage(Component.literal("安全な出現地点を探索中です…"), true);
+            return;
+        }
         if (!canRelocate(player)) {
             player.displayClientMessage(Component.literal(
                     "戦闘中または拘束中は国家周辺へ移動できません。"), true);
@@ -264,8 +324,6 @@ public final class RandomSpawnHandler {
             return;
         }
 
-        SpawnSearch previous = PENDING_SEARCHES.remove(player.getUUID());
-        if (previous != null) releaseTicket(level, player.getUUID(), previous);
         RandomSource random = player.getRandom();
         List<SpawnColumn> columns = new ArrayList<>(MAX_CANDIDATES);
         TerritorySavedData territories = TerritorySavedData.get(player.server);
@@ -274,9 +332,9 @@ public final class RandomSpawnHandler {
                 .filter(core -> core.dimension().equals(level.dimension().location()))
                 .filter(core -> core.state() == TerritorySavedData.CoreState.ACTIVE)
                 .toList();
-        int sourceIndex = 0;
+        int coreSourceIndex = 0;
         while (!cores.isEmpty() && columns.size() < 16) {
-            TerritorySavedData.CoreRecord core = cores.get(sourceIndex++ % cores.size());
+            TerritorySavedData.CoreRecord core = cores.get(coreSourceIndex++ % cores.size());
             int radius = NationUpkeepService.effectiveTerritoryRadius(
                     player.server, nationId, core.radius());
             int minX = ((core.pos().getX() >> 4) - radius) << 4;
@@ -287,25 +345,44 @@ public final class RandomSpawnHandler {
                     random.nextIntBetweenInclusive(minZ, maxZ), random.nextDouble() * 10_000.0D));
         }
         NationSavedData.Nation nation = nations.nation(nationId).orElse(null);
+        List<ServerPlayer> members = List.of();
         if (nation != null) {
-            var members = nation.members().keySet().stream()
+            members = nation.members().keySet().stream()
                     .map(id -> player.server.getPlayerList().getPlayer(id))
                     .filter(java.util.Objects::nonNull)
                     .filter(other -> other != player && other.level().dimension().equals(level.dimension()))
                     .filter(other -> !other.isSpectator())
                     .toList();
-            sourceIndex = 0;
+            int sourceIndex = 0;
             while (!members.isEmpty() && columns.size() < 22) {
                 ServerPlayer member = members.get(sourceIndex++ % members.size());
                 double angle = random.nextDouble() * Math.PI * 2.0D;
                 double distance = 48.0D + random.nextDouble() * 80.0D;
-                columns.add(new SpawnColumn(MthFloor(member.getX() + Math.cos(angle) * distance),
-                        MthFloor(member.getZ() + Math.sin(angle) * distance), random.nextDouble() * 10_000.0D));
+                int x = MthFloor(member.getX() + Math.cos(angle) * distance);
+                int z = MthFloor(member.getZ() + Math.sin(angle) * distance);
+                if (level.hasChunk(x >> 4, z >> 4)) {
+                    columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
+                }
             }
         }
+        List<ServerPlayer> nationMembers = members;
+        columns.addAll(cachedColumns(level, random, position -> {
+            int chunkX = position.getX() >> 4;
+            int chunkZ = position.getZ() >> 4;
+            for (TerritorySavedData.CoreRecord core : cores) {
+                int radius = NationUpkeepService.effectiveTerritoryRadius(
+                        player.server, nationId, core.radius());
+                if (Math.abs(chunkX - (core.pos().getX() >> 4)) <= radius
+                        && Math.abs(chunkZ - (core.pos().getZ() >> 4)) <= radius) return true;
+            }
+            for (ServerPlayer member : nationMembers) {
+                if (horizontalDistanceSqr(position, member.blockPosition()) <= square(160.0D)) return true;
+            }
+            return false;
+        }, Math.max(0, MAX_CANDIDATES - columns.size())));
         appendWildernessFallbacks(level, random, columns);
         if (columns.isEmpty()) {
-            NationOnboardingService.searchFailed(player);
+            finishWithoutRandomSpawn(player, true, "no generated nation or wilderness positions were available");
             return;
         }
         BlockPos worldSpawn = level.getSharedSpawnPos();
@@ -320,16 +397,30 @@ public final class RandomSpawnHandler {
         BlockPos center = level.getSharedSpawnPos();
         double minimum = effectiveMinRadius(level, center);
         double maximum = effectiveMaxRadius(level, center);
+        if (maximum <= minimum || columns.size() >= MAX_CANDIDATES) return;
+        columns.addAll(cachedColumns(level, random, position -> {
+            double distance = horizontalDistanceSqr(position, center);
+            return distance >= square(minimum) && distance <= square(maximum);
+        }, MAX_CANDIDATES - columns.size()));
+        appendRandomColumns(level, random, columns, center, minimum, maximum);
+    }
+
+    private static void appendRandomColumns(ServerLevel level, RandomSource random,
+                                            List<SpawnColumn> columns, BlockPos center,
+                                            double minimum, double maximum) {
         int attempts = 0;
-        while (columns.size() < MAX_CANDIDATES && maximum > minimum && attempts++ < MAX_CANDIDATES * 2) {
+        while (columns.size() < MAX_CANDIDATES && maximum > minimum && attempts++ < MAX_CANDIDATES * 3) {
             double angle = random.nextDouble() * Math.PI * 2.0D;
             double distance = Math.sqrt(random.nextDouble()
                     * (maximum * maximum - minimum * minimum) + minimum * minimum);
             int x = MthFloor(center.getX() + Math.cos(angle) * distance);
             int z = MthFloor(center.getZ() + Math.sin(angle) * distance);
-            if (level.getWorldBorder().isWithinBounds(new BlockPos(x, center.getY(), z))) {
-                columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
-            }
+            if (!level.getWorldBorder().isWithinBounds(new BlockPos(x, center.getY(), z))) continue;
+            int chunkX = x >> 4;
+            int chunkZ = z >> 4;
+            boolean duplicate = columns.stream().anyMatch(column ->
+                    (column.x >> 4) == chunkX && (column.z >> 4) == chunkZ);
+            if (!duplicate) columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
         }
     }
 
@@ -345,17 +436,16 @@ public final class RandomSpawnHandler {
             if (teleported) {
                 finishSuccessfulSearch(player, search);
             } else {
-                LOGGER.warn("The fallback random spawn for {} was no longer safe; keeping vanilla spawn.",
-                        player.getName().getString());
-                player.displayClientMessage(Component.literal(
-                        "安全なランダムスポーン地点を確保できなかったため、通常のスポーン地点を使用します。"), true);
-                if (search.markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
+                RandomSpawnSavedData.get(player.server).forgetColumn(column.x, column.z);
+                finishWithoutRandomSpawn(player, search.markInitializedOnSuccess,
+                        "the selected fallback was no longer safe");
             }
             return true;
         }
 
         if (spawn == null) {
             search.rejectedBySurface++;
+            RandomSpawnSavedData.get(player.server).forgetColumn(column.x, column.z);
             releaseTicket(level, playerId, search);
             return false;
         }
@@ -397,31 +487,58 @@ public final class RandomSpawnHandler {
         releaseTicket(level, playerId, search);
         LOGGER.warn("Random-spawn search for {} {} after evaluating {} of {} queued candidates in {} "
                         + "(worldSpawn={}, radius={}..{}, borderRejected={}, surfaceRejected={}, "
-                        + "border=[{}..{}, {}..{}]); keeping vanilla spawn.",
+                        + "storageRejected={}, border=[{}..{}, {}..{}]); keeping vanilla spawn.",
                 player.getName().getString(), reason, search.nextColumnIndex, search.columns.size(),
                 level.dimension().location(), search.worldSpawn,
                 Math.round(search.minRadius), Math.round(search.maxRadius),
                 search.rejectedByBorder, search.rejectedBySurface,
+                search.rejectedByStorage,
                 Math.round(level.getWorldBorder().getMinX()), Math.round(level.getWorldBorder().getMaxX()),
                 Math.round(level.getWorldBorder().getMinZ()), Math.round(level.getWorldBorder().getMaxZ()));
+        finishWithoutRandomSpawn(player, search.markInitializedOnSuccess, reason);
+    }
+
+    private static void finishWithoutRandomSpawn(ServerPlayer player, boolean finishOnboarding, String reason) {
+        CompoundTag data = persistedData(player);
+        data.putLong(NBT_KEY_RETRY_AFTER, player.server.overworld().getGameTime() + RETRY_COOLDOWN_TICKS);
         player.displayClientMessage(Component.literal(
-                "安全なランダムスポーン地点を確保できなかったため、通常のスポーン地点を使用します。"), true);
-        if (search.markInitializedOnSuccess) NationOnboardingService.searchFailed(player);
+                "生成済みの安全地点を確保できなかったため、通常のスポーン地点を使用します。"), true);
+        if (finishOnboarding) {
+            data.putBoolean(NBT_KEY_SPAWNED, true);
+            NationOnboardingService.complete(player);
+        }
+        LOGGER.info("Random-spawn fallback completed for {}: {}.", player.getName().getString(), reason);
+    }
+
+    private static List<SpawnColumn> cachedColumns(ServerLevel level, RandomSource random,
+                                                    Predicate<BlockPos> filter, int limit) {
+        if (limit <= 0) return List.of();
+        List<BlockPos> positions = new ArrayList<>(RandomSpawnSavedData.get(level.getServer()).positions());
+        Collections.shuffle(positions, new Random(random.nextLong()));
+        List<SpawnColumn> result = new ArrayList<>(Math.min(limit, positions.size()));
+        for (BlockPos position : positions) {
+            if (result.size() >= limit) break;
+            if (!level.getWorldBorder().isWithinBounds(position) || !filter.test(position)) continue;
+            result.add(new SpawnColumn(position.getX(), position.getZ(), random.nextDouble() * 10_000.0D));
+        }
+        return result;
     }
 
     private static void releaseTicket(ServerLevel level, UUID playerId, SpawnSearch search) {
-        if (!search.ticketActive || search.requestedChunk == null) return;
-        level.getChunkSource().removeRegionTicket(
-                RANDOM_SPAWN_TICKET, search.requestedChunk, RANDOM_SPAWN_TICKET_DISTANCE, playerId);
+        if (search.ticketActive && search.requestedChunk != null) {
+            level.getChunkSource().removeRegionTicket(
+                    RANDOM_SPAWN_TICKET, search.requestedChunk, RANDOM_SPAWN_TICKET_DISTANCE, playerId);
+        }
         search.ticketActive = false;
+        search.storageProbe = null;
         search.requestedChunk = null;
         search.requestedColumn = null;
     }
 
-    private static int activeTicketCount() {
+    private static int activeRequestCount() {
         int count = 0;
         for (SpawnSearch search : PENDING_SEARCHES.values()) {
-            if (search.ticketActive) count++;
+            if (search.ticketActive || search.storageProbe != null) count++;
         }
         return count;
     }
@@ -602,12 +719,14 @@ public final class RandomSpawnHandler {
         private final double maxRadius;
         private final int rejectedByBorder;
         private int rejectedBySurface;
+        private int rejectedByStorage;
         private int nextColumnIndex;
         private int startedTick = -1;
         private SpawnCandidate safestFallback;
         private boolean fallbackRequested;
         private boolean loadingFallback;
         private boolean ticketActive;
+        private CompletableFuture<Optional<CompoundTag>> storageProbe;
         private SpawnColumn requestedColumn;
         private ChunkPos requestedChunk;
 

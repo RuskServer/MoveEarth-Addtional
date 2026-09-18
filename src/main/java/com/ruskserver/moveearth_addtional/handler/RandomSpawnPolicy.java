@@ -17,4 +17,12 @@ final class RandomSpawnPolicy {
                 + Math.min(lastSpawnDistanceSqr, distanceCapSqr) * 0.35D
                 + tieBreaker;
     }
+
+    static boolean retryAllowed(long currentTick, long retryAfterTick) {
+        return retryAfterTick <= 0L || currentTick >= retryAfterTick;
+    }
+
+    static boolean isStoredFullChunk(String status) {
+        return "full".equals(status) || status != null && status.endsWith(":full");
+    }
 }
