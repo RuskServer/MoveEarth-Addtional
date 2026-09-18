@@ -407,14 +407,16 @@ public final class PrisonerService {
                         candidate.getGameProfile().getName()));
             }
         }
-        S2C_PrisonerSnapshotPacket.IntakeView intakeView = intakeView(viewer, intakePos, escorting);
+        S2C_PrisonerSnapshotPacket.IntakeView intakeView = intakeView(
+                viewer, intakePos, escorting, viewerNation);
         PacketDistributor.sendToPlayer(viewer, new S2C_PrisonerSnapshotPacket(openScreen, state,
                 counterpart, holdingName, remaining, jailDimension, jailPos, intakePos,
                 intakeView, entries, candidates));
     }
 
     private static S2C_PrisonerSnapshotPacket.IntakeView intakeView(ServerPlayer viewer, BlockPos intake,
-                                                                     PrisonerSavedData.Custody custody) {
+                                                                     PrisonerSavedData.Custody custody,
+                                                                     UUID viewerNation) {
         if (intake == null || viewer.distanceToSqr(intake.getCenter()) > 64.0D
                 || !viewer.level().getBlockState(intake).is(ModBlocks.PRISON_INTAKE.get())) {
             return new S2C_PrisonerSnapshotPacket.IntakeView(false, "", false,
@@ -422,7 +424,8 @@ public final class PrisonerService {
         }
         UUID owner = TerritorySavedData.get(viewer.server).controllingNation(viewer.server,
                 viewer.level().dimension().location(), intake).orElse(null);
-        boolean correctTerritory = custody != null && custody.holdingNation().equals(owner);
+        boolean correctTerritory = PrisonIntakePolicy.isActiveHoldingTerritory(owner,
+                custody == null ? null : custody.holdingNation(), viewerNation);
         boolean safe = hasJailSpace(viewer.serverLevel(), intake);
         Entity captive = custody == null ? null : findCaptiveEntity(viewer.server, custody.playerId());
         boolean sameDimension = captive != null && captive.level() == viewer.level();
@@ -431,7 +434,8 @@ public final class PrisonerService {
         return new S2C_PrisonerSnapshotPacket.IntakeView(true,
                 owner == null ? "" : nationName(viewer.server, owner), correctTerritory, safe,
                 captive != null, sameDimension, distance,
-                correctTerritory && safe && sameDimension && distance <= (int) Math.sqrt(INTAKE_DISTANCE_SQR));
+                custody != null && correctTerritory && safe && sameDimension
+                        && distance <= (int) Math.sqrt(INTAKE_DISTANCE_SQR));
     }
 
     private static void releaseBy(ServerPlayer actor, UUID targetId) {
