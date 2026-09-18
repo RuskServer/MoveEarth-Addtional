@@ -1,0 +1,20 @@
+{
+  "type": "neoforge:remove_features",
+  "biomes": [
+    "minecraft:forest",
+    "minecraft:flower_forest",
+    "minecraft:birch_forest",
+    "minecraft:old_growth_birch_forest",
+    "minecraft:plains"
+  ],
+  "features": [
+    "minecraft:trees_birch_and_oak",
+    "minecraft:trees_flower_forest",
+    "minecraft:trees_birch",
+    "minecraft:birch_tall",
+    "minecraft:trees_plains"
+  ],
+  "steps": [
+    "vegetal_decoration"
+  ]
+}

@@ -78,6 +78,7 @@ public class Moveearth_addtional {
 
         // Register the terrain density function type and load tiles before worldgen starts
         com.ruskserver.moveearth_addtional.terrain.TerrainRegistration.register(modEventBus);
+        com.ruskserver.moveearth_addtional.worldgen.WorldgenRegistration.register(modEventBus);
         com.ruskserver.moveearth_addtional.terrain.TerrainEvents.register();
 
         // Register Config

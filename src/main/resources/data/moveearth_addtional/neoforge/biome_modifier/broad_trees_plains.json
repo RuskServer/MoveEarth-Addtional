@@ -1,0 +1,10 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": [
+    "minecraft:plains"
+  ],
+  "features": [
+    "moveearth_addtional:broad_oak_plains"
+  ],
+  "step": "vegetal_decoration"
+}

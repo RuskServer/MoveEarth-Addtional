@@ -1,0 +1,13 @@
+{
+  "type": "neoforge:add_features",
+  "biomes": [
+    "minecraft:forest",
+    "minecraft:flower_forest"
+  ],
+  "features": [
+    "moveearth_addtional:broad_oak_forest",
+    "moveearth_addtional:broad_oak_large_forest",
+    "moveearth_addtional:broad_birch_forest"
+  ],
+  "step": "vegetal_decoration"
+}
