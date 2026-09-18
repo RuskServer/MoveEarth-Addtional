@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:flat_cache",
+  "argument": {
+    "type": "moveearth_addtional:map_field",
+    "field": "continents"
+  }
+}

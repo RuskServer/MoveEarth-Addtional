@@ -385,6 +385,13 @@ var playerJar = tasks.register('playerJar', Jar) {
     archiveClassifier = 'player'
     from sourceSets.main.output
     exclude 'com/ruskserver/moveearth_addtional/s2/notification/discord/**'
+    // The custom terrain is server side. Its density functions read tile assets
+    // that only the server has, so a player build that shipped them would open a
+    // single player world onto a flat nothing -- or, before the loader learned to
+    // skip, refuse to open one at all. Without the data the world is vanilla, and
+    // joining the server is unaffected because worldgen never leaves it.
+    exclude 'data/minecraft/worldgen/noise_settings/**'
+    exclude 'data/minecraft/worldgen/density_function/**'
     dependsOn tasks.named('classes')
 }
 def playerJarFile = playerJar.flatMap { it.archiveFile }
@@ -436,6 +443,13 @@ var verifyPlayerDistribution = tasks.register('verifyPlayerDistribution') {
             }
             if (zip.getEntry('dev/firstdark/rpc/DiscordRpc.class') == null) {
                 throw new GradleException('Player JAR is missing the client Discord RPC runtime')
+            }
+            def terrainData = zip.entries().findAll { entry ->
+                !entry.directory && (entry.name.startsWith('data/minecraft/worldgen/noise_settings/') ||
+                        entry.name.startsWith('data/minecraft/worldgen/density_function/'))
+            }.collect { it.name }.take(10)
+            if (!terrainData.empty) {
+                throw new GradleException("Player JAR ships server-only worldgen data: ${terrainData}")
             }
             ['C2S_LinkDiscordAccountPacket.class', 'C2S_LinkNationDiscordPacket.class'].each { className ->
                 def entry = zip.getEntry("com/ruskserver/moveearth_addtional/network/${className}")

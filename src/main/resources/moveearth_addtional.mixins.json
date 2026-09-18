@@ -13,7 +13,8 @@
     "EntityDataAccessorMixin",
     "WarnauticsDropBombAssemblyMixin",
     "SwivelBearingConstraintMixin",
-    "SableVehicleAssemblyMixin"
+    "SableVehicleAssemblyMixin",
+    "AquiferRiverChannelMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",
