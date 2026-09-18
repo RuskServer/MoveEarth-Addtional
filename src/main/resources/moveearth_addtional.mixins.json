@@ -26,7 +26,8 @@
     "client.LoadingButtonMixin",
     "client.GenericMessageScreenMixin",
     "client.ProgressScreenMixin",
-    "client.MinecraftAccessibilityOnboardingMixin"
+    "client.MinecraftAccessibilityOnboardingMixin",
+    "client.VertexFormatElementIdMixin"
   ],
   "injectors": {
     "defaultRequire": 1
