@@ -10,6 +10,9 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.LongValue OUTPOST_BASE_COST;
     private static final ModConfigSpec.LongValue VEHICLE_CORE_COST;
     private static final ModConfigSpec.IntValue VEHICLE_CORE_HEALTH;
+    private static final ModConfigSpec.BooleanValue SABLE_VOID_FAILSAFE_ENABLED;
+    private static final ModConfigSpec.IntValue SABLE_VOID_TRIGGER_DEPTH;
+    private static final ModConfigSpec.IntValue SABLE_RESCUE_CLEARANCE;
     private static final ModConfigSpec.IntValue UPKEEP_CYCLE_HOURS;
     private static final ModConfigSpec.IntValue UPKEEP_RETRY_MINUTES;
     private static final ModConfigSpec.IntValue UPKEEP_WEAKEN_AFTER_HOURS;
@@ -104,6 +107,18 @@ public final class S2TerritoryConfig {
         CORE_REGEN_DELAY_SECONDS = BUILDER.defineInRange("regenDelaySeconds", 300, 0, 86400);
         CORE_REGEN_INTERVAL_SECONDS = BUILDER.defineInRange("regenIntervalSeconds", 60, 1, 3600);
         CORE_REGEN_PERCENT = BUILDER.defineInRange("regenPercentPerInterval", 1.0D, 0.0D, 100.0D);
+        BUILDER.pop();
+
+        BUILDER.push("sableSafety");
+        SABLE_VOID_FAILSAFE_ENABLED = BUILDER.comment(
+                "Rescue Sable bodies that tunnel below the dimension build floor due to failed collision handling.")
+                .define("voidFailsafeEnabled", true);
+        SABLE_VOID_TRIGGER_DEPTH = BUILDER.comment(
+                "Rescue begins after any connected body's physical bounds pass this many blocks below the build floor.")
+                .defineInRange("voidTriggerDepthBlocks", 4, 0, 64);
+        SABLE_RESCUE_CLEARANCE = BUILDER.comment(
+                "Empty vertical clearance added above the highest loaded terrain below the rescued craft.")
+                .defineInRange("voidRescueClearanceBlocks", 3, 1, 32);
         BUILDER.pop();
 
         BUILDER.push("cbcDamage");
@@ -230,6 +245,9 @@ public final class S2TerritoryConfig {
     public static int capitalCoreHealth() { return CAPITAL_CORE_HEALTH.getAsInt(); }
     public static int outpostCoreHealth() { return OUTPOST_CORE_HEALTH.getAsInt(); }
     public static int vehicleCoreHealth() { return VEHICLE_CORE_HEALTH.getAsInt(); }
+    public static boolean sableVoidFailsafeEnabled() { return SABLE_VOID_FAILSAFE_ENABLED.getAsBoolean(); }
+    public static int sableVoidTriggerDepth() { return SABLE_VOID_TRIGGER_DEPTH.getAsInt(); }
+    public static int sableRescueClearance() { return SABLE_RESCUE_CLEARANCE.getAsInt(); }
     public static long coreRegenDelayTicks() { return CORE_REGEN_DELAY_SECONDS.getAsInt() * 20L; }
     public static long coreRegenIntervalTicks() { return CORE_REGEN_INTERVAL_SECONDS.getAsInt() * 20L; }
     public static double coreRegenPercent() { return CORE_REGEN_PERCENT.getAsDouble(); }
