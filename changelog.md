@@ -2,11 +2,17 @@
 
 ## Interface
 
+- **Nation Hub Action Layout**: Split the overview actions into two responsive rows so recovery dispatch and vault configuration no longer overlap, including at compact GUI widths.
+- **Startup Safety and First-Run Setup**: Added a silent photosensitivity/audio notice, a skippable MoveEarth logo ident, and a first-run custom setup for narrator, subtitles, master/music/effect volume, and reduced UI motion. The vanilla narrator-only onboarding is replaced without skipping later startup checks, and the title menu now enters with subtle logo, panel, and button-highlight motion.
 - **Expanded Guide Canvas**: Removed the chapter sidebar so the node canvas can use the full left side of the guide. Added a framed canvas, stronger node cards, wider spacing, and shorter edge-to-edge dependency lines for clearer progression at a glance.
 - **Unified Loading Screens**: Server connection, world data and resource preparation, level reception, chunk generation, and world saving now use the main menu's starfield and meteor presentation. A compact translucent bottom HUD combines rotating gameplay tips, live status, a progress bar, and the connection cancel action while leaving room for a larger central logo.
 - **Roomier Main Menu**: Increased outer, panel, control, and changelog spacing at normal resolutions. The navigation panel now fits its contents and floats vertically beside the changelog instead of stretching across all available height.
 
 ## Gameplay
+
+- **Connected River Geometry**: New terrain tiles preserve downstream channel connectivity and export spatially indexed river segments, avoiding narrow diagonal gaps from interpolated distance fields. River water levels are constrained downstream and channel beds use the same water datum; regenerated tiles and a new test world are required to assess in-game aquifer and terrain-noise behavior.
+- **Prison Intake Territory Diagnostics**: Prison intakes now validate against the viewer's nation before an escort starts and switch to the recorded holding nation during an escort, preventing valid home-territory intakes from being reported as outside active territory.
+- **Worldgen-Safe Random Spawning**: Wilderness and nation onboarding now prefer a persistent pool of safe positions observed in loaded chunks and asynchronously verify that any sampled fallback is already stored at full status before loading it. Login no longer generates arbitrary unknown chunks or repeatedly restarts an active search, preventing expensive Terrano-style terrain generation from stalling the server; an exhausted or timed-out search falls back cleanly to the normal spawn with a retry cooldown.
 
 - **Post-War Recovery**: Capital defeat now opens a persistent recovery episode measured in server-opening time. The nation hub shows resealing, restored reinforcement, upkeep, support eligibility, rebuilding-protection waiver, optional rival designation, and bounded public or nation-only war history.
 - **Recovery Fund**: Added a server-controlled recovery fund with admin allocation, treasury donations, objective-gated and cooldown-limited aid, upkeep subsidies, dispatch subsidies, global/nation/episode caps, reserved-balance accounting, and conservative review handling for interrupted external transactions. Fund and money movement remain disabled by default until configured.
@@ -131,6 +137,7 @@ This release establishes the Season 2 feature set as the v3.1 test-play baseline
 
 ## Performance, Reliability, and Compatibility
 
+- **Sable Void Failsafe**: Added a configurable server-side recovery guard for Sable collision failures. If any connected body tunnels below the world floor, the whole hinge/swivel chain is lifted above loaded terrain without changing its relative poses and all linear/angular velocity is cleared.
 - **Responsive Horizontal Swivels**: Up/down-facing Create: Simulated swivel bearings can now use an experimental Absolute Kinematics-style generic hinge constraint and a base-side servo refresh fallback. This prevents a temporarily unresolved moving plate from leaving the motor on a stale target and then rotating late while retaining Simulated's original joint-face alignment. Side-facing bearings retain the original rotary constraint; server configuration and tested-version guards remain available.
 - **GunPack Startup Prompt Removed**: The client no longer scans for previously required TaCZ GunPacks or replaces the main menu with the missing-pack installer screen.
 - **Indexed Territory Lookups**: Added indexes for reserved chunks, controlled chunks, core positions, vault chunks, and core IDs. State-only core transitions update affected index entries instead of rebuilding all territory indexes.
