@@ -71,6 +71,18 @@ public final class AnalyticsConfig {
     /** 現在有効なWebダッシュボードAPIトークン (volatile) */
     private static volatile String currentAuthToken = UUID.randomUUID().toString().replace("-", "");
 
+    /** 再生成したトークンを即時保存するためのロード済み設定ディレクトリ */
+    private static volatile Path loadedConfigDir;
+
+    private static volatile boolean profilerAutoEnabled = true;
+    private static volatile double profilerTpsThreshold = 18.0D;
+    private static volatile double profilerMsptThreshold = 55.0D;
+    private static volatile int profilerConsecutiveSamples = 3;
+    private static volatile int profilerDurationSeconds = 10;
+    private static volatile int profilerSampleIntervalTicks = 20;
+    private static volatile int profilerCandidateChunks = 20;
+    private static volatile int profilerCooldownSeconds = 300;
+
     public static boolean isDedicatedServerOnly() {
         return dedicatedServerOnly;
     }
@@ -119,8 +131,18 @@ public final class AnalyticsConfig {
         return currentAuthToken;
     }
 
-    public static String regenerateAuthToken() {
+    public static boolean isProfilerAutoEnabled() { return profilerAutoEnabled; }
+    public static double getProfilerTpsThreshold() { return profilerTpsThreshold; }
+    public static double getProfilerMsptThreshold() { return profilerMsptThreshold; }
+    public static int getProfilerConsecutiveSamples() { return profilerConsecutiveSamples; }
+    public static int getProfilerDurationSeconds() { return profilerDurationSeconds; }
+    public static int getProfilerSampleIntervalTicks() { return profilerSampleIntervalTicks; }
+    public static int getProfilerCandidateChunks() { return profilerCandidateChunks; }
+    public static int getProfilerCooldownSeconds() { return profilerCooldownSeconds; }
+
+    public static synchronized String regenerateAuthToken() {
         currentAuthToken = UUID.randomUUID().toString().replace("-", "");
+        if (loadedConfigDir != null) saveConfig(loadedConfigDir);
         return currentAuthToken;
     }
 
@@ -133,6 +155,7 @@ public final class AnalyticsConfig {
         }
 
         try {
+            loadedConfigDir = configDir;
             if (!Files.exists(configDir)) {
                 Files.createDirectories(configDir);
             }
@@ -159,6 +182,21 @@ public final class AnalyticsConfig {
             }
 
             webServerRequireAuth = Boolean.parseBoolean(props.getProperty("web_server_require_auth", "true"));
+            profilerAutoEnabled = Boolean.parseBoolean(props.getProperty("profiler_auto_enabled", "true"));
+            profilerTpsThreshold = parseDouble(props, "profiler_tps_threshold", 18.0D, 1.0D, 20.0D);
+            profilerMsptThreshold = parseDouble(props, "profiler_mspt_threshold", 55.0D, 1.0D, 1000.0D);
+            profilerConsecutiveSamples = parseInt(props, "profiler_consecutive_samples", 3, 1, 60);
+            profilerDurationSeconds = parseInt(props, "profiler_duration_seconds", 10, 1, 120);
+            profilerSampleIntervalTicks = parseInt(props, "profiler_sample_interval_ticks", 20, 1, 200);
+            profilerCandidateChunks = parseInt(props, "profiler_candidate_chunks", 20, 1, 100);
+            profilerCooldownSeconds = parseInt(props, "profiler_cooldown_seconds", 300, 0, 86400);
+            String configuredToken = props.getProperty("auth_token", "").trim();
+            if (isValidToken(configuredToken)) {
+                currentAuthToken = configuredToken;
+            } else {
+                currentAuthToken = UUID.randomUUID().toString().replace("-", "");
+                saveConfig(configDir);
+            }
         } catch (Exception e) {
             System.err.println("[MoveEarth-Analytics] Failed to load config: " + e.getMessage());
         }
@@ -184,6 +222,15 @@ public final class AnalyticsConfig {
             props.setProperty("web_server_host", webServerHost);
             props.setProperty("web_server_port", String.valueOf(webServerPort));
             props.setProperty("web_server_require_auth", String.valueOf(webServerRequireAuth));
+            props.setProperty("auth_token", currentAuthToken);
+            props.setProperty("profiler_auto_enabled", String.valueOf(profilerAutoEnabled));
+            props.setProperty("profiler_tps_threshold", String.valueOf(profilerTpsThreshold));
+            props.setProperty("profiler_mspt_threshold", String.valueOf(profilerMsptThreshold));
+            props.setProperty("profiler_consecutive_samples", String.valueOf(profilerConsecutiveSamples));
+            props.setProperty("profiler_duration_seconds", String.valueOf(profilerDurationSeconds));
+            props.setProperty("profiler_sample_interval_ticks", String.valueOf(profilerSampleIntervalTicks));
+            props.setProperty("profiler_candidate_chunks", String.valueOf(profilerCandidateChunks));
+            props.setProperty("profiler_cooldown_seconds", String.valueOf(profilerCooldownSeconds));
 
             try (OutputStream out = Files.newOutputStream(configFile)) {
                 props.store(out, "MoveEarth Analytics Configuration");
@@ -202,5 +249,39 @@ public final class AnalyticsConfig {
         webServerHost = "127.0.0.1";
         webServerPort = 8080;
         webServerRequireAuth = true;
+        currentAuthToken = UUID.randomUUID().toString().replace("-", "");
+        loadedConfigDir = null;
+        profilerAutoEnabled = true;
+        profilerTpsThreshold = 18.0D;
+        profilerMsptThreshold = 55.0D;
+        profilerConsecutiveSamples = 3;
+        profilerDurationSeconds = 10;
+        profilerSampleIntervalTicks = 20;
+        profilerCandidateChunks = 20;
+        profilerCooldownSeconds = 300;
+    }
+
+    private static boolean isValidToken(String token) {
+        return token != null && token.length() >= 16 && token.length() <= 256
+                && token.chars().noneMatch(Character::isWhitespace);
+    }
+
+    private static int parseInt(Properties props, String key, int fallback, int minimum, int maximum) {
+        try {
+            return Math.max(minimum, Math.min(maximum, Integer.parseInt(props.getProperty(key,
+                    Integer.toString(fallback)).trim())));
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
+    private static double parseDouble(Properties props, String key, double fallback,
+                                      double minimum, double maximum) {
+        try {
+            return Math.max(minimum, Math.min(maximum, Double.parseDouble(props.getProperty(key,
+                    Double.toString(fallback)).trim())));
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
     }
 }

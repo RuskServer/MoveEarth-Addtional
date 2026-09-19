@@ -1,6 +1,9 @@
 package com.ruskserver.moveearth_addtional.analytics;
 
 import com.ruskserver.moveearth_addtional.analytics.model.PlayerActivityBucket;
+import com.ruskserver.moveearth_addtional.analytics.model.ChunkLoadSample;
+import com.ruskserver.moveearth_addtional.analytics.model.ChunkProfileRecord;
+import com.ruskserver.moveearth_addtional.analytics.model.ServerPerformanceSample;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.query.export.AnalyticsExportService;
@@ -42,7 +45,14 @@ public class AnalyticsExportServiceTest {
         PlayerActivityBucket b1 = new PlayerActivityBucket(
                 now - 500L, p1, "minecraft:overworld", null, 300, 100.0, 10, 5, 2, 1, 0, 0, 100.0, 1);
 
-        engine.writeBatch(List.of(s1, new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b1))));
+        ServerPerformanceSample performance = new ServerPerformanceSample(now - 60L, 19.5D, 51.2D, 300, 8);
+        ChunkLoadSample chunk = new ChunkLoadSample(now - 60L, "minecraft:overworld", 5, -2, 8, 12, 38.0D);
+        ChunkProfileRecord profile = new ChunkProfileRecord(UUID.randomUUID(), now - 50L, now - 40L,
+                "manual", "minecraft:overworld", 5, -2, 10, 1.5D, 3.5D, 15.0D,
+                7.0D, 6.0D, 2.0D, 20L, 10L, 5L);
+        engine.writeBatch(List.of(s1, new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b1)),
+                new AnalyticsEventQueue.PerformanceSampleEvent(performance, List.of(chunk)),
+                new AnalyticsEventQueue.ChunkProfileEvent(List.of(profile))));
     }
 
     @AfterEach
@@ -75,5 +85,27 @@ public class AnalyticsExportServiceTest {
         List<String> lines = Files.readAllLines(jsonlFile);
         assertEquals(1, lines.size());
         assertTrue(lines.getFirst().contains("\"lastKnownName\":\"ExportPlayer\""));
+    }
+
+    @Test
+    public void testPerformanceAndChunkCsvExports() throws Exception {
+        Path exportDir = tempDir.resolve("performance_exports");
+        Path performanceFile = AnalyticsExportService.INSTANCE.exportPerformanceToDirAsync(
+                exportDir, AnalyticsExportService.ExportFormat.CSV, TimeWindow.DAYS_7).get();
+        Path chunkFile = AnalyticsExportService.INSTANCE.exportChunkLoadsToDirAsync(
+                exportDir, AnalyticsExportService.ExportFormat.CSV, TimeWindow.DAYS_7,
+                "minecraft:overworld").get();
+        Path profileFile = AnalyticsExportService.INSTANCE.exportChunkProfilesToDirAsync(
+                exportDir, AnalyticsExportService.ExportFormat.CSV, TimeWindow.DAYS_7).get();
+
+        List<String> performanceLines = Files.readAllLines(performanceFile);
+        assertEquals("recorded_at,tps,mspt,loaded_chunks,online_players", performanceLines.getFirst());
+        assertTrue(performanceLines.get(1).contains("19.500"));
+        List<String> chunkLines = Files.readAllLines(chunkFile);
+        assertTrue(chunkLines.getFirst().startsWith("recorded_at,dimension,chunk_x"));
+        assertTrue(chunkLines.get(1).contains("minecraft:overworld,5,-2"));
+        List<String> profileLines = Files.readAllLines(profileFile);
+        assertTrue(profileLines.getFirst().startsWith("session_id,started_at,finished_at,trigger"));
+        assertTrue(profileLines.get(1).contains("manual,minecraft:overworld,5,-2"));
     }
 }

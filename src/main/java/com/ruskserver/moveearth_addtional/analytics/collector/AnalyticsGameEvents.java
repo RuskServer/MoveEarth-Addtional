@@ -12,6 +12,7 @@ import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import com.ruskserver.moveearth_addtional.analytics.storage.AnalyticsStorageService;
+import com.ruskserver.moveearth_addtional.analytics.profiler.ChunkProfilerService;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
 /**
@@ -22,6 +23,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onServerStarting(ServerStartingEvent event) {
+        ChunkProfilerService.INSTANCE.reset();
         AnalyticsStorageService.INSTANCE.start(event.getServer());
     }
 
@@ -89,6 +91,7 @@ public class AnalyticsGameEvents {
         if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         long gameTime = event.getServer().overworld().getGameTime();
         AnalyticsCollectorManager.INSTANCE.onServerTick(event.getServer(), gameTime);
+        ChunkProfilerService.INSTANCE.tick(event.getServer());
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -99,6 +102,7 @@ public class AnalyticsGameEvents {
             AnalyticsCollectorManager.INSTANCE.onPlayerLogout(player, now);
         }
         AnalyticsCollectorManager.INSTANCE.onServerStopping(event.getServer());
+        ChunkProfilerService.INSTANCE.stop();
         AnalyticsStorageService.INSTANCE.stop(5000L); // 5秒タイムアウトでフラッシュ・クローズ
     }
 }

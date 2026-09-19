@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional.analytics;
 import com.ruskserver.moveearth_addtional.analytics.group.GroupRelation;
 import com.ruskserver.moveearth_addtional.analytics.model.*;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.storage.SqliteAnalyticsStorageEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,8 +53,42 @@ public class SqliteAnalyticsStorageEngineTest {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT version FROM schema_version")) {
             assertTrue(rs.next());
-            assertEquals(4, rs.getInt("version"));
+            assertEquals(6, rs.getInt("version"));
         }
+    }
+
+    @Test
+    public void testPerformanceAndChunkLoadStorageAndQueries() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        ServerPerformanceSample performance = new ServerPerformanceSample(now - 30L, 18.75D, 53.33D, 420, 12);
+        ChunkLoadSample chunk = new ChunkLoadSample(
+                now - 30L, "minecraft:overworld", 12, -4, 18, 10, 43.0D);
+        UUID profileId = UUID.randomUUID();
+        ChunkProfileRecord profile = new ChunkProfileRecord(profileId, now - 45L, now - 35L,
+                "automatic", "minecraft:overworld", 12, -4, 10,
+                2.5D, 7.25D, 25.0D, 12.0D, 9.0D, 4.0D, 30L, 15L, 8L);
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.PerformanceSampleEvent(performance, List.of(chunk)),
+                new AnalyticsEventQueue.ChunkProfileEvent(List.of(profile))));
+
+        List<ServerPerformanceSample> performanceRows = engine.queryServerPerformance(TimeWindow.DAYS_7, 100, now);
+        assertEquals(1, performanceRows.size());
+        assertEquals(18.75D, performanceRows.getFirst().tps(), 0.001D);
+        assertEquals(420, performanceRows.getFirst().loadedChunks());
+
+        List<ChunkLoadSample> history = engine.queryChunkLoadHistory(
+                "minecraft:overworld", TimeWindow.DAYS_7, 100, now);
+        assertEquals(List.of(chunk), history);
+        var summaries = engine.queryTopLoadedChunks("minecraft:overworld", TimeWindow.DAYS_7, 10, now);
+        assertEquals(1, summaries.size());
+        assertEquals(43.0D, summaries.getFirst().maximumLoadScore(), 0.001D);
+        assertEquals(18.0D, summaries.getFirst().averageEntities(), 0.001D);
+
+        List<ChunkProfileRecord> profiles = engine.queryChunkProfiles(TimeWindow.DAYS_7, 100, now);
+        assertEquals(1, profiles.size());
+        assertEquals(profileId, profiles.getFirst().sessionId());
+        assertEquals(7.25D, profiles.getFirst().maximumTickMs(), 0.001D);
+        assertEquals(9.0D, profiles.getFirst().blockEntityMs(), 0.001D);
     }
 
     @Test

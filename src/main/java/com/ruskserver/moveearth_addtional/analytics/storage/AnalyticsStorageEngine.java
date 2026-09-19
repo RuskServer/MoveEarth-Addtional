@@ -100,6 +100,32 @@ public interface AnalyticsStorageEngine extends AutoCloseable {
      */
     com.ruskserver.moveearth_addtional.analytics.query.dto.CollectorHealthDto queryCollectorHealth() throws Exception;
 
+    /** TPS/MSPT time series for graphing and export. */
+    List<com.ruskserver.moveearth_addtional.analytics.model.ServerPerformanceSample> queryServerPerformance(
+            com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow window,
+            int limit,
+            long currentEpochSec) throws Exception;
+
+    /** Raw top-chunk samples retained for load history graphs and export. */
+    List<com.ruskserver.moveearth_addtional.analytics.model.ChunkLoadSample> queryChunkLoadHistory(
+            String dimension,
+            com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow window,
+            int limit,
+            long currentEpochSec) throws Exception;
+
+    /** Aggregated ranking of the most consistently expensive chunks. */
+    List<com.ruskserver.moveearth_addtional.analytics.query.dto.ChunkLoadSummaryDto> queryTopLoadedChunks(
+            String dimension,
+            com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow window,
+            int limit,
+            long currentEpochSec) throws Exception;
+
+    /** Completed sampled CPU profiles, newest sessions first. */
+    List<com.ruskserver.moveearth_addtional.analytics.model.ChunkProfileRecord> queryChunkProfiles(
+            com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow window,
+            int limit,
+            long currentEpochSec) throws Exception;
+
     @Override
     void close() throws Exception;
 }

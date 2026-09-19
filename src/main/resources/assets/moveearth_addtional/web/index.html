@@ -569,6 +569,28 @@
             background-color: rgba(56, 189, 248, 0.2) !important;
             outline: 1px solid var(--accent-blue);
         }
+
+        .chart-wrap {
+            width: 100%;
+            min-height: 300px;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(56, 189, 248, 0.18);
+            background: rgba(5, 8, 17, 0.7);
+            overflow: hidden;
+        }
+
+        .chart-canvas {
+            display: block;
+            width: 100%;
+            height: 300px;
+        }
+
+        .performance-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
     </style>
 </head>
 <body>
@@ -593,6 +615,7 @@
         <button class="tab-btn" onclick="switchTab('players')">👤 プレイヤー</button>
         <button class="tab-btn" onclick="switchTab('bases')">🏰 拠点・防犯</button>
         <button class="tab-btn" onclick="switchTab('heatmap')">🗺️ 空間ヒートマップ</button>
+        <button class="tab-btn" onclick="switchTab('performance')">📈 TPS・負荷</button>
         <button class="tab-btn" onclick="switchTab('system')">⚙️ システムヘルス</button>
     </nav>
 
@@ -792,7 +815,99 @@
             </div>
         </div>
 
-        <!-- 5. システムヘルスタブ -->
+        <!-- 5. TPS・負荷チャンクタブ -->
+        <div id="tab-performance" class="tab-pane">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">現在TPS</div>
+                    <div id="perf-tps" class="kpi-value">--</div>
+                    <div id="perf-tps-sub" class="kpi-sub">1分間隔</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">現在MSPT</div>
+                    <div id="perf-mspt" class="kpi-value">--</div>
+                    <div class="kpi-sub">50ms以下が20 TPS圏内</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">ロード済みチャンク</div>
+                    <div id="perf-loaded-chunks" class="kpi-value">--</div>
+                    <div class="kpi-sub">全ディメンション合計</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">接続人数</div>
+                    <div id="perf-online" class="kpi-value">--</div>
+                    <div class="kpi-sub">計測時点</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">実測プロファイラ</div>
+                    <div id="perf-profiler" class="kpi-value" style="font-size:1.25rem;">停止中</div>
+                    <div id="perf-profiler-sub" class="kpi-sub">低TPS時に自動起動</div>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title">
+                    <span>📈 TPS推移</span>
+                    <span class="badge badge-active">60秒間隔</span>
+                </div>
+                <div class="chart-wrap"><canvas id="tpsChart" class="chart-canvas"></canvas></div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title">
+                    <span>🔥 高負荷チャンク推移</span>
+                    <div class="performance-controls">
+                        <select id="performanceDimSelector" class="window-selector" onchange="fetchPerformance()">
+                            <option value="all" selected>全ディメンション</option>
+                            <option value="minecraft:overworld">Overworld</option>
+                            <option value="minecraft:the_nether">The Nether</option>
+                            <option value="minecraft:the_end">The End</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="color:var(--text-muted); margin-bottom:1rem;">負荷スコアはエンティティ数＋ブロックエンティティ数×2.5の軽量な推定値です。</p>
+                <div class="chart-wrap"><canvas id="chunkLoadChart" class="chart-canvas"></canvas></div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title"><span>📋 負荷チャンクランキング</span></div>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr><th>ディメンション</th><th>チャンク</th><th>ブロック範囲</th><th>平均</th><th>最大</th><th>Entity</th><th>BlockEntity</th><th>標本数</th></tr></thead>
+                        <tbody id="chunk-load-table"><tr><td colspan="8" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title">
+                    <span>⏱ 実測CPUプロファイル</span>
+                    <span class="badge badge-active">限定サンプリング</span>
+                </div>
+                <p style="color:var(--text-muted); margin-bottom:1rem;">TPS 18未満またはMSPT 55超が3回続いた時だけ、推定上位20チャンクを10秒間・20tickに1回実測します。手動では <code>/analytics profile start</code> を使用できます。</p>
+                <div class="chart-wrap"><canvas id="profileChart" class="chart-canvas"></canvas></div>
+                <div class="table-responsive" style="margin-top:1rem;">
+                    <table>
+                        <thead><tr><th>完了時刻</th><th>起動理由</th><th>ディメンション</th><th>チャンク</th><th>平均 / 最大</th><th>Entity</th><th>BlockEntity</th><th>Scheduled</th><th>標本tick</th></tr></thead>
+                        <tbody id="chunk-profile-table"><tr><td colspan="9" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <div class="section-title"><span>📥 パフォーマンス出力</span></div>
+                <div class="export-btn-group" style="flex-wrap:wrap;">
+                    <button class="export-btn" onclick="exportData('csv', 'performance')">TPS CSV</button>
+                    <button class="export-btn" onclick="exportData('jsonl', 'performance')">TPS JSONL</button>
+                    <button class="export-btn" onclick="exportData('csv', 'chunks')">負荷チャンク CSV</button>
+                    <button class="export-btn" onclick="exportData('jsonl', 'chunks')">負荷チャンク JSONL</button>
+                    <button class="export-btn" onclick="exportData('csv', 'profiles')">実測CPU CSV</button>
+                    <button class="export-btn" onclick="exportData('jsonl', 'profiles')">実測CPU JSONL</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. システムヘルスタブ -->
         <div id="tab-system" class="tab-pane">
             <div class="kpi-grid">
                 <div class="kpi-card">
@@ -871,7 +986,11 @@
         // トークンの初期化 (URLパラメータ ?token=... または sessionStorage)
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('token')) {
-            sessionStorage.setItem('me_analytics_token', urlParams.get('token'));
+            const suppliedToken = (urlParams.get('token') || '').trim();
+            if (suppliedToken) sessionStorage.setItem('me_analytics_token', suppliedToken);
+            urlParams.delete('token');
+            const cleanQuery = urlParams.toString();
+            history.replaceState(null, '', window.location.pathname + (cleanQuery ? `?${cleanQuery}` : '') + window.location.hash);
         }
 
         function getAuthToken() {
@@ -948,6 +1067,8 @@
                 fetchBases(windowVal);
             } else if (currentTab === 'heatmap') {
                 fetchHeatmap();
+            } else if (currentTab === 'performance') {
+                fetchPerformance();
             } else if (currentTab === 'system') {
                 fetchSystemHealth();
             }
@@ -958,7 +1079,10 @@
                 // 1. サーバー全体の総合概要KPI取得
                 const ovRes = await apiFetch(`/api/overview?window=${windowVal}`);
                 if (ovRes.status === 401) {
-                    alert('API認証トークンが無効または未設定です。Minecraft内で /analytics web または /analytics token を実行してトークンを取得してください。');
+                    const authError = await ovRes.json().catch(() => ({}));
+                    alert(authError.code === 'AUTH_TOKEN_INVALID'
+                        ? '保存されているAPI認証トークンが無効です。/analytics web から新しいURLを開いてください。'
+                        : 'API認証トークンが未設定です。Minecraft内で /analytics web を実行してください。');
                     return;
                 }
                 const ov = await ovRes.json();
@@ -1613,11 +1737,142 @@
             }
         }
 
-        function exportData(format) {
+        function drawTimeSeries(canvasId, series, options = {}) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.max(600, Math.floor(rect.width * dpr));
+            canvas.height = Math.floor(300 * dpr);
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            const width = canvas.width / dpr, height = canvas.height / dpr;
+            const pad = {left: 52, right: 18, top: 22, bottom: 34};
+            const points = series.flatMap(s => s.values || []);
+            ctx.clearRect(0, 0, width, height);
+            if (!points.length) {
+                ctx.fillStyle = '#94a3b8'; ctx.font = '14px sans-serif';
+                ctx.fillText('記録データがありません', 24, 42); return;
+            }
+            const minX = Math.min(...points.map(p => p.x));
+            const maxX = Math.max(...points.map(p => p.x));
+            const values = points.map(p => p.y);
+            const minY = options.minY ?? Math.min(0, ...values);
+            const maxY = options.maxY ?? Math.max(1, ...values) * 1.08;
+            const xScale = x => pad.left + (x - minX) / Math.max(1, maxX - minX) * (width - pad.left - pad.right);
+            const yScale = y => height - pad.bottom - (y - minY) / Math.max(0.001, maxY - minY) * (height - pad.top - pad.bottom);
+            ctx.strokeStyle = 'rgba(148,163,184,.18)'; ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif';
+            for (let i = 0; i <= 4; i++) {
+                const y = pad.top + i * (height - pad.top - pad.bottom) / 4;
+                const value = maxY - i * (maxY - minY) / 4;
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
+                ctx.fillText(value.toFixed(options.decimals ?? 1), 7, y + 4);
+            }
+            series.forEach((s, idx) => {
+                ctx.strokeStyle = s.color; ctx.lineWidth = idx === 0 ? 2.4 : 1.7;
+                ctx.beginPath();
+                (s.values || []).forEach((p, i) => {
+                    const x = xScale(p.x), y = yScale(p.y);
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            });
+            const start = new Date(minX * 1000), end = new Date(maxX * 1000);
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(start.toLocaleString(), pad.left, height - 10);
+            const endText = end.toLocaleString();
+            ctx.fillText(endText, width - pad.right - ctx.measureText(endText).width, height - 10);
+            let legendX = pad.left;
+            series.forEach(s => {
+                ctx.fillStyle = s.color; ctx.fillRect(legendX, 7, 12, 3);
+                ctx.fillStyle = '#cbd5e1'; ctx.fillText(s.label, legendX + 17, 12);
+                legendX += ctx.measureText(s.label).width + 42;
+            });
+        }
+
+        async function fetchPerformance() {
+            const windowVal = document.getElementById('windowSelector').value;
+            const dim = document.getElementById('performanceDimSelector').value;
+            try {
+                const [performanceRes, chunksRes, profilesRes] = await Promise.all([
+                    apiFetch(`/api/performance?window=${windowVal}&limit=10000`),
+                    apiFetch(`/api/chunks?window=${windowVal}&dimension=${encodeURIComponent(dim)}&limit=30&history_limit=20000`),
+                    apiFetch(`/api/profiles?window=${windowVal}&limit=200`)
+                ]);
+                if (performanceRes.status === 401 || chunksRes.status === 401 || profilesRes.status === 401) {
+                    const token = getAuthToken();
+                    alert(token ? 'API認証トークンが無効です。/analytics web から開き直してください。' : 'API認証トークンが未設定です。');
+                    return;
+                }
+                const performance = await performanceRes.json();
+                const chunks = await chunksRes.json();
+                const profiles = await profilesRes.json();
+                const latest = performance.length ? performance[performance.length - 1] : null;
+                document.getElementById('perf-tps').innerText = latest ? latest.tps.toFixed(2) : '--';
+                document.getElementById('perf-mspt').innerText = latest ? latest.mspt.toFixed(2) + 'ms' : '--';
+                document.getElementById('perf-loaded-chunks').innerText = latest ? formatNumber(latest.loadedChunks) : '--';
+                document.getElementById('perf-online').innerText = latest ? formatNumber(latest.onlinePlayers) : '--';
+                document.getElementById('perf-tps-sub').innerText = latest && latest.tps < 18 ? '⚠ TPS低下を検出' : '1分間隔';
+                drawTimeSeries('tpsChart', [{label:'TPS', color:'#34d399', values:performance.map(p => ({x:p.recordedAtEpochSec, y:p.tps}))}], {minY:0, maxY:20, decimals:0});
+
+                const colors = ['#fb7185','#fbbf24','#38bdf8','#818cf8','#34d399'];
+                const topKeys = (chunks.summaries || []).slice(0, 5).map(c => `${c.dimension}:${c.chunkX}:${c.chunkZ}`);
+                const chunkSeries = topKeys.map((key, index) => ({
+                    label:key.replace('minecraft:', ''), color:colors[index],
+                    values:(chunks.history || []).filter(c => `${c.dimension}:${c.chunkX}:${c.chunkZ}` === key)
+                        .map(c => ({x:c.recordedAtEpochSec, y:c.loadScore}))
+                }));
+                drawTimeSeries('chunkLoadChart', chunkSeries, {minY:0, decimals:0});
+
+                const tbody = document.getElementById('chunk-load-table');
+                const summaries = chunks.summaries || [];
+                tbody.innerHTML = summaries.length ? summaries.map(c => `
+                    <tr><td><span class="badge badge-dim">${escapeHtml(c.dimension.replace('minecraft:', ''))}</span></td>
+                    <td>${c.chunkX}, ${c.chunkZ}</td><td>X ${c.chunkX * 16}..${c.chunkX * 16 + 15} / Z ${c.chunkZ * 16}..${c.chunkZ * 16 + 15}</td>
+                    <td>${c.averageLoadScore.toFixed(1)}</td><td style="color:var(--accent-rose);font-weight:700;">${c.maximumLoadScore.toFixed(1)}</td>
+                    <td>${c.averageEntities.toFixed(1)}</td><td>${c.averageBlockEntities.toFixed(1)}</td><td>${c.samples}</td></tr>`).join('')
+                    : '<tr><td colspan="8" style="text-align:center;">記録データがありません</td></tr>';
+
+                const status = profiles.status || {};
+                document.getElementById('perf-profiler').innerText = status.running ? '実測中' : '停止中';
+                document.getElementById('perf-profiler').style.color = status.running ? 'var(--accent-amber)' : 'var(--text-main)';
+                document.getElementById('perf-profiler-sub').innerText = status.running
+                    ? `残り ${Math.ceil((status.remainingTicks || 0) / 20)}秒 / 候補 ${status.candidateChunks || 0}`
+                    : `候補 ${status.candidateChunks || 0}チャンク / 低TPS時に自動起動`;
+
+                const profileRecords = profiles.records || [];
+                const profileSessions = new Map();
+                profileRecords.forEach(p => {
+                    const current = profileSessions.get(p.sessionId) || {x:p.finishedAtEpochSec, averageTotal:0, count:0, maximum:0};
+                    current.averageTotal += p.averageTickMs;
+                    current.count++;
+                    current.maximum = Math.max(current.maximum, p.maximumTickMs);
+                    profileSessions.set(p.sessionId, current);
+                });
+                const chronologicalProfiles = [...profileSessions.values()].sort((a, b) => a.x - b.x);
+                drawTimeSeries('profileChart', [
+                    {label:'候補平均ms/tick', color:'#38bdf8', values:chronologicalProfiles.map(p => ({x:p.x, y:p.averageTotal / p.count}))},
+                    {label:'セッション最大ms/tick', color:'#fb7185', values:chronologicalProfiles.map(p => ({x:p.x, y:p.maximum}))}
+                ], {minY:0, decimals:2});
+                const profileBody = document.getElementById('chunk-profile-table');
+                profileBody.innerHTML = profileRecords.length ? profileRecords.map(p => `
+                    <tr><td>${new Date(p.finishedAtEpochSec * 1000).toLocaleString()}</td>
+                    <td>${escapeHtml(p.trigger)}</td><td><span class="badge badge-dim">${escapeHtml(p.dimension.replace('minecraft:', ''))}</span></td>
+                    <td>${p.chunkX}, ${p.chunkZ}</td><td>${p.averageTickMs.toFixed(3)} / <span style="color:var(--accent-rose);font-weight:700;">${p.maximumTickMs.toFixed(3)} ms</span></td>
+                    <td>${p.entityMs.toFixed(2)} ms<br><span style="color:var(--text-muted);">${p.entityCalls} calls</span></td>
+                    <td>${p.blockEntityMs.toFixed(2)} ms<br><span style="color:var(--text-muted);">${p.blockEntityCalls} calls</span></td>
+                    <td>${p.scheduledTickMs.toFixed(2)} ms<br><span style="color:var(--text-muted);">${p.scheduledTickCalls} calls</span></td>
+                    <td>${p.sampledTicks}</td></tr>`).join('')
+                    : '<tr><td colspan="9" style="text-align:center;">実測データがありません</td></tr>';
+            } catch (e) { console.error(e); }
+        }
+
+        function exportData(format, type = 'players') {
             const windowVal = document.getElementById('windowSelector').value;
             const token = getAuthToken();
             const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
-            window.location.href = `/api/export?format=${format}&window=${windowVal}${tokenQuery}`;
+            const dim = document.getElementById('performanceDimSelector')?.value || 'all';
+            window.location.href = `/api/export?format=${format}&type=${type}&dimension=${encodeURIComponent(dim)}&window=${windowVal}${tokenQuery}`;
         }
 
         function openPlayerModalByUuid(uuid) {

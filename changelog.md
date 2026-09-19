@@ -2,6 +2,7 @@
 
 ## Interface
 
+- **Analytics Performance Diagnostics**: Persisted the Web API token across restarts and now distinguish missing from stale credentials. The dashboard records one-minute TPS/MSPT samples and lightweight entity/block-entity chunk load estimates, with time-series graphs, hot-chunk rankings, dimension filters, and CSV/JSONL exports. Repeated TPS/MSPT degradation now starts a bounded 10-second sampled profiler for the estimated top chunks, separating entity, block-entity, and scheduled-tick CPU time while avoiding timing and coordinate work outside sampled ticks; operators can also start, inspect, stop, and export profiles manually.
 - **Nation Hub Action Layout**: Split the overview actions into two responsive rows so recovery dispatch and vault configuration no longer overlap, including at compact GUI widths.
 - **Startup Safety and First-Run Setup**: Added a silent photosensitivity/audio notice, a skippable MoveEarth logo ident, and a first-run custom setup for narrator, subtitles, master/music/effect volume, and reduced UI motion. The vanilla narrator-only onboarding is replaced without skipping later startup checks, and the title menu now enters with subtle logo, panel, and button-highlight motion.
 - **Expanded Guide Canvas**: Removed the chapter sidebar so the node canvas can use the full left side of the guide. Added a framed canvas, stronger node cards, wider spacing, and shorter edge-to-edge dependency lines for clearer progression at a glance.

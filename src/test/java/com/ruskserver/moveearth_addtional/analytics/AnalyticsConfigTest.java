@@ -41,6 +41,7 @@ public class AnalyticsConfigTest {
         assertEquals("127.0.0.1", AnalyticsConfig.getWebServerHost());
         assertEquals(8080, AnalyticsConfig.getWebServerPort());
         assertTrue(AnalyticsConfig.isWebServerRequireAuth());
+        assertFalse(AnalyticsConfig.getAuthToken().isBlank());
     }
 
     @Test
@@ -52,6 +53,14 @@ public class AnalyticsConfigTest {
         props.setProperty("web_server_host", "0.0.0.0");
         props.setProperty("web_server_port", "9090");
         props.setProperty("web_server_require_auth", "false");
+        props.setProperty("profiler_auto_enabled", "false");
+        props.setProperty("profiler_tps_threshold", "17.5");
+        props.setProperty("profiler_mspt_threshold", "60.0");
+        props.setProperty("profiler_consecutive_samples", "4");
+        props.setProperty("profiler_duration_seconds", "15");
+        props.setProperty("profiler_sample_interval_ticks", "10");
+        props.setProperty("profiler_candidate_chunks", "12");
+        props.setProperty("profiler_cooldown_seconds", "600");
 
         try (OutputStream out = Files.newOutputStream(configFile)) {
             props.store(out, "Test Config");
@@ -64,6 +73,14 @@ public class AnalyticsConfigTest {
         assertEquals("0.0.0.0", AnalyticsConfig.getWebServerHost());
         assertEquals(9090, AnalyticsConfig.getWebServerPort());
         assertFalse(AnalyticsConfig.isWebServerRequireAuth());
+        assertFalse(AnalyticsConfig.isProfilerAutoEnabled());
+        assertEquals(17.5D, AnalyticsConfig.getProfilerTpsThreshold(), 0.001D);
+        assertEquals(60.0D, AnalyticsConfig.getProfilerMsptThreshold(), 0.001D);
+        assertEquals(4, AnalyticsConfig.getProfilerConsecutiveSamples());
+        assertEquals(15, AnalyticsConfig.getProfilerDurationSeconds());
+        assertEquals(10, AnalyticsConfig.getProfilerSampleIntervalTicks());
+        assertEquals(12, AnalyticsConfig.getProfilerCandidateChunks());
+        assertEquals(600, AnalyticsConfig.getProfilerCooldownSeconds());
     }
 
     @Test
@@ -98,5 +115,21 @@ public class AnalyticsConfigTest {
 
         AnalyticsConfig.loadConfig(tempConfigDir);
         assertEquals(8080, AnalyticsConfig.getWebServerPort(), "無効なポート指定時はデフォルトの8080にフォールバックするべき");
+    }
+
+    @Test
+    public void testAuthTokenPersistsAcrossReloadAndRegeneration() {
+        AnalyticsConfig.loadConfig(tempConfigDir);
+        String original = AnalyticsConfig.getAuthToken();
+
+        AnalyticsConfig.resetToDefaults();
+        AnalyticsConfig.loadConfig(tempConfigDir);
+        assertEquals(original, AnalyticsConfig.getAuthToken(), "再起動相当の再ロードでtokenが変わってはいけない");
+
+        String regenerated = AnalyticsConfig.regenerateAuthToken();
+        assertNotEquals(original, regenerated);
+        AnalyticsConfig.resetToDefaults();
+        AnalyticsConfig.loadConfig(tempConfigDir);
+        assertEquals(regenerated, AnalyticsConfig.getAuthToken(), "再生成tokenは即座に設定へ保存されるべき");
     }
 }

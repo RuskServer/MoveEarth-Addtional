@@ -194,6 +194,57 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                 PRIMARY KEY (recorded_at)
             );
         """);
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS server_performance_1m (
+                recorded_at INTEGER PRIMARY KEY,
+                tps REAL NOT NULL,
+                mspt REAL NOT NULL,
+                loaded_chunks INTEGER NOT NULL,
+                online_players INTEGER NOT NULL
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_server_performance_time ON server_performance_1m(recorded_at);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS chunk_load_1m (
+                recorded_at INTEGER NOT NULL,
+                dimension TEXT NOT NULL,
+                chunk_x INTEGER NOT NULL,
+                chunk_z INTEGER NOT NULL,
+                entity_count INTEGER NOT NULL,
+                block_entity_count INTEGER NOT NULL,
+                load_score REAL NOT NULL,
+                PRIMARY KEY (recorded_at, dimension, chunk_x, chunk_z)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_chunk_load_time ON chunk_load_1m(recorded_at, dimension);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_chunk_load_score ON chunk_load_1m(dimension, load_score DESC);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS chunk_profile (
+                session_id TEXT NOT NULL,
+                started_at INTEGER NOT NULL,
+                finished_at INTEGER NOT NULL,
+                trigger_name TEXT NOT NULL,
+                dimension TEXT NOT NULL,
+                chunk_x INTEGER NOT NULL,
+                chunk_z INTEGER NOT NULL,
+                sampled_ticks INTEGER NOT NULL,
+                average_tick_ms REAL NOT NULL,
+                maximum_tick_ms REAL NOT NULL,
+                total_ms REAL NOT NULL,
+                entity_ms REAL NOT NULL,
+                block_entity_ms REAL NOT NULL,
+                scheduled_tick_ms REAL NOT NULL,
+                entity_calls INTEGER NOT NULL,
+                block_entity_calls INTEGER NOT NULL,
+                scheduled_tick_calls INTEGER NOT NULL,
+                PRIMARY KEY (session_id, dimension, chunk_x, chunk_z)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_chunk_profile_time ON chunk_profile(finished_at DESC);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_chunk_profile_max ON chunk_profile(maximum_tick_ms DESC);");
     }
 
     private void checkAndMigrateSchema(Statement stmt) throws SQLException {
@@ -322,7 +373,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             stmt.execute("ALTER TABLE detector_activity_5m ADD COLUMN detector_name TEXT NOT NULL DEFAULT '名称未設定';");
         }
 
-        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (4, " + (System.currentTimeMillis() / 1000L) + ");");
+        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (6, " + (System.currentTimeMillis() / 1000L) + ");");
     }
 
     @Override
@@ -396,12 +447,35 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             ) VALUES (?, ?, ?, ?, ?);
         """;
 
+        String sqlServerPerformance = """
+            INSERT OR REPLACE INTO server_performance_1m (
+                recorded_at, tps, mspt, loaded_chunks, online_players
+            ) VALUES (?, ?, ?, ?, ?);
+        """;
+
+        String sqlChunkLoad = """
+            INSERT OR REPLACE INTO chunk_load_1m (
+                recorded_at, dimension, chunk_x, chunk_z, entity_count, block_entity_count, load_score
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """;
+
+        String sqlChunkProfile = """
+            INSERT OR REPLACE INTO chunk_profile (
+                session_id, started_at, finished_at, trigger_name, dimension, chunk_x, chunk_z,
+                sampled_ticks, average_tick_ms, maximum_tick_ms, total_ms, entity_ms,
+                block_entity_ms, scheduled_tick_ms, entity_calls, block_entity_calls, scheduled_tick_calls
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """;
+
         try (PreparedStatement psIdentity = connection.prepareStatement(sqlIdentityUpsert);
              PreparedStatement psSession = connection.prepareStatement(sqlSessionInsert);
              PreparedStatement psPlayer = connection.prepareStatement(sqlPlayerActivity);
              PreparedStatement psSpatial = connection.prepareStatement(sqlSpatialActivity);
              PreparedStatement psDetector = connection.prepareStatement(sqlDetectorActivity);
-             PreparedStatement psHealth = connection.prepareStatement(sqlHealthMetric)) {
+             PreparedStatement psHealth = connection.prepareStatement(sqlHealthMetric);
+             PreparedStatement psPerformance = connection.prepareStatement(sqlServerPerformance);
+             PreparedStatement psChunkLoad = connection.prepareStatement(sqlChunkLoad);
+             PreparedStatement psChunkProfile = connection.prepareStatement(sqlChunkProfile)) {
 
             for (AnalyticsEventQueue.AnalyticsEvent event : events) {
                 if (event instanceof AnalyticsEventQueue.SessionStartEvent s) {
@@ -479,6 +553,45 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                     psHealth.setLong(4, h.flushMs());
                     psHealth.setLong(5, h.dbBytes());
                     psHealth.addBatch();
+                } else if (event instanceof AnalyticsEventQueue.PerformanceSampleEvent p) {
+                    ServerPerformanceSample sample = p.serverSample();
+                    psPerformance.setLong(1, sample.recordedAtEpochSec());
+                    psPerformance.setDouble(2, sample.tps());
+                    psPerformance.setDouble(3, sample.mspt());
+                    psPerformance.setInt(4, sample.loadedChunks());
+                    psPerformance.setInt(5, sample.onlinePlayers());
+                    psPerformance.addBatch();
+                    for (ChunkLoadSample chunk : p.chunkSamples()) {
+                        psChunkLoad.setLong(1, chunk.recordedAtEpochSec());
+                        psChunkLoad.setString(2, chunk.dimension());
+                        psChunkLoad.setInt(3, chunk.chunkX());
+                        psChunkLoad.setInt(4, chunk.chunkZ());
+                        psChunkLoad.setInt(5, chunk.entityCount());
+                        psChunkLoad.setInt(6, chunk.blockEntityCount());
+                        psChunkLoad.setDouble(7, chunk.loadScore());
+                        psChunkLoad.addBatch();
+                    }
+                } else if (event instanceof AnalyticsEventQueue.ChunkProfileEvent p) {
+                    for (ChunkProfileRecord record : p.records()) {
+                        psChunkProfile.setString(1, record.sessionId().toString());
+                        psChunkProfile.setLong(2, record.startedAtEpochSec());
+                        psChunkProfile.setLong(3, record.finishedAtEpochSec());
+                        psChunkProfile.setString(4, record.trigger());
+                        psChunkProfile.setString(5, record.dimension());
+                        psChunkProfile.setInt(6, record.chunkX());
+                        psChunkProfile.setInt(7, record.chunkZ());
+                        psChunkProfile.setInt(8, record.sampledTicks());
+                        psChunkProfile.setDouble(9, record.averageTickMs());
+                        psChunkProfile.setDouble(10, record.maximumTickMs());
+                        psChunkProfile.setDouble(11, record.totalMs());
+                        psChunkProfile.setDouble(12, record.entityMs());
+                        psChunkProfile.setDouble(13, record.blockEntityMs());
+                        psChunkProfile.setDouble(14, record.scheduledTickMs());
+                        psChunkProfile.setLong(15, record.entityCalls());
+                        psChunkProfile.setLong(16, record.blockEntityCalls());
+                        psChunkProfile.setLong(17, record.scheduledTickCalls());
+                        psChunkProfile.addBatch();
+                    }
                 }
             }
 
@@ -488,6 +601,9 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             psSpatial.executeBatch();
             psDetector.executeBatch();
             psHealth.executeBatch();
+            psPerformance.executeBatch();
+            psChunkLoad.executeBatch();
+            psChunkProfile.executeBatch();
 
             connection.commit();
         } catch (SQLException e) {
@@ -551,13 +667,22 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (cutoff5mEpochSec > 0) {
             try (PreparedStatement ps1 = connection.prepareStatement("DELETE FROM player_activity_5m WHERE bucket_at < ?");
                  PreparedStatement ps2 = connection.prepareStatement("DELETE FROM spatial_activity_5m WHERE bucket_at < ?");
-                 PreparedStatement ps3 = connection.prepareStatement("DELETE FROM detector_activity_5m WHERE bucket_at < ?")) {
+                 PreparedStatement ps3 = connection.prepareStatement("DELETE FROM detector_activity_5m WHERE bucket_at < ?");
+                 PreparedStatement ps4 = connection.prepareStatement("DELETE FROM server_performance_1m WHERE recorded_at < ?");
+                 PreparedStatement ps5 = connection.prepareStatement("DELETE FROM chunk_load_1m WHERE recorded_at < ?");
+                 PreparedStatement ps6 = connection.prepareStatement("DELETE FROM chunk_profile WHERE finished_at < ?")) {
                 ps1.setLong(1, cutoff5mEpochSec);
                 ps1.executeUpdate();
                 ps2.setLong(1, cutoff5mEpochSec);
                 ps2.executeUpdate();
                 ps3.setLong(1, cutoff5mEpochSec);
                 ps3.executeUpdate();
+                ps4.setLong(1, cutoff5mEpochSec);
+                ps4.executeUpdate();
+                ps5.setLong(1, cutoff5mEpochSec);
+                ps5.executeUpdate();
+                ps6.setLong(1, cutoff5mEpochSec);
+                ps6.executeUpdate();
             }
         }
 
@@ -1232,6 +1357,141 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             }
         }
         return new CollectorHealthDto(System.currentTimeMillis() / 1000L, 0, 0L, 0L, getDatabaseSizeBytes());
+    }
+
+    @Override
+    public synchronized List<ServerPerformanceSample> queryServerPerformance(
+            TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
+        String sql = """
+            SELECT recorded_at, tps, mspt, loaded_chunks, online_players
+            FROM (
+                SELECT recorded_at, tps, mspt, loaded_chunks, online_players
+                FROM server_performance_1m
+                WHERE recorded_at >= ?
+                ORDER BY recorded_at DESC
+                LIMIT ?
+            ) ORDER BY recorded_at ASC;
+        """;
+        List<ServerPerformanceSample> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, window.getStartEpochSec(currentEpochSec));
+            ps.setInt(2, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new ServerPerformanceSample(
+                            rs.getLong("recorded_at"), rs.getDouble("tps"), rs.getDouble("mspt"),
+                            rs.getInt("loaded_chunks"), rs.getInt("online_players")));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized List<ChunkLoadSample> queryChunkLoadHistory(
+            String dimension, TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
+        boolean allDimensions = dimension == null || dimension.isBlank() || "all".equalsIgnoreCase(dimension);
+        String whereDimension = allDimensions ? "" : " AND dimension = ?";
+        String sql = """
+            SELECT recorded_at, dimension, chunk_x, chunk_z, entity_count, block_entity_count, load_score
+            FROM (
+                SELECT recorded_at, dimension, chunk_x, chunk_z, entity_count, block_entity_count, load_score
+                FROM chunk_load_1m
+                WHERE recorded_at >= ?%s
+                ORDER BY recorded_at DESC, load_score DESC
+                LIMIT ?
+            ) ORDER BY recorded_at ASC, load_score DESC;
+        """.formatted(whereDimension);
+        List<ChunkLoadSample> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            int index = 1;
+            ps.setLong(index++, window.getStartEpochSec(currentEpochSec));
+            if (!allDimensions) ps.setString(index++, dimension);
+            ps.setInt(index, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new ChunkLoadSample(
+                            rs.getLong("recorded_at"), rs.getString("dimension"),
+                            rs.getInt("chunk_x"), rs.getInt("chunk_z"),
+                            rs.getInt("entity_count"), rs.getInt("block_entity_count"),
+                            rs.getDouble("load_score")));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized List<ChunkLoadSummaryDto> queryTopLoadedChunks(
+            String dimension, TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
+        boolean allDimensions = dimension == null || dimension.isBlank() || "all".equalsIgnoreCase(dimension);
+        String whereDimension = allDimensions ? "" : " AND dimension = ?";
+        String sql = """
+            SELECT dimension, chunk_x, chunk_z, COUNT(*) AS samples,
+                   AVG(load_score) AS avg_score, MAX(load_score) AS max_score,
+                   AVG(entity_count) AS avg_entities, AVG(block_entity_count) AS avg_block_entities,
+                   MAX(recorded_at) AS last_recorded
+            FROM chunk_load_1m
+            WHERE recorded_at >= ?%s
+            GROUP BY dimension, chunk_x, chunk_z
+            ORDER BY max_score DESC, avg_score DESC
+            LIMIT ?;
+        """.formatted(whereDimension);
+        List<ChunkLoadSummaryDto> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            int index = 1;
+            ps.setLong(index++, window.getStartEpochSec(currentEpochSec));
+            if (!allDimensions) ps.setString(index++, dimension);
+            ps.setInt(index, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new ChunkLoadSummaryDto(
+                            rs.getString("dimension"), rs.getInt("chunk_x"), rs.getInt("chunk_z"),
+                            rs.getInt("samples"), rs.getDouble("avg_score"), rs.getDouble("max_score"),
+                            rs.getDouble("avg_entities"), rs.getDouble("avg_block_entities"),
+                            rs.getLong("last_recorded")));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized List<ChunkProfileRecord> queryChunkProfiles(
+            TimeWindow window, int limit, long currentEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return Collections.emptyList();
+        String sql = """
+            SELECT session_id, started_at, finished_at, trigger_name, dimension, chunk_x, chunk_z,
+                   sampled_ticks, average_tick_ms, maximum_tick_ms, total_ms, entity_ms,
+                   block_entity_ms, scheduled_tick_ms, entity_calls, block_entity_calls,
+                   scheduled_tick_calls
+            FROM chunk_profile
+            WHERE finished_at >= ?
+            ORDER BY finished_at DESC, maximum_tick_ms DESC
+            LIMIT ?;
+        """;
+        List<ChunkProfileRecord> result = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, window.getStartEpochSec(currentEpochSec));
+            ps.setInt(2, Math.max(1, limit));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new ChunkProfileRecord(
+                            UUID.fromString(rs.getString("session_id")), rs.getLong("started_at"),
+                            rs.getLong("finished_at"), rs.getString("trigger_name"),
+                            rs.getString("dimension"), rs.getInt("chunk_x"), rs.getInt("chunk_z"),
+                            rs.getInt("sampled_ticks"), rs.getDouble("average_tick_ms"),
+                            rs.getDouble("maximum_tick_ms"), rs.getDouble("total_ms"),
+                            rs.getDouble("entity_ms"), rs.getDouble("block_entity_ms"),
+                            rs.getDouble("scheduled_tick_ms"), rs.getLong("entity_calls"),
+                            rs.getLong("block_entity_calls"), rs.getLong("scheduled_tick_calls")));
+                }
+            }
+        }
+        return result;
     }
 
     @Override

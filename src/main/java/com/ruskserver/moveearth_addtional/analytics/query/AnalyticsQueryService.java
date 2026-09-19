@@ -2,6 +2,9 @@ package com.ruskserver.moveearth_addtional.analytics.query;
 
 import com.ruskserver.moveearth_addtional.analytics.query.cache.AnalyticsQueryCache;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.*;
+import com.ruskserver.moveearth_addtional.analytics.model.ChunkLoadSample;
+import com.ruskserver.moveearth_addtional.analytics.model.ServerPerformanceSample;
+import com.ruskserver.moveearth_addtional.analytics.model.ChunkProfileRecord;
 import com.ruskserver.moveearth_addtional.analytics.storage.AnalyticsStorageEngine;
 import com.ruskserver.moveearth_addtional.analytics.storage.AnalyticsStorageService;
 
@@ -30,6 +33,9 @@ public class AnalyticsQueryService {
     private final AnalyticsQueryCache<String, List<SpatialHeatmapCellDto>> heatmapCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, CollectorHealthDto> healthCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
     private final AnalyticsQueryCache<String, OverviewSummaryDto> overviewCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
+    private final AnalyticsQueryCache<String, List<ServerPerformanceSample>> performanceCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
+    private final AnalyticsQueryCache<String, List<ChunkLoadSample>> chunkHistoryCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
+    private final AnalyticsQueryCache<String, List<ChunkLoadSummaryDto>> chunkSummaryCache = new AnalyticsQueryCache<>(CACHE_TTL_MS);
 
     private final ExecutorService queryExecutor = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "MoveEarth-Analytics-Query-Worker");
@@ -293,6 +299,83 @@ public class AnalyticsQueryService {
         }, queryExecutor);
     }
 
+    public CompletableFuture<List<ServerPerformanceSample>> getServerPerformanceAsync(TimeWindow window, int limit) {
+        String cacheKey = window.getId() + ":" + limit;
+        Optional<List<ServerPerformanceSample>> cached = performanceCache.get(cacheKey);
+        if (cached.isPresent()) return CompletableFuture.completedFuture(cached.get());
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return Collections.emptyList();
+            try {
+                List<ServerPerformanceSample> result = engine.queryServerPerformance(
+                        window, limit, System.currentTimeMillis() / 1000L);
+                performanceCache.put(cacheKey, result);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    public CompletableFuture<List<ChunkLoadSample>> getChunkLoadHistoryAsync(
+            String dimension, TimeWindow window, int limit) {
+        String dim = dimension == null ? "all" : dimension;
+        String cacheKey = dim + ":" + window.getId() + ":" + limit;
+        Optional<List<ChunkLoadSample>> cached = chunkHistoryCache.get(cacheKey);
+        if (cached.isPresent()) return CompletableFuture.completedFuture(cached.get());
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return Collections.emptyList();
+            try {
+                List<ChunkLoadSample> result = engine.queryChunkLoadHistory(
+                        dim, window, limit, System.currentTimeMillis() / 1000L);
+                chunkHistoryCache.put(cacheKey, result);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    public CompletableFuture<List<ChunkLoadSummaryDto>> getTopLoadedChunksAsync(
+            String dimension, TimeWindow window, int limit) {
+        String dim = dimension == null ? "all" : dimension;
+        String cacheKey = dim + ":" + window.getId() + ":" + limit;
+        Optional<List<ChunkLoadSummaryDto>> cached = chunkSummaryCache.get(cacheKey);
+        if (cached.isPresent()) return CompletableFuture.completedFuture(cached.get());
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return Collections.emptyList();
+            try {
+                List<ChunkLoadSummaryDto> result = engine.queryTopLoadedChunks(
+                        dim, window, limit, System.currentTimeMillis() / 1000L);
+                chunkSummaryCache.put(cacheKey, result);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    public CompletableFuture<List<ChunkProfileRecord>> getChunkProfilesAsync(TimeWindow window, int limit) {
+        // Profiles are short, infrequent sessions; bypass the minute cache so a completed run appears immediately.
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return Collections.emptyList();
+            try {
+                List<ChunkProfileRecord> result = engine.queryChunkProfiles(
+                        window, limit, System.currentTimeMillis() / 1000L);
+                return result;
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.emptyList();
+            }
+        }, queryExecutor);
+    }
+
     /**
      * キャッシュのクリア
      */
@@ -305,5 +388,8 @@ public class AnalyticsQueryService {
         heatmapCache.clear();
         healthCache.clear();
         overviewCache.clear();
+        performanceCache.clear();
+        chunkHistoryCache.clear();
+        chunkSummaryCache.clear();
     }
 }

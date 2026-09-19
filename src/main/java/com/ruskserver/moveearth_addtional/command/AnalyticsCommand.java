@@ -7,6 +7,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
+import com.ruskserver.moveearth_addtional.analytics.collector.AnalyticsCollectorManager;
+import com.ruskserver.moveearth_addtional.analytics.profiler.ChunkProfilerService;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.query.export.AnalyticsExportService;
@@ -53,6 +55,16 @@ public final class AnalyticsCommand {
                         .executes(ctx -> showToken(ctx.getSource()))
                         .then(Commands.literal("regenerate")
                                 .executes(ctx -> regenerateToken(ctx.getSource()))))
+                // /analytics profile start [seconds] | status | stop
+                .then(Commands.literal("profile")
+                        .then(Commands.literal("start")
+                                .executes(ctx -> startProfiler(ctx.getSource(), AnalyticsConfig.getProfilerDurationSeconds()))
+                                .then(Commands.argument("seconds", IntegerArgumentType.integer(1, 120))
+                                        .executes(ctx -> startProfiler(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "seconds")))))
+                        .then(Commands.literal("status")
+                                .executes(ctx -> showProfilerStatus(ctx.getSource())))
+                        .then(Commands.literal("stop")
+                                .executes(ctx -> stopProfiler(ctx.getSource()))))
                 // /analytics health
                 .then(Commands.literal("health")
                         .executes(ctx -> showHealth(ctx.getSource())))
@@ -91,6 +103,29 @@ public final class AnalyticsCommand {
                                                 .executes(ctx -> showHeatmap(ctx.getSource(), StringArgumentType.getString(ctx, "dimension"), parseWindow(StringArgumentType.getString(ctx, "window")), IntegerArgumentType.getInteger(ctx, "limit")))))))
                 // /analytics export <format> [window]
                 .then(Commands.literal("export")
+                        .then(Commands.literal("performance")
+                                .then(Commands.argument("format", StringArgumentType.word())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
+                                        .executes(ctx -> exportPerformance(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7))
+                                        .then(Commands.argument("window", StringArgumentType.word())
+                                                .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"7d", "30d", "all"}, b))
+                                                .executes(ctx -> exportPerformance(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")))))))
+                        .then(Commands.literal("chunks")
+                                .then(Commands.argument("format", StringArgumentType.word())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
+                                        .executes(ctx -> exportChunks(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7, "all"))
+                                        .then(Commands.argument("window", StringArgumentType.word())
+                                                .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"7d", "30d", "all"}, b))
+                                                .executes(ctx -> exportChunks(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")), "all"))
+                                                .then(Commands.argument("dimension", StringArgumentType.string())
+                                                        .executes(ctx -> exportChunks(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")), StringArgumentType.getString(ctx, "dimension")))))))
+                        .then(Commands.literal("profiles")
+                                .then(Commands.argument("format", StringArgumentType.word())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
+                                        .executes(ctx -> exportProfiles(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7))
+                                        .then(Commands.argument("window", StringArgumentType.word())
+                                                .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"7d", "30d", "all"}, b))
+                                                .executes(ctx -> exportProfiles(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")))))))
                         .then(Commands.argument("format", StringArgumentType.word())
                                 .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
                                 .executes(ctx -> exportData(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7))
@@ -146,6 +181,45 @@ public final class AnalyticsCommand {
             Component msg = AnalyticsTextFormatter.formatCollectorHealth(health);
             server.execute(() -> source.sendSuccess(() -> msg, false));
         });
+        return 1;
+    }
+
+    private static int startProfiler(CommandSourceStack source, int seconds) {
+        AnalyticsCollectorManager.INSTANCE.prepareProfilerCandidates(source.getServer());
+        ChunkProfilerService.StartResult result = ChunkProfilerService.INSTANCE.start(
+                source.getServer(), seconds, "manual", true);
+        if (!result.started()) {
+            source.sendFailure(Component.literal("[MoveEarth] チャンク実測を開始できません: " + result.reason()));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("[MoveEarth] 上位 " + result.status().candidateChunks()
+                + " チャンクの実測を " + seconds + " 秒間開始しました（"
+                + AnalyticsConfig.getProfilerSampleIntervalTicks() + "tick中1tickをサンプリング）")
+                .withStyle(ChatFormatting.GREEN), true);
+        return 1;
+    }
+
+    private static int showProfilerStatus(CommandSourceStack source) {
+        ChunkProfilerService.Status status = ChunkProfilerService.INSTANCE.snapshot();
+        if (!status.running()) {
+            source.sendSuccess(() -> Component.literal("[MoveEarth] チャンク実測は停止中です。候補: "
+                    + status.candidateChunks()).withStyle(ChatFormatting.GRAY), false);
+            return 1;
+        }
+        long seconds = (status.remainingTicks() + 19L) / 20L;
+        source.sendSuccess(() -> Component.literal("[MoveEarth] チャンク実測中: 残り " + seconds
+                + "秒 / 候補 " + status.candidateChunks() + " / 計測済み " + status.measuredChunks())
+                .withStyle(ChatFormatting.AQUA), false);
+        return 1;
+    }
+
+    private static int stopProfiler(CommandSourceStack source) {
+        if (!ChunkProfilerService.INSTANCE.stop()) {
+            source.sendFailure(Component.literal("[MoveEarth] 実行中のチャンク実測はありません。"));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("[MoveEarth] チャンク実測を終了し、結果を保存キューへ送りました。")
+                .withStyle(ChatFormatting.GREEN), true);
         return 1;
     }
 
@@ -212,6 +286,58 @@ public final class AnalyticsCommand {
                     return null;
                 });
 
+        return 1;
+    }
+
+    private static int exportPerformance(CommandSourceStack source, String formatStr, TimeWindow window) {
+        MinecraftServer server = source.getServer();
+        AnalyticsExportService.ExportFormat format = "jsonl".equalsIgnoreCase(formatStr)
+                ? AnalyticsExportService.ExportFormat.JSONL : AnalyticsExportService.ExportFormat.CSV;
+        java.nio.file.Path exportDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("moveearth/analytics/exports");
+        source.sendSuccess(() -> Component.literal("[MoveEarth] TPS/MSPT履歴をエクスポート中...")
+                .withStyle(ChatFormatting.YELLOW), false);
+        AnalyticsExportService.INSTANCE.exportPerformanceToDirAsync(exportDir, format, window)
+                .thenAccept(path -> server.execute(() -> source.sendSuccess(
+                        () -> Component.literal("[MoveEarth] エクスポート完了: " + path.toAbsolutePath())
+                                .withStyle(ChatFormatting.GREEN), true)))
+                .exceptionally(e -> { server.execute(() -> source.sendFailure(Component.literal(
+                        "[MoveEarth] エクスポートに失敗しました: " + e.getMessage()))); return null; });
+        return 1;
+    }
+
+    private static int exportChunks(CommandSourceStack source, String formatStr, TimeWindow window,
+                                    String dimension) {
+        MinecraftServer server = source.getServer();
+        AnalyticsExportService.ExportFormat format = "jsonl".equalsIgnoreCase(formatStr)
+                ? AnalyticsExportService.ExportFormat.JSONL : AnalyticsExportService.ExportFormat.CSV;
+        java.nio.file.Path exportDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("moveearth/analytics/exports");
+        source.sendSuccess(() -> Component.literal("[MoveEarth] 負荷チャンク履歴をエクスポート中...")
+                .withStyle(ChatFormatting.YELLOW), false);
+        AnalyticsExportService.INSTANCE.exportChunkLoadsToDirAsync(exportDir, format, window, dimension)
+                .thenAccept(path -> server.execute(() -> source.sendSuccess(
+                        () -> Component.literal("[MoveEarth] エクスポート完了: " + path.toAbsolutePath())
+                                .withStyle(ChatFormatting.GREEN), true)))
+                .exceptionally(e -> { server.execute(() -> source.sendFailure(Component.literal(
+                        "[MoveEarth] エクスポートに失敗しました: " + e.getMessage()))); return null; });
+        return 1;
+    }
+
+    private static int exportProfiles(CommandSourceStack source, String formatStr, TimeWindow window) {
+        MinecraftServer server = source.getServer();
+        AnalyticsExportService.ExportFormat format = "jsonl".equalsIgnoreCase(formatStr)
+                ? AnalyticsExportService.ExportFormat.JSONL : AnalyticsExportService.ExportFormat.CSV;
+        java.nio.file.Path exportDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("moveearth/analytics/exports");
+        source.sendSuccess(() -> Component.literal("[MoveEarth] チャンク実測CPU履歴をエクスポート中...")
+                .withStyle(ChatFormatting.YELLOW), false);
+        AnalyticsExportService.INSTANCE.exportChunkProfilesToDirAsync(exportDir, format, window)
+                .thenAccept(path -> server.execute(() -> source.sendSuccess(
+                        () -> Component.literal("[MoveEarth] エクスポート完了: " + path.toAbsolutePath())
+                                .withStyle(ChatFormatting.GREEN), true)))
+                .exceptionally(e -> { server.execute(() -> source.sendFailure(Component.literal(
+                        "[MoveEarth] エクスポートに失敗しました: " + e.getMessage()))); return null; });
         return 1;
     }
 

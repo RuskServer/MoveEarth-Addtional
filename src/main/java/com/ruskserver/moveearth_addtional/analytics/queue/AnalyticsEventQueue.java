@@ -102,6 +102,34 @@ public class AnalyticsEventQueue {
         }
     }
 
+    /** TPS/MSPT and the highest estimated-load chunks sampled together. */
+    public record PerformanceSampleEvent(
+            ServerPerformanceSample serverSample,
+            List<ChunkLoadSample> chunkSamples
+    ) implements AnalyticsEvent {
+        public PerformanceSampleEvent {
+            Objects.requireNonNull(serverSample, "serverSample must not be null");
+            chunkSamples = chunkSamples == null ? List.of() : List.copyOf(chunkSamples);
+        }
+
+        @Override
+        public EventPriority getPriority() {
+            return EventPriority.NORMAL;
+        }
+    }
+
+    /** Completed bounded CPU profiling session, aggregated per chunk. */
+    public record ChunkProfileEvent(List<ChunkProfileRecord> records) implements AnalyticsEvent {
+        public ChunkProfileEvent {
+            records = records == null ? List.of() : List.copyOf(records);
+        }
+
+        @Override
+        public EventPriority getPriority() {
+            return EventPriority.HIGH;
+        }
+    }
+
     private final BlockingQueue<AnalyticsEvent> queue;
     private final int capacity;
     private final AtomicLong droppedEvents = new AtomicLong(0);

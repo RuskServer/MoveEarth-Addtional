@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.query.export.AnalyticsExportService;
+import com.ruskserver.moveearth_addtional.analytics.profiler.ChunkProfilerService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -80,6 +81,9 @@ public class AnalyticsWebServer {
             server.createContext("/api/detectors", new DetectorsApiHandler());
             server.createContext("/api/heatmap", new HeatmapApiHandler());
             server.createContext("/api/health", new HealthApiHandler());
+            server.createContext("/api/performance", new PerformanceApiHandler());
+            server.createContext("/api/chunks", new ChunkLoadApiHandler());
+            server.createContext("/api/profiles", new ChunkProfilesApiHandler());
             server.createContext("/api/export", new ExportApiHandler());
 
             server.setExecutor(Executors.newFixedThreadPool(4, r -> {
@@ -140,7 +144,8 @@ public class AnalyticsWebServer {
 
         // 1. Authorization: Bearer <token>
         String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+        boolean headerSupplied = authHeader != null && !authHeader.isBlank();
+        if (authHeader != null && authHeader.regionMatches(true, 0, "Bearer ", 0, "Bearer ".length())) {
             String token = authHeader.substring("Bearer ".length()).trim();
             if (expectedToken.equals(token)) {
                 return true;
@@ -154,7 +159,10 @@ public class AnalyticsWebServer {
             return true;
         }
 
-        sendResponse(exchange, 401, "{\"error\":\"Unauthorized. Valid token required.\"}", "application/json; charset=UTF-8");
+        boolean tokenSupplied = headerSupplied || tokenParam != null && !tokenParam.isBlank();
+        String code = tokenSupplied ? "AUTH_TOKEN_INVALID" : "AUTH_TOKEN_MISSING";
+        sendResponse(exchange, 401, "{\"error\":\"Unauthorized\",\"code\":\"" + code + "\"}",
+                "application/json; charset=UTF-8");
         return false;
     }
 
@@ -327,6 +335,67 @@ public class AnalyticsWebServer {
         }
     }
 
+    private static class PerformanceApiHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuthAndRateLimit(exchange)) return;
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI());
+            TimeWindow window = parseWindow(params.get("window"));
+            int limit = clampInt(params.get("limit"), 2000, 1, 10_000);
+            try {
+                var samples = AnalyticsQueryService.INSTANCE.getServerPerformanceAsync(window, limit).get();
+                sendResponse(exchange, 200, GSON.toJson(samples), "application/json; charset=UTF-8");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}",
+                        "application/json; charset=UTF-8");
+            }
+        }
+    }
+
+    private static class ChunkLoadApiHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuthAndRateLimit(exchange)) return;
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI());
+            TimeWindow window = parseWindow(params.get("window"));
+            String dimension = params.getOrDefault("dimension", "all");
+            int summaryLimit = clampInt(params.get("limit"), 20, 1, 100);
+            int historyLimit = clampInt(params.get("history_limit"), 5000, 100, 20_000);
+            try {
+                var summariesFuture = AnalyticsQueryService.INSTANCE
+                        .getTopLoadedChunksAsync(dimension, window, summaryLimit);
+                var historyFuture = AnalyticsQueryService.INSTANCE
+                        .getChunkLoadHistoryAsync(dimension, window, historyLimit);
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("summaries", summariesFuture.get());
+                response.put("history", historyFuture.get());
+                sendResponse(exchange, 200, GSON.toJson(response), "application/json; charset=UTF-8");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}",
+                        "application/json; charset=UTF-8");
+            }
+        }
+    }
+
+    private static class ChunkProfilesApiHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuthAndRateLimit(exchange)) return;
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI());
+            TimeWindow window = parseWindow(params.get("window"));
+            int limit = clampInt(params.get("limit"), 200, 1, 2000);
+            try {
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("status", ChunkProfilerService.INSTANCE.snapshot());
+                response.put("records", AnalyticsQueryService.INSTANCE.getChunkProfilesAsync(window, limit).get());
+                sendResponse(exchange, 200, GSON.toJson(response), "application/json; charset=UTF-8");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, "{\"error\":\"" + e.getMessage() + "\"}",
+                        "application/json; charset=UTF-8");
+            }
+        }
+    }
+
     private static class ExportApiHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -334,6 +403,8 @@ public class AnalyticsWebServer {
 
             Map<String, String> params = parseQueryParams(exchange.getRequestURI());
             String formatStr = params.getOrDefault("format", "csv").toLowerCase();
+            String type = params.getOrDefault("type", "players").toLowerCase(Locale.ROOT);
+            String dimension = params.getOrDefault("dimension", "all");
             TimeWindow window = parseWindow(params.get("window"));
 
             AnalyticsExportService.ExportFormat format = "jsonl".equals(formatStr)
@@ -344,7 +415,16 @@ public class AnalyticsWebServer {
             Path exportFile = null;
             try {
                 tempExportDir = Files.createTempDirectory("me_analytics_web_export");
-                exportFile = AnalyticsExportService.INSTANCE.exportPlayersToDirAsync(tempExportDir, format, window).get();
+                exportFile = switch (type) {
+                    case "performance", "tps" -> AnalyticsExportService.INSTANCE
+                            .exportPerformanceToDirAsync(tempExportDir, format, window).get();
+                    case "chunks", "chunk_load" -> AnalyticsExportService.INSTANCE
+                            .exportChunkLoadsToDirAsync(tempExportDir, format, window, dimension).get();
+                    case "profiles", "chunk_profiles" -> AnalyticsExportService.INSTANCE
+                            .exportChunkProfilesToDirAsync(tempExportDir, format, window).get();
+                    default -> AnalyticsExportService.INSTANCE
+                            .exportPlayersToDirAsync(tempExportDir, format, window).get();
+                };
 
                 exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + exportFile.getFileName() + "\"");
                 sendFileResponse(exchange, 200, exportFile, "application/octet-stream");

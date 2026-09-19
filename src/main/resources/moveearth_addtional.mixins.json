@@ -18,7 +18,10 @@
     "HopperSiegeLootMixin",
     "CreateArmSiegeLootMixin",
     "CreateFunnelSiegeLootMixin",
-    "CreateChuteSiegeLootMixin"
+    "CreateChuteSiegeLootMixin",
+    "ChunkMapAnalyticsMixin",
+    "ServerLevelChunkProfilerMixin",
+    "BlockEntityChunkProfilerMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",

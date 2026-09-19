@@ -7,12 +7,17 @@ import com.ruskserver.moveearth_addtional.analytics.group.DetectorGroupService;
 import com.ruskserver.moveearth_addtional.analytics.group.GroupRelation;
 import com.ruskserver.moveearth_addtional.analytics.model.*;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
+import com.ruskserver.moveearth_addtional.analytics.profiler.ChunkProfilerService;
 import com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker;
 import com.ruskserver.moveearth_addtional.analytics.tracker.SessionTracker;
 import com.ruskserver.moveearth_addtional.pvp.PvpMatchManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -24,6 +29,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AnalyticsCollectorManager {
 
     public static final AnalyticsCollectorManager INSTANCE = new AnalyticsCollectorManager();
+    private static final long PERFORMANCE_SAMPLE_INTERVAL_TICKS = 20L * 60L;
+    private static final int MAX_RECORDED_CHUNKS_PER_SAMPLE = 100;
+    private static final double BLOCK_ENTITY_WEIGHT = 2.5D;
 
     /** プレイヤー・ディメンション・グループごとの集計キー */
     public record PlayerBucketKey(UUID playerUuid, String dimension, @Nullable UUID groupOwnerUuid) {
@@ -105,6 +113,64 @@ public class AnalyticsCollectorManager {
             flushCurrentBucket(currentBucketEpochSec);
             currentBucketEpochSec = expectedBucket;
         }
+
+        // 4. TPS/MSPTと負荷上位チャンクの低頻度サンプリング（60秒ごと）
+        if (gameTime % PERFORMANCE_SAMPLE_INTERVAL_TICKS == 0L) {
+            sampleServerPerformance(server, currentEpochSec);
+        }
+    }
+
+    private void sampleServerPerformance(MinecraftServer server, long recordedAtEpochSec) {
+        ChunkCollection collection = collectChunkLoads(server, recordedAtEpochSec);
+        List<ChunkLoadSample> chunkSamples = collection.samples();
+        double mspt = Math.max(0.0D, server.getAverageTickTimeNanos() / 1_000_000.0D);
+        double tps = Math.min(20.0D, 1_000.0D / Math.max(0.001D, mspt));
+        ServerPerformanceSample serverSample = new ServerPerformanceSample(
+                recordedAtEpochSec, tps, mspt, collection.loadedChunks(), server.getPlayerCount());
+        AnalyticsEventQueue.INSTANCE.enqueue(
+                new AnalyticsEventQueue.PerformanceSampleEvent(serverSample, chunkSamples));
+        ChunkProfilerService.INSTANCE.onPerformanceSample(server, tps, mspt, chunkSamples);
+    }
+
+    public void prepareProfilerCandidates(MinecraftServer server) {
+        ChunkProfilerService.INSTANCE.updateCandidates(
+                collectChunkLoads(server, System.currentTimeMillis() / 1000L).samples());
+    }
+
+    private ChunkCollection collectChunkLoads(MinecraftServer server, long recordedAtEpochSec) {
+        Map<ChunkDimensionKey, Integer> entitiesByChunk = new HashMap<>();
+        int loadedChunks = 0;
+
+        for (ServerLevel level : server.getAllLevels()) {
+            String dimension = level.dimension().location().toString();
+            loadedChunks += level.getChunkSource().getLoadedChunksCount();
+            for (Entity entity : level.getAllEntities()) {
+                ChunkPos pos = entity.chunkPosition();
+                entitiesByChunk.merge(new ChunkDimensionKey(dimension, pos.x, pos.z), 1, Integer::sum);
+            }
+        }
+
+        List<ChunkLoadSample> chunkSamples = new ArrayList<>();
+        for (ServerLevel level : server.getAllLevels()) {
+            if (!(level.getChunkSource().chunkMap instanceof LoadedChunkView loadedChunkView)) continue;
+            String dimension = level.dimension().location().toString();
+            for (LevelChunk chunk : loadedChunkView.moveearth$getTickingChunks()) {
+                ChunkPos pos = chunk.getPos();
+                int entityCount = entitiesByChunk.getOrDefault(
+                        new ChunkDimensionKey(dimension, pos.x, pos.z), 0);
+                int blockEntityCount = chunk.getBlockEntities().size();
+                double loadScore = entityCount + blockEntityCount * BLOCK_ENTITY_WEIGHT;
+                if (loadScore <= 0.0D) continue;
+                chunkSamples.add(new ChunkLoadSample(recordedAtEpochSec, dimension, pos.x, pos.z,
+                        entityCount, blockEntityCount, loadScore));
+            }
+        }
+        chunkSamples.sort(Comparator.comparingDouble(ChunkLoadSample::loadScore).reversed());
+        if (chunkSamples.size() > MAX_RECORDED_CHUNKS_PER_SAMPLE) {
+            chunkSamples = new ArrayList<>(chunkSamples.subList(0, MAX_RECORDED_CHUNKS_PER_SAMPLE));
+        }
+
+        return new ChunkCollection(List.copyOf(chunkSamples), loadedChunks);
     }
 
     /**
@@ -329,5 +395,11 @@ public class AnalyticsCollectorManager {
         long currentEpochSec = System.currentTimeMillis() / 1000L;
         long bucket = alignToBucket(currentEpochSec);
         flushCurrentBucket(bucket);
+    }
+
+    private record ChunkDimensionKey(String dimension, int chunkX, int chunkZ) {
+    }
+
+    private record ChunkCollection(List<ChunkLoadSample> samples, int loadedChunks) {
     }
 }
