@@ -99,6 +99,8 @@ public final class SiegeActionService {
         }
         SiegeSavedData.ConflictEndResult ended = sieges.endConflictsBetween(
                 proposal.proposerNation(), proposal.receiverNation());
+        SiegeLootSavedData.get(player.server).revokeBetween(
+                proposal.proposerNation(), proposal.receiverNation());
         ended.active().forEach(record -> SiegeService.notifySiegeEnded(player.server,
                 record.attackerNation(), record.defenderNation(), record.dimension(), record.corePos(), "peace"));
         ended.fallen().forEach(record -> SiegeService.notifySiegeEnded(player.server,
@@ -152,6 +154,7 @@ public final class SiegeActionService {
         if (active != null && active.individualAttacker()
                 && active.attackerNation().equals(player.getUUID())) {
             sieges.removeActive(siegeId);
+            SiegeLootSavedData.get(player.server).revoke(siegeId);
             sieges.startRetryCooldown(active.attackerNation(), true, active.defenderNation(),
                     S2TerritoryConfig.siegeRetryCooldownTicks());
             broadcastExit(player, active.attackerNation(), active.defenderNation(), true, true);
@@ -163,6 +166,7 @@ public final class SiegeActionService {
         if (fallen != null && fallen.individualAttacker()
                 && fallen.attackerNation().equals(player.getUUID())) {
             sieges.removeFallen(fallen.coreId());
+            SiegeLootSavedData.get(player.server).revoke(siegeId);
             sieges.startRetryCooldown(fallen.attackerNation(), true, fallen.defenderNation(),
                     S2TerritoryConfig.siegeRetryCooldownTicks());
             TerritorySavedData.get(player.server).recoverCore(fallen.coreId(),
@@ -180,6 +184,7 @@ public final class SiegeActionService {
         if (active != null) {
             if (active.attackerNation().equals(nationId)) {
                 sieges.removeActive(siegeId);
+                SiegeLootSavedData.get(player.server).revoke(siegeId);
                 sieges.startRetryCooldown(active.attackerNation(), active.defenderNation(),
                         S2TerritoryConfig.siegeRetryCooldownTicks());
                 PeaceSavedData.get(player.server).removeBetween(active.attackerNation(), active.defenderNation());
@@ -205,6 +210,7 @@ public final class SiegeActionService {
         if (fallen == null) return Result.CONFLICT_NOT_FOUND;
         if (fallen.attackerNation().equals(nationId)) {
             sieges.removeFallen(fallen.coreId());
+            SiegeLootSavedData.get(player.server).revoke(siegeId);
             sieges.startRetryCooldown(fallen.attackerNation(), fallen.defenderNation(),
                     S2TerritoryConfig.siegeRetryCooldownTicks());
             TerritorySavedData.get(player.server).recoverCore(fallen.coreId(),

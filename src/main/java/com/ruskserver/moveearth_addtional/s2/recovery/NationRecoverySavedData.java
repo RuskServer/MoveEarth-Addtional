@@ -20,6 +20,34 @@ public final class NationRecoverySavedData extends SavedData {
     private final Map<UUID, Episode> episodes = new LinkedHashMap<>();
     private final Map<UUID, UUID> bySourceSiege = new LinkedHashMap<>();
     private final java.util.Set<UUID> protectionWaived = new java.util.LinkedHashSet<>();
+    private final RecoveryWallBaselines wallBaselines = new RecoveryWallBaselines();
+    private final Map<UUID, Integer> episodeWallLimits = new LinkedHashMap<>();
+    private final java.util.Set<UUID> weightedEpisodes = new java.util.LinkedHashSet<>();
+
+    public boolean hasWallBaseline(UUID siege) { return wallBaselines.contains(siege); }
+
+    public void recordWallBaseline(UUID siege, int health, int blocks) {
+        if (wallBaselines.record(siege, health, blocks)) setDirty();
+    }
+
+    public int wallBaseline(UUID siege, int legacyFallback) {
+        var baseline = wallBaselines.get(siege);
+        return baseline == null ? legacyFallback : baseline.health();
+    }
+
+    public boolean weighted(UUID episode) { return weightedEpisodes.contains(episode); }
+
+    public int wallLimit(UUID episode) { return episodeWallLimits.getOrDefault(episode, 0); }
+
+    public void useWeightedWalls(UUID episode, UUID siege) {
+        var baseline = wallBaselines.get(siege);
+        episodeWallLimits.put(episode, baseline == null ? 0 : baseline.blocks());
+        if (weightedEpisodes.add(episode)) setDirty();
+    }
+
+    public void pruneWallBaselines(java.util.function.Predicate<UUID> ongoing) {
+        if (wallBaselines.prune(ongoing)) setDirty();
+    }
 
     public OpenResult open(UUID sourceSiegeId, UUID nationId, UUID attackerId, boolean individualAttacker,
                            UUID coreId, ResourceLocation dimension, BlockPos pos, int originalRadius,
@@ -152,7 +180,16 @@ public final class NationRecoverySavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
-        tag.putInt("SchemaVersion", 1);
+        tag.putInt("SchemaVersion", 2);
+        ListTag baselines = new ListTag();
+        wallBaselines.snapshot().forEach((siege, baseline) -> {
+            CompoundTag value = new CompoundTag();
+            value.putUUID("Siege", siege);
+            value.putInt("Health", baseline.health());
+            value.putInt("Blocks", baseline.blocks());
+            baselines.add(value);
+        });
+        tag.put("WallBaselines", baselines);
         ListTag list = new ListTag();
         for (Episode value : episodes.values()) {
             CompoundTag entry = new CompoundTag();
@@ -170,6 +207,8 @@ public final class NationRecoverySavedData extends SavedData {
             entry.putString("State", value.state().name());
             entry.putLong("ResealStartedAt", value.resealStartedAt());
             entry.putInt("WallTarget", value.wallTarget());
+            entry.putBoolean("WeightedWalls", weighted(value.id()));
+            entry.putInt("WallBlockLimit", wallLimit(value.id()));
             entry.putInt("HealthyWalls", value.healthyWalls());
             entry.putBoolean("Resealed", value.resealed());
             entry.putBoolean("WallsRestored", value.wallsRestored());
@@ -194,6 +233,12 @@ public final class NationRecoverySavedData extends SavedData {
 
     public static NationRecoverySavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         NationRecoverySavedData data = new NationRecoverySavedData();
+        for (Tag raw : tag.getList("WallBaselines", Tag.TAG_COMPOUND)) {
+            CompoundTag value = (CompoundTag) raw;
+            if (value.hasUUID("Siege")) {
+                data.wallBaselines.record(value.getUUID("Siege"), value.getInt("Health"), value.getInt("Blocks"));
+            }
+        }
         ListTag list = tag.getList("Episodes", Tag.TAG_COMPOUND);
         for (int index = 0; index < list.size(); index++) {
             CompoundTag entry = list.getCompound(index);
@@ -216,6 +261,10 @@ public final class NationRecoverySavedData extends SavedData {
                     entry.hasUUID("Rival") ? entry.getUUID("Rival") : null,
                     Math.max(1L, entry.getLong("Revision")));
             data.episodes.put(value.id(), value);
+            if (entry.getBoolean("WeightedWalls")) {
+                data.weightedEpisodes.add(value.id());
+                data.episodeWallLimits.put(value.id(), Math.max(0, entry.getInt("WallBlockLimit")));
+            }
             data.bySourceSiege.put(value.sourceSiegeId(), value.id());
         }
         ListTag waived = tag.getList("ProtectionWaived", Tag.TAG_COMPOUND);

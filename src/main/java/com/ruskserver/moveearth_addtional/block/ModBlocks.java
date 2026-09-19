@@ -5,6 +5,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.PushReaction;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
@@ -30,4 +31,8 @@ public class ModBlocks {
             () -> new VehicleCoreBlock(BlockBehaviour.Properties.of()
                     .strength(10.0F, 1200.0F).sound(SoundType.METAL)
                     .lightLevel(state -> 6).requiresCorrectToolForDrops()));
+    public static final DeferredHolder<Block, StorageWreckageBlock> STORAGE_WRECKAGE = BLOCKS.register("storage_wreckage",
+            () -> new StorageWreckageBlock(BlockBehaviour.Properties.of()
+                    .strength(12.0F, 1200.0F).sound(SoundType.METAL).noOcclusion()
+                    .pushReaction(PushReaction.BLOCK)));
 }

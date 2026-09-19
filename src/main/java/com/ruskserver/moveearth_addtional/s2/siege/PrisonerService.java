@@ -222,6 +222,7 @@ public final class PrisonerService {
 
     private static void tickEscort(ServerPlayer captor, PrisonerSavedData.Custody custody,
                                    PrisonerSavedData data) {
+        if (PrisonerVehicleTransportService.isLoaded(captor.server, custody.playerId())) return;
         Entity captive = findCaptiveEntity(captor.server, custody.playerId());
         String cancellationKey = escortCancellationKey(captor, captive, custody);
         if (cancellationKey != null) {
@@ -575,7 +576,7 @@ public final class PrisonerService {
         if (isCaptive(player)) event.setCanceled(true);
     }
 
-    private static boolean isRestrained(ServerPlayer player) {
+    public static boolean isRestrained(ServerPlayer player) {
         PrisonerSavedData data = PrisonerSavedData.get(player.server);
         return data.prisoner(player.getUUID()).isPresent() || data.custody(player.getUUID()).isPresent();
     }
@@ -800,6 +801,10 @@ public final class PrisonerService {
         if (entity instanceof ServerPlayer player) return player.getUUID();
         return entity instanceof ArmorStand body && body.getPersistentData().hasUUID(CombatTagService.BODY_OWNER)
                 ? body.getPersistentData().getUUID(CombatTagService.BODY_OWNER) : null;
+    }
+
+    public static Entity findCustodyEntity(MinecraftServer server, UUID playerId) {
+        return findCaptiveEntity(server, playerId);
     }
 
     private static Entity findCaptiveEntity(MinecraftServer server, UUID playerId) {

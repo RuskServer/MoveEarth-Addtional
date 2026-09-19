@@ -22,8 +22,13 @@ public record ReinforcementEntry(ReinforcementMaterial material, int durability,
     }
 
     public static ReinforcementEntry pending(ReinforcementMaterial material, long gameTime) {
+        return pending(material, gameTime, 0L);
+    }
+
+    public static ReinforcementEntry pending(ReinforcementMaterial material, long gameTime, long repairBlockedUntil) {
         long started = Math.max(0L, gameTime);
-        return new ReinforcementEntry(material, 0, false, started, started + ACTIVATION_DELAY_TICKS);
+        return new ReinforcementEntry(material, 0, false, started,
+                Math.max(started, repairBlockedUntil) + ACTIVATION_DELAY_TICKS);
     }
 
     public int maxDurability() {
@@ -42,7 +47,8 @@ public record ReinforcementEntry(ReinforcementMaterial material, int durability,
 
     public ReinforcementEntry damage(int amount) {
         return new ReinforcementEntry(material, durability - Math.max(0, amount), enabled,
-                constructionStartedAt, activatesAt);
+                amount > 0 && enabled ? 0L : constructionStartedAt,
+                amount > 0 && enabled ? 0L : activatesAt);
     }
 
     public ReinforcementEntry advance(long gameTime) {

@@ -4,6 +4,12 @@ package com.ruskserver.moveearth_addtional.s2.recovery;
 public final class RecoveryObjectivePolicy {
     private RecoveryObjectivePolicy() { }
 
+    /** A fixed number of strongest walls: more cheap blocks cannot replace the same number of diamond walls. */
+    public static int wallHealth(java.util.stream.IntStream health, int blockLimit) {
+        return health.filter(value -> value > 0).map(value -> -value).sorted()
+                .limit(Math.max(0, blockLimit)).map(value -> -value).sum();
+    }
+
     public static Progress evaluate(boolean resealed, int wallTarget, int healthyWalls, boolean upkeepPaid) {
         boolean walls = wallTarget <= 0 || healthyWalls >= wallTarget;
         int percent = 30 + (resealed ? 30 : 0) + (walls ? 20 : 0) + (upkeepPaid ? 20 : 0);

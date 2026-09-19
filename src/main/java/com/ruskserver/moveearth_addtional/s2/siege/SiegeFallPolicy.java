@@ -4,6 +4,12 @@ package com.ruskserver.moveearth_addtional.s2.siege;
 public final class SiegeFallPolicy {
     private SiegeFallPolicy() { }
 
+    /** Mercenaries may fight, but only an able member of the defending nation holds capture progress. */
+    public static Presence presence(boolean defender, boolean attacker) {
+        return !defender ? Presence.EMPTY_OR_ATTACKER
+                : attacker ? Presence.CONTESTED : Presence.DEFENDER_ONLY;
+    }
+
     public static AdvanceResult advance(long remainingTicks, long captureTicks, Presence presence,
                                         long elapsedTicks, long totalTicks, long stageTicks,
                                         long requiredCaptureTicks) {

@@ -43,6 +43,12 @@ public final class SiegeDamageService {
                 S2TerritoryConfig.cbcCoreDamageMultiplier());
     }
 
+    public static int configuredTerritoryCoreDamage(CbcMunitionDamage.Kind kind, boolean pointHit) {
+        int base = configuredCoreDamage(kind);
+        return pointHit ? CbcMunitionDamage.coreDamage(kind, base,
+                S2TerritoryConfig.cbcDirectCoreMultiplier()) : base;
+    }
+
     public static int configuredWarnauticsDamage(WarnauticsWeaponDamage.Kind kind, boolean c4Primary) {
         return switch (kind) {
             case SMALL_BOMB -> S2TerritoryConfig.warnauticsSmallDamage();
@@ -89,8 +95,12 @@ public final class SiegeDamageService {
         var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
                 .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
         if (vehicleCore != null) {
+            SiegeService.AttackAttribution attribution = attacker == null ? null
+                    : new SiegeService.AttackAttribution(
+                    com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
+                            .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "cbc");
             com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
-                    level, pos, configuredCoreDamage(kind));
+                    level, pos, configuredCoreDamage(kind), attribution);
             return true;
         }
         TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
@@ -98,7 +108,7 @@ public final class SiegeDamageService {
         if (core != null) {
             SiegeService.recordAttack(attacker, level, pos, false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
-                    level, pos, configuredCoreDamage(kind));
+                    level, pos, configuredTerritoryCoreDamage(kind, true));
             if (after != null && after.health() < core.health()) SiegeService.recordAttack(attacker, level, pos, true);
             return true;
         }
@@ -166,7 +176,7 @@ public final class SiegeDamageService {
             intercepted = true;
             if (!SiegeService.peaceTruceBlocks(attribution, level, center)) {
                 com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
-                        level, center, configuredCoreDamage(kind));
+                        level, center, configuredCoreDamage(kind), attribution);
             }
         }
         long radiusSquared = (long) safeRadius * safeRadius;
@@ -179,7 +189,7 @@ public final class SiegeDamageService {
             if (ReinforcementBlastOcclusion.blocked(blastOrigin, core.pos(), blastBarriers)) continue;
             SiegeService.recordAttack(attribution, level, core.pos(), false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
-                    level, core.pos(), configuredCoreDamage(kind));
+                    level, core.pos(), configuredTerritoryCoreDamage(kind, core.pos().equals(center)));
             if (after != null && after.health() < core.health()) {
                 SiegeService.recordAttack(attribution, level, core.pos(), true);
             }
@@ -237,8 +247,10 @@ public final class SiegeDamageService {
                 S2TerritoryConfig.overdueDamageMultiplier());
         int damage = OfflineDefenseService.scale(level, pos, rawDamage).appliedDamage();
         if (damage <= 0) return new ReinforcementDamage(true, 0);
+        com.ruskserver.moveearth_addtional.s2.vehicle.VehicleRepairService.recordHit(level, pos);
         ReinforcementEntry damaged = entry.damage(damage);
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
+        data.recordDamage(pos, level.getGameTime(), S2TerritoryConfig.breachRepairDelayTicks());
         if (damaged.durability() <= 0) {
             data.remove(pos);
             TerritoryClosureRecheckManager.markPotentialOpening(level, pos);

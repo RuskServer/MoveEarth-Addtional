@@ -121,6 +121,9 @@ public final class ReinforcementEvents {
             return;
         }
         ReinforcementEntry damaged = entry.damage(scaled.appliedDamage());
+        com.ruskserver.moveearth_addtional.s2.vehicle.VehicleRepairService.recordHit(level, event.getPos());
+        data.recordDamage(event.getPos(), level.getGameTime(),
+                com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.breachRepairDelayTicks());
         SiegeService.recordAttack(player, level, event.getPos(), true);
         if (damaged.durability() <= 0) {
             data.remove(event.getPos());
@@ -186,7 +189,7 @@ public final class ReinforcementEvents {
                 if (!preHandled && cbc) {
                     if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
                     com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
-                            level, pos, SiegeDamageService.configuredCoreDamage(munition));
+                            level, pos, SiegeDamageService.configuredCoreDamage(munition), attack);
                 }
                 return true;
             }
@@ -199,7 +202,7 @@ public final class ReinforcementEvents {
                     if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
                     int beforeHealth = core.health();
                     TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, pos,
-                            SiegeDamageService.configuredCoreDamage(munition));
+                            SiegeDamageService.configuredTerritoryCoreDamage(munition, pos.equals(explosionCenter)));
                     if (after != null && after.health() < beforeHealth) {
                         SiegeService.recordAttack(attack, level, pos, true);
                     }

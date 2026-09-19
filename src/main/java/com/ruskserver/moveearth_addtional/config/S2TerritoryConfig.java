@@ -5,6 +5,15 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 /** Server-owned balance values for the S2 territory and reinforcement systems. */
 public final class S2TerritoryConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
+    private static final ModConfigSpec.IntValue VEHICLE_REPAIR_QUIET;
+    private static final ModConfigSpec.IntValue VEHICLE_REPAIR_EMERGENCY_HP;
+    private static final ModConfigSpec.IntValue VEHICLE_REPAIR_NORMAL_HP;
+    private static final ModConfigSpec.IntValue VEHICLE_REPAIR_CAP;
+    private static final ModConfigSpec.IntValue VEHICLE_REPAIR_EMERGENCY_INTERVAL;
+    private static final ModConfigSpec.IntValue VEHICLE_REPAIR_NORMAL_INTERVAL;
+    private static final ModConfigSpec.IntValue BREACH_REPAIR_SECONDS;
+    private static final ModConfigSpec.DoubleValue CBC_DIRECT_CORE_MULTIPLIER;
+    private static final ModConfigSpec.BooleanValue CORE_SABOTAGE_ENABLED;
 
     private static final ModConfigSpec.IntValue CHUNKS_PER_COIN;
     private static final ModConfigSpec.LongValue OUTPOST_BASE_COST;
@@ -54,6 +63,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue SIEGE_COUNTER_RADIUS_BLOCKS;
     private static final ModConfigSpec.DoubleValue SIEGE_COUNTER_RECOVERY_PERCENT;
     private static final ModConfigSpec.IntValue SIEGE_SETTLEMENT_TRUCE_SECONDS;
+    private static final ModConfigSpec.IntValue SIEGE_LOOT_WINDOW_MINUTES;
     private static final ModConfigSpec.DoubleValue SIEGE_SETTLEMENT_RECOVERY_PERCENT;
     private static final ModConfigSpec.IntValue PEACE_PROPOSAL_SECONDS;
     private static final ModConfigSpec.IntValue PEACE_TRUCE_SECONDS;
@@ -101,6 +111,13 @@ public final class S2TerritoryConfig {
         BUILDER.pop();
 
         BUILDER.push("core");
+        VEHICLE_REPAIR_QUIET = BUILDER.comment("Seconds without core or reinforced armor damage before full vehicle repairs.")
+                .defineInRange("vehicleRepairQuietSeconds", 120, 0, 86400);
+        VEHICLE_REPAIR_EMERGENCY_HP = BUILDER.defineInRange("vehicleEmergencyRepairHp", 5, 1, 100000);
+        VEHICLE_REPAIR_NORMAL_HP = BUILDER.defineInRange("vehicleNormalRepairHp", 30, 1, 100000);
+        VEHICLE_REPAIR_CAP = BUILDER.defineInRange("vehicleEmergencyRepairCapPercent", 50, 0, 100);
+        VEHICLE_REPAIR_EMERGENCY_INTERVAL = BUILDER.defineInRange("vehicleEmergencyRepairIntervalSeconds", 5, 1, 3600);
+        VEHICLE_REPAIR_NORMAL_INTERVAL = BUILDER.defineInRange("vehicleNormalRepairIntervalSeconds", 2, 1, 3600);
         CAPITAL_CORE_HEALTH = BUILDER.defineInRange("capitalMaxHealth", 2000, 1, 10_000_000);
         OUTPOST_CORE_HEALTH = BUILDER.defineInRange("outpostMaxHealth", 1000, 1, 10_000_000);
         VEHICLE_CORE_HEALTH = BUILDER.defineInRange("vehicleMaxHealth", 600, 1, 10_000_000);
@@ -122,6 +139,12 @@ public final class S2TerritoryConfig {
         BUILDER.pop();
 
         BUILDER.push("cbcDamage");
+        CBC_DIRECT_CORE_MULTIPLIER = BUILDER.comment(
+                "Extra multiplier for heavy projectile point hits on exposed territory cores only. No splash, vehicle or entity bonus.")
+                .defineInRange("directTerritoryCoreMultiplier", 2.5D, 0.0D, 100.0D);
+        BREACH_REPAIR_SECONDS = BUILDER.comment(
+                "After reinforcement takes damage, repairs and replacement activation wait this long. Zero disables.")
+                .defineInRange("breachRepairDelaySeconds", 60, 0, 3600);
         CBC_SHOT_DAMAGE = BUILDER.defineInRange("solidShotImpact", 48, 0, 100000);
         CBC_AP_SHOT_DAMAGE = BUILDER.defineInRange("armorPiercingShotImpact", 96, 0, 100000);
         CBC_HE_SHELL_DAMAGE = BUILDER.defineInRange("highExplosiveShellImpact", 40, 0, 100000);
@@ -166,6 +189,9 @@ public final class S2TerritoryConfig {
         BUILDER.pop();
 
         BUILDER.push("siege");
+        CORE_SABOTAGE_ENABLED = BUILDER.comment(
+                "Allow welder sabotage of exposed enemy cores: 4 TNT, 20s planting, 40s fuse, 5s defuse, 20% core HP.")
+                .define("coreSabotageEnabled", true);
         SIEGE_INITIAL_LOCK_SECONDS = BUILDER.defineInRange("initialLockSeconds", 300, 1, 86400);
         SIEGE_ROLLING_SECONDS = BUILDER.defineInRange("rollingSeconds", 1800, 1, 604800);
         SIEGE_RETRY_COOLDOWN_SECONDS = BUILDER.defineInRange("retryCooldownSeconds", 3600, 0, 604800);
@@ -178,6 +204,9 @@ public final class S2TerritoryConfig {
         SIEGE_SETTLEMENT_TRUCE_SECONDS = BUILDER.comment(
                 "Server-open seconds before a rebuilt capital or occupied outpost can be attacked again.")
                 .defineInRange("settlementTruceSeconds", 21600, 0, 2592000);
+        SIEGE_LOOT_WINDOW_MINUTES = BUILDER.comment(
+                "Server-open minutes in which the victorious regular attacker can recover old enemy storage after settlement.")
+                .defineInRange("postSettlementLootMinutes", 30, 0, 1440);
         SIEGE_SETTLEMENT_RECOVERY_PERCENT = BUILDER.comment(
                 "Core health restored when a capital enters rebuilding or an outpost is occupied.")
                 .defineInRange("settlementRecoveryPercent", 25.0D, 1.0D, 100.0D);
@@ -245,6 +274,12 @@ public final class S2TerritoryConfig {
     public static int capitalCoreHealth() { return CAPITAL_CORE_HEALTH.getAsInt(); }
     public static int outpostCoreHealth() { return OUTPOST_CORE_HEALTH.getAsInt(); }
     public static int vehicleCoreHealth() { return VEHICLE_CORE_HEALTH.getAsInt(); }
+    public static long vehicleRepairQuietTicks() { return VEHICLE_REPAIR_QUIET.getAsInt() * 20L; }
+    public static int vehicleEmergencyRepairHp() { return VEHICLE_REPAIR_EMERGENCY_HP.getAsInt(); }
+    public static int vehicleNormalRepairHp() { return VEHICLE_REPAIR_NORMAL_HP.getAsInt(); }
+    public static int vehicleEmergencyRepairCap() { return VEHICLE_REPAIR_CAP.getAsInt(); }
+    public static long vehicleEmergencyRepairTicks() { return VEHICLE_REPAIR_EMERGENCY_INTERVAL.getAsInt() * 20L; }
+    public static long vehicleNormalRepairTicks() { return VEHICLE_REPAIR_NORMAL_INTERVAL.getAsInt() * 20L; }
     public static boolean sableVoidFailsafeEnabled() { return SABLE_VOID_FAILSAFE_ENABLED.getAsBoolean(); }
     public static int sableVoidTriggerDepth() { return SABLE_VOID_TRIGGER_DEPTH.getAsInt(); }
     public static int sableRescueClearance() { return SABLE_RESCUE_CLEARANCE.getAsInt(); }
@@ -252,6 +287,9 @@ public final class S2TerritoryConfig {
     public static long coreRegenIntervalTicks() { return CORE_REGEN_INTERVAL_SECONDS.getAsInt() * 20L; }
     public static double coreRegenPercent() { return CORE_REGEN_PERCENT.getAsDouble(); }
     public static int cbcShotDamage() { return CBC_SHOT_DAMAGE.getAsInt(); }
+    public static long breachRepairDelayTicks() { return BREACH_REPAIR_SECONDS.getAsInt() * 20L; }
+    public static double cbcDirectCoreMultiplier() { return CBC_DIRECT_CORE_MULTIPLIER.getAsDouble(); }
+    public static boolean coreSabotageEnabled() { return CORE_SABOTAGE_ENABLED.getAsBoolean(); }
     public static int cbcApShotDamage() { return CBC_AP_SHOT_DAMAGE.getAsInt(); }
     public static int cbcHeShellDamage() { return CBC_HE_SHELL_DAMAGE.getAsInt(); }
     public static int cbcApShellDamage() { return CBC_AP_SHELL_DAMAGE.getAsInt(); }
@@ -281,6 +319,7 @@ public final class S2TerritoryConfig {
     public static int siegeCounterRadiusBlocks() { return SIEGE_COUNTER_RADIUS_BLOCKS.getAsInt(); }
     public static double siegeCounterRecoveryPercent() { return SIEGE_COUNTER_RECOVERY_PERCENT.getAsDouble(); }
     public static long siegeSettlementTruceTicks() { return SIEGE_SETTLEMENT_TRUCE_SECONDS.getAsInt() * 20L; }
+    public static long siegeLootWindowTicks() { return SIEGE_LOOT_WINDOW_MINUTES.getAsInt() * 60L * 20L; }
     public static double siegeSettlementRecoveryPercent() { return SIEGE_SETTLEMENT_RECOVERY_PERCENT.getAsDouble(); }
     public static long peaceProposalTicks() { return PEACE_PROPOSAL_SECONDS.getAsInt() * 20L; }
     public static long peaceTruceTicks() { return PEACE_TRUCE_SECONDS.getAsInt() * 20L; }

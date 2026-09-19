@@ -25,6 +25,19 @@ import java.util.UUID;
 public final class RecoveryService {
     private RecoveryService() { }
 
+    public static void recordBattleWalls(ServerLevel level,
+            com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData.SiegeRecord siege,
+            TerritorySavedData.CoreRecord core) {
+        if (!RecoveryDispatchConfig.recoveryEnabled() || core.type() != TerritorySavedData.CoreType.CAPITAL) return;
+        NationRecoverySavedData data = NationRecoverySavedData.get(level.getServer());
+        if (data.hasWallBaseline(siege.id())) return;
+        var walls = ReinforcementSavedData.get(level).recoveryHealth(level, core.pos(), core.radius(),
+                RecoveryDispatchConfig.wallTargetCap(), true, pos -> TerritorySavedData.get(level.getServer())
+                        .controllingCore(level.getServer(), core.dimension(), pos)
+                        .map(owner -> owner.id().equals(core.id())).orElse(false));
+        data.recordWallBaseline(siege.id(), walls.health(), walls.blocks());
+    }
+
     public static NationRecoverySavedData.OpenResult openEpisode(MinecraftServer server, UUID sourceSiege,
                                                                   UUID nationId, UUID attackerId,
                                                                   boolean individualAttacker, UUID coreId,
@@ -32,11 +45,15 @@ public final class RecoveryService {
                                                                   int originalRadius, int wallTarget) {
         if (!RecoveryDispatchConfig.recoveryEnabled()) return new NationRecoverySavedData.OpenResult(false, null);
         long now = OpenTimeService.now(server);
-        NationRecoverySavedData.OpenResult result = NationRecoverySavedData.get(server).open(sourceSiege,
+        NationRecoverySavedData data = NationRecoverySavedData.get(server);
+        boolean weighted = data.hasWallBaseline(sourceSiege);
+        NationRecoverySavedData.OpenResult result = data.open(sourceSiege,
                 nationId, attackerId, individualAttacker, coreId, dimension, pos, originalRadius,
-                Math.min(RecoveryDispatchConfig.wallTargetCap(), Math.max(0, wallTarget)), now,
+                weighted ? data.wallBaseline(sourceSiege, 0)
+                        : Math.min(RecoveryDispatchConfig.wallTargetCap(), Math.max(0, wallTarget)), now,
                 now + RecoveryDispatchConfig.eligibilityOpenTicks());
         if (result.created()) {
+            if (weighted) data.useWeightedWalls(result.episode().id(), sourceSiege);
             WarHistorySavedData.get(server).append(now, WarHistorySavedData.Type.RECOVERY_STARTED,
                     WarHistorySavedData.Visibility.PUBLIC, nationId,
                     individualAttacker ? null : attackerId, result.episode().id(), List.of());
@@ -76,6 +93,8 @@ public final class RecoveryService {
         if (!RecoveryDispatchConfig.recoveryEnabled() || server.overworld().getGameTime() % 200L != 41L) return;
         long now = OpenTimeService.now(server);
         NationRecoverySavedData data = NationRecoverySavedData.get(server);
+        var sieges = com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData.get(server);
+        data.pruneWallBaselines(id -> sieges.activeById(id).isPresent() || sieges.fallenBySiegeId(id).isPresent());
         for (NationRecoverySavedData.Episode before : data.active()) {
             if (data.expire(before.id(), now)) {
                 WarHistorySavedData.get(server).append(now, WarHistorySavedData.Type.RECOVERY_EXPIRED,
@@ -90,7 +109,11 @@ public final class RecoveryService {
             boolean sealed = core != null && core.state() == TerritorySavedData.CoreState.ACTIVE;
             long resealStart = sealed ? (before.resealStartedAt() > 0L ? before.resealStartedAt() : now) : 0L;
             boolean resealed = sealed && now - resealStart >= RecoveryDispatchConfig.resealOpenTicks();
-            int walls = countHealthyWalls(level, before.pos(), before.originalRadius(), before.wallTarget());
+            int walls = data.weighted(before.id())
+                    ? ReinforcementSavedData.get(level).recoveryHealth(level, before.pos(), before.originalRadius(),
+                        data.wallLimit(before.id()), false, pos -> TerritorySavedData.get(server)
+                                .allowsReinforcement(server, before.nationId(), before.dimension(), pos)).health()
+                    : countHealthyWalls(level, before.pos(), before.originalRadius(), before.wallTarget());
             RecoveryObjectivePolicy.Progress progress = RecoveryObjectivePolicy.evaluate(resealed,
                     before.wallTarget(), walls, before.upkeepPaid());
             NationRecoverySavedData.Episode after = data.updateProgress(before.id(), resealStart, walls, progress);

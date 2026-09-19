@@ -8,6 +8,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SiegeFallPolicyTest {
     @Test
+    void noRegularDefenderMeansDecayEvenWhenMercenariesHoldTheArea() {
+        for (boolean attacker : new boolean[]{false, true}) {
+            var presence = SiegeFallPolicy.presence(false, attacker);
+            assertEquals(SiegeFallPolicy.Presence.EMPTY_OR_ATTACKER, presence);
+            assertEquals(90, SiegeFallPolicy.advance(1000, 100, presence, 20, 1000, 300, 200).captureTicks());
+        }
+        assertEquals(SiegeFallPolicy.Presence.CONTESTED, SiegeFallPolicy.presence(true, true));
+        assertEquals(SiegeFallPolicy.Presence.DEFENDER_ONLY, SiegeFallPolicy.presence(true, false));
+    }
+
+    @Test
     void protectionFallsFromOuterRingsTowardCore() {
         assertFalse(SiegeFallPolicy.protectionDisabled(0, 4, 4));
         assertTrue(SiegeFallPolicy.protectionDisabled(1, 4, 4));

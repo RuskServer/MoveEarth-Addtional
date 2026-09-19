@@ -12,13 +12,11 @@ import net.minecraft.world.level.block.LiquidBlockContainer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.EntityMountEvent;
 import net.neoforged.neoforge.event.entity.EntityTeleportEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
-import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.fluids.FluidUtil;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
@@ -87,53 +85,10 @@ public final class BastionEvents {
     }
 
     @SubscribeEvent
-    public static void onDismount(EntityMountEvent event) {
-        if (!event.isDismounting()
-                || !(event.getEntityMounting() instanceof net.minecraft.server.level.ServerPlayer player)
-                || !(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) return;
-        if (!BastionService.isRestricted(player, level, player.blockPosition())) return;
-        BastionPlayerSavedData.get(player.server).requireReturn(player.getUUID());
-        if (!player.isAlive() || player.isRemoved() || event.getEntityBeingMounted() == null
-                || event.getEntityBeingMounted().isRemoved()) return;
-        event.setCanceled(true);
-        BastionService.deny(player, BastionService.Action.DISMOUNT);
-    }
-
-    @SubscribeEvent
-    public static void onMount(EntityMountEvent event) {
-        if (event.isMounting()
-                && event.getEntityMounting() instanceof net.minecraft.server.level.ServerPlayer player) {
-            BastionPlayerRecovery.markMountedInRestrictedTerritory(player);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onPlayerTick(PlayerTickEvent.Post event) {
-        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
-            int phase = player.getUUID().hashCode() & 3;
-            if ((player.tickCount + phase) % 5 != 0) return;
-            BastionPlayerRecovery.tick(player);
-        }
-    }
-
-    @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
-            BastionPlayerRecovery.tick(player);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onRespawn(PlayerEvent.PlayerRespawnEvent event) {
-        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
-            BastionPlayerRecovery.tick(player);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player && player.isPassenger()) {
-            BastionPlayerRecovery.markMountedInRestrictedTerritory(player);
+            // Migrate the old dismount ban without teleporting players who were on a transport at shutdown.
+            BastionPlayerSavedData.get(player.server).clearReturn(player.getUUID());
         }
     }
 

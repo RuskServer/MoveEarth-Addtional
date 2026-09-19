@@ -18,6 +18,31 @@ import java.util.UUID;
 /** Server-authoritative identities for nation-owned vehicle cores. */
 public final class VehicleSavedData extends SavedData {
     private final Map<UUID, VehicleRecord> vehicles = new LinkedHashMap<>();
+    private final Map<UUID, VehicleRepairPolicy.State> repairs = new LinkedHashMap<>();
+
+    public void recordHit(UUID id, long now) {
+        if (!vehicles.containsKey(id)) return;
+        repairs.put(id, repairs.getOrDefault(id, VehicleRepairPolicy.State.EMPTY)
+                .hit(now, S2TerritoryConfig.vehicleRepairQuietTicks()));
+        setDirty();
+    }
+
+    public VehicleRepairPolicy.Result repair(UUID id, long now) {
+        VehicleRecord before = vehicles.get(id);
+        if (before == null) return null;
+        var result = VehicleRepairPolicy.repair(before.health(), before.maximumHealth(), now,
+                repairs.getOrDefault(id, VehicleRepairPolicy.State.EMPTY),
+                S2TerritoryConfig.vehicleEmergencyRepairHp(), S2TerritoryConfig.vehicleNormalRepairHp(),
+                S2TerritoryConfig.vehicleEmergencyRepairCap(), S2TerritoryConfig.vehicleEmergencyRepairTicks(),
+                S2TerritoryConfig.vehicleNormalRepairTicks());
+        if (result.gain() > 0) {
+            vehicles.put(id, new VehicleRecord(before.id(), before.nationId(), before.placedBy(), before.dimension(),
+                    before.corePos(), before.subLevelId(), before.health() + result.gain(), before.maximumHealth()));
+            repairs.put(id, result.state());
+            setDirty();
+        }
+        return result;
+    }
 
     public VehicleRecord register(UUID nationId, UUID placedBy, ResourceLocation dimension, BlockPos corePos) {
         VehicleRecord record = new VehicleRecord(UUID.randomUUID(), nationId, placedBy, dimension,
@@ -63,11 +88,13 @@ public final class VehicleSavedData extends SavedData {
     }
 
     public void remove(UUID id) {
+        repairs.remove(id);
         if (id != null && vehicles.remove(id) != null) setDirty();
     }
 
     public void removeNation(UUID nationId) {
         if (vehicles.values().removeIf(value -> value.nationId().equals(nationId))) setDirty();
+        repairs.keySet().retainAll(vehicles.keySet());
     }
 
     @Override
@@ -83,6 +110,9 @@ public final class VehicleSavedData extends SavedData {
             if (record.subLevelId() != null) value.putUUID("SubLevel", record.subLevelId());
             value.putInt("Health", record.health());
             value.putInt("MaximumHealth", record.maximumHealth());
+            var repair = repairs.getOrDefault(record.id(), VehicleRepairPolicy.State.EMPTY);
+            value.putLong("CombatUntil", repair.combatUntil());
+            value.putLong("NextRepairAt", repair.nextRepairAt());
             list.add(value);
         }
         tag.put("Vehicles", list);
@@ -103,6 +133,8 @@ public final class VehicleSavedData extends SavedData {
                     value.hasUUID("SubLevel") ? value.getUUID("SubLevel") : null,
                     Math.max(0, Math.min(maximum, value.getInt("Health"))), maximum);
             data.vehicles.put(record.id(), record);
+            data.repairs.put(record.id(), new VehicleRepairPolicy.State(
+                    Math.max(0L, value.getLong("CombatUntil")), Math.max(0L, value.getLong("NextRepairAt"))));
         }
         return data;
     }

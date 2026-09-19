@@ -29,6 +29,8 @@ public final class WeldingToolItem extends Item {
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool"));
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.material"));
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.brush"));
+        tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.sabotage"));
+        tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.vehicle_repair"));
         super.appendHoverText(stack, context, tooltipComponents, tooltipFlag);
     }
 }

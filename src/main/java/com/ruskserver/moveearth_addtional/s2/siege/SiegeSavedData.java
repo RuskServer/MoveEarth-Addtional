@@ -277,6 +277,8 @@ public final class SiegeSavedData extends SavedData {
         return fallen.values().stream().filter(record -> record.siegeId.equals(siegeId)).findFirst();
     }
 
+    public List<FallenRecord> fallenRecords() { return List.copyOf(fallen.values()); }
+
     public boolean removeActive(UUID siegeId) {
         boolean changed = active.values().removeIf(record -> record.id.equals(siegeId));
         if (changed) setDirty();

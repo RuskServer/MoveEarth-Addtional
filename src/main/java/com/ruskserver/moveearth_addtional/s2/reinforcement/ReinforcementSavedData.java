@@ -29,6 +29,24 @@ public final class ReinforcementSavedData extends SavedData {
     private final java.util.Set<BlockPos> constructionEntries = new HashSet<>();
     private final ArrayDeque<BlockPos> cleanupQueue = new ArrayDeque<>();
     private int cleanupChunkCursor;
+    // Independent of the block entry: breaking/replacing a block must not erase battle damage history.
+    private final RepairCooldowns repairBlockedUntil = new RepairCooldowns();
+
+    public long repairBlockedUntil(BlockPos pos, long now) {
+        return repairBlockedUntil.until(pos.asLong(), now);
+    }
+
+    public void recordDamage(BlockPos pos, long now, long delay) {
+        if (delay <= 0L) return;
+        repairBlockedUntil.hit(pos.asLong(), now, delay);
+        setDirty();
+    }
+
+    /** Preserve battle damage when an assembly relocates a block into a Sable plot. */
+    public void copyRepairDelay(BlockPos source, BlockPos destination, long now) {
+        long until = repairBlockedUntil(source, now);
+        if (until > now) recordDamage(destination, now, until - now);
+    }
 
     public Optional<ReinforcementEntry> get(BlockPos pos) {
         return Optional.ofNullable(entries.get(pos));
@@ -107,7 +125,33 @@ public final class ReinforcementSavedData extends SavedData {
         return List.copyOf(result);
     }
 
+    /** Recovery accounting is not a client scan: never truncate it at MAX_SYNC_ENTRIES or load chunks. */
+    public RecoveryWalls recoveryHealth(ServerLevel level, BlockPos center, int radius, int cap,
+                              boolean maximum, java.util.function.Predicate<BlockPos> owned) {
+        int cx = center.getX() >> 4;
+        int cz = center.getZ() >> 4;
+        var values = java.util.stream.IntStream.builder();
+        for (int x = cx - radius; x <= cx + radius; x++) {
+            for (int z = cz - radius; z <= cz + radius; z++) {
+                var positions = entriesByChunk.get(net.minecraft.world.level.ChunkPos.asLong(x, z));
+                if (positions == null) continue;
+                for (BlockPos pos : positions) {
+                    ReinforcementEntry entry = entries.get(pos);
+                    if (entry == null || !entry.enabled() || entry.durability() <= 0 || !owned.test(pos)) continue;
+                    if (level.hasChunkAt(pos) ? level.getBlockState(pos).isAir() : !maximum) continue;
+                    values.add(maximum ? entry.maxDurability() : entry.durability());
+                }
+            }
+        }
+        int[] health = values.build().toArray();
+        return new RecoveryWalls(com.ruskserver.moveearth_addtional.s2.recovery.RecoveryObjectivePolicy
+                .wallHealth(java.util.Arrays.stream(health), cap), Math.min(Math.max(0, cap), health.length));
+    }
+
+    public record RecoveryWalls(int health, int blocks) { }
+
     public AdvanceResult advance(ServerLevel level, long gameTime) {
+        if (repairBlockedUntil.expire(gameTime)) setDirty();
         List<BlockPos> activated = new ArrayList<>();
         List<BlockPos> completed = new ArrayList<>();
         List<BlockPos> progressed = new ArrayList<>();
@@ -177,11 +221,24 @@ public final class ReinforcementSavedData extends SavedData {
             list.add(entryTag);
         }
         tag.put("Entries", list);
+        ListTag delays = new ListTag();
+        repairBlockedUntil.snapshot().forEach((pos, until) -> {
+            CompoundTag delay = new CompoundTag();
+            delay.putLong("Pos", pos);
+            delay.putLong("Until", until);
+            delays.add(delay);
+        });
+        tag.put("RepairDelays", delays);
         return tag;
     }
 
     public static ReinforcementSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         ReinforcementSavedData data = new ReinforcementSavedData();
+        ListTag delays = tag.getList("RepairDelays", Tag.TAG_COMPOUND);
+        for (int i = 0; i < delays.size(); i++) {
+            CompoundTag delay = delays.getCompound(i);
+            data.repairBlockedUntil.restore(delay.getLong("Pos"), delay.getLong("Until"));
+        }
         ListTag list = tag.getList("Entries", Tag.TAG_COMPOUND);
         for (int index = 0; index < list.size(); index++) {
             CompoundTag entryTag = list.getCompound(index);

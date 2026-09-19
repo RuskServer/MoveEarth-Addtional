@@ -165,14 +165,18 @@ public final class WarnauticsReinforcementCompat {
                 int coreDamage = SiegeDamageService.configuredWarnauticsCoreDamage(kind);
                 if (kind != WarnauticsWeaponDamage.Kind.C4 || pos.equals(c4Primary)) {
                     com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
-                            level, pos, coreDamage);
+                            level, pos, coreDamage, attribution);
                 }
                 iterator.remove();
                 continue;
             }
 
             ReinforcementEntry entry = reinforcements.get(pos).orElse(null);
-            if (entry == null) continue;
+            if (entry == null) {
+                if (com.ruskserver.moveearth_addtional.s2.siege.StorageWreckageService
+                        .wreckStorage(level, pos, attribution)) iterator.remove();
+                continue;
+            }
             if (ReinforcementBlastOcclusion.blocked(center, pos, blastBarriers)) {
                 iterator.remove();
                 protectedStates.put(pos.immutable(), level.getBlockState(pos));
@@ -182,6 +186,8 @@ public final class WarnauticsReinforcementCompat {
             if (!entry.enabled()) {
                 reinforcements.remove(pos);
                 changed.add(pos.immutable());
+                if (com.ruskserver.moveearth_addtional.s2.siege.StorageWreckageService
+                        .wreckStorage(level, pos, attribution)) iterator.remove();
                 continue;
             }
             long chunkKey = net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
@@ -198,6 +204,8 @@ public final class WarnauticsReinforcementCompat {
             }
             if (result.remains()) iterator.remove();
             if (result.remains()) protectedStates.put(pos.immutable(), level.getBlockState(pos));
+            else if (com.ruskserver.moveearth_addtional.s2.siege.StorageWreckageService
+                    .wreckStorage(level, pos, attribution)) iterator.remove();
         }
 
         damageExposedCores(level, center, kind, attribution, c4Primary, blastBarriers);

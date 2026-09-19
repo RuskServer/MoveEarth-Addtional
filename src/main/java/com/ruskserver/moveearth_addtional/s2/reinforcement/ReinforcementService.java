@@ -68,6 +68,7 @@ public final class ReinforcementService {
         int reinforced = 0;
         int repaired = 0;
         int skipped = 0;
+        boolean repairWaiting = false;
         List<BlockPos> changedPositions = new java.util.ArrayList<>();
         for (ReinforcementBrushPattern.Offset offset : ReinforcementBrushPattern.offsets(axis, brushRadius)) {
             BlockPos target = pos.offset(offset.x(), offset.y(), offset.z());
@@ -81,12 +82,15 @@ public final class ReinforcementService {
                 continue;
             }
             ReinforcementEntry existing = data.get(target).orElse(null);
+            repairWaiting |= data.repairBlockedUntil(target, level.getGameTime()) > level.getGameTime();
             ReinforcementEntry updated;
             if (existing == null) {
-                updated = ReinforcementEntry.pending(material, level.getGameTime());
+                updated = ReinforcementEntry.pending(material, level.getGameTime(),
+                        data.repairBlockedUntil(target, level.getGameTime()));
                 reinforced++;
             } else if (existing.material() == material && existing.enabled()
-                    && existing.activatesAt() == 0L && existing.damaged()) {
+                    && existing.activatesAt() == 0L && existing.damaged()
+                    && data.repairBlockedUntil(target, level.getGameTime()) <= level.getGameTime()) {
                 updated = existing.repair();
                 repaired++;
             } else {
@@ -106,6 +110,8 @@ public final class ReinforcementService {
         }
 
         int changed = reinforced + repaired;
+        if (repairWaiting) player.sendSystemMessage(MoveEarthMessage.warning(
+                net.minecraft.network.chat.Component.translatable("message.moveearth_addtional.welding.repair_wait")));
         if (changed == 0) {
             player.sendSystemMessage(MoveEarthMessage.warning(
                     net.minecraft.network.chat.Component.translatable(

@@ -87,6 +87,9 @@ public abstract class SableVehicleAssemblyMixin {
             data.remove(value.getKey());
             data.put(destination, value.getValue());
         }
+        for (BlockPos source : state.positions()) {
+            data.copyRepairDelay(source, destinationAnchor.offset(source.subtract(state.anchor())), level.getGameTime());
+        }
         SableVehicleTopology.bind(subLevel, state.vehicleId());
         if (state.containsCore()) {
             for (BlockPos source : state.positions()) {

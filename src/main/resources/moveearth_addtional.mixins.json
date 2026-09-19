@@ -14,7 +14,11 @@
     "WarnauticsDropBombAssemblyMixin",
     "SwivelBearingConstraintMixin",
     "SableVehicleAssemblyMixin",
-    "AquiferRiverChannelMixin"
+    "AquiferRiverChannelMixin",
+    "HopperSiegeLootMixin",
+    "CreateArmSiegeLootMixin",
+    "CreateFunnelSiegeLootMixin",
+    "CreateChuteSiegeLootMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",
