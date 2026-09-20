@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "H": { "item": "electroenergetics:heavily_insulated_wire" },
+    "S": { "tag": "c:ingots/steel" },
+    "T": { "item": "electroenergetics:transformer_core" }
+  },
+  "pattern": ["SHS", "HTH", "SHS"],
+  "result": { "count": 1, "id": "mekanismgenerators:electromagnetic_coil" }
+}

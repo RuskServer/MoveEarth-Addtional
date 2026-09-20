@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": { "item": "electroenergetics:high_voltage_capacitor" },
+    "S": { "tag": "c:ingots/steel" },
+    "T": { "item": "create:sturdy_sheet" },
+    "W": { "item": "electroenergetics:heavily_insulated_wire" }
+  },
+  "pattern": ["SWS", "TCT", "SWS"],
+  "result": { "count": 4, "id": "mekanism:induction_casing" }
+}

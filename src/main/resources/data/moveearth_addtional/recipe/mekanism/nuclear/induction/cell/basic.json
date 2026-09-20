@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "E": { "item": "mekanism:energy_tablet" },
+    "H": { "item": "electroenergetics:high_voltage_capacitor" },
+    "L": { "tag": "c:dusts/lithium" },
+    "N": { "tag": "c:pellets/polonium" }
+  },
+  "pattern": ["LEL", "EHE", "LNL"],
+  "result": { "count": 1, "id": "mekanism:basic_induction_cell" }
+}

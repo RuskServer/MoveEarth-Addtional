@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "I": { "tag": "c:ingots/iron" },
+    "S": { "tag": "c:ingots/steel" },
+    "T": { "item": "create:sturdy_sheet" },
+    "W": { "item": "electroenergetics:heavily_insulated_wire" }
+  },
+  "pattern": ["STS", "SIS", "SWS"],
+  "result": { "count": 4, "id": "mekanism:boiler_casing" }
+}

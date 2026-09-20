@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "tag": "mekanism:alloys/atomic" },
+    "H": { "item": "electroenergetics:high_voltage_capacitor" },
+    "N": { "tag": "c:pellets/polonium" },
+    "P": { "item": "mekanism:elite_induction_cell" }
+  },
+  "pattern": ["HPH", "PAP", "HNH"],
+  "result": { "count": 1, "id": "mekanism:ultimate_induction_cell" }
+}

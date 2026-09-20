@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "tag": "mekanism:alloys/infused" },
+    "H": { "item": "create:shaft" },
+    "S": { "tag": "c:ingots/steel" }
+  },
+  "pattern": ["SAS", "SHS", "SAS"],
+  "result": { "count": 1, "id": "mekanismgenerators:turbine_rotor" }
+}

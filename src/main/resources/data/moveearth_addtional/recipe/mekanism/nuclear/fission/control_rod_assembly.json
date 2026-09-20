@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": { "tag": "c:circuits/elite" },
+    "L": { "tag": "c:ingots/lead" },
+    "P": { "item": "create:precision_mechanism" },
+    "R": { "item": "electroenergetics:redstone_relay" },
+    "S": { "tag": "c:ingots/steel" }
+  },
+  "pattern": ["LCL", "SPS", "SRS"],
+  "result": { "count": 1, "id": "mekanismgenerators:control_rod_assembly" }
+}

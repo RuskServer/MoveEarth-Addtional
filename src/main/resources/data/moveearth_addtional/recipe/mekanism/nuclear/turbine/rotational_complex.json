@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "tag": "mekanism:alloys/reinforced" },
+    "C": { "tag": "c:circuits/advanced" },
+    "F": { "item": "create:flywheel" },
+    "P": { "item": "create:precision_mechanism" },
+    "S": { "tag": "c:ingots/steel" }
+  },
+  "pattern": ["SAS", "PFP", "SCS"],
+  "result": { "count": 1, "id": "mekanismgenerators:rotational_complex" }
+}

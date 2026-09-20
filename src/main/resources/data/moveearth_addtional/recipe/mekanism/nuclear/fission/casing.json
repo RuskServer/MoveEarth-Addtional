@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "tag": "mekanism:alloys/atomic" },
+    "L": { "tag": "c:ingots/lead" },
+    "T": { "item": "create:sturdy_sheet" },
+    "X": { "item": "mekanism:steel_casing" }
+  },
+  "pattern": ["LTL", "AXA", "LTL"],
+  "result": { "count": 4, "id": "mekanismgenerators:fission_reactor_casing" }
+}

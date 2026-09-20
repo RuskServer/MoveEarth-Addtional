@@ -1,0 +1,40 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "electroenergetics"
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": {
+      "tag": "c:circuits/ultimate"
+    },
+    "H": {
+      "item": "electroenergetics:heavily_insulated_wire"
+    },
+    "I": {
+      "tag": "c:ingots/lead"
+    },
+    "T": {
+      "item": "mekanism:basic_chemical_tank"
+    },
+    "X": {
+      "item": "mekanism:steel_casing"
+    }
+  },
+  "pattern": [
+    "ICI",
+    "IXI",
+    "HTH"
+  ],
+  "result": {
+    "count": 1,
+    "id": "mekanism:isotopic_centrifuge"
+  }
+}

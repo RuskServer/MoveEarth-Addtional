@@ -1071,5 +1071,7 @@
   "screen.moveearth_addtional.startup.advanced_accessibility": "More accessibility settings",
   "screen.moveearth_addtional.startup.finish": "Save settings and continue",
   "block.moveearth_addtional.diamond_deposit_block": "Diamond Deposit",
-  "block.moveearth_addtional.emerald_deposit_block": "Emerald Deposit"
+  "block.moveearth_addtional.emerald_deposit_block": "Emerald Deposit",
+  "message.moveearth_addtional.mekanism.cable_upgrade_blocked": "Upgrade Universal Cables through the designated crafting recipes",
+  "message.moveearth_addtional.mekanism.content_disabled": "This Mekanism content is disabled on MoveEarth"
 }

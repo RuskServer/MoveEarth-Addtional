@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": { "tag": "c:circuits/ultimate" },
+    "H": { "item": "electroenergetics:high_voltage_capacitor" },
+    "N": { "tag": "c:pellets/polonium" },
+    "P": { "item": "mekanism:elite_induction_provider" }
+  },
+  "pattern": ["CPC", "PNP", "CHC"],
+  "result": { "count": 1, "id": "mekanism:ultimate_induction_provider" }
+}

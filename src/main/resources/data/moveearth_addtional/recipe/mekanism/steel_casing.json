@@ -1,0 +1,45 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "electroenergetics"
+    }
+  ],
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "create:brass_casing"
+    },
+    "G": {
+      "tag": "c:glass_blocks/cheap"
+    },
+    "O": {
+      "tag": "c:ingots/osmium"
+    },
+    "S": {
+      "tag": "c:ingots/steel"
+    },
+    "T": {
+      "item": "create:sturdy_sheet"
+    },
+    "W": {
+      "item": "electroenergetics:insulated_wire"
+    }
+  },
+  "pattern": [
+    "SWS",
+    "TBT",
+    "GOG"
+  ],
+  "result": {
+    "count": 1,
+    "id": "mekanism:steel_casing"
+  },
+  "show_notification": false
+}

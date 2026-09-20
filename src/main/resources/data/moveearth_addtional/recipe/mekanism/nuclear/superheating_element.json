@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "A": { "tag": "mekanism:alloys/basic" },
+    "C": { "item": "electroenergetics:capacitor" },
+    "I": { "tag": "c:ingots/copper" },
+    "R": { "item": "electroenergetics:resistor" },
+    "X": { "item": "mekanism:steel_casing" }
+  },
+  "pattern": ["ARA", "IXI", "ACA"],
+  "result": { "count": 1, "id": "mekanism:superheating_element" }
+}

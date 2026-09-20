@@ -1071,5 +1071,7 @@
   "screen.moveearth_addtional.startup.advanced_accessibility": "詳細なアクセシビリティ設定",
   "screen.moveearth_addtional.startup.finish": "設定を保存して開始",
   "block.moveearth_addtional.diamond_deposit_block": "ダイヤモンド鉱床",
-  "block.moveearth_addtional.emerald_deposit_block": "エメラルド鉱床"
+  "block.moveearth_addtional.emerald_deposit_block": "エメラルド鉱床",
+  "message.moveearth_addtional.mekanism.cable_upgrade_blocked": "Universal Cableの強化には指定されたクラフトレシピを使用してください",
+  "message.moveearth_addtional.mekanism.content_disabled": "MoveEarthではこのMekanismコンテンツは無効です"
 }

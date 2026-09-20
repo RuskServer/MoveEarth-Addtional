@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "F": { "item": "mekanism:basic_fluid_tank" },
+    "R": { "item": "electroenergetics:radiator_panel" },
+    "S": { "tag": "c:ingots/steel" },
+    "T": { "tag": "c:ingots/tin" }
+  },
+  "pattern": ["SRS", "TFT", "SRS"],
+  "result": { "count": 1, "id": "mekanismgenerators:saturating_condenser" }
+}

@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "C": { "tag": "c:circuits/advanced" },
+    "H": { "item": "electroenergetics:high_voltage_capacitor" },
+    "P": { "item": "mekanism:basic_induction_provider" }
+  },
+  "pattern": ["CPC", "PHP", "CPC"],
+  "result": { "count": 1, "id": "mekanism:advanced_induction_provider" }
+}
