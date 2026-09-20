@@ -8,6 +8,7 @@ import com.ruskserver.moveearth_addtional.s2.siege.PrisonerService;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
+import com.ruskserver.moveearth_addtional.terrain.TerrainTileStore;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -60,13 +61,16 @@ public final class RandomSpawnHandler {
     private static final String NBT_KEY_RETRY_AFTER = "MoveEarthRandomSpawnRetryAfter";
 
     private static final int MIN_WORLD_SPAWN_RADIUS = 750;
-    private static final int MAX_WORLD_SPAWN_RADIUS = 4_000;
+    private static final int FALLBACK_MAX_WORLD_SPAWN_RADIUS = 4_000;
+    private static final double SPAWN_POOL_SPACING_SQR = 96.0D * 96.0D;
     private static final int MIN_PLAYER_DISTANCE = 384;
     private static final int MIN_LAST_SPAWN_DISTANCE = 768;
     private static final int MAX_CANDIDATES = 24;
     private static final int MAX_CONCURRENT_CHUNK_LOADS = 1;
     private static final int SEARCH_TIMEOUT_TICKS = 20 * 20;
     private static final int RETRY_COOLDOWN_TICKS = 2 * 60 * 20;
+    private static final int SPAWN_POOL_LEASE_TICKS = 30 * 20;
+    private static final int SPAWN_POOL_REUSE_COOLDOWN_TICKS = 10 * 60 * 20;
     // Distance 0 requests only a FULL target chunk. Distance 1 would promote the
     // target to BLOCK_TICKING and needlessly increase the generated region.
     private static final int RANDOM_SPAWN_TICKET_DISTANCE = 0;
@@ -86,13 +90,28 @@ public final class RandomSpawnHandler {
 
         int baseX = chunk.getPos().getMinBlockX();
         int baseZ = chunk.getPos().getMinBlockZ();
+        BlockPos center = level.getSharedSpawnPos();
+        double minimum = effectiveMinRadius(level, center);
+        double maximum = effectiveMaxRadius(level, center);
+        RandomSpawnSavedData pool = RandomSpawnSavedData.get(level.getServer());
+        int collectionTarget = recommendedPoolTarget(level);
+        if (pool.mapping() != null) collectionTarget = Math.max(collectionTarget, pool.mapping().target());
+        if (collectionTarget <= 0 || pool.size() >= collectionTarget) return;
+        if (pool.hasNearby(new BlockPos(baseX + 8, level.getSeaLevel(), baseZ + 8),
+                90.0D * 90.0D)) return;
         int[][] offsets = {{4, 4}, {12, 12}, {4, 12}, {12, 4}};
         for (int[] offset : offsets) {
             int x = baseX + offset[0];
             int z = baseZ + offset[1];
             BlockPos safe = findSafeSurface(level, chunk, x, z);
-            if (safe == null || !level.getWorldBorder().isWithinBounds(safe)) continue;
-            RandomSpawnSavedData.get(level.getServer()).remember(safe);
+            if (safe == null || !level.getWorldBorder().isWithinBounds(safe)
+                    || !level.canSeeSky(safe)) continue;
+            if (!insideTerrainFootprint(safe)) continue;
+            double distance = horizontalDistanceSqr(safe, center);
+            if (distance < square(minimum) || distance > square(maximum)) continue;
+            if (pool.hasNearby(safe, SPAWN_POOL_SPACING_SQR)) continue;
+            if (!isAllowedTerritory(level, safe, null)) continue;
+            pool.remember(safe, RandomSpawnSavedData.Source.PASSIVE, level.getGameTime());
             break;
         }
     }
@@ -215,6 +234,13 @@ public final class RandomSpawnHandler {
                 continue;
             }
 
+            if (next.pooled && !search.loadingFallback
+                    && !RandomSpawnSavedData.get(event.getServer()).reserve(
+                    new BlockPos(next.x, level.getMinBuildHeight(), next.z),
+                    level.getGameTime(), SPAWN_POOL_LEASE_TICKS)) {
+                continue;
+            }
+
             search.requestedColumn = next;
             search.requestedChunk = new ChunkPos(next.x >> 4, next.z >> 4);
             if (search.startedTick < 0) search.startedTick = currentTick;
@@ -283,8 +309,6 @@ public final class RandomSpawnHandler {
             return distance >= square(minRadius) && distance <= square(maxRadius);
         }, MAX_CANDIDATES);
 
-        appendRandomColumns(level, random, columns, worldSpawn, minRadius, maxRadius);
-
         if (columns.isEmpty()) {
             finishWithoutRandomSpawn(player, markInitializedOnSuccess,
                     "no generated safe positions were available");
@@ -342,7 +366,7 @@ public final class RandomSpawnHandler {
             int minZ = ((core.pos().getZ() >> 4) - radius) << 4;
             int maxZ = ((((core.pos().getZ() >> 4) + radius) + 1) << 4) - 1;
             columns.add(new SpawnColumn(random.nextIntBetweenInclusive(minX, maxX),
-                    random.nextIntBetweenInclusive(minZ, maxZ), random.nextDouble() * 10_000.0D));
+                    random.nextIntBetweenInclusive(minZ, maxZ), random.nextDouble() * 10_000.0D, false));
         }
         NationSavedData.Nation nation = nations.nation(nationId).orElse(null);
         List<ServerPlayer> members = List.of();
@@ -361,7 +385,7 @@ public final class RandomSpawnHandler {
                 int x = MthFloor(member.getX() + Math.cos(angle) * distance);
                 int z = MthFloor(member.getZ() + Math.sin(angle) * distance);
                 if (level.hasChunk(x >> 4, z >> 4)) {
-                    columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
+                    columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D, false));
                 }
             }
         }
@@ -402,26 +426,6 @@ public final class RandomSpawnHandler {
             double distance = horizontalDistanceSqr(position, center);
             return distance >= square(minimum) && distance <= square(maximum);
         }, MAX_CANDIDATES - columns.size()));
-        appendRandomColumns(level, random, columns, center, minimum, maximum);
-    }
-
-    private static void appendRandomColumns(ServerLevel level, RandomSource random,
-                                            List<SpawnColumn> columns, BlockPos center,
-                                            double minimum, double maximum) {
-        int attempts = 0;
-        while (columns.size() < MAX_CANDIDATES && maximum > minimum && attempts++ < MAX_CANDIDATES * 3) {
-            double angle = random.nextDouble() * Math.PI * 2.0D;
-            double distance = Math.sqrt(random.nextDouble()
-                    * (maximum * maximum - minimum * minimum) + minimum * minimum);
-            int x = MthFloor(center.getX() + Math.cos(angle) * distance);
-            int z = MthFloor(center.getZ() + Math.sin(angle) * distance);
-            if (!level.getWorldBorder().isWithinBounds(new BlockPos(x, center.getY(), z))) continue;
-            int chunkX = x >> 4;
-            int chunkZ = z >> 4;
-            boolean duplicate = columns.stream().anyMatch(column ->
-                    (column.x >> 4) == chunkX && (column.z >> 4) == chunkZ);
-            if (!duplicate) columns.add(new SpawnColumn(x, z, random.nextDouble() * 10_000.0D));
-        }
     }
 
     private static boolean evaluateLoadedChunk(ServerPlayer player, ServerLevel level, UUID playerId,
@@ -434,6 +438,8 @@ public final class RandomSpawnHandler {
                     player, level, spawn, search.yaw, search.friendlyNationId);
             releaseTicket(level, playerId, search);
             if (teleported) {
+                RandomSpawnSavedData.get(player.server).markUsed(
+                        spawn, level.getGameTime(), SPAWN_POOL_REUSE_COOLDOWN_TICKS);
                 finishSuccessfulSearch(player, search);
             } else {
                 RandomSpawnSavedData.get(player.server).forgetColumn(column.x, column.z);
@@ -449,13 +455,18 @@ public final class RandomSpawnHandler {
             releaseTicket(level, playerId, search);
             return false;
         }
+        if (!isAllowedTerritory(level, spawn, search.friendlyNationId)) {
+            RandomSpawnSavedData.get(player.server).forgetColumn(column.x, column.z);
+            releaseTicket(level, playerId, search);
+            return false;
+        }
 
         List<ServerPlayer> nearbyThreats = eligibleOtherPlayers(player, level, search.friendlyNationId);
         double playerDistance = minimumDistanceSqr(spawn, nearbyThreats);
         double lastDistance = search.lastSpawn == null
                 ? Double.POSITIVE_INFINITY : horizontalDistanceSqr(spawn, search.lastSpawn);
         double score = RandomSpawnPolicy.score(
-                playerDistance, lastDistance, column.tieBreaker, square(MAX_WORLD_SPAWN_RADIUS));
+                playerDistance, lastDistance, column.tieBreaker, square(search.maxRadius));
         if (search.safestFallback == null || score > search.safestFallback.score) {
             search.safestFallback = new SpawnCandidate(spawn, score, column);
         }
@@ -466,6 +477,8 @@ public final class RandomSpawnHandler {
             boolean teleported = applyRandomTeleport(player, level, spawn, search.yaw, search.friendlyNationId);
             releaseTicket(level, playerId, search);
             if (teleported) {
+                RandomSpawnSavedData.get(player.server).markUsed(
+                        spawn, level.getGameTime(), SPAWN_POOL_REUSE_COOLDOWN_TICKS);
                 finishSuccessfulSearch(player, search);
                 return true;
             }
@@ -513,13 +526,15 @@ public final class RandomSpawnHandler {
     private static List<SpawnColumn> cachedColumns(ServerLevel level, RandomSource random,
                                                     Predicate<BlockPos> filter, int limit) {
         if (limit <= 0) return List.of();
-        List<BlockPos> positions = new ArrayList<>(RandomSpawnSavedData.get(level.getServer()).positions());
+        List<BlockPos> positions = new ArrayList<>(RandomSpawnSavedData.get(level.getServer())
+                .availablePositions(level.getGameTime()));
         Collections.shuffle(positions, new Random(random.nextLong()));
         List<SpawnColumn> result = new ArrayList<>(Math.min(limit, positions.size()));
         for (BlockPos position : positions) {
             if (result.size() >= limit) break;
             if (!level.getWorldBorder().isWithinBounds(position) || !filter.test(position)) continue;
-            result.add(new SpawnColumn(position.getX(), position.getZ(), random.nextDouble() * 10_000.0D));
+            result.add(new SpawnColumn(position.getX(), position.getZ(),
+                    random.nextDouble() * 10_000.0D, true));
         }
         return result;
     }
@@ -541,6 +556,10 @@ public final class RandomSpawnHandler {
             if (search.ticketActive || search.storageProbe != null) count++;
         }
         return count;
+    }
+
+    static boolean hasPendingSearches() {
+        return !PENDING_SEARCHES.isEmpty();
     }
 
     private static boolean applyRandomTeleport(ServerPlayer player, ServerLevel level, BlockPos spawn, float yaw,
@@ -619,6 +638,61 @@ public final class RandomSpawnHandler {
         return findSafeNear(level, x, z, worldSurfaceY);
     }
 
+    static List<BlockPos> mappingSurfaces(ServerLevel level, LevelChunk chunk) {
+        int baseX = chunk.getPos().getMinBlockX();
+        int baseZ = chunk.getPos().getMinBlockZ();
+        int[][] offsets = {{8, 8}, {4, 4}, {12, 12}, {4, 12}, {12, 4}};
+        List<BlockPos> result = new ArrayList<>(offsets.length);
+        for (int[] offset : offsets) {
+            BlockPos safe = findSafeSurface(level, chunk, baseX + offset[0], baseZ + offset[1]);
+            if (safe != null && level.getWorldBorder().isWithinBounds(safe)
+                    && level.canSeeSky(safe) && insideTerrainFootprint(safe)
+                    && isAllowedTerritory(level, safe, null)) {
+                result.add(safe);
+            }
+        }
+        return result;
+    }
+
+    static boolean isAllowedTerritory(ServerLevel level, BlockPos position, UUID friendlyNationId) {
+        TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
+                .controllingCore(level.getServer(), level.dimension().location(), position).orElse(null);
+        if (core == null) return true;
+        if (friendlyNationId == null) return false;
+        return core.nationId().equals(friendlyNationId)
+                || NationSavedData.get(level.getServer()).isAllied(friendlyNationId, core.nationId());
+    }
+
+    static double mappingMinRadius(ServerLevel level, BlockPos center) {
+        return effectiveMinRadius(level, center);
+    }
+
+    static double mappingMaxRadius(ServerLevel level, BlockPos center) {
+        return effectiveMaxRadius(level, center);
+    }
+
+    static int recommendedPoolTarget(ServerLevel level) {
+        TerrainTileStore terrain = TerrainTileStore.active();
+        double minX = level.getWorldBorder().getMinX() + 16.0D;
+        double maxX = level.getWorldBorder().getMaxX() - 16.0D;
+        double minZ = level.getWorldBorder().getMinZ() + 16.0D;
+        double maxZ = level.getWorldBorder().getMaxZ() - 16.0D;
+        double landArea;
+        if (terrain != null) {
+            landArea = terrain.estimatedLandAreaWithin(minX, maxX, minZ, maxZ);
+        } else {
+            double maximum = effectiveMaxRadius(level, level.getSharedSpawnPos());
+            double minimum = effectiveMinRadius(level, level.getSharedSpawnPos());
+            landArea = Math.PI * Math.max(0.0D, maximum * maximum - minimum * minimum) * 0.30D;
+        }
+        return RandomSpawnCapacityPolicy.targetForLandArea(landArea);
+    }
+
+    static boolean insideTerrainFootprint(BlockPos position) {
+        TerrainTileStore terrain = TerrainTileStore.active();
+        return terrain == null || terrain.tileAt(position.getX(), position.getZ()) != null;
+    }
+
     private static BlockPos findSafeNear(ServerLevel level, int x, int z, int startY) {
         int minimumY = level.getMinBuildHeight() + 1;
         int maximumY = level.getMaxBuildHeight() - 2;
@@ -657,12 +731,17 @@ public final class RandomSpawnHandler {
     }
 
     private static double effectiveMaxRadius(ServerLevel level, BlockPos center) {
-        double borderDistance = Math.min(
-                Math.min(center.getX() - level.getWorldBorder().getMinX(),
-                        level.getWorldBorder().getMaxX() - center.getX()),
-                Math.min(center.getZ() - level.getWorldBorder().getMinZ(),
-                        level.getWorldBorder().getMaxZ() - center.getZ()));
-        return Math.max(0.0D, Math.min(MAX_WORLD_SPAWN_RADIUS, borderDistance - 16.0D));
+        double minX = level.getWorldBorder().getMinX() + 16.0D;
+        double maxX = level.getWorldBorder().getMaxX() - 16.0D;
+        double minZ = level.getWorldBorder().getMinZ() + 16.0D;
+        double maxZ = level.getWorldBorder().getMaxZ() - 16.0D;
+        TerrainTileStore terrain = TerrainTileStore.active();
+        if (terrain != null) {
+            return terrain.maximumDistanceWithin(center.getX(), center.getZ(), minX, maxX, minZ, maxZ);
+        }
+        double dx = Math.max(Math.abs(minX - center.getX()), Math.abs(maxX - center.getX()));
+        double dz = Math.max(Math.abs(minZ - center.getZ()), Math.abs(maxZ - center.getZ()));
+        return Math.max(0.0D, Math.min(FALLBACK_MAX_WORLD_SPAWN_RADIUS, Math.sqrt(dx * dx + dz * dz)));
     }
 
     private static List<ServerPlayer> eligibleOtherPlayers(ServerPlayer player, ServerLevel level,
@@ -702,7 +781,7 @@ public final class RandomSpawnHandler {
         return (int) Math.floor(value);
     }
 
-    private record SpawnColumn(int x, int z, double tieBreaker) {
+    private record SpawnColumn(int x, int z, double tieBreaker, boolean pooled) {
     }
 
     private record SpawnCandidate(BlockPos position, double score, SpawnColumn column) {

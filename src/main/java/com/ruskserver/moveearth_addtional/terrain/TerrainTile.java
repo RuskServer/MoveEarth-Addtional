@@ -474,6 +474,18 @@ public final class TerrainTile {
         return blocksPerCell;
     }
 
+    public int sizeBlocks() {
+        return sizeBlocks;
+    }
+
+    /** Estimated dry-land area recorded by the terrain generator. */
+    public double landAreaBlocks() {
+        double recorded = spawnAnchors.stream().mapToDouble(SpawnAnchor::areaBlocks).sum();
+        // Legacy tiles predate spawn-anchor metadata. Their generator defaulted
+        // to roughly thirty percent land, so keep them usable without a rebuild.
+        return recorded > 0.0D ? recorded : (double) sizeBlocks * sizeBlocks * 0.30D;
+    }
+
     public Path directory() {
         return directory;
     }

@@ -164,6 +164,46 @@ public final class TerrainTileStore {
         return tiles.size();
     }
 
+    /**
+     * Estimates usable land inside a rectangular world-border intersection.
+     * Land metadata is exact for the full tile; clipped tiles use their covered
+     * area ratio, which is stable and cheap enough for runtime capacity planning.
+     */
+    public double estimatedLandAreaWithin(double minimumX, double maximumX,
+                                          double minimumZ, double maximumZ) {
+        double result = 0.0D;
+        for (TerrainTile tile : tiles) {
+            double tileMinX = tile.originX();
+            double tileMaxX = tile.originX() + tile.sizeBlocks();
+            double tileMinZ = tile.originZ();
+            double tileMaxZ = tile.originZ() + tile.sizeBlocks();
+            double width = Math.max(0.0D, Math.min(maximumX, tileMaxX) - Math.max(minimumX, tileMinX));
+            double depth = Math.max(0.0D, Math.min(maximumZ, tileMaxZ) - Math.max(minimumZ, tileMinZ));
+            if (width <= 0.0D || depth <= 0.0D) continue;
+            double tileArea = (double) tile.sizeBlocks() * tile.sizeBlocks();
+            result += tile.landAreaBlocks() * (width * depth / tileArea);
+        }
+        return result;
+    }
+
+    /** Farthest corner of any terrain tile after clipping it to the world border. */
+    public double maximumDistanceWithin(double centerX, double centerZ,
+                                        double minimumX, double maximumX,
+                                        double minimumZ, double maximumZ) {
+        double farthestSquared = 0.0D;
+        for (TerrainTile tile : tiles) {
+            double minX = Math.max(minimumX, tile.originX());
+            double maxX = Math.min(maximumX, tile.originX() + tile.sizeBlocks());
+            double minZ = Math.max(minimumZ, tile.originZ());
+            double maxZ = Math.min(maximumZ, tile.originZ() + tile.sizeBlocks());
+            if (maxX <= minX || maxZ <= minZ) continue;
+            double dx = Math.max(Math.abs(minX - centerX), Math.abs(maxX - centerX));
+            double dz = Math.max(Math.abs(minZ - centerZ), Math.abs(maxZ - centerZ));
+            farthestSquared = Math.max(farthestSquared, dx * dx + dz * dz);
+        }
+        return Math.sqrt(farthestSquared);
+    }
+
     /** Spawn anchor of the largest landmass across every tile, or null when none. */
     public TerrainTile.SpawnAnchor primarySpawnAnchor() {
         TerrainTile.SpawnAnchor best = null;
