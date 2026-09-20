@@ -1,0 +1,11 @@
+{
+  "type": "create_rns:deposit",
+  "biomes": "#create_rns:has_deposit",
+  "placement_strategy": "overworld",
+  "height": -20,
+  "structures": [
+    { "id": "create_rns:ore_deposit_small", "weight": 80, "processor": "moveearth_addtional:replace_with_diamond_deposit_block" },
+    { "id": "create_rns:ore_deposit_medium", "weight": 19, "processor": "moveearth_addtional:replace_with_diamond_deposit_block" },
+    { "id": "create_rns:ore_deposit_large", "weight": 1, "processor": "moveearth_addtional:replace_with_diamond_deposit_block" }
+  ]
+}

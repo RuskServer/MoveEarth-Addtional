@@ -2,17 +2,15 @@ package com.ruskserver.moveearth_addtional.config;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-/**
- * Experimental compatibility settings for Create: Simulated swivel bearings.
- * Existing constraints must be disassembled and assembled again after changing
- * these values.
- */
+/** Server-side compatibility and balance settings for Create: Simulated. */
 public final class AeronauticsSwivelConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     private static final ModConfigSpec.BooleanValue HINGE_CONSTRAINT_ENABLED;
     private static final ModConfigSpec.BooleanValue HORIZONTAL_ONLY;
     private static final ModConfigSpec.BooleanValue ALLOW_UNTESTED_VERSIONS;
+    private static final ModConfigSpec.BooleanValue PORTABLE_ENGINE_BALANCE_ENABLED;
+    private static final ModConfigSpec.DoubleValue PORTABLE_ENGINE_MAX_CAPACITY;
 
     public static final ModConfigSpec SPEC;
 
@@ -41,6 +39,25 @@ public final class AeronauticsSwivelConfig {
                 .define("allowUntestedVersions", false);
 
         BUILDER.pop();
+
+        BUILDER.push("portableEngineBalance");
+
+        PORTABLE_ENGINE_BALANCE_ENABLED = BUILDER
+                .comment(
+                        "Cap Create: Simulated portable-engine stress capacity.",
+                        "This keeps compact vehicle engines useful without replacing fixed industrial power."
+                )
+                .define("enabled", true);
+
+        PORTABLE_ENGINE_MAX_CAPACITY = BUILDER
+                .comment(
+                        "Maximum portable-engine stress capacity per RPM.",
+                        "At the default 32 RPM this value of 32 produces 1024 SU; superheated 64 RPM produces 2048 SU.",
+                        "A lower value from Simulated's own config is preserved."
+                )
+                .defineInRange("maxStressCapacityPerRpm", 32.0D, 0.0D, 64.0D);
+
+        BUILDER.pop();
         SPEC = BUILDER.build();
     }
 
@@ -57,5 +74,13 @@ public final class AeronauticsSwivelConfig {
 
     public static boolean allowUntestedVersions() {
         return ALLOW_UNTESTED_VERSIONS.getAsBoolean();
+    }
+
+    public static boolean portableEngineBalanceEnabled() {
+        return PORTABLE_ENGINE_BALANCE_ENABLED.getAsBoolean();
+    }
+
+    public static double portableEngineMaxCapacity() {
+        return PORTABLE_ENGINE_MAX_CAPACITY.getAsDouble();
     }
 }

@@ -11,6 +11,21 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 public class ModItems {
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(BuiltInRegistries.ITEM, Moveearth_addtional.MODID);
 
+    /**
+     * Items for the ore deposit blocks.
+     *
+     * <p>Needed even though nobody crafts or carries one: a deposit spec names
+     * its map icon by an item id, and Rock & Stone refuses to initialise a spec
+     * whose icons do not resolve. Without these the two deposits this mod adds
+     * are silently dropped from the resource system.
+     */
+    public static final DeferredHolder<Item, BlockItem> DIAMOND_DEPOSIT = ITEMS.register(
+            "diamond_deposit_block",
+            () -> new BlockItem(ModBlocks.DIAMOND_DEPOSIT.get(), new Item.Properties()));
+    public static final DeferredHolder<Item, BlockItem> EMERALD_DEPOSIT = ITEMS.register(
+            "emerald_deposit_block",
+            () -> new BlockItem(ModBlocks.EMERALD_DEPOSIT.get(), new Item.Properties()));
+
     public static final DeferredHolder<Item, BlockItem> PLAYER_DETECTOR = ITEMS.register("player_detector",
             () -> new BlockItem(ModBlocks.PLAYER_DETECTOR.get(), new Item.Properties()));
     public static final DeferredHolder<Item, BlockItem> TERRITORY_CORE = ITEMS.register("territory_core",

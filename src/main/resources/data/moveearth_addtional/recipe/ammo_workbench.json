@@ -1,0 +1,33 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "tacz:ammo_box"
+    },
+    "C": {
+      "tag": "c:ingots/copper"
+    },
+    "I": {
+      "tag": "c:ingots/iron"
+    },
+    "P": {
+      "item": "create:mechanical_press"
+    },
+    "S": {
+      "tag": "c:plates/copper"
+    }
+  },
+  "pattern": [
+    "SPS",
+    "C C",
+    "IBI"
+  ],
+  "result": {
+    "count": 1,
+    "id": "tacz:workbench_a",
+    "components": {
+      "minecraft:custom_data": "{BlockId: \"tacz:ammo_workbench\"}"
+    }
+  }
+}

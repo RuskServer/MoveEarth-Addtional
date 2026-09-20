@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "moveearth_addtional:diamond_deposit_block", "required": false },
+    { "id": "moveearth_addtional:emerald_deposit_block", "required": false }
+  ]
+}

@@ -11,6 +11,8 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import com.ruskserver.moveearth_addtional.region.RegionEvents;
+import com.ruskserver.moveearth_addtional.region.RegionProfiles;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
@@ -73,8 +75,27 @@ public final class TerrainEvents {
         NeoForge.EVENT_BUS.addListener(TerrainEvents::onServerStopped);
     }
 
+    /**
+     * Allocates region resources, from the materials the pack really produces.
+     *
+     * <p>The deposit list is read first because the allocation must not hand a
+     * region a resource nothing yields. Both happen here, before the first
+     * chunk exists, because that is the last moment the answer can still be
+     * decided for a world.
+     */
+    private static void buildRegions(MinecraftServer server) {
+        java.util.Set<String> available = java.util.Set.of();
+        if (net.neoforged.fml.ModList.get().isLoaded(RegionEvents.RNS_MOD_ID)) {
+            com.ruskserver.moveearth_addtional.compat.rns.RnsDepositGate.rebuild(server);
+            available = com.ruskserver.moveearth_addtional.compat.rns.RnsDepositGate
+                    .availableMaterials();
+        }
+        RegionProfiles.build(server, available);
+    }
+
     private static void onServerAboutToStart(ServerAboutToStartEvent event) {
         if (TerrainTileStore.active() != null) {
+            buildRegions(event.getServer());
             return;
         }
         MinecraftServer server = event.getServer();
@@ -90,6 +111,10 @@ public final class TerrainEvents {
         Path root = TerrainConfig.tileDirectory(server);
         try {
             TerrainTileStore.install(TerrainTileStore.load(root));
+            // Straight after the tiles and still before the first chunk: the
+            // allocation reads the tiles, and the worldgen threads read the
+            // allocation, so it must exist before either of them runs.
+            buildRegions(server);
         } catch (IOException exception) {
             // Deliberately not a soft failure. Generating with a neutral height
             // field would write a wrong world to disk, and chunks already saved

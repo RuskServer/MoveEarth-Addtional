@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.mixin.client;
 
 import com.ruskserver.moveearth_addtional.client.loading.MoveEarthLoadingRenderer;
+import com.ruskserver.moveearth_addtional.client.loading.MoveEarthLoadingLifecycle;
 import net.minecraft.Util;
 import net.minecraft.client.GameNarrator;
 import net.minecraft.client.gui.GuiGraphics;
@@ -26,12 +27,15 @@ abstract class GenericMessageScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void moveearth$hideVanillaMessage(CallbackInfo callback) {
-        if (textWidget != null) textWidget.visible = false;
+        if (MoveEarthLoadingLifecycle.isGenericLoadingMessage(title) && textWidget != null) {
+            textWidget.visible = false;
+        }
     }
 
     @Inject(method = "renderBackground", at = @At("HEAD"), cancellable = true)
     private void moveearth$renderLoadingBackground(GuiGraphics graphics, int mouseX, int mouseY,
                                                     float partialTick, CallbackInfo callback) {
+        if (!MoveEarthLoadingLifecycle.isGenericLoadingMessage(title)) return;
         MoveEarthLoadingRenderer.render(graphics, font, width, height, title,
                 -1, false, Util.getMillis());
         callback.cancel();

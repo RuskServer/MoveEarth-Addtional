@@ -1,0 +1,33 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "minecraft:chest"
+    },
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "G": {
+      "tag": "c:glass_blocks"
+    },
+    "I": {
+      "tag": "c:ingots/iron"
+    },
+    "P": {
+      "item": "create:precision_mechanism"
+    }
+  },
+  "pattern": [
+    "GEG",
+    "GPG",
+    "IBI"
+  ],
+  "result": {
+    "count": 1,
+    "id": "tacz:workbench_c",
+    "components": {
+      "minecraft:custom_data": "{BlockId: \"tacz:attachment_workbench\"}"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacke
 import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementDeltaPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
+import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureRecheckManager;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -136,6 +137,58 @@ public final class ReinforcementService {
         return InteractionResult.SUCCESS;
     }
 
+    /**
+     * Deliberately removes owned reinforcement without breaking the underlying block.
+     * Materials are not refunded and position-level combat repair delays remain intact.
+     */
+    public static InteractionResult strip(ServerPlayer player, BlockPos pos, Direction clickedFace) {
+        if (!canStrip(player, pos)) {
+            player.sendSystemMessage(MoveEarthMessage.error(
+                    net.minecraft.network.chat.Component.translatable(
+                            "message.moveearth_addtional.welding.strip_denied")));
+            return InteractionResult.FAIL;
+        }
+
+        ServerLevel level = player.serverLevel();
+        ReinforcementSavedData data = ReinforcementSavedData.get(level);
+        int brushRadius = WeldingBrushServerState.radius(player.getUUID());
+        ReinforcementBrushPattern.Axis axis = switch (clickedFace.getAxis()) {
+            case X -> ReinforcementBrushPattern.Axis.X;
+            case Y -> ReinforcementBrushPattern.Axis.Y;
+            case Z -> ReinforcementBrushPattern.Axis.Z;
+        };
+        List<BlockPos> removed = new java.util.ArrayList<>();
+        int skipped = 0;
+        for (ReinforcementBrushPattern.Offset offset : ReinforcementBrushPattern.offsets(axis, brushRadius)) {
+            BlockPos target = pos.offset(offset.x(), offset.y(), offset.z());
+            if (!canStrip(player, target) || data.get(target).isEmpty()) {
+                skipped++;
+                continue;
+            }
+            data.remove(target);
+            removed.add(target.immutable());
+            player.getMainHandItem().hurtAndBreak(1, player, EquipmentSlot.MAINHAND);
+            if (player.getMainHandItem().isEmpty()) break;
+        }
+
+        if (removed.isEmpty()) {
+            player.sendSystemMessage(MoveEarthMessage.warning(
+                    net.minecraft.network.chat.Component.translatable(
+                            "message.moveearth_addtional.welding.strip_none")));
+            return InteractionResult.SUCCESS;
+        }
+        TerritoryClosureRecheckManager.markPotentialOpenings(level, removed);
+        syncChangedNearbyManagers(level, removed);
+        level.playSound(null, pos, SoundEvents.GRINDSTONE_USE, SoundSource.BLOCKS,
+                Math.min(3.0F, 1.3F + removed.size() * 0.04F), 0.85F);
+        player.sendSystemMessage(MoveEarthMessage.success(
+                net.minecraft.network.chat.Component.translatable(
+                        "message.moveearth_addtional.welding.strip_result",
+                        removed.size(), ReinforcementBrushPattern.size(brushRadius),
+                        ReinforcementBrushPattern.size(brushRadius), skipped)));
+        return InteractionResult.SUCCESS;
+    }
+
     public static void sendScan(ServerPlayer player, int requestedRadius) {
         int radius = Math.max(1, Math.min(SCAN_RADIUS, requestedRadius));
         NationSavedData nations = NationSavedData.get(player.server);
@@ -229,6 +282,29 @@ public final class ReinforcementService {
                 .penalty(player.server, nationId).reinforcementProtectionEnabled();
         return TerritorySavedData.get(player.server).allowsReinforcement(
                 player.server, nationId, player.level().dimension().location(), pos);
+    }
+
+    /** Ownership check for dismantling; unlike construction it also permits inactive owned territory. */
+    public static boolean canStrip(ServerPlayer player, BlockPos pos) {
+        NationSavedData nations = NationSavedData.get(player.server);
+        UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
+        boolean permission = nationId != null
+                && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT);
+        boolean withinReach = SableVehicleTopology.distanceSquared(
+                player.serverLevel(), player, pos) <= 36.0D;
+        boolean owned = false;
+        if (nationId != null) {
+            var vehicle = SableVehicleTopology.at(player.serverLevel(), pos).orElse(null);
+            if (vehicle != null) {
+                owned = nationId.equals(vehicle.vehicle().nationId());
+            } else {
+                ResourceLocation dimension = player.level().dimension().location();
+                owned = TerritorySavedData.get(player.server).reservedCores(dimension, pos).stream()
+                        .anyMatch(core -> nationId.equals(core.nationId()));
+            }
+        }
+        return ReinforcementRemovalPolicy.canStrip(
+                nationId != null, permission, owned, withinReach);
     }
 
     public static void syncNearbyManagers(ServerLevel level, BlockPos pos) {

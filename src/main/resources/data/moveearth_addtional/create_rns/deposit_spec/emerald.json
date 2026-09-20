@@ -1,0 +1,5 @@
+{
+  "structure": "moveearth_addtional:deposit_emerald",
+  "scanner_icon_item": ["#c:gems/emerald", "#c:ores/emerald"],
+  "map_icon_item": "moveearth_addtional:emerald_deposit_block"
+}

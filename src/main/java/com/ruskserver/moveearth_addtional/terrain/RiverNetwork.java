@@ -40,7 +40,7 @@ final class RiverNetwork {
 
     Sample sample(double x, double z) {
         double best = reach * reach;
-        double bestWidth = 0, bestWater = 0;
+        double bestWidth = 0, bestWater = 0, flowX = 0, flowZ = 0, slope = 0;
         for (Segment s : bins.getOrDefault(key(bin(x), bin(z)), List.of())) {
             double dx = s.x1 - s.x0, dz = s.z1 - s.z0;
             double length = dx * dx + dz * dz;
@@ -53,9 +53,15 @@ final class RiverNetwork {
                 best = distance;
                 bestWidth = width;
                 bestWater = s.water0 + t * (s.water1 - s.water0);
+                // Segments run from a cell to the cell it drains into, so their
+                // own direction is downstream; nothing else has to record it.
+                double span = Math.sqrt(length);
+                flowX = span == 0 ? 0 : dx / span;
+                flowZ = span == 0 ? 0 : dz / span;
+                slope = span == 0 ? 0 : Math.max(0.0D, (s.water0 - s.water1) / span);
             }
         }
-        return new Sample(Math.sqrt(best), bestWidth, bestWater);
+        return new Sample(Math.sqrt(best), bestWidth, bestWater, flowX, flowZ, slope);
     }
 
     private static int bin(double coordinate) { return (int) Math.floor(coordinate / BIN_SIZE); }
@@ -63,5 +69,7 @@ final class RiverNetwork {
 
     record Segment(double x0, double z0, double x1, double z1,
                    double width0, double width1, double water0, double water1) { }
-    record Sample(double distance, double width, double water) { }
+    /** {@code flowX}/{@code flowZ} points downstream; {@code slope} is vertical drop per block. */
+    record Sample(double distance, double width, double water,
+                  double flowX, double flowZ, double slope) { }
 }

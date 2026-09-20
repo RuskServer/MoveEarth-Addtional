@@ -31,6 +31,32 @@ public class ModBlocks {
             () -> new VehicleCoreBlock(BlockBehaviour.Properties.of()
                     .strength(10.0F, 1200.0F).sound(SoundType.METAL)
                     .lightLevel(state -> 6).requiresCorrectToolForDrops()));
+    /**
+     * Ore deposits for the two strategic resources Create: Rock & Stone has none of.
+     *
+     * <p>The mod ships deposits for the base and industrial metals but not for
+     * diamond or emerald, so without these the exclusive tier has only gold to
+     * work with and seven of the eight regions would have nothing to trade.
+     *
+     * <p>A plain block, on purpose. Every check the mod makes is on the
+     * {@code create_rns:deposit_blocks} tag and never on its own class, so this
+     * needs no Rock & Stone type and the mod stays an optional dependency: a
+     * server without it simply has two unused blocks rather than a class that
+     * fails to load. Hardness and blast resistance match the mod's own deposits
+     * so a miner behaves the same on these.
+     */
+    public static final DeferredHolder<Block, Block> DIAMOND_DEPOSIT = BLOCKS.register(
+            "diamond_deposit_block", () -> new Block(depositProperties()));
+    public static final DeferredHolder<Block, Block> EMERALD_DEPOSIT = BLOCKS.register(
+            "emerald_deposit_block", () -> new Block(depositProperties()));
+
+    private static BlockBehaviour.Properties depositProperties() {
+        return BlockBehaviour.Properties.of()
+                .strength(50.0F, 1200.0F)
+                .sound(SoundType.DEEPSLATE)
+                .requiresCorrectToolForDrops();
+    }
+
     public static final DeferredHolder<Block, StorageWreckageBlock> STORAGE_WRECKAGE = BLOCKS.register("storage_wreckage",
             () -> new StorageWreckageBlock(BlockBehaviour.Properties.of()
                     .strength(12.0F, 1200.0F).sound(SoundType.METAL).noOcclusion()

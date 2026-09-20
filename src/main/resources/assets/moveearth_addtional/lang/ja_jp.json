@@ -253,6 +253,7 @@
   "tooltip.moveearth_addtional.welding_tool": "右クリックで施工または修復 • 新規施工は30秒後に有効化",
   "tooltip.moveearth_addtional.welding_tool.material": "オフハンド: 丸石 / 銅 / 鉄 / 金 / ダイヤ",
   "tooltip.moveearth_addtional.welding_tool.brush": "スクロール: 一括施工範囲 1×1 / 3×3 / 5×5",
+  "tooltip.moveearth_addtional.welding_tool.strip": "しゃがみ右クリック: 選択範囲の自国補強を解除（素材返却なし）",
   "key.moveearth_addtional.reinforcement_overlay": "補強施工オーバーレイ切替",
   "key.moveearth_addtional.map_territories": "地図の領土表示を切替",
   "message.moveearth_addtional.map_territories.enabled": "地図の領土表示を有効にしました • 公開戦史: %s → 復興・派遣",
@@ -512,6 +513,9 @@
   "overlay.moveearth_addtional.territory_closure.unreinforced_marker": "⚠ 未補強 • %s, %s, %s",
   "message.moveearth_addtional.reinforcement.offline_defense": "オフライン防御 • ダメージ蓄積 %s / %s",
   "message.moveearth_addtional.reinforcement.wrench_locked": "補強済みブロックは、補強を解除するまでレンチ操作できません",
+  "message.moveearth_addtional.welding.strip_denied": "自国の補強を解除する権限がありません",
+  "message.moveearth_addtional.welding.strip_none": "選択範囲に解除できる自国の補強がありません",
+  "message.moveearth_addtional.welding.strip_result": "補強を%sブロック解除しました • 範囲 %sx%s • 対象外 %s",
   "message.moveearth_addtional.bastion.block_place": "敵国領土内ではブロックを設置できません",
   "message.moveearth_addtional.bastion.fluid_place": "敵国領土内では液体を設置できません",
   "message.moveearth_addtional.bastion.vehicle_place": "敵国領土内では車両やボートを設置できません",
@@ -1065,5 +1069,7 @@
   "screen.moveearth_addtional.startup.effects_volume": "ブロック・効果音量",
   "screen.moveearth_addtional.startup.reduced_motion": "UIアニメーションを軽減",
   "screen.moveearth_addtional.startup.advanced_accessibility": "詳細なアクセシビリティ設定",
-  "screen.moveearth_addtional.startup.finish": "設定を保存して開始"
+  "screen.moveearth_addtional.startup.finish": "設定を保存して開始",
+  "block.moveearth_addtional.diamond_deposit_block": "ダイヤモンド鉱床",
+  "block.moveearth_addtional.emerald_deposit_block": "エメラルド鉱床"
 }

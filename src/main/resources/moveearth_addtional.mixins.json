@@ -15,13 +15,20 @@
     "SwivelBearingConstraintMixin",
     "SableVehicleAssemblyMixin",
     "AquiferRiverChannelMixin",
+    "WaterWheelRiverFlowMixin",
+    "WaterWheelCapacityMixin",
+    "PortableEngineCapacityMixin",
     "HopperSiegeLootMixin",
     "CreateArmSiegeLootMixin",
     "CreateFunnelSiegeLootMixin",
     "CreateChuteSiegeLootMixin",
     "ChunkMapAnalyticsMixin",
     "ServerLevelChunkProfilerMixin",
-    "BlockEntityChunkProfilerMixin"
+    "BlockEntityChunkProfilerMixin",
+    "RnsDepositStructureMixin",
+    "KineticStressAccess",
+    "RnsMinerBearingStressMixin",
+    "RnsMiningBehaviourStressMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",

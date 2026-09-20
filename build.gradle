@@ -194,6 +194,11 @@ dependencies {
     compileOnly files('lib/discord-rpc-1.0.4.jar')
     // Create および TaCZ はサーバー側で供給されるため、コンパイル時のみ参照する
     compileOnly files('lib/create-1.21.1-6.0.10.jar')
+    // Create's own block entities implement net.createmod.ponder.api.VirtualBlockEntity,
+    // so anything that inspects a Create block entity needs Ponder on the compile
+    // classpath even though this mod never calls it. Create 6.0.10 declares ponder
+    // [1.0.82,) as a required dependency, so the server always supplies it.
+    compileOnly 'maven.modrinth:ponder:1.21.1-2.4.0+neoforge'
     compileOnly files('lib/tacz-neoforge-1.21.1-1.1.8-hotfix-r3.jar')
     // Lightman's Currency API (Minecraft 1.21.1)
     compileOnly 'curse.maven:lightmans-currency-472521:8133254'
@@ -206,6 +211,16 @@ dependencies {
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1:api'
     // Optional Jade integration. The target modpack supplies Jade at runtime.
     compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
+    // Optional Create: Rock & Stone integration (LGPL-3.0). Its ore deposits are
+    // ordinary Minecraft structures, so a region can be enforced by declining to
+    // generate one, which is the vanilla contract rather than a reach into
+    // another mod's internals. Compiled against, never shipped; the target
+    // modpack supplies the mod.
+    compileOnly 'maven.modrinth:create-rns:v1.3.1-1.21.1-6'
+    // Optional Create: Diesel Generators integration (MIT). Oil is a per-chunk
+    // amount gated only by biome tag, so region gating again has to happen in
+    // code. The target modpack supplies the mod.
+    compileOnly 'maven.modrinth:create-diesel-generators:1.21.1-1.3.15'
     // Optional Cold Sweat API integration. Never bundle Cold Sweat or its assets.
     compileOnly('curse.maven:cold-sweat-506194:8872715') { transitive = false }
     // JEI is supplied by the client modpack. Only its public plugin API is compiled against.

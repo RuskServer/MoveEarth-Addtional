@@ -28,6 +28,13 @@ public final class MoveEarthLoadingRenderer {
     private MoveEarthLoadingRenderer() {
     }
 
+    /** Clears tip/progress animation state when a loading flow ends or disconnects. */
+    public static void resetSession() {
+        sessionStartedAt = -1L;
+        sessionSeed = 0L;
+        lastRenderedAt = -1L;
+    }
+
     public static MoveEarthLoadingLayout.Layout render(GuiGraphics graphics, Font font,
                                                         int width, int height, Component status,
                                                         int progress, boolean hasCancel,

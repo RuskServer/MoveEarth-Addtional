@@ -38,8 +38,8 @@
   "screen.moveearth_addtional.stats.kd": "K/D Ratio",
   "screen.moveearth_addtional.stats.distance": "Distance",
   "screen.moveearth_addtional.stats.details": "Damage Dealt: %s   Taken: %s   Jumps: %s",
-  "entity.moveearth_addtional.airship_raider": "Airship Raider"
-  ,"item.moveearth_addtional.weapon_crate": "Weapon Crate",
+  "entity.moveearth_addtional.airship_raider": "Airship Raider",
+  "item.moveearth_addtional.weapon_crate": "Weapon Crate",
   "message.moveearth_addtional.starterkit.first_login": "You received a beginner kit with 8 reserve rounds for the Type 38 rifle and 16 food items.",
   "message.moveearth_addtional.starterkit.granted": "You received your beginner kit.",
   "message.moveearth_addtional.starterkit.already_received": "You have already received your beginner kit.",
@@ -253,6 +253,7 @@
   "tooltip.moveearth_addtional.welding_tool": "Right-click to reinforce or repair • new work activates after 30s",
   "tooltip.moveearth_addtional.welding_tool.material": "Off hand: Cobblestone / Copper / Iron / Gold / Diamond",
   "tooltip.moveearth_addtional.welding_tool.brush": "Scroll: batch area 1×1 / 3×3 / 5×5",
+  "tooltip.moveearth_addtional.welding_tool.strip": "Sneak-right-click: remove owned reinforcement in the selected area (no material refund)",
   "key.moveearth_addtional.reinforcement_overlay": "Toggle Reinforcement Overlay",
   "key.moveearth_addtional.map_territories": "Toggle Map Territories",
   "message.moveearth_addtional.map_territories.enabled": "Map territory overlay enabled • Public history: %s → Recovery & Dispatch",
@@ -512,6 +513,9 @@
   "overlay.moveearth_addtional.territory_closure.unreinforced_marker": "⚠ UNREINFORCED • %s, %s, %s",
   "message.moveearth_addtional.reinforcement.offline_defense": "Offline defense • damage accumulated %s / %s",
   "message.moveearth_addtional.reinforcement.wrench_locked": "Reinforced blocks cannot be wrenched until their reinforcement is removed",
+  "message.moveearth_addtional.welding.strip_denied": "You do not have permission to remove this nation's reinforcement",
+  "message.moveearth_addtional.welding.strip_none": "There is no removable owned reinforcement in the selected area",
+  "message.moveearth_addtional.welding.strip_result": "Removed reinforcement from %s blocks • area %sx%s • skipped %s",
   "message.moveearth_addtional.bastion.block_place": "You cannot place blocks inside another nation's territory",
   "message.moveearth_addtional.bastion.fluid_place": "You cannot place fluids inside another nation's territory",
   "message.moveearth_addtional.bastion.vehicle_place": "You cannot place vehicles or boats inside another nation's territory",
@@ -1065,5 +1069,7 @@
   "screen.moveearth_addtional.startup.effects_volume": "Block / effect volume",
   "screen.moveearth_addtional.startup.reduced_motion": "Reduced UI motion",
   "screen.moveearth_addtional.startup.advanced_accessibility": "More accessibility settings",
-  "screen.moveearth_addtional.startup.finish": "Save settings and continue"
+  "screen.moveearth_addtional.startup.finish": "Save settings and continue",
+  "block.moveearth_addtional.diamond_deposit_block": "Diamond Deposit",
+  "block.moveearth_addtional.emerald_deposit_block": "Emerald Deposit"
 }

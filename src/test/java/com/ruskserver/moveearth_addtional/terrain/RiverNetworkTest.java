@@ -72,4 +72,56 @@ class RiverNetworkTest {
         assertEquals(water - RiverProfile.depth(width, shape), bed, 1.0E-9);
         assertTrue(bed < water, "the bed has to sit below its own water surface");
     }
+
+    @Test
+    void theSampledCurrentPointsDownstream() {
+        // a segment runs from a cell to the cell it drains into, so east here
+        var network = new RiverNetwork(
+                List.of(new RiverNetwork.Segment(0, 0, 40, 0, 6, 6, 80, 79)), 64);
+        var sample = network.sample(20, 0);
+        assertEquals(1.0, sample.flowX(), 1e-9, "should run the way the segment does");
+        assertEquals(0.0, sample.flowZ(), 1e-9);
+        assertEquals(1.0, Math.hypot(sample.flowX(), sample.flowZ()), 1e-9, "should be a unit vector");
+        assertEquals(0.025, sample.slope(), 1e-9, "one block of drop over forty blocks");
+    }
+
+    @Test
+    void theCurrentTurnsWithTheChannel() {
+        var network = new RiverNetwork(
+                List.of(new RiverNetwork.Segment(0, 0, 0, -40, 6, 6, 80, 79)), 64);
+        var sample = network.sample(0, -20);
+        assertEquals(0.0, sample.flowX(), 1e-9);
+        assertEquals(-1.0, sample.flowZ(), 1e-9, "north-running channels run north");
+    }
+
+    @Test
+    void thereIsNoCurrentWhereThereIsNoChannel() {
+        var network = new RiverNetwork(
+                List.of(new RiverNetwork.Segment(0, 0, 40, 0, 6, 6, 80, 79)), 64);
+        var sample = network.sample(4000, 4000);
+        assertEquals(0.0, sample.flowX(), 1e-9);
+        assertEquals(0.0, sample.flowZ(), 1e-9);
+    }
+
+    @Test
+    void theNearestChannelIsTheOneWhoseCurrentIsReported() {
+        // two channels crossing at right angles; the closer one wins
+        var network = new RiverNetwork(List.of(
+                new RiverNetwork.Segment(-40, 0, 40, 0, 6, 6, 80, 79),
+                new RiverNetwork.Segment(0, -40, 0, 40, 6, 6, 80, 79)), 64);
+        assertEquals(1.0, network.sample(20, 2).flowX(), 1e-9, "closer to the east-running one");
+        assertEquals(1.0, network.sample(2, 20).flowZ(), 1e-9, "closer to the south-running one");
+    }
+
+    @Test
+    void riverStrengthRewardsWidthAndSlopeWithoutExceedingOne() {
+        RiverShape shape = RiverShape.NONE;
+        double narrowFlat = TerrainTile.riverStrengthOf(shape.minWidth(), 0.0, shape);
+        double wideFlat = TerrainTile.riverStrengthOf(shape.maxWidth(), 0.0, shape);
+        double wideSteep = TerrainTile.riverStrengthOf(shape.maxWidth(), 0.08, shape);
+
+        assertEquals(0.25, narrowFlat, 1e-9);
+        assertTrue(wideFlat > narrowFlat);
+        assertEquals(1.0, wideSteep, 1e-9);
+    }
 }

@@ -246,6 +246,30 @@ public final class TerrainTile {
     }
 
     /**
+     * Which way the channel runs here, or {@link RiverCurrent#NONE}.
+     *
+     * <p>Answered only inside the carved bowl. Beyond it there is no channel to
+     * have a direction, and the nearest segment's would be a direction from
+     * somewhere else.
+     */
+    public RiverCurrent riverCurrent(double blockX, double blockZ) {
+        if (riverNetwork == null || !(channelInfluence(blockX, blockZ) > 0.0)) {
+            return RiverCurrent.NONE;
+        }
+        var river = sampleRiver(blockX, blockZ);
+        return new RiverCurrent(river.flowX(), river.flowZ(),
+                riverStrengthOf(river.width(), river.slope(), riverShape));
+    }
+
+    static double riverStrengthOf(double width, double slope, RiverShape shape) {
+        double widthRange = Math.max(1.0D, shape.maxWidth() - shape.minWidth());
+        double widthScore = Math.sqrt(Math.max(0.0D, Math.min(1.0D,
+                (width - shape.minWidth()) / widthRange)));
+        double slopeScore = Math.max(0.0D, Math.min(1.0D, slope / 0.04D));
+        return Math.max(0.0D, Math.min(1.0D, 0.25D + widthScore * 0.60D + slopeScore * 0.15D));
+    }
+
+    /**
      * Water surface height of the channel near this position, or
      * {@link Integer#MIN_VALUE} when there is none within reach.
      */
@@ -326,8 +350,11 @@ public final class TerrainTile {
 
     private RiverNetwork.Sample sampleRiver(double blockX, double blockZ) {
         if (riverNetwork != null) return riverNetwork.sample(blockX - originX, blockZ - originZ);
+        // Legacy tiles carry rasters rather than segments, and a raster has no
+        // direction in it, so those rivers have no current.
         return new RiverNetwork.Sample(sample("river_dist", blockX, blockZ),
-                sample("river_width", blockX, blockZ), sample("river_water_y", blockX, blockZ));
+                sample("river_width", blockX, blockZ), sample("river_water_y", blockX, blockZ),
+                0.0, 0.0, 0.0);
     }
 
     public boolean covers(int blockX, int blockZ) {
@@ -376,6 +403,44 @@ public final class TerrainTile {
         return top + (bottom - top) * fz;
     }
 
+    /**
+     * Raw cell value of a layer, with no interpolation.
+     *
+     * <p>For layers that hold an identity rather than a quantity. Bilinear
+     * sampling averages its four neighbours, which is right for a height field
+     * and wrong for an id: between region 3 and region 7 it produces region 5,
+     * a region that is not there and whose resources would generate in a strip
+     * along every border.
+     */
+    public int sampleNearest(String layer, double blockX, double blockZ) {
+        TerrainLayer data = layers.get(layer);
+        if (data == null) {
+            return -1;
+        }
+        return (int) Math.round(data.at(cellX(blockX), cellZ(blockZ)));
+    }
+
+    /** Cell column containing a world X. */
+    public int cellX(double blockX) {
+        return (int) Math.floor((blockX - originX) / blocksPerCell);
+    }
+
+    /** Cell row containing a world Z. */
+    public int cellZ(double blockZ) {
+        return (int) Math.floor((blockZ - originZ) / blocksPerCell);
+    }
+
+    /** Raw cell value by cell coordinates, for callers that walk the grid. */
+    public int cellValue(String layer, int cellX, int cellZ) {
+        TerrainLayer data = layers.get(layer);
+        return data == null ? -1 : (int) Math.round(data.at(cellX, cellZ));
+    }
+
+    /** Width of the tile in cells. */
+    public int sizeCells() {
+        return sizeCells;
+    }
+
     /** Distance in blocks from the tile edge; negative outside. Used to blend into open ocean. */
     public double insetFromEdge(double blockX, double blockZ) {
         double dx = Math.min(blockX - originX, originX + sizeBlocks - blockX);
@@ -393,6 +458,16 @@ public final class TerrainTile {
 
     public int maxY() {
         return maxY;
+    }
+
+    /** World X of the tile's corner. */
+    public int originX() {
+        return originX;
+    }
+
+    /** World Z of the tile's corner. */
+    public int originZ() {
+        return originZ;
     }
 
     public int blocksPerCell() {

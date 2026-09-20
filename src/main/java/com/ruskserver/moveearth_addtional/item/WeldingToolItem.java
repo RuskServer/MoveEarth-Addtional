@@ -20,6 +20,9 @@ public final class WeldingToolItem extends Item {
     public InteractionResult useOn(UseOnContext context) {
         if (context.getLevel().isClientSide) return InteractionResult.SUCCESS;
         if (!(context.getPlayer() instanceof ServerPlayer player)) return InteractionResult.PASS;
+        if (player.isShiftKeyDown()) {
+            return ReinforcementService.strip(player, context.getClickedPos(), context.getClickedFace());
+        }
         return ReinforcementService.apply(player, context.getClickedPos(), context.getClickedFace());
     }
 
@@ -29,6 +32,7 @@ public final class WeldingToolItem extends Item {
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool"));
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.material"));
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.brush"));
+        tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.strip"));
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.sabotage"));
         tooltipComponents.add(Component.translatable("tooltip.moveearth_addtional.welding_tool.vehicle_repair"));
         super.appendHoverText(stack, context, tooltipComponents, tooltipFlag);

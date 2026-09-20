@@ -103,6 +103,27 @@ project.
 - License: GNU General Public License version 3 with the upstream additional
   API/library-use permission
 
+## Create: Rock & Stone
+
+This project compiles against Create: Rock & Stone so that ore deposits can be
+confined to a region. Only its public classes are referenced at build time; the
+mod is an optional runtime dependency supplied by the target modpack, and no
+Rock & Stone code or assets are copied into or bundled with this project.
+
+- Component: Create: Rock & Stone v1.3.1 for Minecraft 1.21.1
+- Source: https://github.com/BMasta/create-rns
+- Copyright: BMasta and contributors
+- License: GNU Lesser General Public License version 3
+
+## Ponder
+
+This project compiles against Ponder because Create's block entities implement
+one of its interfaces. Ponder is a required dependency of Create itself and is
+supplied by the target modpack; no Ponder code or assets are bundled here.
+
+- Component: Ponder 2.4.0 for Minecraft 1.21.1
+- License: as published by the Create team
+
 ## Third-party dependencies
 
 Minecraft, NeoForge, TaCZ, FMIC, CIBR, Create and other third-party libraries,

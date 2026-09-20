@@ -1,0 +1,12 @@
+{
+  "placement": {
+    "type": "minecraft:random_spread",
+    "separation": 12,
+    "spacing": 64,
+    "salt": 1476302911
+  },
+  "structures": [
+    { "structure": "moveearth_addtional:deposit_diamond", "weight": 50 },
+    { "structure": "moveearth_addtional:deposit_emerald", "weight": 50 }
+  ]
+}

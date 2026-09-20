@@ -1,0 +1,33 @@
+{
+  "type": "create_rns:mining",
+  "deposit_block": "moveearth_addtional:emerald_deposit_block",
+  "replace_when_depleted": "create_rns:depleted_deposit_block",
+  "durability": {
+    "core": 120000,
+    "edge": 45000,
+    "random_spread": 0.2
+  },
+  "yields": [
+    {
+      "items": [ { "item": "minecraft:cobbled_deepslate" } ]
+    },
+    {
+      "chance": 0.04,
+      "items": [ { "item": "minecraft:emerald" } ],
+      "catalysts": [ "create_rns:faint_resonance", "create_rns:overclock" ]
+    },
+    {
+      "chance": 0.4,
+      "items": [ { "item": "minecraft:emerald" } ],
+      "catalysts": [ "create_rns:resonance", "create_rns:overclock" ]
+    },
+    {
+      "items": [
+        { "item": "minecraft:tuff" },
+        { "item": "minecraft:calcite" },
+        { "item": "create:limestone" }
+      ],
+      "catalysts": [ "create_rns:faint_shattering_resonance" ]
+    }
+  ]
+}

@@ -134,6 +134,18 @@ public final class TerrainTileStore {
         active = null;
     }
 
+    /**
+     * The loaded tiles, for diagnostics.
+     *
+     * <p>Exposed because a plan document can disagree with the file on disk, and
+     * the file is the one the world is built from. Counting regions off the live
+     * server settles that; counting them off a copy in a development folder does
+     * not.
+     */
+    public List<TerrainTile> tiles() {
+        return tiles;
+    }
+
     /** Tile covering this position, or null when the position is open ocean. */
     public TerrainTile tileAt(int blockX, int blockZ) {
         for (TerrainTile tile : tiles) {
