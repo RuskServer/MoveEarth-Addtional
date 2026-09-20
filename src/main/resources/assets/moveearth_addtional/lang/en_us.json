@@ -511,6 +511,7 @@
   "overlay.moveearth_addtional.territory_closure.unreinforced": "%s unreinforced wall blocks • nearest %s, %s, %s",
   "overlay.moveearth_addtional.territory_closure.unreinforced_marker": "⚠ UNREINFORCED • %s, %s, %s",
   "message.moveearth_addtional.reinforcement.offline_defense": "Offline defense • damage accumulated %s / %s",
+  "message.moveearth_addtional.reinforcement.wrench_locked": "Reinforced blocks cannot be wrenched until their reinforcement is removed",
   "message.moveearth_addtional.bastion.block_place": "You cannot place blocks inside another nation's territory",
   "message.moveearth_addtional.bastion.fluid_place": "You cannot place fluids inside another nation's territory",
   "message.moveearth_addtional.bastion.vehicle_place": "You cannot place vehicles or boats inside another nation's territory",

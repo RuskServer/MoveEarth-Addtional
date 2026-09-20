@@ -511,6 +511,7 @@
   "overlay.moveearth_addtional.territory_closure.unreinforced": "未補強壁 %sか所 • 最寄り %s, %s, %s",
   "overlay.moveearth_addtional.territory_closure.unreinforced_marker": "⚠ 未補強 • %s, %s, %s",
   "message.moveearth_addtional.reinforcement.offline_defense": "オフライン防御 • ダメージ蓄積 %s / %s",
+  "message.moveearth_addtional.reinforcement.wrench_locked": "補強済みブロックは、補強を解除するまでレンチ操作できません",
   "message.moveearth_addtional.bastion.block_place": "敵国領土内ではブロックを設置できません",
   "message.moveearth_addtional.bastion.fluid_place": "敵国領土内では液体を設置できません",
   "message.moveearth_addtional.bastion.vehicle_place": "敵国領土内では車両やボートを設置できません",

@@ -11,6 +11,7 @@
 
 ## Gameplay
 
+- **Reinforced Wrench Protection**: Create's wrench and other tools in the common wrench tag can no longer rotate, pick up, or reconfigure reinforced blocks. The server-side guard covers both territory reinforcement and Sable vehicle armor, including reinforcement that is curing, damaged, or temporarily disabled.
 - **Counter-Capture Eligibility**: Only able regular defenders can advance or hold counter-capture progress. Defending mercenaries alone no longer freeze the gauge; downed and captive players are excluded from both sides of presence checks.
 - **Recovery Wall Quality**: New Siege records persist the opening wall-health target and block count. Recovery scores actual HP within the same block limit, preventing cheap block spam or late-war destruction from reducing the requirement. Existing recovery episodes retain their legacy count-based targets.
 - **Transport Landing and Cargo Access**: Removed Bastion dismount cancellation and forced-return triggers, clearing legacy pending returns on login. Building and pearl restrictions remain. Members can access and place storage on their own connected Sable vehicle outside home territory.
