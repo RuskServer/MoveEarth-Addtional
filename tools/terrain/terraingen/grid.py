@@ -55,45 +55,63 @@ def find_roots(recv: np.ndarray) -> np.ndarray:
 def connected_components(mask: np.ndarray) -> np.ndarray:
     """Label 8-connected components of a boolean mask. 0 means 'not in mask'.
 
-    Hooking + pointer jumping. Converges in O(log n) rounds rather than the
-    O(diameter) a plain min-propagation would need on a snaking landmass.
+    Union-find over the edge list, run to a fixed point. The previous version
+    propagated the smallest label it could see and gave up after 64 rounds; on a
+    512-cell tile it needed 91 and returned early without saying so, which split
+    one landmass into two continents along a straight seam where the two fronts
+    stopped. Silently wrong is the worst possible failure for this, because
+    everything downstream -- region borders, spawn anchors, which resources are
+    exclusive to where -- is built on the answer.
+
+    Hooking roots to roots rather than nodes to labels is what makes it
+    converge: a node pointing at a small label says nothing about the tree it
+    belongs to, so two trees could keep pointing into each other forever.
     """
     h, w = mask.shape
-    n = h * w
-    idx = flat_index(mask.shape)
-    label = np.where(mask, idx, -1).astype(np.int64)
-
-    nb_idx = neighbour_indices(mask.shape)
-    nb_mask = neighbours(mask, False)
-    # valid links: both endpoints inside the mask
-    link_ok = nb_mask & mask[None, :, :] & (nb_idx >= 0)
-
-    parent = np.where(mask.ravel(), np.arange(n, dtype=np.int64), np.arange(n, dtype=np.int64))
-    for _ in range(64):
-        lab = parent.reshape(h, w)
-        nb_lab = np.where(link_ok, parent[np.where(nb_idx >= 0, nb_idx, 0)], np.iinfo(np.int64).max)
-        best = nb_lab.min(axis=0)
-        cand = np.minimum(lab, np.where(mask, best, lab))
-        changed = cand != lab
-        if not changed.any():
-            break
-        # hook: every node points at the smallest label it can see
-        new_parent = cand.ravel()
-        parent = np.minimum(parent, new_parent)
-        # jump: flatten the forest so the next round sees component minima
-        for _ in range(8):
-            nxt = parent[parent]
-            if np.array_equal(nxt, parent):
-                break
-            parent = nxt
-
-    roots = parent.reshape(h, w)
     out = np.zeros((h, w), dtype=np.int64)
     if not mask.any():
         return out
-    uniq, inv = np.unique(roots[mask], return_inverse=True)
+
+    idx = flat_index(mask.shape)
+    # Four directions carry all eight: every 8-neighbour link is the reverse of
+    # one of these seen from the other endpoint.
+    pairs = [
+        (mask[:, :-1] & mask[:, 1:], idx[:, :-1], idx[:, 1:]),
+        (mask[:-1, :] & mask[1:, :], idx[:-1, :], idx[1:, :]),
+        (mask[:-1, :-1] & mask[1:, 1:], idx[:-1, :-1], idx[1:, 1:]),
+        (mask[:-1, 1:] & mask[1:, :-1], idx[:-1, 1:], idx[1:, :-1]),
+    ]
+    u = np.concatenate([a[sel] for sel, a, _ in pairs])
+    v = np.concatenate([b[sel] for sel, _, b in pairs])
+
+    parent = np.arange(h * w, dtype=np.int64)
+    # Each round at least halves the number of distinct roots, so the bound is
+    # generous; reaching it means the algorithm is broken, not the terrain.
+    for _ in range(64):
+        parent = _compress(parent)
+        ru, rv = parent[u], parent[v]
+        hi, lo = np.maximum(ru, rv), np.minimum(ru, rv)
+        differ = hi != lo
+        if not differ.any():
+            break
+        np.minimum.at(parent, hi[differ], lo[differ])
+    else:
+        raise RuntimeError("connected_components did not converge; the labelling "
+                           "would be wrong and must not be used")
+
+    roots = _compress(parent).reshape(h, w)
+    _, inv = np.unique(roots[mask], return_inverse=True)
     out[mask] = inv + 1
     return out
+
+
+def _compress(parent: np.ndarray) -> np.ndarray:
+    """Point every node straight at its root."""
+    while True:
+        nxt = parent[parent]
+        if np.array_equal(nxt, parent):
+            return parent
+        parent = nxt
 
 
 def component_sizes(labels: np.ndarray) -> np.ndarray:
