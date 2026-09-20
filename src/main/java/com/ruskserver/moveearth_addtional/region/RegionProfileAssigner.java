@@ -201,22 +201,33 @@ public final class RegionProfileAssigner {
         if (materials.isEmpty()) {
             return chosen;
         }
+        Map<String, Integer> used = new java.util.HashMap<>();
         List<Region> order = new ArrayList<>(regions);
         order.sort(Comparator.comparingInt((Region r) -> -r.neighbours().size())
                 .thenComparingInt(Region::id));
         for (Region region : order) {
             Set<String> taken = new HashSet<>();
             for (Integer neighbour : region.neighbours()) {
-                String used = chosen.get(neighbour);
-                if (used != null) {
-                    taken.add(used);
+                String neighbourSpecialty = chosen.get(neighbour);
+                if (neighbourSpecialty != null) {
+                    taken.add(neighbourSpecialty);
                 }
             }
-            String pick = materials.stream().filter(m -> !taken.contains(m)).findFirst()
-                    // More neighbours than materials: a repeat is unavoidable, and
-                    // a duplicate specialty is far better than no specialty.
+            // Among the colours that do not clash, take the one used least so
+            // far. Simply taking the first leaves whole materials unused: the
+            // production map's adjacency graph needs only two colours, so a
+            // first-fit colouring gave copper to nobody and made it the shortage
+            // in five regions out of eight -- of a metal Create needs by the
+            // stack. Balancing usage is what puts every common ore somewhere.
+            String pick = materials.stream()
+                    .filter(material -> !taken.contains(material))
+                    .min(Comparator.comparingInt((String material) -> used.getOrDefault(material, 0))
+                            .thenComparing(materials::indexOf))
+                    // More neighbours than materials: a repeat is unavoidable,
+                    // and a duplicate specialty beats no specialty.
                     .orElse(materials.get(region.id() % materials.size()));
             chosen.put(region.id(), pick);
+            used.merge(pick, 1, Integer::sum);
         }
         return chosen;
     }

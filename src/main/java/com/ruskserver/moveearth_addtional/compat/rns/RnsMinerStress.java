@@ -87,10 +87,22 @@ public final class RnsMinerStress {
             if (!(holder.value() instanceof MiningRecipe recipe)) {
                 continue;
             }
+            // Yields are resolved lazily, exactly as deposit spec icons are:
+            // until this is called the items are all null and every recipe
+            // looks like it names nothing. The same oversight cost a round of
+            // diagnosis on the deposit side.
+            if (!recipe.initialize(server.registryAccess())) {
+                continue;
+            }
             materialOf(recipe, overrides).ifPresent(
                     material -> resolved.put(recipe.getDepositBlock(), material));
         }
         depositMaterials = resolved;
+        if (resolved.isEmpty()) {
+            Moveearth_addtional.LOGGER.warn(
+                    "No deposit block could be named, so every one costs the common rate and "
+                            + "the stress tiers have no effect.");
+        }
         Moveearth_addtional.LOGGER.info(
                 "Miner stress: {} deposit block(s) named; the rest cost the common rate.",
                 resolved.size());

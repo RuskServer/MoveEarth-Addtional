@@ -46,14 +46,23 @@ public final class RegionResourceConfig {
                         "     would make brass unobtainable for whole regions, and quartz would",
                         "     block Create's mid game were the Nether not outside this system.",
                         "",
-                        "The default is diamond, emerald and gold. Rock & Stone ships no",
-                        "diamond or emerald deposit, so this mod adds those two; all three are",
-                        "always present and none of them gates anything. Add the industrial",
-                        "metals -- tin, lead, nickel, silver, platinum, osmium, uranium,",
-                        "thorium -- once the mods that give them a use are installed, and they",
-                        "will be picked up automatically.")
+                        "The default is emerald, diamond, gold and uranium. The first three",
+                        "are always present -- Rock & Stone ships no diamond or emerald deposit",
+                        "so this mod adds them -- and none of them gates anything. Uranium",
+                        "appears once Mekanism is installed and is the cleanest exclusive in",
+                        "that pack: fission needs it and nothing else does, so a region without",
+                        "it loses a branch rather than a tech tree.",
+                        "",
+                        "NEVER add osmium. Mekanism's Basic Control Circuit and Steel Casing",
+                        "both take osmium, and between them they gate nearly every machine in",
+                        "the mod, so confining it to one region would kill Mekanism in the other",
+                        "seven. It is that pack's zinc. Tin and lead are milder versions of the",
+                        "same problem and are worth checking against the pack before adding.",
+                        "",
+                        "A name nothing in the pack produces is dropped with a warning, so",
+                        "listing uranium before Mekanism arrives is harmless.")
                 .defineList("exclusiveMaterials",
-                        List.of("emerald", "diamond", "gold"),
+                        List.of("emerald", "diamond", "gold", "uranium"),
                         () -> "", entry -> entry instanceof String name && !name.isBlank());
 
         COMMON = BUILDER

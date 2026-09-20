@@ -55,6 +55,8 @@ public final class RegionCommands {
                                 .executes(context -> export(context.getSource(), "region"))
                                 .then(Commands.literal("continent")
                                         .executes(context -> export(context.getSource(), "continent"))))
+                        .then(Commands.literal("reallocate")
+                                .executes(context -> reallocate(context.getSource())))
                         .then(Commands.literal("density")
                                 .executes(context -> density(context.getSource(), null, null))
                                 .then(Commands.argument("minChunk", IntegerArgumentType.integer())
@@ -105,6 +107,31 @@ public final class RegionCommands {
                     .withStyle(ChatFormatting.GRAY), false);
         }
         return written;
+    }
+
+    /**
+     * Throws away this world's allocation so the next start decides again.
+     *
+     * <p>Deliberately not applied on the spot. Chunks already generated were
+     * built from the current allocation and would not be regenerated, so
+     * swapping it live would leave a world holding two different answers at
+     * once. Requiring a restart keeps the world consistent with whatever it
+     * ends up with.
+     */
+    private static int reallocate(CommandSourceStack source) {
+        if (!RegionAllocationStore.clear(source.getServer())) {
+            source.sendFailure(Component.literal(
+                    "No allocation was recorded for this world, so there is nothing to discard."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Allocation discarded. The next start will decide again.")
+                .withStyle(ChatFormatting.GREEN), false);
+        source.sendSuccess(() -> Component.literal(
+                "  Chunks already generated keep the resources they were given; only land "
+                        + "generated from now on follows the new allocation.")
+                .withStyle(ChatFormatting.YELLOW), false);
+        return 1;
     }
 
     private static int density(CommandSourceStack source, Integer minChunk, Integer maxChunk) {

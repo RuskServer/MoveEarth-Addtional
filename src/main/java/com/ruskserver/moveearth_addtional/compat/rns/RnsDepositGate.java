@@ -156,7 +156,14 @@ public final class RnsDepositGate {
             // deposit is named after does not exist, which is what happens to a
             // metal whose mod is absent.
             if (!spec.initialize(access)) {
-                report.put(name, "(its item does not exist in this pack)");
+                // Two icons have to resolve, and which one failed says what to
+                // fix: a missing scanner icon means the resource itself is not
+                // in this pack, a missing map icon means the deposit block's
+                // item is. Reporting them as one thing sent the last diagnosis
+                // down the wrong path.
+                report.put(name, spec.getScannerIcon() == null
+                        ? "(no scanner icon -- the item naming this resource does not exist)"
+                        : "(no map icon -- the deposit block's item does not exist)");
                 continue;
             }
             Optional<String> material = materialOf(spec, overrides);

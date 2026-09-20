@@ -164,15 +164,28 @@ public final class RegionProfiles {
             profiles.add(new Profile(exclusive.get(index), index));
         }
 
+        // An allocation already made for this world wins. It is what the
+        // nations living on it were built around, and recomputing it because a
+        // config list changed would move a resource out from under whoever was
+        // mining it, with nothing in the world to show why.
+        List<Assignment> decided = RegionAllocationStore.load(server)
+                .filter(saved -> matches(saved, regions))
+                .orElse(null);
+        boolean fresh = decided == null;
+        if (fresh) {
+            decided = RegionProfileAssigner.assign(regions, profiles, common);
+            RegionAllocationStore.save(server, decided);
+        }
         Map<Integer, Assignment> byRegion = new TreeMap<>();
-        for (Assignment assignment : RegionProfileAssigner.assign(regions, profiles, common)) {
+        for (Assignment assignment : decided) {
             byRegion.put(assignment.regionId(), assignment);
         }
         active = new Snapshot(Map.copyOf(byRegion), Set.copyOf(new LinkedHashSet<>(exclusive)),
                 List.copyOf(common));
 
-        Moveearth_addtional.LOGGER.info("Region resources: {} region(s), {} exclusive material(s)",
-                byRegion.size(), exclusive.size());
+        Moveearth_addtional.LOGGER.info("Region resources: {} region(s), {} exclusive material(s), {}",
+                byRegion.size(), exclusive.size(),
+                fresh ? "newly allocated" : "as recorded for this world");
         for (Assignment assignment : byRegion.values()) {
             Moveearth_addtional.LOGGER.info("  region {}: {} (rich in {}, short of {})",
                     assignment.regionId(),
@@ -202,6 +215,28 @@ public final class RegionProfiles {
                             + "allocation is already fixed for this world; regenerate it if "
                             + "they were meant to be exclusive.", unseen);
         }
+    }
+
+    /**
+     * Whether a recorded allocation still describes the regions on the ground.
+     *
+     * <p>A tile can be regenerated, and then the ids in the file mean different
+     * land. Carrying on would put resources in places nobody chose, so a
+     * mismatch is reported and the allocation made again.
+     */
+    private static boolean matches(List<Assignment> saved, List<Region> regions) {
+        Set<Integer> onFile = new java.util.TreeSet<>();
+        saved.forEach(assignment -> onFile.add(assignment.regionId()));
+        Set<Integer> onTile = new java.util.TreeSet<>();
+        regions.forEach(region -> onTile.add(region.id()));
+        if (onFile.equals(onTile)) {
+            return true;
+        }
+        Moveearth_addtional.LOGGER.error(
+                "The recorded allocation covers regions {} but the terrain has {}. The tile has "
+                        + "changed since it was written, so the allocation is being made again "
+                        + "and regions may not hold what they held before.", onFile, onTile);
+        return false;
     }
 
     /** Drops the allocation. Used when the tiles themselves go away. */
