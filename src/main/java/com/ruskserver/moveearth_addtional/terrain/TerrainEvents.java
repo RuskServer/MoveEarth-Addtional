@@ -85,12 +85,15 @@ public final class TerrainEvents {
      */
     private static void buildRegions(MinecraftServer server) {
         java.util.Set<String> available = java.util.Set.of();
+        java.util.Map<String, Double> density = java.util.Map.of();
         if (net.neoforged.fml.ModList.get().isLoaded(RegionEvents.RNS_MOD_ID)) {
             com.ruskserver.moveearth_addtional.compat.rns.RnsDepositGate.rebuild(server);
             available = com.ruskserver.moveearth_addtional.compat.rns.RnsDepositGate
                     .availableMaterials();
+            density = com.ruskserver.moveearth_addtional.compat.rns.RnsDepositGate
+                    .depositsPerChunk(server);
         }
-        RegionProfiles.build(server, available);
+        RegionProfiles.build(server, available, density);
     }
 
     private static void onServerAboutToStart(ServerAboutToStartEvent event) {

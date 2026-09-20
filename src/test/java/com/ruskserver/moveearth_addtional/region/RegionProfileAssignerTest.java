@@ -219,6 +219,44 @@ class RegionProfileAssignerTest {
     }
 
     @Test
+    @DisplayName("a region too small to contain a resource is not given it")
+    void aRegionMustBeAbleToHoldWhatItClaims() {
+        // Measured on the production map: uranium diluted to five percent of
+        // the pool came to 0.49 expected deposits in the smallest region, so
+        // half the time the uranium region had no uranium.
+        double perCell = 1.0 / 30_000.0;
+        List<Profile> tier = List.of(new Profile("uranium", 0, perCell));
+        List<Region> regions = List.of(
+                new Region(1, 1, 5_000, 0.7, false),
+                new Region(2, 1, 60_000, 0.7, false));
+        List<Assignment> result = RegionProfileAssigner.assign(regions, tier);
+        assertEquals("uranium", of(result, 2).profileId(),
+                "only the larger region expects more than one deposit");
+        assertEquals(null, of(result, 1).profileId());
+    }
+
+    @Test
+    @DisplayName("a resource no region can hold is left unplaced, and said so")
+    void unplaceableResourcesAreReported() {
+        double perCell = 1.0 / 1_000_000.0;
+        List<Assignment> result = RegionProfileAssigner.assign(
+                List.of(new Region(1, 1, 5_000, 0.7, false)),
+                List.of(new Profile("uranium", 0, perCell)));
+        assertEquals(null, of(result, 1).profileId(),
+                "a region claiming a resource it may not have is worse than one without");
+        assertTrue(RegionProfileAssigner.unplaceable().contains("uranium"));
+    }
+
+    @Test
+    @DisplayName("an unmeasured density places as before rather than refusing everything")
+    void unknownDensityDoesNotBlockPlacement() {
+        // Refusing every region on a missing measurement would leave a world
+        // with no exclusive resources at all -- the wrong way to fail.
+        List<Assignment> result = RegionProfileAssigner.assign(productionRegions(), strategicTier());
+        assertTrue(result.stream().anyMatch(a -> a.profileId() != null));
+    }
+
+    @Test
     @DisplayName("the same inputs always give the same answer")
     void isDeterministic() {
         List<Assignment> first = RegionProfileAssigner.assign(productionRegions(), strategicTier());

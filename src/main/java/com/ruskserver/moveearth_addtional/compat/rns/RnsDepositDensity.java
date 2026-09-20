@@ -50,7 +50,11 @@ public final class RnsDepositDensity {
         List<StructureSet> sets = depositSets(server);
 
         Map<Integer, double[]> expected = new TreeMap<>();      // kept, refused
-        Map<Integer, Map<String, Long>> materials = new HashMap<>();
+        // Shares accumulate as fractions and are rounded once at the end. An
+        // earlier version scaled them by a hundred to keep them in a Long,
+        // which printed "quartz=5800" for fifty-eight deposits -- a number that
+        // reads as a count and is not one.
+        Map<Integer, Map<String, Double>> materials = new HashMap<>();
         Map<Integer, Long> landChunks = countLandChunksPerRegion(minChunk, maxChunk);
         landChunks.keySet().forEach(region -> expected.put(region, new double[2]));
 
@@ -81,9 +85,13 @@ public final class RnsDepositDensity {
         }
 
         List<VeinDensity> out = new ArrayList<>();
-        expected.forEach((region, counts) -> out.add(new VeinDensity(region,
-                landChunks.getOrDefault(region, 0L), Math.round(counts[0]), Math.round(counts[1]),
-                Map.copyOf(materials.getOrDefault(region, Map.of())))));
+        expected.forEach((region, counts) -> {
+            Map<String, Long> rounded = new TreeMap<>();
+            materials.getOrDefault(region, Map.of())
+                    .forEach((material, share) -> rounded.put(material, Math.round(share)));
+            out.add(new VeinDensity(region, landChunks.getOrDefault(region, 0L),
+                    Math.round(counts[0]), Math.round(counts[1]), Map.copyOf(rounded)));
+        });
         return List.copyOf(out);
     }
 
@@ -95,7 +103,7 @@ public final class RnsDepositDensity {
      * deposits the region actually gets.
      */
     private static void score(StructureSet set, int region, double[] counts,
-                              Map<String, Long> materials) {
+                              Map<String, Double> materials) {
         double totalWeight = set.structures().stream().mapToInt(StructureSet.StructureSelectionEntry::weight)
                 .filter(weight -> weight > 0).sum();
         if (totalWeight <= 0) {
@@ -110,8 +118,7 @@ public final class RnsDepositDensity {
             String material = RnsDepositGate.materialOf(structure);
             if (material == null || RegionProfiles.allows(region, material)) {
                 counts[0] += share;
-                materials.merge(material == null ? "(unnamed)" : material,
-                        Math.max(1L, Math.round(share * 100)), Long::sum);
+                materials.merge(material == null ? "(unnamed)" : material, share, Double::sum);
             } else {
                 counts[1] += share;
             }

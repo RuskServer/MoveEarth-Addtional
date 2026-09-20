@@ -97,7 +97,8 @@ public final class RegionProfiles {
      * <p>Called once while the server is starting, after the terrain tiles are
      * in place and before the first chunk is generated.
      */
-    public static void build(MinecraftServer server, Set<String> availableMaterials) {
+    public static void build(MinecraftServer server, Set<String> availableMaterials,
+                             Map<String, Double> depositsPerChunk) {
         TerrainTileStore store = TerrainTileStore.active();
         if (store == null || store.tiles().isEmpty()) {
             active = null;
@@ -159,9 +160,15 @@ public final class RegionProfiles {
         // Scarcity follows the configured order: the first listed is treated as
         // the rarest, which is what keeps the order in the config meaningful
         // rather than decorative.
+        // Density arrives per chunk and the regions are measured in cells, so
+        // it is converted here, where the tile's scale is known.
+        double cellsPerChunk = cellsPerChunk(store);
         List<Profile> profiles = new ArrayList<>();
         for (int index = 0; index < exclusive.size(); index++) {
-            profiles.add(new Profile(exclusive.get(index), index));
+            String material = exclusive.get(index);
+            double perChunk = depositsPerChunk.getOrDefault(material, 0.0);
+            profiles.add(new Profile(material, index,
+                    cellsPerChunk <= 0 ? 0.0 : perChunk / cellsPerChunk));
         }
 
         // An allocation already made for this world wins. It is what the
@@ -183,6 +190,12 @@ public final class RegionProfiles {
         active = new Snapshot(Map.copyOf(byRegion), Set.copyOf(new LinkedHashSet<>(exclusive)),
                 List.copyOf(common));
 
+        if (!RegionProfileAssigner.unplaceable().isEmpty()) {
+            Moveearth_addtional.LOGGER.warn(
+                    "No region is large enough to reliably contain {}, so it was left unplaced. "
+                            + "A region claiming a resource it may not have is worse than one "
+                            + "without.", RegionProfileAssigner.unplaceable());
+        }
         Moveearth_addtional.LOGGER.info("Region resources: {} region(s), {} exclusive material(s), {}",
                 byRegion.size(), exclusive.size(),
                 fresh ? "newly allocated" : "as recorded for this world");
@@ -237,6 +250,15 @@ public final class RegionProfiles {
                         + "changed since it was written, so the allocation is being made again "
                         + "and regions may not hold what they held before.", onFile, onTile);
         return false;
+    }
+
+    /** Cells per chunk, from the tile's scale. 16 blocks per chunk. */
+    private static double cellsPerChunk(TerrainTileStore store) {
+        for (TerrainTile tile : store.tiles()) {
+            double perSide = 16.0 / Math.max(1, tile.blocksPerCell());
+            return perSide * perSide;
+        }
+        return 0.0;
     }
 
     /** Drops the allocation. Used when the tiles themselves go away. */

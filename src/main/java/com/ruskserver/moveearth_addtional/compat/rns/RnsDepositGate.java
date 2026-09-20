@@ -18,7 +18,9 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureSet;
 import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStructurePlacement;
 
 /**
@@ -108,8 +110,9 @@ public final class RnsDepositGate {
     /**
      * Resolves every deposit's material from its scanner icon.
      *
-     * <p>Only deposits this world can actually produce are read, which takes
-     * two tests. The mod registers a spec for every metal it supports and
+     * <p>Only overworld deposits are read at all; the region map describes the
+     * surface and says nothing about another dimension. Of those, only the ones
+     * this world can actually produce are kept, which takes two tests. The mod registers a spec for every metal it supports and
      * switches off the ones whose mod is missing, and a deposit that is off is
      * absent from the structure set and has no mining recipe. Separately, a
      * spec's icon only resolves when the item it names exists. Either failure
@@ -145,6 +148,16 @@ public final class RnsDepositGate {
             // recipes. A deposit that is off does not generate and cannot be
             // mined, so treating its material as a resource this world has
             // would give some region an exclusive claim on nothing.
+            // The region system covers the overworld and nothing else: the plan
+            // leaves the Nether and the End uniform, and there is no mapping
+            // from a region on the surface to a position in another dimension.
+            // Left in, a nether deposit would be judged against whatever region
+            // sits at the same x/z above it -- nether gold generating only over
+            // the one region that happens to hold gold.
+            if (!Level.OVERWORLD.equals(spec.dimension)) {
+                report.put(name, "(" + spec.dimension.location() + ", outside the region system)");
+                continue;
+            }
             if (!spec.scannable) {
                 report.put(name, "(disabled in this pack)");
                 continue;
@@ -253,6 +266,47 @@ public final class RnsDepositGate {
     /** How many of our deposits have stood aside for another set's. */
     public static long yieldedToOtherSets() {
         return yielded.get();
+    }
+
+    /**
+     * How many deposits of each material a chunk of land can expect.
+     *
+     * <p>Measured off the live structure sets rather than assumed. A material's
+     * share of one grid position is its weight against the set's total, and how
+     * often a position occurs is the square of the set's spacing -- both facts
+     * the pack decides and neither safe to guess: the mod ships several
+     * frequency variants, and a hand calculation came out three times under
+     * what the world actually contains.
+     *
+     * <p>Used to keep an exclusive resource out of a region too small to hold
+     * one. A material diluted to five percent of a pool, in a region with nine
+     * positions, is half a deposit -- and half the time the region that is
+     * supposed to be defined by that resource has none of it.
+     */
+    public static Map<String, Double> depositsPerChunk(MinecraftServer server) {
+        Map<String, Double> out = new TreeMap<>();
+        var sets = server.registryAccess().registryOrThrow(Registries.STRUCTURE_SET);
+        for (StructureSet set : sets) {
+            if (!(set.placement() instanceof RandomSpreadStructurePlacement placement)) {
+                continue;
+            }
+            double spacing = Math.max(1, placement.spacing());
+            double positionsPerChunk = 1.0 / (spacing * spacing);
+            double totalWeight = set.structures().stream()
+                    .mapToInt(StructureSet.StructureSelectionEntry::weight)
+                    .filter(weight -> weight > 0).sum();
+            if (totalWeight <= 0) {
+                continue;
+            }
+            for (StructureSet.StructureSelectionEntry entry : set.structures()) {
+                String material = materials.get(entry.structure().value());
+                if (material == null || entry.weight() <= 0) {
+                    continue;
+                }
+                out.merge(material, positionsPerChunk * (entry.weight() / totalWeight), Double::sum);
+            }
+        }
+        return Map.copyOf(out);
     }
 
     /** Every material some deposit in this pack actually yields. */

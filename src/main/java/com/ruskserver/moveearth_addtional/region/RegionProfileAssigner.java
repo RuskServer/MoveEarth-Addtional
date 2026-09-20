@@ -56,8 +56,34 @@ public final class RegionProfileAssigner {
      *
      * @param scarcity lower is scarcer, and scarcer resources are placed first
      *                 and kept away from the weakest regions
+     * @param depositsPerCell how many deposits of it a cell of land yields, as
+     *                        measured from the pack. Zero means unknown, and
+     *                        then the size floor does not apply
      */
-    public record Profile(String id, int scarcity) { }
+    public record Profile(String id, int scarcity, double depositsPerCell) {
+
+        /** For callers with no density measurement, such as a test. */
+        public Profile(String id, int scarcity) {
+            this(id, scarcity, 0.0);
+        }
+
+        /** How many of this resource a region of the given size would hold. */
+        public double expectedIn(Region region) {
+            return region.areaCells() * depositsPerCell;
+        }
+    }
+
+    /**
+     * The fewest deposits a region must expect before it can be the exclusive
+     * home of a resource.
+     *
+     * <p>One, because below that the region defining itself by a resource may
+     * contain none of it. Measured on the production map, uranium came to 0.49
+     * expected deposits in the smallest region: half the time, the uranium
+     * region has no uranium. A resource nobody can find is worse than one
+     * nobody has, because the map says it is there.
+     */
+    private static final double MINIMUM_EXPECTED_DEPOSITS = 1.0;
 
     /**
      * What one region ended up with.
@@ -106,6 +132,14 @@ public final class RegionProfileAssigner {
 
     /** Below this, a region is a ribbon rather than a territory. */
     private static final double RIBBON_COMPACTNESS = 0.40;
+
+    /** Resources no region was large enough to hold, from the last assignment. */
+    private static volatile List<String> unplaceable = List.of();
+
+    /** Resources the last assignment could not place anywhere, for reporting. */
+    public static List<String> unplaceable() {
+        return unplaceable;
+    }
 
     private RegionProfileAssigner() { }
 
@@ -158,24 +192,29 @@ public final class RegionProfileAssigner {
 
         Map<Integer, String> placed = new TreeMap<>();
         Set<Integer> continentsUsed = new HashSet<>();
+        List<String> skipped = new ArrayList<>();
         for (int index = 0; index < ordered.size(); index++) {
             Profile profile = ordered.get(index);
             boolean scarcest = index == 0;
             boolean mostAbundant = index == ordered.size() - 1 && ordered.size() > 1;
-            Region host = pick(regions, placed, continentsUsed, scarcest, mostAbundant);
+            Region host = pick(regions, placed, continentsUsed, scarcest, mostAbundant, profile);
             if (host == null) {
                 // More profiles than regions: start a second pass rather than
                 // leaving a resource that exists nowhere in the world.
                 continentsUsed.clear();
-                host = pick(regions, Map.of(), continentsUsed, scarcest, mostAbundant);
+                host = pick(regions, Map.of(), continentsUsed, scarcest, mostAbundant, profile);
             }
             if (host == null) {
+                // Every region is too small to hold it. Better nowhere than in a
+                // region that would claim it and not have it.
+                skipped.add(profile.id());
                 continue;
             }
             placed.merge(host.id(), profile.id(), (a, b) -> a + "," + b);
             continentsUsed.add(host.continent());
         }
 
+        unplaceable = List.copyOf(skipped);
         Map<Integer, String> specialty = colourByAdjacency(regions, commonMaterials);
 
         List<Assignment> out = new ArrayList<>();
@@ -259,18 +298,31 @@ public final class RegionProfileAssigner {
      */
     private static Region pick(List<Region> regions, Map<Integer, String> placed,
                                Set<Integer> continentsUsed, boolean scarcest,
-                               boolean mostAbundant) {
+                               boolean mostAbundant, Profile profile) {
         Comparator<Region> byNeed = mostAbundant
                 ? Comparator.comparingDouble(RegionProfileAssigner::holdability)
                 : Comparator.comparingDouble(region -> -holdability(region));
         return regions.stream()
                 .filter(region -> !placed.containsKey(region.id()))
                 .filter(region -> !scarcest || suitableForTheScarcest(region))
+                .filter(region -> canHold(region, profile))
                 .min(Comparator
                         .comparing((Region region) -> continentsUsed.contains(region.continent()))
                         .thenComparing(byNeed)
                         .thenComparingInt(Region::id))
                 .orElse(null);
+    }
+
+    /**
+     * Whether a region is big enough for this resource to actually appear in it.
+     *
+     * <p>Skipped when the density is unknown, because refusing every region on
+     * a missing measurement would leave the world with no exclusive resources
+     * at all -- the wrong way to fail.
+     */
+    static boolean canHold(Region region, Profile profile) {
+        return profile.depositsPerCell() <= 0
+                || profile.expectedIn(region) >= MINIMUM_EXPECTED_DEPOSITS;
     }
 
     /**
