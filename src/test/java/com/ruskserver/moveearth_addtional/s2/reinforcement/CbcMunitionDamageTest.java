@@ -58,4 +58,15 @@ class CbcMunitionDamageTest {
         assertEquals(0, CbcMunitionDamage.coreDamage(CbcMunitionDamage.Kind.MACHINE_GUN, 1, 50.0D));
         assertEquals(0, CbcMunitionDamage.coreDamage(CbcMunitionDamage.Kind.HE_SHELL, 40, 0.0D));
     }
+
+    @Test
+    void apAutocannonOnlyDamagesVehicleCoreOnDirectPointHit() {
+        assertEquals(4, CbcMunitionDamage.vehicleCoreDamage(CbcMunitionDamage.Kind.AUTOCANNON, 0, 4, true));
+        assertEquals(0, CbcMunitionDamage.vehicleCoreDamage(CbcMunitionDamage.Kind.AUTOCANNON, 0, 4, false));
+        assertEquals(0, CbcMunitionDamage.vehicleCoreDamage(CbcMunitionDamage.Kind.AUTOCANNON, 0, 0, true));
+        assertEquals(0, CbcMunitionDamage.vehicleCoreDamage(CbcMunitionDamage.Kind.MACHINE_GUN, 0, 4, true));
+        assertEquals(0, CbcMunitionDamage.vehicleCoreDamage(CbcMunitionDamage.Kind.FRAGMENTATION, 0, 4, true));
+        assertEquals(48, CbcMunitionDamage.vehicleCoreDamage(CbcMunitionDamage.Kind.SHOT, 48, 4, false));
+        assertEquals(0, CbcMunitionDamage.coreDamage(CbcMunitionDamage.Kind.AUTOCANNON, 3, 1));
+    }
 }

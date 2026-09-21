@@ -61,4 +61,11 @@ public final class CbcMunitionDamage {
         return (int) Math.min(Integer.MAX_VALUE,
                 Math.max(1L, Math.round(reinforcementDamage * multiplier)));
     }
+
+    /** AP autocannon fire can destroy an exposed vehicle core, never a strategic territory core. */
+    public static int vehicleCoreDamage(Kind kind, int heavyCoreDamage, int apAutocannonDamage,
+                                        boolean pointHit) {
+        if (kind == Kind.AUTOCANNON) return pointHit ? Math.max(0, apAutocannonDamage) : 0;
+        return canDamageCore(kind) ? Math.max(0, heavyCoreDamage) : 0;
+    }
 }

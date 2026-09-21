@@ -28,7 +28,8 @@
     "RnsDepositStructureMixin",
     "KineticStressAccess",
     "RnsMinerBearingStressMixin",
-    "RnsMiningBehaviourStressMixin"
+    "RnsMiningBehaviourStressMixin",
+    "CbcAutocannonRateMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",

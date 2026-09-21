@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.reinforcement;
 
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
+import com.ruskserver.moveearth_addtional.block.entity.VehicleCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureRecheckManager;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryCoreHealthService;
@@ -47,6 +48,11 @@ public final class SiegeDamageService {
         int base = configuredCoreDamage(kind);
         return pointHit ? CbcMunitionDamage.coreDamage(kind, base,
                 S2TerritoryConfig.cbcDirectCoreMultiplier()) : base;
+    }
+
+    public static int configuredVehicleCoreDamage(CbcMunitionDamage.Kind kind, boolean pointHit) {
+        return CbcMunitionDamage.vehicleCoreDamage(kind, configuredCoreDamage(kind),
+                S2TerritoryConfig.cbcApAutocannonVehicleCoreDamage(), pointHit);
     }
 
     public static int configuredWarnauticsDamage(WarnauticsWeaponDamage.Kind kind, boolean c4Primary) {
@@ -99,8 +105,11 @@ public final class SiegeDamageService {
                     : new SiegeService.AttackAttribution(
                     com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
                             .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "cbc");
+            int damage = configuredVehicleCoreDamage(kind, true);
+            if (kind == CbcMunitionDamage.Kind.AUTOCANNON
+                    && !(level.getBlockEntity(pos) instanceof VehicleCoreBlockEntity)) damage = 0;
             com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
-                    level, pos, configuredCoreDamage(kind), attribution);
+                    level, pos, damage, attribution);
             return true;
         }
         TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
@@ -175,8 +184,11 @@ public final class SiegeDamageService {
         if (vehicleCore != null) {
             intercepted = true;
             if (!SiegeService.peaceTruceBlocks(attribution, level, center)) {
+                int vehicleDamage = configuredVehicleCoreDamage(kind, safeRadius == 0);
+                if (kind == CbcMunitionDamage.Kind.AUTOCANNON
+                        && !(level.getBlockEntity(center) instanceof VehicleCoreBlockEntity)) vehicleDamage = 0;
                 com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
-                        level, center, configuredCoreDamage(kind), attribution);
+                        level, center, vehicleDamage, attribution);
             }
         }
         long radiusSquared = (long) safeRadius * safeRadius;

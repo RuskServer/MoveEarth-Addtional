@@ -40,6 +40,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue CBC_MORTAR_DAMAGE;
     private static final ModConfigSpec.IntValue CBC_FRAGMENTATION_DAMAGE;
     private static final ModConfigSpec.IntValue CBC_AUTOCANNON_DAMAGE;
+    private static final ModConfigSpec.IntValue CBC_AP_AUTOCANNON_VEHICLE_CORE_DAMAGE;
     private static final ModConfigSpec.IntValue CBC_MACHINE_GUN_DAMAGE;
     private static final ModConfigSpec.IntValue CBC_UTILITY_DAMAGE;
     private static final ModConfigSpec.DoubleValue CBC_CORE_DAMAGE_MULTIPLIER;
@@ -156,6 +157,10 @@ public final class S2TerritoryConfig {
         CBC_AUTOCANNON_DAMAGE = BUILDER.comment(
                 "Damage per AP autocannon hit. Rapid-fire ammunition cannot damage territory cores.")
                 .defineInRange("apAutocannonHit", 3, 0, 100000);
+        CBC_AP_AUTOCANNON_VEHICLE_CORE_DAMAGE = BUILDER.comment(
+                "Damage from a direct AP autocannon hit on a vehicle core. Does not affect territory cores or blast areas.",
+                "Set to zero to disable rapid-fire vehicle core damage.")
+                .defineInRange("apAutocannonVehicleCoreDirectHit", 4, 0, 100000);
         CBC_MACHINE_GUN_DAMAGE = BUILDER.comment(
                 "Damage per machine-gun bullet hit. Machine-gun bullets cannot damage territory cores.")
                 .defineInRange("machineGunHit", 1, 0, 100000);
@@ -296,6 +301,7 @@ public final class S2TerritoryConfig {
     public static int cbcMortarDamage() { return CBC_MORTAR_DAMAGE.getAsInt(); }
     public static int cbcFragmentationDamage() { return CBC_FRAGMENTATION_DAMAGE.getAsInt(); }
     public static int cbcAutocannonDamage() { return CBC_AUTOCANNON_DAMAGE.getAsInt(); }
+    public static int cbcApAutocannonVehicleCoreDamage() { return CBC_AP_AUTOCANNON_VEHICLE_CORE_DAMAGE.getAsInt(); }
     public static int cbcMachineGunDamage() { return CBC_MACHINE_GUN_DAMAGE.getAsInt(); }
     public static int cbcUtilityDamage() { return CBC_UTILITY_DAMAGE.getAsInt(); }
     public static double cbcCoreDamageMultiplier() { return CBC_CORE_DAMAGE_MULTIPLIER.getAsDouble(); }

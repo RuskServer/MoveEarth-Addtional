@@ -115,6 +115,14 @@ ordering = "AFTER"
 side = "BOTH"
 
 [[dependencies."${mod_id}"]]
+modId = "createbigcannons"
+type = "optional"
+reason = "MoveEarth supplies CBC casting and cannon-material balance data when CBC is installed."
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
 modId = "mekanism"
 type = "required"
 reason = "MoveEarth's industrial progression is balanced against Mekanism 10.7.19.85 recipe and machine behavior."
