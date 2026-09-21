@@ -77,6 +77,6 @@ public record S2C_RegionSnapshotPacket(RegionSnapshot snapshot) implements Custo
     }
 
     public void handle(IPayloadContext context) {
-        context.enqueueWork(() -> ClientPacketHandler.openRegionScreen(snapshot));
+        context.enqueueWork(() -> ClientPacketHandler.handleRegionSnapshot(snapshot));
     }
 }

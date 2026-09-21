@@ -40,6 +40,16 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private static S2HubTab lastTab = S2HubTab.OVERVIEW;
     private static int nextRequestId;
 
+    /**
+     * The regions around the player, fetched when the tab is chosen.
+     *
+     * <p>Empty until the reply lands, which is why the tab says it is loading
+     * rather than that there are no regions. Those say opposite things, and the
+     * first frame after a click would always have shown the wrong one.
+     */
+    private com.ruskserver.moveearth_addtional.region.RegionSnapshot regionView =
+            new com.ruskserver.moveearth_addtional.region.RegionSnapshot(0, java.util.List.of());
+
     private S2HubTab tab;
     private S2NationSnapshot snapshot;
     private int scrollOffset;
@@ -118,6 +128,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         else if (tab == S2HubTab.MEMBERS) drawMembers(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.ROLES) drawRoles(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.DIPLOMACY) drawDiplomacy(graphics, content, mouseX, mouseY);
+        else if (tab == S2HubTab.REGION) drawRegions(graphics, content, mouseX, mouseY);
         else drawSieges(graphics, content, mouseX, mouseY);
 
         if (kickTargetId != null) drawKickConfirmation(graphics, mouseX, mouseY);
@@ -293,6 +304,65 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         graphics.disableScissor();
         drawScrollbar(graphics, new Rect(list.right() - 4, list.y(), 4, list.height()),
                 list.height(), snapshot.diplomacy().size() * ROW_HEIGHT, scrollOffset);
+    }
+
+    private void drawRegions(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.region.subtitle"),
+                content.x(), content.y() + 4, MUTED, false);
+        Rect list = diplomacyListBounds(content);
+        if (regionView.regions().isEmpty()) {
+            graphics.drawCenteredString(font, Component.translatable(regionView.currentRegion() == 0
+                            ? "screen.moveearth_addtional.region.waiting"
+                            : "screen.moveearth_addtional.region.none"),
+                    list.x() + list.width() / 2, list.y() + 42, MUTED);
+            return;
+        }
+        graphics.enableScissor(list.x(), list.y(), list.right(), list.bottom());
+        for (int index = 0; index < regionView.regions().size(); index++) {
+            var entry = regionView.regions().get(index);
+            Rect card = diplomacyCard(list, index);
+            if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
+            int color = entry.current() ? SUCCESS : entry.known() ? ACCENT : DISABLED;
+            drawCard(graphics, card, color, entry.current(), card.contains(mouseX, mouseY));
+            Component name = Component.translatable(
+                    "message.moveearth_addtional.region.name", entry.id());
+            graphics.drawString(font, entry.current()
+                            ? Component.translatable("screen.moveearth_addtional.region.here", name)
+                            : name,
+                    card.x() + 13, card.y() + 8, entry.current() ? SUCCESS : TEXT, false);
+            graphics.drawString(font, regionDetail(entry), card.x() + 13, card.y() + 23,
+                    entry.known() ? TEXT : MUTED, false);
+        }
+        graphics.disableScissor();
+        drawScrollbar(graphics, new Rect(list.right() - 4, list.y(), 4, list.height()),
+                list.height(), regionView.regions().size() * ROW_HEIGHT, scrollOffset);
+    }
+
+    private Component regionDetail(
+            com.ruskserver.moveearth_addtional.region.RegionSnapshot.Entry entry) {
+        if (!entry.known()) {
+            return Component.translatable("screen.moveearth_addtional.region.unvisited");
+        }
+        Component strategic = entry.exclusives().isEmpty()
+                ? Component.translatable("screen.moveearth_addtional.region.no_exclusive")
+                : Component.translatable("screen.moveearth_addtional.region.exclusive",
+                        com.ruskserver.moveearth_addtional.region.RegionMaterialNames
+                                .list(entry.exclusives()));
+        if (entry.specialty().isBlank() && entry.shortage().isBlank()) {
+            return strategic;
+        }
+        return strategic.copy().append(Component.literal("  "))
+                .append(Component.translatable("screen.moveearth_addtional.region.common",
+                        com.ruskserver.moveearth_addtional.region.RegionMaterialNames
+                                .of(entry.specialty()),
+                        com.ruskserver.moveearth_addtional.region.RegionMaterialNames
+                                .of(entry.shortage())));
+    }
+
+    /** Takes the reply to the request the tab sent when it was chosen. */
+    public void updateRegions(com.ruskserver.moveearth_addtional.region.RegionSnapshot updated) {
+        this.regionView = updated;
+        if (tab == S2HubTab.REGION) scrollOffset = 0;
     }
 
     private void drawDiplomacyActions(GuiGraphics graphics, Rect card,
@@ -647,12 +717,11 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         for (S2HubTab candidate : S2HubTab.values()) {
             if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
                 if (candidate == S2HubTab.REGION) {
-                    // Opens its own screen rather than drawing in the hub, the
-                    // way the guide tab it replaces did. Region data would
-                    // otherwise ride along in every hub snapshot, sent to every
-                    // player on every refresh whichever tab they were looking at.
+                    // Asked for on selection rather than carried in the hub
+                    // snapshot, which is sent on every refresh to every player
+                    // whichever tab they are on. The tab still draws here like
+                    // the others; only the fetch is separate.
                     PacketDistributor.sendToServer(new C2S_RequestRegionViewPacket());
-                    return true;
                 }
                 tab = candidate;
                 lastTab = candidate;
@@ -1057,7 +1126,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case ROLES -> snapshot.roles().size();
             case DIPLOMACY -> snapshot.diplomacy().size();
             case SIEGE -> siegeRowCount();
-            case REGION -> 0;
+            case REGION -> regionView.regions().size();
             default -> 0;
         };
     }
@@ -1073,6 +1142,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case ROLES -> roleListBounds(content);
             case DIPLOMACY -> diplomacyListBounds(content);
             case SIEGE -> diplomacyListBounds(content);
+            case REGION -> diplomacyListBounds(content);
             default -> content;
         };
     }

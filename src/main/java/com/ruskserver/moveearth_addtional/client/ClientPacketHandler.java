@@ -282,11 +282,13 @@ public class ClientPacketHandler {
         }
     }
 
-    public static void openRegionScreen(
+    public static void handleRegionSnapshot(
             com.ruskserver.moveearth_addtional.region.RegionSnapshot snapshot) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.screen instanceof RegionScreen screen) screen.update(snapshot);
-        else minecraft.setScreen(new RegionScreen(snapshot));
+        // Only ever an answer to the hub asking. Nothing is opened here: the
+        // tab is already on screen, waiting for something to draw.
+        if (Minecraft.getInstance().screen instanceof S2HubScreen screen) {
+            screen.updateRegions(snapshot);
+        }
     }
 
     public static void handleKillcamReplay(S2C_KillcamReplayPacket packet) {
