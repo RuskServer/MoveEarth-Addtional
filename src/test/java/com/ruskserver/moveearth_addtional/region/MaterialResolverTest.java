@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 class MaterialResolverTest {
@@ -184,5 +185,50 @@ class MaterialResolverTest {
     void keepsTheWholeRemainderAsTheName() {
         assertEquals(Optional.of("rare/thorium"),
                 MaterialResolver.resolveOre(List.of("c:ores/rare/thorium")).material());
+    }
+
+    @Nested
+    @DisplayName("namedLikeOre")
+    class NamedLikeOre {
+
+        @Test
+        @DisplayName("recognises the shapes mods actually use")
+        void recognisesOreNames() {
+            assertTrue(MaterialResolver.namedLikeOre("mekanism:uranium_ore"));
+            assertTrue(MaterialResolver.namedLikeOre("expandeddelight:deepslate_salt_ore"));
+            assertTrue(MaterialResolver.namedLikeOre("minecraft:ore_coal"));
+            assertTrue(MaterialResolver.namedLikeOre("somemod:ore"));
+            assertTrue(MaterialResolver.namedLikeOre("somemod:rich_ore_vein"));
+        }
+
+        @Test
+        @DisplayName("vanilla terrain is not ore, which is the whole point")
+        void terrainIsNotOre() {
+            // These are what vanilla builds out of the same config as its ores.
+            // Before this rule they raised the audit's warning on every world,
+            // eleven at a time, and the warning stopped meaning anything.
+            for (String terrain : List.of("minecraft:andesite", "minecraft:diorite",
+                    "minecraft:granite", "minecraft:tuff", "minecraft:gravel",
+                    "minecraft:clay", "minecraft:dirt", "minecraft:stone",
+                    "minecraft:deepslate")) {
+                assertFalse(MaterialResolver.namedLikeOre(terrain), terrain);
+            }
+        }
+
+        @Test
+        @DisplayName("a word merely containing the letters is not ore")
+        void substringIsNotEnough() {
+            // "forest" and "shore" carry the three letters and nothing else.
+            assertFalse(MaterialResolver.namedLikeOre("biomesoplenty:forest_grass"));
+            assertFalse(MaterialResolver.namedLikeOre("somemod:shoreline_sand"));
+            assertFalse(MaterialResolver.namedLikeOre("somemod:store_block"));
+        }
+
+        @Test
+        @DisplayName("an id with no namespace is read the same way")
+        void namespaceIsOptional() {
+            assertTrue(MaterialResolver.namedLikeOre("iron_ore"));
+            assertFalse(MaterialResolver.namedLikeOre("dirt"));
+        }
     }
 }

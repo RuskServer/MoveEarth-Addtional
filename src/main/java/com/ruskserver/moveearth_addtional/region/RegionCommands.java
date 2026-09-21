@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.region;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.ruskserver.moveearth_addtional.region.worldgen.RegionFeatureAudit;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.compat.rns.RnsDepositDensity;
 import com.ruskserver.moveearth_addtional.compat.rns.RnsDepositGate;
@@ -18,6 +19,8 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -55,6 +58,11 @@ public final class RegionCommands {
                                 .executes(context -> export(context.getSource(), "region"))
                                 .then(Commands.literal("continent")
                                         .executes(context -> export(context.getSource(), "continent"))))
+                        .then(Commands.literal("features")
+                                .executes(context -> features(context.getSource(), null))
+                                .then(Commands.argument("biome", ResourceLocationArgument.id())
+                                        .executes(context -> features(context.getSource(),
+                                                ResourceLocationArgument.getId(context, "biome")))))
                         .then(Commands.literal("reallocate")
                                 .executes(context -> reallocate(context.getSource())))
                         .then(Commands.literal("density")
@@ -118,6 +126,57 @@ public final class RegionCommands {
      * once. Requiring a restart keeps the world consistent with whatever it
      * ends up with.
      */
+    /**
+     * Reports which ore features carry a region gate.
+     *
+     * <p>The one check the rest of the system cannot make for itself. Ore
+     * generates either way; only this says whether it is obeying the region
+     * rules while it does.
+     */
+    private static int features(CommandSourceStack source, ResourceLocation biome) {
+        List<RegionFeatureAudit.Entry> entries = RegionFeatureAudit.run(source.getServer(), biome);
+        if (entries.isEmpty()) {
+            source.sendFailure(Component.literal(biome == null
+                    ? "No biome carries an ore feature."
+                    : "No such biome, or it has no ore features: " + biome));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("--- ore features "
+                + (biome == null ? "(all biomes)" : "in " + biome) + " ---")
+                .withStyle(ChatFormatting.AQUA), false);
+        for (RegionFeatureAudit.Entry entry : entries) {
+            // An ore left open is the interesting line, so it says why. A
+            // feature that never was ore is expected to be open and stays quiet.
+            boolean isOre = entry.suspectOre();
+            String tail = entry.gated() ? "gated"
+                    : entry.reason() == null ? "open"
+                    : "open  -- " + entry.reason();
+            source.sendSuccess(() -> Component.literal(String.format("  %-44s %-12s %s",
+                    entry.featureId(), entry.material(), tail))
+                    .withStyle(entry.gated() ? ChatFormatting.GREEN
+                            : isOre ? ChatFormatting.YELLOW : ChatFormatting.GRAY), false);
+        }
+        source.sendSuccess(() -> Component.literal("  " + RegionFeatureAudit.summarise(entries)), false);
+        // An ore feature nobody could name still generates everywhere. If the
+        // material is one the regions are supposed to keep apart, it is not
+        // being kept apart, and nothing else in the system will say so.
+        long openOres = entries.stream()
+                .filter(entry -> !entry.gated() && entry.suspectOre())
+                .count();
+        if (openOres > 0) {
+            source.sendSuccess(() -> Component.literal("  " + openOres
+                    + " ore feature(s) could not be named and generate in every region")
+                    .withStyle(ChatFormatting.YELLOW), false);
+        }
+        // A named ore without a gate is the failure this command exists to find:
+        // the biome modifier did not reach it, and that region rule is not being
+        // enforced although everything else says it is.
+        RegionFeatureAudit.missing(entries).ifPresent(gaps ->
+                source.sendSuccess(() -> Component.literal(
+                        "  NOT GATED although named: " + gaps).withStyle(ChatFormatting.RED), false));
+        return entries.size();
+    }
+
     private static int reallocate(CommandSourceStack source) {
         if (!RegionAllocationStore.clear(source.getServer())) {
             source.sendFailure(Component.literal(

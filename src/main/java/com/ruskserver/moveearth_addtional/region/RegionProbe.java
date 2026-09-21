@@ -1,6 +1,6 @@
 package com.ruskserver.moveearth_addtional.region;
 
-import com.ruskserver.moveearth_addtional.config.RegionResourceConfig;
+import com.ruskserver.moveearth_addtional.region.worldgen.OreFeatureMaterial;
 import com.ruskserver.moveearth_addtional.region.MaterialResolver.Resolution;
 import com.ruskserver.moveearth_addtional.terrain.TerrainTile;
 import com.ruskserver.moveearth_addtional.terrain.TerrainTileStore;
@@ -9,18 +9,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.levelgen.GenerationStep;
-import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
-import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
 import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 
 /**
@@ -101,34 +97,26 @@ public final class RegionProbe {
     }
 
     private static void collect(Holder<PlacedFeature> placed, Map<String, OreFeature> out) {
-        for (ConfiguredFeature<?, ?> configured : placed.value().getFeatures().toList()) {
-            if (!(configured.config() instanceof OreConfiguration ore)) {
-                continue;
-            }
-            // Several biomes share the same feature; the id keeps one entry per
-            // feature so the counts read as "distinct ore features", not
-            // "biome-feature pairs", which would be dominated by common biomes.
-            String featureId = idOf(placed);
-            if (out.containsKey(featureId)) {
-                continue;
-            }
-            List<String> blocks = new ArrayList<>();
-            var tagIds = new TreeSet<String>();
-            for (OreConfiguration.TargetBlockState target : ore.targetStates) {
-                Block block = target.state.getBlock();
-                blocks.add(String.valueOf(BLOCK_ID.apply(block)));
-                target.state.getTags().map(TagKey::location).map(ResourceLocation::toString)
-                        .forEach(tagIds::add);
-            }
-            List<String> conventionTags = tagIds.stream()
-                    .filter(t -> t.startsWith(MaterialResolver.CONVENTION + ":")).toList();
-            // The first target block stands for the feature: vanilla pairs a
-            // stone ore with its deepslate twin, and both name the same material.
-            String primaryBlock = blocks.isEmpty() ? null : blocks.get(0);
-            out.put(featureId, new OreFeature(featureId, List.copyOf(blocks), conventionTags,
-                    MaterialResolver.resolve(primaryBlock, tagIds, MaterialResolver.ORE_PREFIXES,
-                            MaterialResolver.parseOverrides(RegionResourceConfig.materialOverrides()))));
+        // Read by the same code the gate uses. This walked ore configs itself
+        // once, and the two rules drifted the moment the gate learned to read a
+        // mod's feature through its codec: the gate confined Mekanism's uranium
+        // while the probe went on reporting that no such ore feature existed.
+        // A probe that disagrees with the thing it is probing is worse than none.
+        OreFeatureMaterial.Reading reading = OreFeatureMaterial.read(placed.value());
+        if (reading.material().isEmpty() && !reading.suspectOre()) {
+            // Disks of sand, lava flows and the like. Counting them would
+            // inflate the unresolved total this probe exists to keep honest.
+            return;
         }
+        // Several biomes share the same feature; the id keeps one entry per
+        // feature so the counts read as "distinct ore features", not
+        // "biome-feature pairs", which would be dominated by common biomes.
+        String featureId = idOf(placed);
+        if (out.containsKey(featureId)) {
+            return;
+        }
+        out.put(featureId, new OreFeature(featureId, reading.blocks(),
+                reading.conventionTags(), reading.resolution()));
     }
 
     /** Counts every region and continent id present in each loaded tile. */

@@ -210,6 +210,34 @@ public final class MaterialResolver {
     }
 
     /**
+     * Whether a block is called an ore, used only to decide whether to warn.
+     *
+     * <p>A heuristic, and deliberately confined to the report: it can make the
+     * audit mention a feature or stay quiet about one, and can never decide
+     * what gets gated. The gate reads tags only. Matching whole words rather
+     * than the substring keeps {@code forest} and its kind out.
+     *
+     * <p>Being an {@code OreConfiguration} was a trigger here too and had to
+     * go. Vanilla builds its andesite, granite, diorite, tuff, gravel, clay and
+     * dirt blobs out of the same config as its ores, so every world reported
+     * eleven ore features "generating in every region" when ten of them were
+     * terrain that will never carry a material. A warning that is always on is
+     * a warning nobody reads, and the twelfth entry — a real ore a mod shipped
+     * untagged — would have arrived into a line that had cried wolf since the
+     * day it was written.
+     *
+     * <p>What this gives up: a mod ore that is untagged <em>and</em> not called
+     * an ore goes unmentioned in the summary. It is still printed in the list
+     * with the blocks it places, which is where it would be looked for.
+     */
+    public static boolean namedLikeOre(String blockId) {
+        int colon = blockId.indexOf(':');
+        String path = colon < 0 ? blockId : blockId.substring(colon + 1);
+        return path.equals("ore") || path.startsWith("ore_") || path.endsWith("_ore")
+                || path.contains("_ore_");
+    }
+
+    /**
      * The material a single tag names, if it is a convention tag under the
      * prefix. {@code c:ores} on its own names no material and is not one.
      */

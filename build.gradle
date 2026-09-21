@@ -229,8 +229,10 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
-    // Minecraft supplies Gson in production; standalone unit tests need it on their runtime classpath.
-    testRuntimeOnly 'com.google.code.gson:gson:2.11.0'
+    // Minecraft supplies Gson in production. Standalone unit tests need it on the
+    // compile classpath too, because the ore-feature scan is handed a parsed
+    // JSON tree and is tested against the document shapes it will really meet.
+    testImplementation 'com.google.code.gson:gson:2.11.0'
 }
 
 tasks.named('test') {

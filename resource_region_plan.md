@@ -870,6 +870,131 @@ Phase 2 で「主産物で判定する」（出力量最大、あるいは drill
 - `PlacementModifier`、BiomeModifier、鉱石種別対応表を実装する。
 - 完了条件: 戦略鉱石が専門地方以外に生成されない。基礎鉱石が全地方に存在する。チャンク生成中に例外・デッドロック・地域マップ未構築警告が発生しない。生成速度の劣化が許容範囲に収まる。
 
+**実装済 (2026-09-20)**。完了条件の1つ目は鉱石feature単位では達成（27/27 gated）。
+ただし加工で資源になる石は別途判断が要る（本節末尾）。
+チャンク生成中の例外・生成速度は未検証。
+
+| 成果物 | 内容 |
+|---|---|
+| `RegionGatePlacement` | 座標から地方を引き、生成を止めるか確率で間引く |
+| `RegionGateOresModifier` | `UNDERGROUND_ORES`を走査し、素材が解決できたfeatureにゲートを追加 |
+| `OreFeatureMaterial` | feature→素材の解決。probeと共用し、判定と診断がずれないようにする |
+| `RegionWorldgen` | 型の登録 |
+| `RegionFeatureAudit` + `/moveearth region features [biome]` | ゲートが実際に入ったかの検証 |
+| データパック | `neoforge/biome_modifier/region_gate_ores.json` 1本 |
+
+**減衰しか扱わない。** 1を超える倍率はfeatureが選んでいない位置を発明することになり、
+`PlacementModifier`にはできない。feature側の`count`を「最も濃い地方の値」として読み、
+他地方はその割合とする。データ上の数字が1つで済む。
+
+**間引きはチャンク単位ではなく試行単位で行う。** 鉱脈の形や位置を変えずに薄くなるため、
+銅の薄い地方も「同じ世界の、銅が少ない版」に見える。
+
+**検証コマンドが要る理由。** ゲートはBiomeModifierがレジストリ読み込み中に挿入し、
+成功したことを示す痕跡を何も残さない。鉱石はどちらの場合も生成されるため、
+**全鉱石が正しくゲートされた世界と、BiomeModifierが一度も走らなかった世界を外から区別できない**。
+`/moveearth region features`は読み込み済みバイオームから読み返すので、
+コードの意図ではなく実際にチャンクを生成する状態を報告する。
+
+**懸念だったconfig未ロードは外れ (2026-09-20 実測)。**
+BiomeModifierはサーバーが存在する前に走るため、SERVER configが未ロードなら上書きマップが
+空になり、石炭のようにタグで解決できない鉱石のゲートが入らないと予想していた。
+実機の`/moveearth region features`では`minecraft:ore_coal`/`ore_coal_buried`とも`gated`で、
+この経路は踏んでいない。素材解決を評価時へ移す案は不要。
+
+**実測で見つかった本当の穴: feature型の決め打ち (2026-09-20)。**
+同じ出力で、Mekanismの鉱石が全て`open`だった。
+
+```
+mekanism:ore_uranium_buried   (unnamed)  open  -- not an ore feature
+mekanism:ore_osmium_middle    (unnamed)  open  -- not an ore feature
+create:striated_ores_overworld (unnamed) open  -- not an ore feature
+```
+
+`OreFeatureMaterial`が`OreConfiguration`だけを読んでいたため。MODが独自の
+`FeatureConfiguration`を使うと、鉱石であっても「鉱石ではない」と判定される。
+**ウランは排他資源で、鉱床側はゲートできていたが通常鉱石が全地方に出ていた。**
+排他が成立していない状態を、鉱床側の成功が隠していた。
+
+対処は **feature自身のcodecでJSONへ書き出し、現れたブロックIDを全て候補にする**。
+MODのconfigクラスを参照しないので、依存も増えず Create にも Incendium にも同じ規則が効く。
+ホスト石はタグで落ちるため、型を知らなくても鉱石だけが残る。
+
+| 判定 | 意味 | 対処 |
+|---|---|---|
+| `gated` | 素材が1つに定まった | — |
+| `not an ore feature` | ブロックを1つも置かない（砂の円盤、溶岩流） | 開放のままでよい |
+| `ore, c: tags are [...]` | タグはあるが`c:ores/<素材>`でない | 規則の一般化か上書き |
+| `ore, but no c: tags at all` | MOD側の欠落 | `materialOverrides`で上書き |
+| `looks like ore but no c:ores/*` | 鉱石らしい名前だがタグが無い | 同上 |
+| `places several materials: [...]` | 1つのfeatureが複数素材を置く | **開放のまま**。片方の地方へ寄せると残りが黙って道連れになる |
+
+**警告は「鉱石らしいのに名前が付かなかった」ものだけに絞る。** 「ブロックを置く」で
+判定すると砂の円盤も溶岩流も数えられ、30件の中に本当の1件が埋もれる。
+名前による判定はレポートの中だけで使い、**ゲートが読むのはタグのみ**。
+
+**probeも同じ読み取りに載せ替えた。** `RegionProbe`が`OreConfiguration`を自前で
+歩いていたため、そのままではゲートがウランを閉じているのにprobeは
+「そんな鉱石featureは無い」と言い続ける状態になる。
+診断対象と食い違う診断は、無いより悪い。
+
+`JsonBlockScan`はMinecraft抜きで切り出してテストした（6件）。この走査は失敗しても
+「鉱石の無いfeature」に見えるだけで、本物の「鉱石が無いfeature」と区別が付かない
+—— このプロジェクトが繰り返し出している失敗の形なので、信用せず形状で検証する。
+
+**検証済 (2026-09-20 23:06 実機)。** `27 of 27 named ore feature(s) gated, 20 left open`。
+Mekanismのuranium/osmium/tin/lead/fluoriteが全て`gated`になり、**ウランの排他が成立**した。
+
+**警告の閾値を絞った。** 当初は`OreConfiguration`であることを警告条件に含めていたが、
+バニラはandesite/granite/diorite/tuff/gravel/clay/dirtを鉱石と同じconfigで置くため、
+どの世界でも「11件が全地方に生成されている」と出て、うち10件は素材を持ちえない地形だった。
+**常時鳴る警告は誰も読まない。** 本物の12件目が来たとき、その行は書かれた日から
+狼少年をやっていたことになる。条件を「`c:ores`タグを持つ」または「鉱石らしい名前」に変更。
+名前判定は`MaterialResolver.namedLikeOre`へ置きテストした（`forest`や`shore`を弾く）。
+**失うもの**: タグが無く名前も鉱石らしくないMOD鉱石は要約に出ない。一覧には
+置くブロックと共に残るので、探す場所は変わらない。
+
+### Phase 3 の残り: 加工で資源になる石 (2026-09-20)
+
+`create:striated_ores_overworld`は`open`のまま残る。置いているのはタグ上ただの石だが、
+粉砕すると資源になる。
+
+| ブロック | 粉砕結果 |
+|---|---|
+| crimsite | 鉄 |
+| ochrum | **金** |
+| veridium | 銅 |
+| asurine | 亜鉛 |
+
+**金は排他資源なので、ochrumが全地方に生成される限り金の排他は完全ではない。**
+鉱石の何倍手間がかかるかという程度問題であって、鉱床ゲートの穴とは性質が違う。
+
+タグでは検出できない。ブロックの`c:`タグは`c:stones`であり、資源であることは
+**レシピの出力にしか書かれていない**。鉱床側の`veinMaterial`と同じ原理
+（出力アイテムのタグから素材を決める）は使えるが、「このブロックを消費するレシピ」を
+全レシピから探す必要があり、曖昧さもある。
+
+選択肢:
+
+1. **放置** — 手間が違うので実質的な排他は保たれている、とする
+2. **上書きで名前を付ける** — `materialOverrides`に`create:ochrum=gold`等を書く。
+   ただし1つのfeatureが4素材を置くため「places several materials」となり開放のまま。
+   feature分割かfeature単位の上書きが要る
+3. **レシピ出力から解決する** — 一般解だがPhase 5（バランス調整）の範囲
+
+**決定: 1（放置）。user判断、2026-09-20。**
+粉砕機を要するぶん鉱石とは別の手間であり、排他が無意味になるわけではない。
+Phase 3の範囲では扱わない。
+
+再検討する条件 — 次のどれかが観測されたら、放置の前提が崩れている:
+
+- 金の専門地方へ行くより、ochrumを掘って粉砕する方が実際に選ばれている
+- Create以外のMODが同じ形（タグ上ただの石、加工すると資源）を持ち込み、件数が増える
+- 排他資源を4種から増やし、対象が粉砕系の資源に伸びる
+
+そのときの対処は3（レシピ出力から解決）。2は1 feature 4素材の問題を先に解く必要があり、
+**この穴のためだけにfeature分割を持ち込むのは割に合わない。**
+
 ### Phase 3b C:DG石油の地方適用
 
 Phase 3と独立しており、C:DGをmodpackへ入れると決めた場合にのみ実施する。

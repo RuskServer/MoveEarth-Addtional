@@ -92,6 +92,10 @@ public class Moveearth_addtional {
         // Register Blocks, Items, BlockEntities, CreativeModeTabs
         com.ruskserver.moveearth_addtional.block.ModBlocks.BLOCKS.register(modEventBus);
         com.ruskserver.moveearth_addtional.item.ModItems.ITEMS.register(modEventBus);
+        com.ruskserver.moveearth_addtional.region.worldgen.RegionWorldgen
+                .PLACEMENT_MODIFIERS.register(modEventBus);
+        com.ruskserver.moveearth_addtional.region.worldgen.RegionWorldgen
+                .BIOME_MODIFIERS.register(modEventBus);
         com.ruskserver.moveearth_addtional.block.entity.ModBlockEntities.BLOCK_ENTITIES.register(modEventBus);
         com.ruskserver.moveearth_addtional.item.ModCreativeModeTabs.CREATIVE_MODE_TABS.register(modEventBus);
         com.ruskserver.moveearth_addtional.entity.ModEntities.ENTITY_TYPES.register(modEventBus);

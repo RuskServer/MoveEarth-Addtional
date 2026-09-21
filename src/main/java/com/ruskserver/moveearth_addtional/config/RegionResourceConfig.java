@@ -118,31 +118,44 @@ public final class RegionResourceConfig {
 
     private RegionResourceConfig() { }
 
+    /**
+     * Whether the file has been read yet.
+     *
+     * <p>Biome modifiers run while registries load, which is before a server
+     * exists and therefore before its config is read. Asking a config value for
+     * itself then throws, and a throw there stops the world loading at all --
+     * so the ore gate asks this first and falls back to the defaults, which is
+     * the behaviour an untouched config would have given anyway.
+     */
+    public static boolean ready() {
+        return SPEC.isLoaded();
+    }
+
     public static List<String> exclusiveMaterials() {
-        return List.copyOf(EXCLUSIVE.get());
+        return ready() ? List.copyOf(EXCLUSIVE.get()) : List.of();
     }
 
     public static List<String> commonMaterials() {
-        return List.copyOf(COMMON.get());
+        return ready() ? List.copyOf(COMMON.get()) : List.of();
     }
 
     public static List<String> materialOverrides() {
-        return List.copyOf(OVERRIDES.get());
+        return ready() ? List.copyOf(OVERRIDES.get()) : List.of();
     }
 
     public static boolean stressFollowsDeposit() {
-        return STRESS_FOLLOWS_DEPOSIT.get();
+        return !ready() || STRESS_FOLLOWS_DEPOSIT.get();
     }
 
     public static double stressBase() {
-        return STRESS_BASE.get();
+        return ready() ? STRESS_BASE.get() : 32.0D;
     }
 
     public static double stressPerDeposit() {
-        return STRESS_PER_DEPOSIT.get();
+        return ready() ? STRESS_PER_DEPOSIT.get() : 16.0D;
     }
 
     public static double stressExclusiveMultiplier() {
-        return STRESS_EXCLUSIVE_MULTIPLIER.get();
+        return ready() ? STRESS_EXCLUSIVE_MULTIPLIER.get() : 2.0D;
     }
 }
