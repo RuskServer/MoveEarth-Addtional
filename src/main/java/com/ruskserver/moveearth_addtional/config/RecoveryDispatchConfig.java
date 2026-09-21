@@ -27,8 +27,17 @@ public final class RecoveryDispatchConfig {
     static {
         BUILDER.push("recovery");
         RECOVERY_ENABLED = BUILDER.define("enabled", true);
-        ELIGIBILITY_OPEN_HOURS = BUILDER.defineInRange("eligibilityOpenHours", 42, 1, 720);
-        REPEAT_COOLDOWN_OPEN_HOURS = BUILDER.defineInRange("repeatCooldownOpenHours", 84, 0, 2160);
+        ELIGIBILITY_OPEN_HOURS = BUILDER.comment(
+                "Server-open hours a nation stays eligible for recovery aid.",
+                "Counted in open time, so it follows the play window rather than the",
+                "calendar. Derived from the schedule in ServerSchedule: at 19:00-23:00 JST",
+                "that is 4 hours a day, so 28 is a week. Change this when the window changes,",
+                "or the number silently means something else.")
+                .defineInRange("eligibilityOpenHours", 28, 1, 720);
+        REPEAT_COOLDOWN_OPEN_HOURS = BUILDER.comment(
+                "Server-open hours before the same kind of recovery can be used again.",
+                "Twice the eligibility window; 56 is two weeks at the current schedule.")
+                .defineInRange("repeatCooldownOpenHours", 56, 0, 2160);
         RESEAL_OPEN_MINUTES = BUILDER.defineInRange("resealOpenMinutes", 10, 1, 1440);
         WALL_TARGET_CAP = BUILDER.defineInRange("wallTargetCap", 4096, 0, 65536);
         BUILDER.pop();

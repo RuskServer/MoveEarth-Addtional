@@ -12,6 +12,7 @@
 
 ## Gameplay
 
+- **19:00–23:00 JST Opening Hours**: Shortened the dedicated-server play window to 19:00 through 22:59 JST. Closing notices now run at 22:30, 22:50, 22:55, and 22:59, followed by disconnect at 23:00. TPA/PvP opening-day resets, analytics day boundaries, and all server-open-time Siege, recovery, healing, and captivity clocks use the same 19:00 boundary.
 - **Reinforced Wrench Protection**: Create's wrench and other tools in the common wrench tag can no longer rotate, pick up, or reconfigure reinforced blocks. The server-side guard covers both territory reinforcement and Sable vehicle armor, including reinforcement that is curing, damaged, or temporarily disabled.
 - **Owned Reinforcement Removal**: Sneak-use the welding tool to remove reinforcement from a 1x1, 3x3, or 5x5 area without mining the underlying blocks. Only authorized members can strip their own territory or vehicle armor; removal consumes tool durability, returns no material, and preserves combat repair delays.
 - **Hydraulic Power Balance**: Create water wheels now provide 75% base capacity. Source quality applies at half penalty strength, leaving standalone wheels at roughly 51–75% rather than multiplying weak sources down twice. Player-made or vanilla flow has 50% quality, generated MoveEarth rivers scale from 35% to full quality, and nearby active wheels share a configurable 32-block budget after six small-wheel equivalents. Large wheels consume four equivalents, unloaded chunks are never forced, and all values are exposed through a dedicated server config.

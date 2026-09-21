@@ -207,8 +207,11 @@ public final class S2TerritoryConfig {
         SIEGE_COUNTER_RADIUS_BLOCKS = BUILDER.defineInRange("counterCaptureRadiusBlocks", 12, 1, 128);
         SIEGE_COUNTER_RECOVERY_PERCENT = BUILDER.defineInRange("counterRecoveryPercent", 25.0D, 1.0D, 100.0D);
         SIEGE_SETTLEMENT_TRUCE_SECONDS = BUILDER.comment(
-                "Server-open seconds before a rebuilt capital or occupied outpost can be attacked again.")
-                .defineInRange("settlementTruceSeconds", 21600, 0, 2592000);
+                "Server-open seconds before a rebuilt capital or occupied outpost can be attacked again.",
+                "One playing day: 14400 is four hours, which is the whole window at the",
+                "19:00-23:00 JST schedule in ServerSchedule. Counted in open time, so it",
+                "stretches across more calendar days whenever that window is shortened.")
+                .defineInRange("settlementTruceSeconds", 14400, 0, 2592000);
         SIEGE_LOOT_WINDOW_MINUTES = BUILDER.comment(
                 "Server-open minutes in which the victorious regular attacker can recover old enemy storage after settlement.")
                 .defineInRange("postSettlementLootMinutes", 30, 0, 1440);
@@ -216,7 +219,11 @@ public final class S2TerritoryConfig {
                 "Core health restored when a capital enters rebuilding or an outpost is occupied.")
                 .defineInRange("settlementRecoveryPercent", 25.0D, 1.0D, 100.0D);
         PEACE_PROPOSAL_SECONDS = BUILDER.defineInRange("peaceProposalSeconds", 600, 30, 86400);
-        PEACE_TRUCE_SECONDS = BUILDER.defineInRange("peaceTruceSeconds", 21600, 0, 2592000);
+        PEACE_TRUCE_SECONDS = BUILDER.comment(
+                "Server-open seconds two nations stay at peace after an agreement.",
+                "Kept level with settlementTruceSeconds so a truce means the same length",
+                "of protection however it was reached.")
+                .defineInRange("peaceTruceSeconds", 14400, 0, 2592000);
         VAULT_CHANGE_COOLDOWN_SECONDS = BUILDER.comment(
                 "Server-open seconds before an already configured vault chunk can be changed again.")
                 .defineInRange("vaultChangeCooldownSeconds", 3600, 0, 2592000);
@@ -244,7 +251,7 @@ public final class S2TerritoryConfig {
         RESTRAINT_SECONDS = BUILDER.defineInRange("restraintSeconds", 3, 1, 30);
         ESCORT_MAX_DISTANCE = BUILDER.defineInRange("escortMaxDistanceBlocks", 8, 3, 32);
         CAPTIVITY_MAX_SECONDS = BUILDER.comment(
-                "Maximum combined escort and imprisonment time measured only during the JST 18:00-00:00 opening window.")
+                "Maximum combined escort and imprisonment time measured only during the JST 19:00-23:00 opening window.")
                 .defineInRange("maximumCaptivitySeconds", 10800, 60, 10800);
         BUILDER.pop();
 

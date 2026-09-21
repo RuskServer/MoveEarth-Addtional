@@ -7,7 +7,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
-/** Identifies the server opening day. A new cycle starts at 18:00 JST. */
+/** Identifies the server opening day. A new cycle starts at 19:00 JST. */
 public final class OpenDayCycle {
     public static final ZoneId JST = ZoneId.of("Asia/Tokyo");
     private static final int RESET_HOUR = ServerSchedule.OPEN_HOUR;

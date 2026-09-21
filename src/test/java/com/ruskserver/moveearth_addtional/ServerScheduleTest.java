@@ -11,24 +11,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ServerScheduleTest {
     @Test
-    void opensAtEighteen() {
-        assertFalse(ServerSchedule.isOpenHour(17));
-        assertTrue(ServerSchedule.isOpenHour(18));
+    void opensAtNineteen() {
+        assertFalse(ServerSchedule.isOpenHour(18));
+        assertTrue(ServerSchedule.isOpenHour(19));
     }
 
     @Test
-    void closesAtMidnight() {
-        assertTrue(ServerSchedule.isOpenHour(23));
-        assertFalse(ServerSchedule.isOpenHour(0));
+    void closesAtTwentyThree() {
+        assertTrue(ServerSchedule.isOpenHour(22));
+        assertFalse(ServerSchedule.isOpenHour(23));
     }
 
     @Test
     void openNowUsesTheJstWindow() {
         assertTrue(ServerSchedule.isOpenNow(Clock.fixed(
-                Instant.parse("2026-09-14T09:00:00Z"), ZoneOffset.UTC)));
+                Instant.parse("2026-09-14T10:00:00Z"), ZoneOffset.UTC)));
         assertTrue(ServerSchedule.isOpenNow(Clock.fixed(
-                Instant.parse("2026-09-14T14:59:59Z"), ZoneOffset.UTC)));
+                Instant.parse("2026-09-14T13:59:59Z"), ZoneOffset.UTC)));
         assertFalse(ServerSchedule.isOpenNow(Clock.fixed(
-                Instant.parse("2026-09-14T15:00:00Z"), ZoneOffset.UTC)));
+                Instant.parse("2026-09-14T14:00:00Z"), ZoneOffset.UTC)));
     }
 }
