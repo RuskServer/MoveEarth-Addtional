@@ -29,6 +29,8 @@
     "KineticStressAccess",
     "RnsMinerBearingStressMixin",
     "RnsMiningBehaviourStressMixin",
+    "CreateBlockBreakerMixin",
+    "CreateMovingBlockBreakerMixin",
     "CbcAutocannonRateMixin"
   ],
   "client": [
