@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.config.RegionResourceConfig;
 import com.ruskserver.moveearth_addtional.region.MaterialResolver;
 import com.ruskserver.moveearth_addtional.region.RegionProfiles;
 import com.ruskserver.moveearth_addtional.region.RegionResolver;
+import com.ruskserver.moveearth_addtional.region.TraceChance;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,7 +105,18 @@ public final class RnsDepositGate {
             return false;
         }
         int region = RegionResolver.regionAt(chunk.getMinBlockX(), chunk.getMinBlockZ());
-        return RegionProfiles.allows(region, material);
+        double density = RegionProfiles.densityFor(region, material);
+        if (density >= 1.0) {
+            return true;
+        }
+        if (density <= 0.0) {
+            return false;
+        }
+        // A deposit is one site, not an amount, so the share is spent on how
+        // often a site survives rather than on making every site smaller. The
+        // draw is fixed by position: the Vein Finder and the ground have to
+        // agree, and they ask this at different moments.
+        return TraceChance.occurs(worldSeed, chunk.x, chunk.z, material, density);
     }
 
     /**

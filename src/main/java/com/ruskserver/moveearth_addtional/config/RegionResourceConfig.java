@@ -19,6 +19,7 @@ public final class RegionResourceConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> EXCLUSIVE;
+    private static final ModConfigSpec.DoubleValue EXCLUSIVE_OUTSIDE_SHARE;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> COMMON;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> OVERRIDES;
     private static final ModConfigSpec.BooleanValue STRESS_FOLLOWS_DEPOSIT;
@@ -60,10 +61,43 @@ public final class RegionResourceConfig {
                         "same problem and are worth checking against the pack before adding.",
                         "",
                         "A name nothing in the pack produces is dropped with a warning, so",
-                        "listing uranium before Mekanism arrives is harmless.")
+                        "listing uranium before Mekanism arrives is harmless.",
+                        "",
+                        "crude_oil is the name for Create: Diesel Generators' oil, and is not",
+                        "listed by default. It is the strongest candidate for a fifth: diesel",
+                        "is a wholly optional branch, so a region without oil loses nothing it",
+                        "needs, and fuel is burned rather than kept -- which asks for a standing",
+                        "trade rather than one shipment, unlike gold or diamond. Left off until",
+                        "four exclusives have been watched in play.",
+                        "",
+                        "Exclusive does not mean absent elsewhere; see exclusiveOutsideShare.")
                 .defineList("exclusiveMaterials",
                         List.of("emerald", "diamond", "gold", "uranium"),
                         () -> "", entry -> entry instanceof String name && !name.isBlank());
+
+        EXCLUSIVE_OUTSIDE_SHARE = BUILDER
+                .comment("How much of an exclusive resource exists outside the regions it was",
+                        "assigned to, as a share of the normal amount.",
+                        "",
+                        "Zero is the strict reading: a region that was not given uranium has no",
+                        "uranium at all, and the only way to get any is another nation. It makes",
+                        "the map legible and the trade pressure absolute, and it also means a",
+                        "region can never see, learn or bootstrap the resource it lacks -- the",
+                        "first fission reactor is built by someone who has never held the ore.",
+                        "",
+                        "A small share instead leaves the resource findable but not farmable.",
+                        "A nation can prove out the technology and run one of something; it",
+                        "cannot supply itself. The risk is the obvious one: set this high enough",
+                        "that a patient nation covers its own needs and the exclusivity is gone",
+                        "while still appearing to be there. Raise it only with a reason to.",
+                        "",
+                        "Applied to fit what is being counted. Ore is thinned vein by vein, so",
+                        "0.08 is roughly one vein in twelve. Oil and deposits are counted per",
+                        "place rather than per amount, so the same figure means about one",
+                        "chunk or site in twelve keeps its full yield and the rest hold none --",
+                        "scaling those down instead would make every chunk uniformly poor,",
+                        "which reads as a worse world rather than a rarer resource.")
+                .defineInRange("exclusiveOutsideShare", 0.08D, 0.0D, 1.0D);
 
         COMMON = BUILDER
                 .comment("Materials present in every region, with the amount varying by region.",
@@ -133,6 +167,18 @@ public final class RegionResourceConfig {
 
     public static List<String> exclusiveMaterials() {
         return ready() ? List.copyOf(EXCLUSIVE.get()) : List.of();
+    }
+
+    /**
+     * The share of an exclusive resource that exists outside its own regions.
+     *
+     * <p>Falls back to zero before the config is read, which is the strict
+     * reading rather than the generous one: worldgen that ran early would
+     * otherwise scatter a resource the operator may have meant to confine, and
+     * ore placed cannot be taken back out of a world.
+     */
+    public static double exclusiveOutsideShare() {
+        return ready() ? EXCLUSIVE_OUTSIDE_SHARE.get() : 0.0D;
     }
 
     public static List<String> commonMaterials() {

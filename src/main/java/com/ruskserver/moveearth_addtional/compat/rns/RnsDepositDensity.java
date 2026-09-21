@@ -116,11 +116,23 @@ public final class RnsDepositDensity {
             double share = entry.weight() / totalWeight;
             Structure structure = entry.structure().value();
             String material = RnsDepositGate.materialOf(structure);
-            if (material == null || RegionProfiles.allows(region, material)) {
-                counts[0] += share;
-                materials.merge(material == null ? "(unnamed)" : material, share, Double::sum);
-            } else {
-                counts[1] += share;
+            // The same figure the gate uses, capped the same way, so what this
+            // reports and what generates cannot drift. A deposit is one site:
+            // a multiplier above one does not make more of them, and one below
+            // is the share of sites that survive. Counting an exclusive as
+            // simply absent outside its regions was right until those regions
+            // started keeping a trace of it, and would have quietly understated
+            // every measurement this command exists to make.
+            double present = material == null
+                    ? 1.0
+                    : Math.min(1.0, Math.max(0.0, RegionProfiles.densityFor(region, material)));
+            if (present > 0.0) {
+                counts[0] += share * present;
+                materials.merge(material == null ? "(unnamed)" : material,
+                        share * present, Double::sum);
+            }
+            if (present < 1.0) {
+                counts[1] += share * (1.0 - present);
             }
         }
     }

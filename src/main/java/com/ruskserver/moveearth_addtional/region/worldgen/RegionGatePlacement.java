@@ -49,9 +49,11 @@ public class RegionGatePlacement extends PlacementModifier {
     @Override
     public Stream<BlockPos> getPositions(PlacementContext context, RandomSource random, BlockPos pos) {
         int region = RegionResolver.regionAt(pos.getX(), pos.getZ());
-        if (!RegionProfiles.allows(region, material)) {
-            return Stream.of();
-        }
+        // Density alone, because it already carries both answers: a region that
+        // was given the material gets its multiplier, and one that was not gets
+        // the trace share. Asking whether it is allowed first would have made
+        // the trace unreachable while the number saying how much of it there is
+        // went on existing -- a setting that looked live and did nothing.
         double density = RegionProfiles.densityFor(region, material);
         if (density >= 1.0) {
             return Stream.of(pos);

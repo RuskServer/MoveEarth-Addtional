@@ -168,6 +168,17 @@ public final class RegionCommands {
                     + " ore feature(s) could not be named and generate in every region")
                     .withStyle(ChatFormatting.YELLOW), false);
         }
+        // Gating a feature does nothing if the map it asks was not there yet.
+        // That failure leaves no trace in the world -- ore generated without
+        // rules looks exactly like ore generated under them -- so the only
+        // place it can be seen is a count kept while it happened.
+        long ungated = RegionProfiles.ungatedBeforeBuild();
+        if (ungated > 0) {
+            source.sendSuccess(() -> Component.literal("  " + ungated
+                    + " ore placement(s) generated before the region map existed; "
+                    + "those chunks do not obey the region rules")
+                    .withStyle(ChatFormatting.RED), false);
+        }
         // A named ore without a gate is the failure this command exists to find:
         // the biome modifier did not reach it, and that region rule is not being
         // enforced although everything else says it is.

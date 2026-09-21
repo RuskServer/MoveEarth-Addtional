@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.server.MinecraftServer;
 
 /**
@@ -44,6 +45,30 @@ public final class RegionProfiles {
      */
     private static volatile Set<String> assignedFrom = Set.of();
 
+    /**
+     * Set once {@link #build} has decided, even when it decided to gate nothing.
+     *
+     * <p>Not the same question as {@link #ready}. A world with no terrain tiles,
+     * or tiles carrying no regions, ends with no allocation on purpose and says
+     * so once at start-up; that is a configuration, not a fault. A gate asked
+     * before the allocation was made is a fault, and the two are indistinguishable
+     * from the allocation alone.
+     */
+    private static volatile boolean allocationDecided = false;
+
+    /**
+     * Ore-placement attempts that were let through because no allocation existed.
+     *
+     * <p>The gate's failure mode is silence: with nothing to ask, it allows
+     * everything, and a world generated that way is ore-for-ore identical to one
+     * where the rules simply do not apply. Nothing would ever have said so, and
+     * the plan's completion condition asks for exactly that warning, so the
+     * count is kept and the audit reports it.
+     */
+    private static final AtomicLong UNGATED_BEFORE_BUILD = new AtomicLong();
+
+    private static volatile boolean reportedUngated = false;
+
     /** The finished allocation. Immutable once published. */
     private record Snapshot(Map<Integer, Assignment> byRegion, Set<String> exclusive,
                             List<String> common) { }
@@ -58,12 +83,22 @@ public final class RegionProfiles {
     /**
      * Whether a material may generate in a region.
      *
-     * <p>Exclusive materials generate only where they were assigned. Everything
-     * else generates everywhere, in an amount {@link #densityFor} decides.
+     * <p>True where the region is a specialist for the material, or where the
+     * material is not exclusive at all. It is no longer the whole answer for a
+     * gate: an exclusive resource still appears in trace amounts elsewhere, and
+     * {@link #densityFor} is what says how much. This remains for reporting,
+     * where "may have it" and "has a little of it" are worth telling apart.
      */
     public static boolean allows(int region, String material) {
         Snapshot snapshot = active;
-        if (snapshot == null || material == null || !snapshot.exclusive().contains(material)) {
+        if (snapshot == null) {
+            // Counted here rather than in densityFor: the gate asks this once
+            // per placement attempt and the density only after, so this is the
+            // number of attempts that escaped, not twice it.
+            noteUngated();
+            return true;
+        }
+        if (material == null || !snapshot.exclusive().contains(material)) {
             return true;
         }
         if (region == RegionGrid.NONE) {
@@ -75,14 +110,28 @@ public final class RegionProfiles {
         return assignment != null && holds(assignment.profileId(), material);
     }
 
-    /** The density multiplier for a material in a region. */
+    /**
+     * The density multiplier for a material in a region.
+     *
+     * <p>An exclusive resource outside the regions it was assigned to returns
+     * the configured trace share rather than nothing. Gates read this and not
+     * {@link #allows}, so that the one number decides both how much a region
+     * that has the resource gets and how little a region that does not.
+     */
     public static double densityFor(int region, String material) {
         Snapshot snapshot = active;
         if (snapshot == null || region == RegionGrid.NONE) {
             return 1.0;
         }
         Assignment assignment = snapshot.byRegion().get(region);
-        return assignment == null ? 1.0 : assignment.multiplierFor(material);
+        if (assignment == null) {
+            return 1.0;
+        }
+        if (material != null && snapshot.exclusive().contains(material)
+                && !holds(assignment.profileId(), material)) {
+            return RegionResourceConfig.exclusiveOutsideShare();
+        }
+        return assignment.multiplierFor(material);
     }
 
     /** The allocation, for commands and diagnostics. */
@@ -99,6 +148,18 @@ public final class RegionProfiles {
      */
     public static void build(MinecraftServer server, Set<String> availableMaterials,
                              Map<String, Double> depositsPerChunk) {
+        // Wrapped so that every way out marks the decision made. Setting the
+        // flag at each return was the other option and would have been one
+        // return away from reporting a healthy world as broken forever.
+        try {
+            decide(server, availableMaterials, depositsPerChunk);
+        } finally {
+            allocationDecided = true;
+        }
+    }
+
+    private static void decide(MinecraftServer server, Set<String> availableMaterials,
+                               Map<String, Double> depositsPerChunk) {
         TerrainTileStore store = TerrainTileStore.active();
         if (store == null || store.tiles().isEmpty()) {
             active = null;
@@ -264,6 +325,35 @@ public final class RegionProfiles {
     /** Drops the allocation. Used when the tiles themselves go away. */
     public static void clear() {
         active = null;
+        allocationDecided = false;
+        UNGATED_BEFORE_BUILD.set(0L);
+        reportedUngated = false;
+    }
+
+    /** How many ore placements were let through before any allocation existed. */
+    public static long ungatedBeforeBuild() {
+        return UNGATED_BEFORE_BUILD.get();
+    }
+
+    /**
+     * Records a placement that escaped, and says so once.
+     *
+     * <p>Once, because worldgen asks this thousands of times per chunk and a
+     * line per attempt would bury the rest of the log rather than explain
+     * anything. The running total is what the audit command reports.
+     */
+    private static void noteUngated() {
+        if (allocationDecided) {
+            return;
+        }
+        UNGATED_BEFORE_BUILD.incrementAndGet();
+        if (!reportedUngated) {
+            reportedUngated = true;
+            Moveearth_addtional.LOGGER.warn(
+                    "An ore feature asked the region gate before the region map was built. "
+                            + "It generated ungated, and so will every other one until the map "
+                            + "exists. /moveearth region features reports the running total.");
+        }
     }
 
     private static boolean holds(String profileId, String material) {
