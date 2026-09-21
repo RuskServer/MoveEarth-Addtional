@@ -8,7 +8,7 @@ import com.ruskserver.moveearth_addtional.network.C2S_NationDiplomacyPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_NationTreasuryPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_S2HubActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_SiegeActionPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestTechnologyPacket;
+import com.ruskserver.moveearth_addtional.network.C2S_RequestRegionViewPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestRecoveryDispatchPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
@@ -646,8 +646,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         int tabWidth = Math.max(72, (panel.width() - 36) / S2HubTab.values().length);
         for (S2HubTab candidate : S2HubTab.values()) {
             if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
-                if (candidate == S2HubTab.TECHNOLOGY) {
-                    PacketDistributor.sendToServer(new C2S_RequestTechnologyPacket());
+                if (candidate == S2HubTab.REGION) {
+                    // Opens its own screen rather than drawing in the hub, the
+                    // way the guide tab it replaces did. Region data would
+                    // otherwise ride along in every hub snapshot, sent to every
+                    // player on every refresh whichever tab they were looking at.
+                    PacketDistributor.sendToServer(new C2S_RequestRegionViewPacket());
                     return true;
                 }
                 tab = candidate;
@@ -1043,7 +1047,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case ROLES -> "screen.moveearth_addtional.s2.tab.roles";
             case DIPLOMACY -> "screen.moveearth_addtional.s2.tab.diplomacy";
             case SIEGE -> "screen.moveearth_addtional.s2.tab.siege";
-            case TECHNOLOGY -> "screen.moveearth_addtional.s2.tab.technology";
+            case REGION -> "screen.moveearth_addtional.s2.tab.region";
         });
     }
 
@@ -1053,7 +1057,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case ROLES -> snapshot.roles().size();
             case DIPLOMACY -> snapshot.diplomacy().size();
             case SIEGE -> siegeRowCount();
-            case TECHNOLOGY -> 0;
+            case REGION -> 0;
             default -> 0;
         };
     }

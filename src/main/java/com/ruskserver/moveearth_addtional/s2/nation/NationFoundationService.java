@@ -30,12 +30,6 @@ public final class NationFoundationService {
     public static Result establish(ServerPlayer player, String name, String tag, long expectedRevision,
                                    ResourceLocation dimension, BlockPos corePos) {
         NationSavedData nations = NationSavedData.get(player.server);
-        ResourceLocation civicReadiness = ResourceLocation.fromNamespaceAndPath(
-                "moveearth_addtional", "personal/civic_readiness");
-        if (!player.hasPermissions(2) && !NationTechnologySavedData.get(player.server)
-                .completedFor(player.getUUID(), null).contains(civicReadiness)) {
-            return new Result(Status.TECHNOLOGY_REQUIRED, nations.revision(), null);
-        }
         NationSavedData.Status nationStatus = nations.validateCreate(player.getUUID(), name, tag, expectedRevision);
         if (nationStatus != NationSavedData.Status.CREATED) {
             return new Result(map(nationStatus), nations.revision(), null);
@@ -118,7 +112,7 @@ public final class NationFoundationService {
 
     public enum Status {
         CREATED, INVALID, DUPLICATE, ALREADY_MEMBER, STALE,
-        INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED, TECHNOLOGY_REQUIRED
+        INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED
     }
 
     public record Result(Status status, long revision, TerritorySavedData.CoreRecord core) {

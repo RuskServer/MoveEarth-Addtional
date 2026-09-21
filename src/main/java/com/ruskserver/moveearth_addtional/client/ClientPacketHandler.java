@@ -282,6 +282,13 @@ public class ClientPacketHandler {
         }
     }
 
+    public static void openRegionScreen(
+            com.ruskserver.moveearth_addtional.region.RegionSnapshot snapshot) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof RegionScreen screen) screen.update(snapshot);
+        else minecraft.setScreen(new RegionScreen(snapshot));
+    }
+
     public static void handleKillcamReplay(S2C_KillcamReplayPacket packet) {
         PvpClientState.startReplay(packet);
     }

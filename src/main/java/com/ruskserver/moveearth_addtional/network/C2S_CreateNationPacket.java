@@ -44,7 +44,6 @@ public record C2S_CreateNationPacket(int requestId, long expectedRevision, Strin
                 case INVALID_LOCATION -> "screen.moveearth_addtional.nation.invalid_location";
                 case TERRITORY_CONFLICT -> "screen.moveearth_addtional.nation.territory_conflict";
                 case PLACEMENT_FAILED -> "screen.moveearth_addtional.nation.placement_failed";
-                case TECHNOLOGY_REQUIRED -> "screen.moveearth_addtional.nation.technology_required";
             };
             if (success && result.core() != null) {
                 PacketDistributor.sendToPlayer(player, new S2C_OpenTerritoryCoreScreenPacket(

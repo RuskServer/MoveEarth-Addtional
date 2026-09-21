@@ -20,6 +20,7 @@ public final class RegionResourceConfig {
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> EXCLUSIVE;
     private static final ModConfigSpec.DoubleValue EXCLUSIVE_OUTSIDE_SHARE;
+    private static final ModConfigSpec.BooleanValue REVEAL_ALL_REGIONS;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> COMMON;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> OVERRIDES;
     private static final ModConfigSpec.BooleanValue STRESS_FOLLOWS_DEPOSIT;
@@ -97,6 +98,21 @@ public final class RegionResourceConfig {
                         "scaling those down instead would make every chunk uniformly poor,",
                         "which reads as a worse world rather than a rarer resource.")
                 .defineInRange("exclusiveOutsideShare", 0.08D, 0.0D, 1.0D);
+
+        REVEAL_ALL_REGIONS = BUILDER
+                .comment("Show every region's resources in the hub, including regions the player",
+                        "has never been to.",
+                        "",
+                        "Off by default. A player is told what their own region holds and what",
+                        "its neighbours hold once they have stood in them, so finding out where",
+                        "the uranium is means travelling or asking someone who did -- which is",
+                        "the reason for dividing the world up at all. Turning this on makes the",
+                        "map a reference table instead, which suits a server that would rather",
+                        "players spent their time trading than surveying.",
+                        "",
+                        "Operators always see everything, so this is not how to debug an",
+                        "allocation; /moveearth region info is.")
+                .define("revealAllRegions", false);
 
         COMMON = BUILDER
                 .comment("Materials present in every region, with the amount varying by region.",
@@ -178,6 +194,11 @@ public final class RegionResourceConfig {
      */
     public static double exclusiveOutsideShare() {
         return ready() ? EXCLUSIVE_OUTSIDE_SHARE.get() : 0.0D;
+    }
+
+    /** Whether the hub shows regions the player has not visited. */
+    public static boolean revealAllRegions() {
+        return ready() && REVEAL_ALL_REGIONS.getAsBoolean();
     }
 
     public static List<String> commonMaterials() {

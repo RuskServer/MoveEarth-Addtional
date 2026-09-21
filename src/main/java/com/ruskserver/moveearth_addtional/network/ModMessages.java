@@ -16,6 +16,8 @@ public class ModMessages {
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
         registrar.playToClient(S2C_S2HubSnapshotPacket.TYPE, S2C_S2HubSnapshotPacket.STREAM_CODEC, S2C_S2HubSnapshotPacket::handle);
         registrar.playToServer(C2S_RequestTechnologyPacket.TYPE, C2S_RequestTechnologyPacket.STREAM_CODEC, C2S_RequestTechnologyPacket::handle);
+        registrar.playToServer(C2S_RequestRegionViewPacket.TYPE, C2S_RequestRegionViewPacket.STREAM_CODEC, C2S_RequestRegionViewPacket::handle);
+        registrar.playToClient(S2C_RegionSnapshotPacket.TYPE, S2C_RegionSnapshotPacket.STREAM_CODEC, S2C_RegionSnapshotPacket::handle);
         registrar.playToServer(C2S_TechnologyActionPacket.TYPE, C2S_TechnologyActionPacket.STREAM_CODEC, C2S_TechnologyActionPacket::handle);
         registrar.playToServer(C2S_SetTechnologyTrackedPacket.TYPE, C2S_SetTechnologyTrackedPacket.STREAM_CODEC, C2S_SetTechnologyTrackedPacket::handle);
         registrar.playToClient(S2C_TechnologySnapshotPacket.TYPE, S2C_TechnologySnapshotPacket.STREAM_CODEC, S2C_TechnologySnapshotPacket::handle);

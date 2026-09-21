@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -71,7 +72,7 @@ public final class RegionProfiles {
 
     /** The finished allocation. Immutable once published. */
     private record Snapshot(Map<Integer, Assignment> byRegion, Set<String> exclusive,
-                            List<String> common) { }
+                            List<String> common, Map<Integer, Set<Integer>> neighbours) { }
 
     private RegionProfiles() { }
 
@@ -248,8 +249,16 @@ public final class RegionProfiles {
         for (Assignment assignment : decided) {
             byRegion.put(assignment.regionId(), assignment);
         }
+        // Adjacency is surveyed to make the allocation and was thrown away
+        // afterwards. Kept now because the hub shows a region what its
+        // neighbours hold, which is the whole point of telling anyone: a
+        // resource you lack is only interesting once you know who has it.
+        Map<Integer, Set<Integer>> neighbours = new TreeMap<>();
+        for (Region region : regions) {
+            neighbours.put(region.id(), Set.copyOf(region.neighbours()));
+        }
         active = new Snapshot(Map.copyOf(byRegion), Set.copyOf(new LinkedHashSet<>(exclusive)),
-                List.copyOf(common));
+                List.copyOf(common), Map.copyOf(neighbours));
 
         if (!RegionProfileAssigner.unplaceable().isEmpty()) {
             Moveearth_addtional.LOGGER.warn(
@@ -354,6 +363,51 @@ public final class RegionProfiles {
                             + "It generated ungated, and so will every other one until the map "
                             + "exists. /moveearth region features reports the running total.");
         }
+    }
+
+    /** The regions bordering this one, empty when it or the map is unknown. */
+    public static Set<Integer> neighboursOf(int region) {
+        Snapshot snapshot = active;
+        return snapshot == null ? Set.of() : snapshot.neighbours().getOrDefault(region, Set.of());
+    }
+
+    /** Every region the allocation covers, in order. */
+    public static Set<Integer> regions() {
+        Snapshot snapshot = active;
+        return snapshot == null ? Set.of() : Set.copyOf(snapshot.byRegion().keySet());
+    }
+
+    /** The exclusive resources this region was given, in configured order. */
+    public static List<String> exclusivesOf(int region) {
+        Snapshot snapshot = active;
+        if (snapshot == null) {
+            return List.of();
+        }
+        Assignment assignment = snapshot.byRegion().get(region);
+        if (assignment == null) {
+            return List.of();
+        }
+        List<String> held = new ArrayList<>();
+        for (String material : snapshot.exclusive()) {
+            if (holds(assignment.profileId(), material)) {
+                held.add(material);
+            }
+        }
+        return List.copyOf(held);
+    }
+
+    /** The common materials, which every region has in differing amounts. */
+    public static List<String> commonMaterials() {
+        Snapshot snapshot = active;
+        return snapshot == null ? List.of() : snapshot.common();
+    }
+
+    /** What this region is richer and poorer in, or empty when unknown. */
+    public static Optional<Assignment> assignment(int region) {
+        Snapshot snapshot = active;
+        return snapshot == null
+                ? Optional.empty()
+                : Optional.ofNullable(snapshot.byRegion().get(region));
     }
 
     private static boolean holds(String profileId, String material) {
