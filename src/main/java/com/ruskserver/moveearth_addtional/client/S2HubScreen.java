@@ -13,6 +13,7 @@ import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacke
 import com.ruskserver.moveearth_addtional.network.C2S_RequestRecoveryDispatchPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
+import com.ruskserver.moveearth_addtional.region.RegionMaterialNames;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
@@ -48,7 +49,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
      * first frame after a click would always have shown the wrong one.
      */
     private com.ruskserver.moveearth_addtional.region.RegionSnapshot regionView =
-            new com.ruskserver.moveearth_addtional.region.RegionSnapshot(0, java.util.List.of());
+            com.ruskserver.moveearth_addtional.region.RegionSnapshot.none();
+
+    /** False until the first reply, so "loading" and "nowhere" stay distinct. */
+    private boolean regionViewReceived;
 
     private S2HubTab tab;
     private S2NationSnapshot snapshot;
@@ -307,62 +311,67 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     private void drawRegions(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.region.subtitle"),
-                content.x(), content.y() + 4, MUTED, false);
-        Rect list = diplomacyListBounds(content);
-        if (regionView.regions().isEmpty()) {
-            graphics.drawCenteredString(font, Component.translatable(regionView.currentRegion() == 0
-                            ? "screen.moveearth_addtional.region.waiting"
-                            : "screen.moveearth_addtional.region.none"),
-                    list.x() + list.width() / 2, list.y() + 42, MUTED);
+        Rect card = new Rect(content.x(), content.y() + 16, content.width() - 8, 96);
+        if (!regionViewReceived) {
+            graphics.drawCenteredString(font,
+                    Component.translatable("screen.moveearth_addtional.region.waiting"),
+                    content.x() + content.width() / 2, content.y() + 42, MUTED);
             return;
         }
-        graphics.enableScissor(list.x(), list.y(), list.right(), list.bottom());
-        for (int index = 0; index < regionView.regions().size(); index++) {
-            var entry = regionView.regions().get(index);
-            Rect card = diplomacyCard(list, index);
-            if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
-            int color = entry.current() ? SUCCESS : entry.known() ? ACCENT : DISABLED;
-            drawCard(graphics, card, color, entry.current(), card.contains(mouseX, mouseY));
-            Component name = Component.translatable(
-                    "message.moveearth_addtional.region.name", entry.id());
-            graphics.drawString(font, entry.current()
-                            ? Component.translatable("screen.moveearth_addtional.region.here", name)
-                            : name,
-                    card.x() + 13, card.y() + 8, entry.current() ? SUCCESS : TEXT, false);
-            graphics.drawString(font, regionDetail(entry), card.x() + 13, card.y() + 23,
-                    entry.known() ? TEXT : MUTED, false);
+        if (!regionView.known()) {
+            graphics.drawCenteredString(font,
+                    Component.translatable("screen.moveearth_addtional.region.none"),
+                    content.x() + content.width() / 2, content.y() + 42, MUTED);
+            return;
         }
-        graphics.disableScissor();
-        drawScrollbar(graphics, new Rect(list.right() - 4, list.y(), 4, list.height()),
-                list.height(), regionView.regions().size() * ROW_HEIGHT, scrollOffset);
-    }
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.region.subtitle"),
+                content.x(), content.y() + 4, MUTED, false);
+        drawCard(graphics, card, SUCCESS, true, false);
 
-    private Component regionDetail(
-            com.ruskserver.moveearth_addtional.region.RegionSnapshot.Entry entry) {
-        if (!entry.known()) {
-            return Component.translatable("screen.moveearth_addtional.region.unvisited");
+        int line = card.y() + 10;
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.region.here",
+                        Component.translatable("message.moveearth_addtional.region.name", regionView.id())),
+                card.x() + 13, line, SUCCESS, false);
+
+        line += 18;
+        graphics.drawString(font, regionView.exclusives().isEmpty()
+                        ? Component.translatable("screen.moveearth_addtional.region.no_exclusive")
+                        : Component.translatable("screen.moveearth_addtional.region.exclusive",
+                                RegionMaterialNames.list(regionView.exclusives())),
+                card.x() + 13, line, regionView.exclusives().isEmpty() ? MUTED : TEXT, false);
+
+        if (!regionView.elsewhere().isEmpty()) {
+            line += 13;
+            // The question this tab answers is why a resource is not here, so
+            // the absent ones are named rather than left to be inferred from a
+            // list of what is.
+            graphics.drawString(font, Component.translatable(
+                            "screen.moveearth_addtional.region.elsewhere",
+                            RegionMaterialNames.list(regionView.elsewhere())),
+                    card.x() + 13, line, MUTED, false);
+            if (regionView.traceShare() > 0.0) {
+                line += 11;
+                graphics.drawString(font, Component.translatable(
+                                "screen.moveearth_addtional.region.trace",
+                                Math.max(1, Math.round(100.0 * regionView.traceShare()))),
+                        card.x() + 13, line, MUTED, false);
+            }
         }
-        Component strategic = entry.exclusives().isEmpty()
-                ? Component.translatable("screen.moveearth_addtional.region.no_exclusive")
-                : Component.translatable("screen.moveearth_addtional.region.exclusive",
-                        com.ruskserver.moveearth_addtional.region.RegionMaterialNames
-                                .list(entry.exclusives()));
-        if (entry.specialty().isBlank() && entry.shortage().isBlank()) {
-            return strategic;
+
+        if (!regionView.specialty().isBlank() || !regionView.shortage().isBlank()) {
+            line += 15;
+            graphics.drawString(font, Component.translatable(
+                            "screen.moveearth_addtional.region.common",
+                            RegionMaterialNames.of(regionView.specialty()),
+                            RegionMaterialNames.of(regionView.shortage())),
+                    card.x() + 13, line, TEXT, false);
         }
-        return strategic.copy().append(Component.literal("  "))
-                .append(Component.translatable("screen.moveearth_addtional.region.common",
-                        com.ruskserver.moveearth_addtional.region.RegionMaterialNames
-                                .of(entry.specialty()),
-                        com.ruskserver.moveearth_addtional.region.RegionMaterialNames
-                                .of(entry.shortage())));
     }
 
     /** Takes the reply to the request the tab sent when it was chosen. */
     public void updateRegions(com.ruskserver.moveearth_addtional.region.RegionSnapshot updated) {
         this.regionView = updated;
-        if (tab == S2HubTab.REGION) scrollOffset = 0;
+        this.regionViewReceived = true;
     }
 
     private void drawDiplomacyActions(GuiGraphics graphics, Rect card,
@@ -1126,7 +1135,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case ROLES -> snapshot.roles().size();
             case DIPLOMACY -> snapshot.diplomacy().size();
             case SIEGE -> siegeRowCount();
-            case REGION -> regionView.regions().size();
+            case REGION -> 0;
             default -> 0;
         };
     }

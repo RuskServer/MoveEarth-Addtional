@@ -25,9 +25,8 @@ import java.util.UUID;
  * The crossing is the moment where saying so costs nothing and explains
  * everything after it.
  *
- * <p>The same crossing is what fills in what a player knows. The hub shows a
- * region's resources only for regions they have stood in, so this is where
- * that record is written -- one walk, both purposes.
+ * <p>Nothing is recorded. The hub describes the region a player is standing in
+ * and no other, so there is nothing to have learned and nothing to keep.
  *
  * <p>Ten ticks, staggered by player, following the territory tracker next door.
  * The region lookup is cached per chunk, so the cost is a map read for a player
@@ -89,11 +88,7 @@ public final class RegionPresenceEvents {
             return;
         }
         Integer previous = LAST.put(player.getUUID(), region);
-        boolean firstVisit = RegionVisitSavedData.get(player.server).record(player.getUUID(), region);
-        if (!announce || (previous != null && previous == region)) {
-            return;
-        }
-        if (previous != null || firstVisit) {
+        if (announce && previous != null && previous != region) {
             player.displayClientMessage(describe(region), true);
         }
     }

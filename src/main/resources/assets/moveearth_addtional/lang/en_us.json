@@ -1073,10 +1073,9 @@
   "message.moveearth_addtional.mekanism.cable_upgrade_blocked": "Upgrade Universal Cables through the designated crafting recipes",
   "message.moveearth_addtional.mekanism.content_disabled": "This Mekanism content is disabled on MoveEarth",
   "screen.moveearth_addtional.s2.tab.region": "Region",
-  "screen.moveearth_addtional.region.subtitle": "What is here, and what is next door",
+  "screen.moveearth_addtional.region.subtitle": "What can be dug here",
   "screen.moveearth_addtional.region.none": "This dimension has no regions.",
   "screen.moveearth_addtional.region.here": "%s (you are here)",
-  "screen.moveearth_addtional.region.unvisited": "Never visited. Go and look, or ask someone who has",
   "screen.moveearth_addtional.region.exclusive": "Strategic: %s",
   "screen.moveearth_addtional.region.no_exclusive": "No strategic resource. Trade for one",
   "screen.moveearth_addtional.region.common": "Rich in %s, poor in %s",
@@ -1092,5 +1091,7 @@
   "material.moveearth_addtional.coal": "Coal",
   "material.moveearth_addtional.iron": "Iron",
   "material.moveearth_addtional.copper": "Copper",
-  "screen.moveearth_addtional.region.waiting": "Loading..."
+  "screen.moveearth_addtional.region.waiting": "Loading...",
+  "screen.moveearth_addtional.region.elsewhere": "Belongs to other regions: %s",
+  "screen.moveearth_addtional.region.trace": "About %s%% of those still turns up here. Not enough to live on"
 }

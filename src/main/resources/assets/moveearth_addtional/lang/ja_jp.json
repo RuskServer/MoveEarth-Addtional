@@ -1073,10 +1073,9 @@
   "message.moveearth_addtional.mekanism.cable_upgrade_blocked": "Universal Cableの強化には指定されたクラフトレシピを使用してください",
   "message.moveearth_addtional.mekanism.content_disabled": "MoveEarthではこのMekanismコンテンツは無効です",
   "screen.moveearth_addtional.s2.tab.region": "地方",
-  "screen.moveearth_addtional.region.subtitle": "ここで何が採れ、隣で何が採れるか",
+  "screen.moveearth_addtional.region.subtitle": "ここで何が採れるか",
   "screen.moveearth_addtional.region.none": "この次元には地方がありません。",
   "screen.moveearth_addtional.region.here": "%s（現在地）",
-  "screen.moveearth_addtional.region.unvisited": "未踏。行ってみるか、行った者に聞いてください",
   "screen.moveearth_addtional.region.exclusive": "戦略資源: %s",
   "screen.moveearth_addtional.region.no_exclusive": "戦略資源なし。他地方から得てください",
   "screen.moveearth_addtional.region.common": "%s が多く、%s が少ない",
@@ -1092,5 +1091,7 @@
   "material.moveearth_addtional.coal": "石炭",
   "material.moveearth_addtional.iron": "鉄",
   "material.moveearth_addtional.copper": "銅",
-  "screen.moveearth_addtional.region.waiting": "読み込み中…"
+  "screen.moveearth_addtional.region.waiting": "読み込み中…",
+  "screen.moveearth_addtional.region.elsewhere": "他地方の資源: %s",
+  "screen.moveearth_addtional.region.trace": "他地方の資源も %s%% ほどは出ます。自給はできません"
 }

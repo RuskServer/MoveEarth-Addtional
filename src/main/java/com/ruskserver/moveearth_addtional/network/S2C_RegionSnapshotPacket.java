@@ -12,16 +12,14 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import java.util.ArrayList;
 import java.util.List;
 
-/** One player's view of the regions around them. */
+/** What the region under one player holds, in answer to their hub asking. */
 public record S2C_RegionSnapshotPacket(RegionSnapshot snapshot) implements CustomPacketPayload {
-
-    /** A region borders at most a handful of others; this is room to spare. */
-    private static final int MAX_REGIONS = 64;
 
     /** Convention material names are short; this is far more than any needs. */
     private static final int MAX_NAME = 64;
 
-    private static final int MAX_EXCLUSIVES = 16;
+    /** More exclusives than any pack is likely to declare. */
+    private static final int MAX_MATERIALS = 32;
 
     public static final Type<S2C_RegionSnapshotPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "region_snapshot"));
@@ -31,44 +29,38 @@ public record S2C_RegionSnapshotPacket(RegionSnapshot snapshot) implements Custo
 
     private static void encode(FriendlyByteBuf buffer, S2C_RegionSnapshotPacket packet) {
         RegionSnapshot snapshot = packet.snapshot();
-        buffer.writeVarInt(snapshot.currentRegion());
-        List<RegionSnapshot.Entry> entries = snapshot.regions().stream().limit(MAX_REGIONS).toList();
-        buffer.writeVarInt(entries.size());
-        for (RegionSnapshot.Entry entry : entries) {
-            buffer.writeVarInt(entry.id());
-            buffer.writeBoolean(entry.current());
-            buffer.writeBoolean(entry.known());
-            List<String> exclusives = entry.exclusives().stream().limit(MAX_EXCLUSIVES).toList();
-            buffer.writeVarInt(exclusives.size());
-            for (String material : exclusives) {
-                buffer.writeUtf(material, MAX_NAME);
-            }
-            buffer.writeUtf(entry.specialty(), MAX_NAME);
-            buffer.writeUtf(entry.shortage(), MAX_NAME);
-            buffer.writeDouble(entry.baseDensity());
-        }
+        buffer.writeVarInt(snapshot.id());
+        writeMaterials(buffer, snapshot.exclusives());
+        writeMaterials(buffer, snapshot.elsewhere());
+        buffer.writeUtf(snapshot.specialty(), MAX_NAME);
+        buffer.writeUtf(snapshot.shortage(), MAX_NAME);
+        buffer.writeDouble(snapshot.traceShare());
     }
 
     private static S2C_RegionSnapshotPacket decode(FriendlyByteBuf buffer) {
-        int current = buffer.readVarInt();
-        // Read from the network, so every count is clamped before it is used to
-        // size anything. A hostile or simply wrong length must cost a short
-        // list, not an allocation the size of the number that arrived.
-        int count = Math.min(MAX_REGIONS, Math.max(0, buffer.readVarInt()));
-        List<RegionSnapshot.Entry> entries = new ArrayList<>(count);
-        for (int index = 0; index < count; index++) {
-            int id = buffer.readVarInt();
-            boolean isCurrent = buffer.readBoolean();
-            boolean known = buffer.readBoolean();
-            int exclusiveCount = Math.min(MAX_EXCLUSIVES, Math.max(0, buffer.readVarInt()));
-            List<String> exclusives = new ArrayList<>(exclusiveCount);
-            for (int slot = 0; slot < exclusiveCount; slot++) {
-                exclusives.add(buffer.readUtf(MAX_NAME));
-            }
-            entries.add(new RegionSnapshot.Entry(id, isCurrent, known, exclusives,
-                    buffer.readUtf(MAX_NAME), buffer.readUtf(MAX_NAME), buffer.readDouble()));
+        return new S2C_RegionSnapshotPacket(new RegionSnapshot(
+                buffer.readVarInt(), readMaterials(buffer), readMaterials(buffer),
+                buffer.readUtf(MAX_NAME), buffer.readUtf(MAX_NAME), buffer.readDouble()));
+    }
+
+    private static void writeMaterials(FriendlyByteBuf buffer, List<String> materials) {
+        List<String> capped = materials.stream().limit(MAX_MATERIALS).toList();
+        buffer.writeVarInt(capped.size());
+        for (String material : capped) {
+            buffer.writeUtf(material, MAX_NAME);
         }
-        return new S2C_RegionSnapshotPacket(new RegionSnapshot(current, entries));
+    }
+
+    private static List<String> readMaterials(FriendlyByteBuf buffer) {
+        // Read from the network, so the count is clamped before it sizes
+        // anything. A wrong length must cost a short list, not an allocation
+        // the size of whatever number arrived.
+        int count = Math.min(MAX_MATERIALS, Math.max(0, buffer.readVarInt()));
+        List<String> materials = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            materials.add(buffer.readUtf(MAX_NAME));
+        }
+        return materials;
     }
 
     @Override

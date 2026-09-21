@@ -396,6 +396,21 @@ public final class RegionProfiles {
         return List.copyOf(held);
     }
 
+    /** Every material treated as exclusive, in configured order. */
+    public static List<String> exclusiveMaterials() {
+        Snapshot snapshot = active;
+        if (snapshot == null) {
+            return List.of();
+        }
+        List<String> ordered = new ArrayList<>();
+        for (String material : RegionResourceConfig.exclusiveMaterials()) {
+            if (snapshot.exclusive().contains(material)) {
+                ordered.add(material);
+            }
+        }
+        return List.copyOf(ordered);
+    }
+
     /** The common materials, which every region has in differing amounts. */
     public static List<String> commonMaterials() {
         Snapshot snapshot = active;
