@@ -31,7 +31,8 @@
     "RnsMiningBehaviourStressMixin",
     "CreateBlockBreakerMixin",
     "CreateMovingBlockBreakerMixin",
-    "CbcAutocannonRateMixin"
+    "CbcAutocannonRateMixin",
+    "CdgOilChunksMixin"
   ],
   "client": [
     "client.CustomHeadLayerMixin",
