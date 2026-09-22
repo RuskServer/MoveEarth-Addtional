@@ -125,14 +125,18 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         }
 
         Rect content = contentBounds(panel);
-        if (!snapshot.member() && tab == S2HubTab.SIEGE && !snapshot.sieges().isEmpty()) {
+        // Before the membership check, not after it. A region describes the
+        // ground rather than a nation, and the player who most needs to know
+        // what is under their feet is the one still deciding where to settle.
+        if (tab == S2HubTab.REGION) {
+            drawRegions(graphics, content, mouseX, mouseY);
+        } else if (!snapshot.member() && tab == S2HubTab.SIEGE && !snapshot.sieges().isEmpty()) {
             drawSieges(graphics, content, mouseX, mouseY);
         } else if (!snapshot.member()) drawUnaffiliated(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.OVERVIEW) drawOverview(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.MEMBERS) drawMembers(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.ROLES) drawRoles(graphics, content, mouseX, mouseY);
         else if (tab == S2HubTab.DIPLOMACY) drawDiplomacy(graphics, content, mouseX, mouseY);
-        else if (tab == S2HubTab.REGION) drawRegions(graphics, content, mouseX, mouseY);
         else drawSieges(graphics, content, mouseX, mouseY);
 
         if (kickTargetId != null) drawKickConfirmation(graphics, mouseX, mouseY);
@@ -738,7 +742,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 return true;
             }
         }
-        if ((!snapshot.member() && tab != S2HubTab.SIEGE) || tab == S2HubTab.OVERVIEW) {
+        if (tab != S2HubTab.REGION
+                && ((!snapshot.member() && tab != S2HubTab.SIEGE) || tab == S2HubTab.OVERVIEW)) {
             Rect content = contentBounds(panel);
             if (!snapshot.member()) {
                 Rect create = new Rect(content.x() + 16,
