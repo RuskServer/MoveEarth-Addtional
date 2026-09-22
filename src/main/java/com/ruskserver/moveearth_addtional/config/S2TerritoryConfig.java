@@ -56,6 +56,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue WARNAUTICS_CORE_RADIUS;
     private static final ModConfigSpec.IntValue SIEGE_INITIAL_LOCK_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_ROLLING_SECONDS;
+    private static final ModConfigSpec.IntValue SIEGE_CONTEST_HOLD_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_RETRY_COOLDOWN_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_DUPLICATE_LOG_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_POST_FALL_SECONDS;
@@ -199,6 +200,22 @@ public final class S2TerritoryConfig {
                 .define("coreSabotageEnabled", true);
         SIEGE_INITIAL_LOCK_SECONDS = BUILDER.defineInRange("initialLockSeconds", 300, 1, 86400);
         SIEGE_ROLLING_SECONDS = BUILDER.defineInRange("rollingSeconds", 1800, 1, 604800);
+        SIEGE_CONTEST_HOLD_SECONDS = BUILDER.comment(
+                "Server-open seconds a siege's rolling timer can be stopped by attackers",
+                "standing inside the defender's territory.",
+                "",
+                "The rolling timer ends a siege when nobody has damaged the walls for a",
+                "while, which reads as the attack being abandoned. A defence only has to",
+                "make the approach take longer than that to win without fighting: strip",
+                "the land inside the border to bedrock and nobody can bridge it, so they",
+                "tunnel, and the siege expires under them while they dig.",
+                "",
+                "So the clock stops while an enemy stands in the territory, and this is",
+                "how long that is allowed to last. Long enough to cross ground that has",
+                "been deliberately made hard to cross; short enough that one player in a",
+                "hole cannot keep a nation besieged all evening. When it runs out the",
+                "clock resumes and the attack has to land a hit like any other.")
+                .defineInRange("contestHoldSeconds", 2700, 0, 86400);
         SIEGE_RETRY_COOLDOWN_SECONDS = BUILDER.defineInRange("retryCooldownSeconds", 3600, 0, 604800);
         SIEGE_DUPLICATE_LOG_SECONDS = BUILDER.defineInRange("duplicateLogCooldownSeconds", 60, 0, 3600);
         SIEGE_POST_FALL_SECONDS = BUILDER.defineInRange("postFallSeconds", 1800, 60, 604800);
@@ -324,6 +341,10 @@ public final class S2TerritoryConfig {
     public static int warnauticsCoreRadius() { return WARNAUTICS_CORE_RADIUS.getAsInt(); }
     public static long siegeInitialLockTicks() { return SIEGE_INITIAL_LOCK_SECONDS.getAsInt() * 20L; }
     public static long siegeRollingTicks() { return SIEGE_ROLLING_SECONDS.getAsInt() * 20L; }
+    public static long siegeContestHoldTicks() {
+        return SIEGE_CONTEST_HOLD_SECONDS.getAsInt() * 20L;
+    }
+
     public static long siegeRetryCooldownTicks() { return SIEGE_RETRY_COOLDOWN_SECONDS.getAsInt() * 20L; }
     public static long siegeDuplicateLogTicks() { return SIEGE_DUPLICATE_LOG_SECONDS.getAsInt() * 20L; }
     public static long siegePostFallTicks() { return SIEGE_POST_FALL_SECONDS.getAsInt() * 20L; }

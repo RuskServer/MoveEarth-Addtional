@@ -170,7 +170,8 @@ public final class SiegeService {
         RECENT_LOGS.entrySet().removeIf(entry -> now - entry.getValue() > retention);
         if (RECENT_LOGS.size() > MAX_RECENT_LOGS) RECENT_LOGS.clear();
         SiegeSavedData siegeData = SiegeSavedData.get(event.getServer());
-        SiegeSavedData.TickResult result = siegeData.advance(20L);
+        SiegeSavedData.TickResult result = siegeData.advance(20L,
+                siege -> SiegePresence.contested(event.getServer(), siege));
         PeaceSavedData.get(event.getServer()).advance(20L);
         TerritorySavedData.get(event.getServer()).advanceVaultCooldowns(20L);
         NationSavedData nations = NationSavedData.get(event.getServer());

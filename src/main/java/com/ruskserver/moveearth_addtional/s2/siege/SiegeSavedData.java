@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.s2.siege;
 
+import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import net.minecraft.core.BlockPos;
@@ -17,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Function;
 
 /** Persistent attacker/defender/core scoped Siege timers. */
@@ -77,7 +79,7 @@ public final class SiegeSavedData extends SavedData {
     }
 
     /** Advances only while the server is running. */
-    public TickResult advance(long elapsedTicks) {
+    public TickResult advance(long elapsedTicks, Predicate<SiegeRecord> contested) {
         if (elapsedTicks <= 0L) return new TickResult(List.of(), List.of());
         List<SiegeRecord> initialExpired = new ArrayList<>();
         List<SiegeRecord> rollingExpired = new ArrayList<>();
@@ -96,6 +98,14 @@ public final class SiegeSavedData extends SavedData {
         while (iterator.hasNext()) {
             var entry = iterator.next();
             SiegeRecord current = entry.getValue();
+            if (SiegeTimerPolicy.holds(contested.test(current), current.heldTicks(),
+                    S2TerritoryConfig.siegeContestHoldTicks())) {
+                // Someone is in their land. The attack has not been abandoned,
+                // so the clock that exists to notice abandonment does not run.
+                entry.setValue(current.withHeld(current.heldTicks() + elapsedTicks));
+                changed = true;
+                continue;
+            }
             SiegeTimerPolicy.State advanced = SiegeTimerPolicy.advance(
                     new SiegeTimerPolicy.State(current.phase(), current.remainingTicks()), elapsedTicks);
             if (advanced.expired()) {
@@ -416,6 +426,7 @@ public final class SiegeSavedData extends SavedData {
             value.putString("Phase", record.phase().name());
             value.putLong("Remaining", record.remainingTicks());
             value.putBoolean("OfflineDefenseAllowed", record.offlineDefenseAllowed());
+            value.putLong("HeldTicks", record.heldTicks());
             activeTag.add(value);
         }
         tag.put("Active", activeTag);
@@ -483,7 +494,8 @@ public final class SiegeSavedData extends SavedData {
                         ResourceLocation.parse(value.getString("Dimension")), BlockPos.of(value.getLong("Pos")),
                         SiegeTimerPolicy.Phase.valueOf(value.getString("Phase")),
                         Math.max(1L, value.getLong("Remaining")),
-                        value.getBoolean("OfflineDefenseAllowed"), value.getBoolean("IndividualAttacker"));
+                        value.getBoolean("OfflineDefenseAllowed"), value.getBoolean("IndividualAttacker"),
+                        value.getLong("HeldTicks"));
                 data.active.put(new SiegeKey(record.attackerNation(), record.individualAttacker(),
                         record.defenderNation(), record.coreId()), record);
             } catch (IllegalArgumentException ignored) { }
@@ -491,10 +503,22 @@ public final class SiegeSavedData extends SavedData {
         ListTag cooldownTag = tag.getList("RetryCooldowns", Tag.TAG_COMPOUND);
         for (int index = 0; index < cooldownTag.size(); index++) {
             CompoundTag value = cooldownTag.getCompound(index);
-            long remaining = value.getLong("Remaining");
-            if (remaining > 0L) data.retryCooldowns.put(
-                    new AttackerPair(value.getUUID("Attacker"), value.getBoolean("IndividualAttacker"),
-                            value.getUUID("Defender")), remaining);
+            try {
+                boolean hasAttacker = value.hasUUID("Attacker");
+                boolean hasDefender = value.hasUUID("Defender");
+                UUID attacker = hasAttacker ? value.getUUID("Attacker") : null;
+                UUID defender = hasDefender ? value.getUUID("Defender") : null;
+                long remaining = value.getLong("Remaining");
+                if (!SiegeSavedDataRecordPolicy.acceptsPair(hasAttacker, hasDefender,
+                        attacker, defender, remaining, false)) {
+                    warnSkippedRecord("RetryCooldowns", index, "missing or invalid UUID");
+                    continue;
+                }
+                data.retryCooldowns.put(new AttackerPair(attacker,
+                        value.getBoolean("IndividualAttacker"), defender), remaining);
+            } catch (RuntimeException exception) {
+                warnSkippedRecord("RetryCooldowns", index, exception.getMessage());
+            }
         }
         ListTag fallenTag = tag.getList("Fallen", Tag.TAG_COMPOUND);
         for (int index = 0; index < fallenTag.size(); index++) {
@@ -526,9 +550,21 @@ public final class SiegeSavedData extends SavedData {
         ListTag peaceTruceList = tag.getList("PeaceTruces", Tag.TAG_COMPOUND);
         for (int index = 0; index < peaceTruceList.size(); index++) {
             CompoundTag value = peaceTruceList.getCompound(index);
-            long remaining = value.getLong("Remaining");
-            if (remaining > 0L) data.peaceTruces.put(new DiplomaticPair(
-                    value.getUUID("First"), value.getUUID("Second")), remaining);
+            try {
+                boolean hasFirst = value.hasUUID("First");
+                boolean hasSecond = value.hasUUID("Second");
+                UUID first = hasFirst ? value.getUUID("First") : null;
+                UUID second = hasSecond ? value.getUUID("Second") : null;
+                long remaining = value.getLong("Remaining");
+                if (!SiegeSavedDataRecordPolicy.acceptsPair(hasFirst, hasSecond,
+                        first, second, remaining, true)) {
+                    warnSkippedRecord("PeaceTruces", index, "missing or invalid UUID");
+                    continue;
+                }
+                data.peaceTruces.put(new DiplomaticPair(first, second), remaining);
+            } catch (RuntimeException exception) {
+                warnSkippedRecord("PeaceTruces", index, exception.getMessage());
+            }
         }
         return data;
     }
@@ -551,13 +587,39 @@ public final class SiegeSavedData extends SavedData {
                                    List<FallenRecord> finalized, List<FallenRecord> counterStarted,
                                    List<FallenRecord> counterFailed) { }
     public record ConflictEndResult(List<SiegeRecord> active, List<FallenRecord> fallen) { }
+    /**
+     * @param heldTicks how long this siege's clock has already been stopped by
+     *                  attackers standing in the defender's territory. Budgeted,
+     *                  so holding ground buys an approach and not a permanent
+     *                  siege. Absent from older saves, where it reads as zero --
+     *                  which is correct, since no siege had yet been held.
+     */
     public record SiegeRecord(UUID id, UUID attackerNation, UUID defenderNation, UUID coreId,
                               ResourceLocation dimension, BlockPos corePos, SiegeTimerPolicy.Phase phase,
-                              long remainingTicks, boolean offlineDefenseAllowed, boolean individualAttacker) {
+                              long remainingTicks, boolean offlineDefenseAllowed, boolean individualAttacker,
+                              long heldTicks) {
+        public SiegeRecord {
+            heldTicks = Math.max(0L, heldTicks);
+        }
+
+        public SiegeRecord(UUID id, UUID attackerNation, UUID defenderNation, UUID coreId,
+                           ResourceLocation dimension, BlockPos corePos, SiegeTimerPolicy.Phase phase,
+                           long remainingTicks, boolean offlineDefenseAllowed, boolean individualAttacker) {
+            this(id, attackerNation, defenderNation, coreId, dimension, corePos, phase,
+                    remainingTicks, offlineDefenseAllowed, individualAttacker, 0L);
+        }
+
         public SiegeRecord withTimer(SiegeTimerPolicy.Phase nextPhase, long nextRemaining) {
             return new SiegeRecord(id, attackerNation, defenderNation, coreId, dimension, corePos,
-                    nextPhase, Math.max(1L, nextRemaining), offlineDefenseAllowed, individualAttacker);
+                    nextPhase, Math.max(1L, nextRemaining), offlineDefenseAllowed, individualAttacker,
+                    heldTicks);
         }
+
+        public SiegeRecord withHeld(long nextHeld) {
+            return new SiegeRecord(id, attackerNation, defenderNation, coreId, dimension, corePos,
+                    phase, remainingTicks, offlineDefenseAllowed, individualAttacker, nextHeld);
+        }
+
     }
     public record FallenRecord(UUID siegeId, UUID attackerNation, UUID defenderNation, UUID coreId,
                                ResourceLocation dimension, BlockPos corePos,
@@ -633,5 +695,10 @@ public final class SiegeSavedData extends SavedData {
             long remaining = value.getLong("Remaining");
             if (remaining > 0L && value.hasUUID("Id")) countdowns.put(value.getUUID("Id"), remaining);
         }
+    }
+
+    private static void warnSkippedRecord(String collection, int index, String reason) {
+        Moveearth_addtional.LOGGER.warn("Skipping corrupt Siege SavedData record {}[{}]: {}",
+                collection, index, reason == null ? "invalid value" : reason);
     }
 }
