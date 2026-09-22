@@ -136,12 +136,14 @@ public final class StorageWreckageService {
 
     private static boolean canAccess(ServerPlayer player, BlockPos pos,
                                      StorageWreckageSavedData.Wreckage wreckage) {
-        if (player.hasPermissions(2)) return true;
         UUID nation = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
-        if (nation != null && nation.equals(wreckage.ownerNation())) return true;
-        if (wreckage.vehicleId() != null && VehicleLootSavedData.get(player.server)
-                .canLoot(player, player.serverLevel(), pos)) return true;
-        return SiegeLootService.access(player, pos).allowed();
+        return StorageWreckagePolicy.mayRecover(
+                player.hasPermissions(2),
+                wreckage.ownerNation() != null,
+                nation != null && nation.equals(wreckage.ownerNation()),
+                wreckage.vehicleId() != null && VehicleLootSavedData.get(player.server)
+                        .canLoot(player, player.serverLevel(), pos),
+                SiegeLootService.access(player, pos).allowed());
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
