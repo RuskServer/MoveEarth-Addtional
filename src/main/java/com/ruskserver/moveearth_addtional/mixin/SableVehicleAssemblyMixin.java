@@ -12,12 +12,17 @@ import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayDeque;
@@ -33,8 +38,52 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 @Mixin(value = SubLevelAssemblyHelper.class, remap = false)
 public abstract class SableVehicleAssemblyMixin {
     @Unique
+    private static final TagKey<Block> MOVEARTH$DEPOSIT_BLOCKS = TagKey.create(
+            Registries.BLOCK,
+            ResourceLocation.fromNamespaceAndPath("create_rns", "deposit_blocks"));
+
+    @Unique
     private static final ThreadLocal<ArrayDeque<AssemblyState>> MOVEARTH$ASSEMBLIES =
             ThreadLocal.withInitial(ArrayDeque::new);
+
+    /**
+     * Leaves ore deposits in the ground.
+     *
+     * <p>A deposit is an ordinary block -- no block entity, so none of Create's
+     * protections for blocks that carry data apply to it, and it is not tagged
+     * immovable. The resource <em>is</em> those blocks, which the miner counts
+     * as it works. Glue a few to a hull, assemble, fly home, set it down, and
+     * the deposit has moved: whichever region was given that resource no longer
+     * has it, and whichever one flew there does.
+     *
+     * <p>That would empty the whole regional allocation of meaning, so they are
+     * dropped from the block set before anything is built. Excluded rather than
+     * refused: the ship assembles without them and the deposit stays where it
+     * was, which needs no error to explain and leaves nothing half-built.
+     *
+     * <p>Guarded whether or not the glue can currently reach one. Finding out
+     * by experiment would cost a test; finding out by being wrong costs the
+     * resource map.
+     */
+    @ModifyVariable(method = "assembleBlocks", at = @At("HEAD"), argsOnly = true, remap = false)
+    private static Iterable<BlockPos> moveearth$leaveDepositsBehind(Iterable<BlockPos> positions,
+                                                                    ServerLevel level) {
+        List<BlockPos> kept = new ArrayList<>();
+        boolean removedAny = false;
+        for (BlockPos raw : positions) {
+            if (level.getBlockState(raw).is(MOVEARTH$DEPOSIT_BLOCKS)) {
+                removedAny = true;
+                continue;
+            }
+            kept.add(raw.immutable());
+        }
+        if (!removedAny) {
+            return positions;
+        }
+        Moveearth_addtional.LOGGER.debug("Left {} deposit block(s) in the ground during assembly",
+                kept.size());
+        return kept;
+    }
 
     @Inject(method = "assembleBlocks", at = @At("HEAD"))
     private static void moveearth$captureVehicle(ServerLevel level, BlockPos anchor,
