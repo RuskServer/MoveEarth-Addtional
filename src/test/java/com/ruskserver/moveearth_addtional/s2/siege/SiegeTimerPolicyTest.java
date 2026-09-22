@@ -57,4 +57,29 @@ class SiegeTimerPolicyTest {
         // stops counting for anything rather than counting a little.
         assertFalse(SiegeTimerPolicy.holds(true, 0L, 0L));
     }
+
+    @Test
+    @DisplayName("only recent work counts as pressing the siege")
+    void pressingWindow() {
+        assertTrue(SiegeTimerPolicy.pressing(0L, 2400L));
+        assertTrue(SiegeTimerPolicy.pressing(2400L, 2400L));
+        assertFalse(SiegeTimerPolicy.pressing(2401L, 2400L));
+    }
+
+    @Test
+    @DisplayName("a player who has never acted is not pressing anything")
+    void pressingNeedsEvidence() {
+        // Silence ends the hold rather than extending it: the cost of counting
+        // someone falls on the defender's nation, which stays locked in a war.
+        assertFalse(SiegeTimerPolicy.pressing(-1L, 2400L));
+    }
+
+    @Test
+    @DisplayName("a zero window still counts the instant of the act")
+    void pressingZeroWindow() {
+        // Set to zero the behaviour is nearly off, but not retroactively wrong:
+        // the tick someone swung still counts, and the one after does not.
+        assertTrue(SiegeTimerPolicy.pressing(0L, 0L));
+        assertFalse(SiegeTimerPolicy.pressing(1L, 0L));
+    }
 }

@@ -24,9 +24,13 @@ import java.util.UUID;
  * besieging force in your land is a siege whether or not it is hitting the wall
  * this minute, and the answer to one is to go and remove it rather than to wait.
  *
- * <p>Not free forever: the hold is budgeted, so a single player hiding in a hole
- * cannot keep a nation under siege indefinitely. When the budget runs out the
- * clock resumes and the attack has to land a hit like any other.
+ * <p>Presence means working, not standing. Digging, hitting something or being
+ * hit all count; a player who has done none of them recently is not holding
+ * anything open, whether they are hiding in a hole or asleep at the keyboard.
+ *
+ * <p>Budgeted on top of that, so even a genuine attack cannot keep a nation
+ * under siege indefinitely. When the budget runs out the clock resumes and the
+ * attack has to land a hit like any other.
  */
 public final class SiegePresence {
 
@@ -44,6 +48,12 @@ public final class SiegePresence {
         }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player.isSpectator() || !attacks(server, siege, player)) {
+                continue;
+            }
+            if (!SiegeActivityTracker.activeRecently(player)) {
+                // Standing is not besieging. Without this the whole hold could
+                // be spent by one player who stopped playing, which locks the
+                // defender's nation out of its own affairs for no reason.
                 continue;
             }
             if (inside(core, player.level().dimension().location(),

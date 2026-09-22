@@ -29,6 +29,21 @@ public final class SiegeTimerPolicy {
         return contested && spentTicks < budgetTicks;
     }
 
+    /**
+     * Whether an attacker counts as pressing the siege right now.
+     *
+     * <p>Split out so the window can be tested without a world. Presence that
+     * is not checked for work locks another nation's affairs on the strength of
+     * somebody standing still, and a window that is off by a tick either way
+     * would never be noticed from in game.
+     *
+     * @param sinceActiveTicks how long ago they last dug, hit or were hit;
+     *                         negative for never
+     */
+    public static boolean pressing(long sinceActiveTicks, long windowTicks) {
+        return sinceActiveTicks >= 0L && sinceActiveTicks <= windowTicks;
+    }
+
     public static State advance(State current, long elapsedTicks) {
         if (current == null || elapsedTicks <= 0L) return current;
         return new State(current.phase(), Math.max(0L, current.remainingTicks() - elapsedTicks));

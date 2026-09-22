@@ -57,6 +57,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue SIEGE_INITIAL_LOCK_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_ROLLING_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_CONTEST_HOLD_SECONDS;
+    private static final ModConfigSpec.IntValue SIEGE_CONTEST_ACTIVITY_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_RETRY_COOLDOWN_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_DUPLICATE_LOG_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_POST_FALL_SECONDS;
@@ -216,6 +217,20 @@ public final class S2TerritoryConfig {
                 "hole cannot keep a nation besieged all evening. When it runs out the",
                 "clock resumes and the attack has to land a hit like any other.")
                 .defineInRange("contestHoldSeconds", 2700, 0, 86400);
+        SIEGE_CONTEST_ACTIVITY_SECONDS = BUILDER.comment(
+                "How recently an attacker must have acted for their presence to stop the",
+                "siege clock.",
+                "",
+                "Presence alone would mean one player who lands a single hit and then walks",
+                "inside can hold two nations in a war for the whole budget while doing",
+                "nothing, and a client left logged in overnight would do it with nobody at",
+                "the keyboard. Neither of those is a siege.",
+                "",
+                "Breaking a block counts, as does taking or dealing damage. That is chosen",
+                "to fit what the hold is for: crossing ground dug to bedrock means digging,",
+                "so a tunneller stays counted, and a firefight has lulls, so a pinned",
+                "attacker does too. Someone standing still does not.")
+                .defineInRange("contestActivitySeconds", 120, 0, 3600);
         SIEGE_RETRY_COOLDOWN_SECONDS = BUILDER.defineInRange("retryCooldownSeconds", 3600, 0, 604800);
         SIEGE_DUPLICATE_LOG_SECONDS = BUILDER.defineInRange("duplicateLogCooldownSeconds", 60, 0, 3600);
         SIEGE_POST_FALL_SECONDS = BUILDER.defineInRange("postFallSeconds", 1800, 60, 604800);
@@ -343,6 +358,10 @@ public final class S2TerritoryConfig {
     public static long siegeRollingTicks() { return SIEGE_ROLLING_SECONDS.getAsInt() * 20L; }
     public static long siegeContestHoldTicks() {
         return SIEGE_CONTEST_HOLD_SECONDS.getAsInt() * 20L;
+    }
+
+    public static long siegeContestActivityTicks() {
+        return SIEGE_CONTEST_ACTIVITY_SECONDS.getAsInt() * 20L;
     }
 
     public static long siegeRetryCooldownTicks() { return SIEGE_RETRY_COOLDOWN_SECONDS.getAsInt() * 20L; }
