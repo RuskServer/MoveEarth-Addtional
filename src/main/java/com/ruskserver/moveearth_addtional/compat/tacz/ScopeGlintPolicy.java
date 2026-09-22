@@ -22,8 +22,29 @@ import net.minecraft.world.item.ItemStack;
  */
 public final class ScopeGlintPolicy {
 
-    /** Below this, an optic is a red dot rather than a scope. */
-    private static final float MINIMUM_ZOOM = 1.5F;
+    /**
+     * Below this magnification an optic does not give its owner away.
+     *
+     * <p>Read off the pack rather than guessed. Every optic in the default gun
+     * pack, by its highest zoom:
+     *
+     * <pre>
+     *   1.35 - 2.00   ten red dots and holographics, including every pistol one
+     *   2.50          ACOG, and the T1/T2/UH-1 sights
+     *   3.00 - 3.25   QMK152, HAMR, retro 2x
+     *   4.25 - 25.00  ELCAN, K98 and everything a sniper actually carries
+     * </pre>
+     *
+     * <p>Four is the line because the point of this is that lying still with a
+     * rifle costs something. A mid-range combat optic is carried by someone who
+     * is moving anyway, and there is no overlap to argue about there -- the gap
+     * between 3.25 and 4.25 is the widest in the whole list.
+     *
+     * <p>A constant rather than a setting. It decides what other players can
+     * see, so a client that could lower it would be a client that spots snipers
+     * nobody else can.
+     */
+    private static final float MINIMUM_ZOOM = 4.0F;
 
     /** Ignore the first part of the raise; the lens is not up yet. */
     private static final float MINIMUM_PROGRESS = 0.35F;
@@ -118,14 +139,20 @@ public final class ScopeGlintPolicy {
                 .orElse(new float[0]);
     }
 
+    /**
+     * Whether an optic magnifies enough to show.
+     *
+     * <p>The highest setting decides. A variable scope is one piece of glass
+     * whichever way it is dialled, and taking the lowest would have excluded
+     * every variable optic in the pack -- the 1.25x bottom end of a 25x Mk5HD
+     * counts as a red dot by that reading. It would also have handed everyone
+     * an obvious way to carry a sniper scope that never glints.
+     */
     private static boolean magnified(float[] zoom) {
-        if (zoom.length == 0) {
-            return false;
-        }
-        float lowest = zoom[0];
+        float highest = 0.0F;
         for (float value : zoom) {
-            lowest = Math.min(lowest, value);
+            highest = Math.max(highest, value);
         }
-        return lowest >= MINIMUM_ZOOM;
+        return highest >= MINIMUM_ZOOM;
     }
 }
