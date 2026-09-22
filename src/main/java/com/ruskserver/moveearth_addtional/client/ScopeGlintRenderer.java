@@ -45,6 +45,20 @@ public final class ScopeGlintRenderer {
             Moveearth_addtional.MODID, "textures/effect/scope_glint.png");
 
     /**
+     * Additive and emissive, the way a mob's glowing eyes are drawn.
+     *
+     * <p>Translucent was the first choice and it only read at night: laying a
+     * half-transparent sprite over a bright sky subtracts as much as it adds,
+     * so the thing meant to be a highlight disappeared in exactly the daylight
+     * that is supposed to cause it. Additive puts light in instead of painting
+     * over, which is also what a reflection does.
+     *
+     * <p>It still tests depth, so a rifle behind a wall does not shine through
+     * it.
+     */
+    private static final RenderType GLINT = RenderType.eyes(TEXTURE);
+
+    /**
      * How far a glint carries, in blocks.
      *
      * <p>Generous, because the whole point is to be seen from where the rifle
@@ -54,7 +68,17 @@ public final class ScopeGlintRenderer {
     private static final double MAX_DISTANCE = 220.0D;
 
     /** Apparent size, in blocks at one block away. Distance is cancelled out. */
-    private static final float APPARENT_SIZE = 0.045F;
+    private static final float APPARENT_SIZE = 0.055F;
+
+    /**
+     * How far in front of the eyes the lens sits, in blocks.
+     *
+     * <p>Drawn at the eye position it was inside the head model, which reads as
+     * a sliver appearing behind someone's skull rather than as a rifle scope.
+     * Pushed towards whoever is looking, so it clears the model from every
+     * angle without having to know which way the head is turned.
+     */
+    private static final double LENS_OFFSET = 0.45D;
 
     /** Never larger than this in world units, so it cannot swallow a face up close. */
     private static final float MAX_WORLD_SIZE = 1.1F;
@@ -104,12 +128,12 @@ public final class ScopeGlintRenderer {
                 continue;
             }
             if (vertices == null) {
-                vertices = buffers.getBuffer(RenderType.entityTranslucentEmissive(TEXTURE));
+                vertices = buffers.getBuffer(GLINT);
             }
             draw(poseStack, vertices, camera, eye, lens, Math.sqrt(distanceSquared), strength);
         }
         if (vertices != null) {
-            buffers.endBatch(RenderType.entityTranslucentEmissive(TEXTURE));
+            buffers.endBatch(GLINT);
         }
     }
 
@@ -210,8 +234,9 @@ public final class ScopeGlintRenderer {
         // Apparent size held constant: a fixed world-size sprite shrinks to
         // nothing at exactly the range this exists to cover.
         float size = Math.min(MAX_WORLD_SIZE, (float) (APPARENT_SIZE * distance));
+        Vec3 front = lens.add(eye.subtract(lens).normalize().scale(LENS_OFFSET));
         poseStack.pushPose();
-        poseStack.translate(lens.x - eye.x, lens.y - eye.y, lens.z - eye.z);
+        poseStack.translate(front.x - eye.x, front.y - eye.y, front.z - eye.z);
         poseStack.mulPose(camera.rotation());
         Matrix4f matrix = poseStack.last().pose();
         int alpha = (int) (255.0F * Math.min(1.0F, strength));
@@ -219,6 +244,14 @@ public final class ScopeGlintRenderer {
         corner(vertices, matrix, size, -size, 1.0F, 1.0F, alpha);
         corner(vertices, matrix, size, size, 1.0F, 0.0F, alpha);
         corner(vertices, matrix, -size, size, 0.0F, 0.0F, alpha);
+        // The same quad wound the other way. Whether a render type culls back
+        // faces is not something to be sure of from the outside, and a glint
+        // that is silently facing away is indistinguishable from one that was
+        // never drawn -- which is exactly how long this took to find.
+        corner(vertices, matrix, -size, size, 0.0F, 0.0F, alpha);
+        corner(vertices, matrix, size, size, 1.0F, 0.0F, alpha);
+        corner(vertices, matrix, size, -size, 1.0F, 1.0F, alpha);
+        corner(vertices, matrix, -size, -size, 0.0F, 1.0F, alpha);
         poseStack.popPose();
     }
 
