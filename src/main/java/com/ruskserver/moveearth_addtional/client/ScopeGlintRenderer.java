@@ -142,6 +142,56 @@ public final class ScopeGlintRenderer {
         return (0.28F + 0.72F * aim) * ScopeGlintPolicy.aimingProgress(other, partialTick);
     }
 
+    /**
+     * Why this player is or is not glinting, in words.
+     *
+     * <p>Written here rather than in the command that prints it, because the
+     * conditions are the ones the renderer actually applies. A diagnosis kept
+     * anywhere else is a second copy of the rules, and the first thing a second
+     * copy does is disagree with the first about the case being investigated.
+     */
+    public static String explain(Player other, float partialTick) {
+        if (!GUNS_PRESENT) {
+            return "tacz absent";
+        }
+        ScopeGlintPolicy.Reading reading = ScopeGlintPolicy.describe(other, partialTick);
+        StringBuilder out = new StringBuilder();
+        out.append(other.getGameProfile().getName()).append(": ");
+        if (!reading.gun()) {
+            return out.append("no gun in main hand").toString();
+        }
+        out.append("aim=").append(String.format(java.util.Locale.ROOT, "%.2f", reading.progress()));
+        if (reading.scopeId().isBlank()) {
+            return out.append(" scope=none").toString();
+        }
+        out.append(" scope=").append(reading.scopeId())
+                .append(" zoom=").append(java.util.Arrays.toString(reading.zoom()))
+                .append(" magnified=").append(reading.glints());
+        if (!lit(other)) {
+            var level = other.level();
+            out.append(" | not lit:")
+                    .append(level.dimensionType().hasSkyLight() ? "" : " no-skylight")
+                    .append(level.isDay() ? "" : " night")
+                    .append(level.isRaining() || level.isThundering() ? " weather" : "")
+                    .append(level.canSeeSky(BlockPos.containing(other.getEyePosition()))
+                            ? "" : " roofed");
+            return out.toString();
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) {
+            return out.toString();
+        }
+        if (other == minecraft.player) {
+            return out.append(" | you cannot see your own glint").toString();
+        }
+        Vec3 lens = other.getEyePosition(partialTick);
+        Vec3 eye = minecraft.player.getEyePosition(partialTick);
+        double facing = other.getViewVector(partialTick).dot(eye.subtract(lens).normalize());
+        return out.append(String.format(java.util.Locale.ROOT,
+                " | distance=%.0f facing=%.2f strength=%.2f",
+                lens.distanceTo(eye), facing, strengthOf(other, lens, eye, partialTick))).toString();
+    }
+
     /** No glint underground, indoors, at night or in the rain: there is no sun. */
     private static boolean lit(Player other) {
         var level = other.level();

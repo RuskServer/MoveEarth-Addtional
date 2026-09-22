@@ -32,23 +32,55 @@ public final class ScopeGlintPolicy {
 
     /** True when this player is aiming a gun that carries a magnified scope. */
     public static boolean scopedAndAiming(Player player, float partialTick) {
-        if (aimingProgress(player, partialTick) <= 0.0F) {
-            return false;
+        return describe(player, partialTick).glints();
+    }
+
+    /**
+     * Every condition, and what each one answered.
+     *
+     * <p>The glint has four ways to be absent and they look identical from
+     * inside the game. Worse, the zoom threshold was chosen against gun-pack
+     * data nobody had looked at, so "no glint" could equally mean the rifle is
+     * not scoped, the aim has not finished, or the number is simply wrong for
+     * this pack. This reports each separately so the answer is read rather
+     * than guessed.
+     *
+     * @param zoom the optic's zoom values as the pack declares them, so a
+     *             threshold can be set from what is there instead of from
+     *             what was assumed
+     */
+    public record Reading(boolean gun, float progress, String scopeId, float[] zoom,
+                          boolean glints) {
+
+        static Reading none(boolean gun, float progress) {
+            return new Reading(gun, progress, "", new float[0], false);
         }
+    }
+
+    public static Reading describe(Player player, float partialTick) {
+        float progress = aimingProgress(player, partialTick);
         ItemStack held = player.getMainHandItem();
         IGun gun = IGun.getIGunOrNull(held);
         if (gun == null) {
-            return false;
+            return Reading.none(false, progress);
         }
+        ResourceLocation opticId = null;
         ItemStack scope = gun.getAttachment(player.registryAccess(), held, AttachmentType.SCOPE);
-        if (scope.isEmpty()) {
+        if (!scope.isEmpty()) {
+            IAttachment attachment = IAttachment.getIAttachmentOrNull(scope);
+            opticId = attachment == null ? null : attachment.getAttachmentId(scope);
+        }
+        if (opticId == null) {
             // A built-in optic still counts: a rifle whose scope cannot be
             // removed is the most scoped thing in the game.
-            ResourceLocation builtin = gun.getBuiltInAttachmentId(held, AttachmentType.SCOPE);
-            return builtin != null && magnified(builtin);
+            opticId = gun.getBuiltInAttachmentId(held, AttachmentType.SCOPE);
         }
-        IAttachment attachment = IAttachment.getIAttachmentOrNull(scope);
-        return attachment != null && magnified(attachment.getAttachmentId(scope));
+        if (opticId == null) {
+            return Reading.none(true, progress);
+        }
+        float[] zoom = zoomOf(opticId);
+        return new Reading(true, progress, opticId.toString(), zoom,
+                progress > 0.0F && magnified(zoom));
     }
 
     /**
@@ -77,19 +109,23 @@ public final class ScopeGlintPolicy {
      * what decides: a variable optic dialled down is still a scope, and its
      * front lens is the same piece of glass either way.
      */
-    private static boolean magnified(ResourceLocation attachmentId) {
+    private static float[] zoomOf(ResourceLocation attachmentId) {
         return TimelessAPI.getClientAttachmentIndex(attachmentId)
                 .map(index -> {
                     float[] zoom = index.getZoom();
-                    if (zoom == null || zoom.length == 0) {
-                        return false;
-                    }
-                    float lowest = zoom[0];
-                    for (float value : zoom) {
-                        lowest = Math.min(lowest, value);
-                    }
-                    return lowest >= MINIMUM_ZOOM;
+                    return zoom == null ? new float[0] : zoom;
                 })
-                .orElse(false);
+                .orElse(new float[0]);
+    }
+
+    private static boolean magnified(float[] zoom) {
+        if (zoom.length == 0) {
+            return false;
+        }
+        float lowest = zoom[0];
+        for (float value : zoom) {
+            lowest = Math.min(lowest, value);
+        }
+        return lowest >= MINIMUM_ZOOM;
     }
 }
