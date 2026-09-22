@@ -18,6 +18,13 @@ public final class ModEntities {
                     .clientTrackingRange(10)
                     .build(Moveearth_addtional.MODID + ":airship_raider"));
 
+    public static final DeferredHolder<EntityType<?>, EntityType<WarehouseRaiderEntity>> WAREHOUSE_RAIDER =
+            ENTITY_TYPES.register("warehouse_raider", () -> EntityType.Builder
+                    .of(WarehouseRaiderEntity::new, MobCategory.MONSTER)
+                    .sized(0.6F, 1.95F)
+                    .clientTrackingRange(10)
+                    .build(Moveearth_addtional.MODID + ":warehouse_raider"));
+
     private ModEntities() {
     }
 }

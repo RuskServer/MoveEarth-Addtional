@@ -1093,5 +1093,6 @@
   "material.moveearth_addtional.copper": "Copper",
   "screen.moveearth_addtional.region.waiting": "Loading...",
   "screen.moveearth_addtional.region.elsewhere": "Belongs to other regions: %s",
-  "screen.moveearth_addtional.region.trace": "About %s%% of those still turns up here. Not enough to live on"
+  "screen.moveearth_addtional.region.trace": "About %s%% of those still turns up here. Not enough to live on",
+  "item.moveearth_addtional.precision_firing_assembly": "Precision Firing Assembly"
 }

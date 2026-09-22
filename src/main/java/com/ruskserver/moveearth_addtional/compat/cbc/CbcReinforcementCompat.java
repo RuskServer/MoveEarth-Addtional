@@ -11,6 +11,7 @@ import net.minecraft.world.level.Explosion;
 import net.minecraft.server.level.ServerPlayer;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
+import com.ruskserver.moveearth_addtional.warehouse.WarehouseSites;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.Event;
 import net.neoforged.bus.api.EventPriority;
@@ -53,6 +54,11 @@ public final class CbcReinforcementCompat {
             Method getPos = event.getClass().getMethod("getPos");
             if (!(getLevel.invoke(event) instanceof ServerLevel level)
                     || !(getPos.invoke(event) instanceof BlockPos pos)) return;
+            // CBC's direct block-damage event can bypass the generic explosion block list.
+            if (WarehouseSites.get(level.getServer()).protects(level.dimension().location(), pos)) {
+                if (event instanceof ICancellableEvent cancellable) cancellable.setCanceled(true);
+                return;
+            }
             Entity munition = nearbyMunition(level, pos);
             String entityPath = entityPath(munition);
             CbcMunitionDamage.Kind kind = CbcMunitionDamage.classify(entityPath);

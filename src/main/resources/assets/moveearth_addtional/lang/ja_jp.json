@@ -1093,5 +1093,6 @@
   "material.moveearth_addtional.copper": "銅",
   "screen.moveearth_addtional.region.waiting": "読み込み中…",
   "screen.moveearth_addtional.region.elsewhere": "他地方の資源: %s",
-  "screen.moveearth_addtional.region.trace": "他地方の資源も %s%% ほどは出ます。自給はできません"
+  "screen.moveearth_addtional.region.trace": "他地方の資源も %s%% ほどは出ます。自給はできません",
+  "item.moveearth_addtional.precision_firing_assembly": "精密射撃機構"
 }

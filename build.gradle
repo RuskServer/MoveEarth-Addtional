@@ -162,6 +162,9 @@ tasks.named('processResources', ProcessResources) {
         into 'assets/moveearth_addtional/menu'
         rename { 'changelog.md' }
     }
+    from('warehouse.nbt') {
+        into 'data/moveearth_addtional/structure'
+    }
     from('THIRD_PARTY_NOTICES.md') {
         into 'META-INF'
     }

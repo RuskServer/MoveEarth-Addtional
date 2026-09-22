@@ -16,5 +16,6 @@ public final class ModEntityRenderers {
     @SubscribeEvent
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(ModEntities.AIRSHIP_RAIDER.get(), ZombieRenderer::new);
+        event.registerEntityRenderer(ModEntities.WAREHOUSE_RAIDER.get(), ZombieRenderer::new);
     }
 }

@@ -13,6 +13,7 @@ import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryCoreHealthService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.UpkeepPenalty;
+import com.ruskserver.moveearth_addtional.warehouse.WarehouseSites;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.TickTask;
@@ -124,6 +125,7 @@ public final class WarnauticsReinforcementCompat {
                                           SiegeService.AttackAttribution attribution,
                                           BlockPos c4Primary) {
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
+        WarehouseSites warehouses = WarehouseSites.get(level.getServer());
         Set<BlockPos> changed = new LinkedHashSet<>();
         Set<BlockPos> processed = new HashSet<>();
         Map<Long, UpkeepPenalty> penaltiesByChunk = new HashMap<>();
@@ -145,6 +147,10 @@ public final class WarnauticsReinforcementCompat {
         while (iterator.hasNext()) {
             Object value = iterator.next();
             if (!(value instanceof BlockPos pos) || !processed.add(pos)) continue;
+            if (warehouses.protects(level.dimension().location(), pos)) {
+                iterator.remove();
+                continue;
+            }
             if (SiegeService.peaceTruceBlocks(attribution, level, pos)) {
                 iterator.remove();
                 continue;
@@ -262,6 +268,10 @@ public final class WarnauticsReinforcementCompat {
             if (!(event instanceof ICancellableEvent cancellable)
                     || !(chipLevel.invoke(event) instanceof ServerLevel level)
                     || !(chipPos.invoke(event) instanceof BlockPos pos)) return;
+            if (WarehouseSites.get(level.getServer()).protects(level.dimension().location(), pos)) {
+                cancellable.setCanceled(true);
+                return;
+            }
             boolean protectedBlock = ReinforcementSavedData.get(level).get(pos)
                     .filter(ReinforcementEntry::enabled).isPresent()
                     || com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(level.getServer())

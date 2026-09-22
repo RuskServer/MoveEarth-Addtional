@@ -13,5 +13,6 @@ public final class ModEntityEvents {
     @SubscribeEvent
     public static void registerAttributes(EntityAttributeCreationEvent event) {
         event.put(ModEntities.AIRSHIP_RAIDER.get(), AirshipRaiderEntity.createAttributes().build());
+        event.put(ModEntities.WAREHOUSE_RAIDER.get(), AirshipRaiderEntity.createAttributes().build());
     }
 }

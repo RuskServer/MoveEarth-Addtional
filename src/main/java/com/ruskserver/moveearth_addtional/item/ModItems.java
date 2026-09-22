@@ -53,4 +53,8 @@ public class ModItems {
     public static final DeferredHolder<Item, Item> WELDING_TOOL = ITEMS.register("welding_tool",
             () -> new WeldingToolItem(new Item.Properties().stacksTo(1).durability(512)
                     .rarity(net.minecraft.world.item.Rarity.UNCOMMON)));
+
+    public static final DeferredHolder<Item, Item> PRECISION_FIRING_ASSEMBLY = ITEMS.register(
+            "precision_firing_assembly",
+            () -> new Item(new Item.Properties().rarity(net.minecraft.world.item.Rarity.RARE)));
 }

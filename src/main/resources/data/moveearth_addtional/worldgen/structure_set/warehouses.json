@@ -1,0 +1,9 @@
+{
+  "structures": [
+    {"structure": "moveearth_addtional:warehouse", "weight": 1}
+  ],
+  "placement": {
+    "type": "moveearth_addtional:warehouse_region",
+    "salt": 18742065
+  }
+}

@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 
 /** Server-authoritative registry of placed territory cores and reserved chunk areas. */
 public final class TerritorySavedData extends SavedData {
+    private transient MinecraftServer attachedServer;
     private final Map<CoreKey, CoreRecord> cores = new LinkedHashMap<>();
     private final Map<UUID, VaultChunk> vaults = new LinkedHashMap<>();
     private final Map<UUID, Long> vaultChangeCooldowns = new LinkedHashMap<>();
@@ -139,6 +140,10 @@ public final class TerritorySavedData extends SavedData {
 
     public List<CoreRecord> cores() {
         return List.copyOf(cores.values());
+    }
+
+    public List<VaultChunk> vaultChunks() {
+        return List.copyOf(vaults.values());
     }
 
     public Optional<CoreRecord> damageCore(ResourceLocation dimension, BlockPos pos, int amount) {
@@ -459,6 +464,8 @@ public final class TerritorySavedData extends SavedData {
 
     private boolean conflicts(UUID nationId, ResourceLocation dimension,
                               TerritoryPreviewArea proposed, CoreKey ignored) {
+        if (attachedServer != null && com.ruskserver.moveearth_addtional.warehouse.WarehouseSites
+                .get(attachedServer).conflictsClaim(dimension, proposed)) return true;
         boolean coreConflict = cores.entrySet().stream()
                 .filter(entry -> ignored == null || !entry.getKey().equals(ignored))
                 .map(Map.Entry::getValue)
@@ -715,9 +722,11 @@ public final class TerritorySavedData extends SavedData {
     }
 
     public static TerritorySavedData get(MinecraftServer server) {
-        return server.overworld().getDataStorage().computeIfAbsent(
+        TerritorySavedData data = server.overworld().getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(TerritorySavedData::new, TerritorySavedData::load, null),
                 "moveearth_territory_cores");
+        data.attachedServer = server;
+        return data;
     }
 
     public enum CoreType { CAPITAL, OUTPOST }

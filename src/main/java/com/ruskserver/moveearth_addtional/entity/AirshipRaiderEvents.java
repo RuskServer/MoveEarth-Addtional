@@ -16,7 +16,8 @@ public final class AirshipRaiderEvents {
 
     @SubscribeEvent
     public static void onDeath(LivingDeathEvent event) {
-        if (event.getEntity() instanceof AirshipRaiderEntity raider && raider.getRaidId() > 0) {
+        if (event.getEntity() instanceof AirshipRaiderEntity raider
+                && !(raider instanceof WarehouseRaiderEntity) && raider.getRaidId() > 0) {
             AirshipRaidManager.onRaiderDeath(raider.getRaidId(), raider.getUUID());
         }
     }
@@ -24,7 +25,8 @@ public final class AirshipRaiderEvents {
     @SubscribeEvent
     public static void onJoinLevel(EntityJoinLevelEvent event) {
         if (!(event.getLevel() instanceof ServerLevel)) return;
-        if (event.getEntity() instanceof AirshipRaiderEntity raider && raider.getRaidId() > 0
+        if (event.getEntity() instanceof AirshipRaiderEntity raider
+                && !(raider instanceof WarehouseRaiderEntity) && raider.getRaidId() > 0
                 && !AirshipRaidManager.isActiveRaid(raider.getRaidId())) {
             event.setCanceled(true);
         }
@@ -32,7 +34,8 @@ public final class AirshipRaiderEvents {
 
     @SubscribeEvent
     public static void onLeaveLevel(EntityLeaveLevelEvent event) {
-        if (!(event.getEntity() instanceof AirshipRaiderEntity raider) || raider.getRaidId() <= 0) return;
+        if (!(event.getEntity() instanceof AirshipRaiderEntity raider)
+                || raider instanceof WarehouseRaiderEntity || raider.getRaidId() <= 0) return;
         net.minecraft.world.entity.Entity.RemovalReason reason = raider.getRemovalReason();
         if (reason != null && reason.shouldDestroy()) {
             AirshipRaidManager.onRaiderDeath(raider.getRaidId(), raider.getUUID());

@@ -125,6 +125,12 @@ public final class TerrainTileStore {
     }
 
     public static void install(TerrainTileStore store) {
+        try {
+            com.ruskserver.moveearth_addtional.warehouse.WarehouseTemplateValidator.validate();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Bundled warehouse template is invalid", exception);
+        }
+        com.ruskserver.moveearth_addtional.warehouse.WarehouseRegionAnchors.prepare(store);
         active = store;
         Moveearth_addtional.LOGGER.info("Terrain tile store installed with {} tile(s), sea level Y={}",
                 store.tiles.size(), store.seaY);
@@ -132,6 +138,7 @@ public final class TerrainTileStore {
 
     public static void clear() {
         active = null;
+        com.ruskserver.moveearth_addtional.warehouse.WarehouseRegionAnchors.clear();
     }
 
     /**
