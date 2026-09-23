@@ -14,6 +14,7 @@ import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.ruskserver.moveearth_addtional.network.C2S_PrisonerActionPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PrisonerSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PrisonerActionResultPacket;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -63,9 +64,17 @@ public final class PrisonerService {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST, receiveCanceled = true)
     public static void onPlayerInteract(PlayerInteractEvent.EntityInteract event) {
-        if (!(event.getEntity() instanceof ServerPlayer actor) || event.getHand() != InteractionHand.MAIN_HAND) return;
+        if (!(event.getEntity() instanceof ServerPlayer actor)) return;
         UUID targetId = captiveId(event.getTarget());
         if (targetId == null || targetId.equals(actor.getUUID())) return;
+        // PlayerRevive handles both hand events without checking the hand. Consume the offhand
+        // event too, otherwise a single click with restraints also starts reviving the captive.
+        if (actor.getMainHandItem().is(ModItems.RESTRAINTS.get())) {
+            event.setCanceled(true);
+            if (event.getHand() != InteractionHand.MAIN_HAND) return;
+        } else if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
         PrisonerSavedData prisoners = PrisonerSavedData.get(actor.server);
         PrisonerSavedData.Custody custody = prisoners.custody(targetId).orElse(null);
 
@@ -82,6 +91,8 @@ public final class PrisonerService {
                     MoveEarthMessage.success(Component.translatable(
                             "message.moveearth_addtional.prisoner.rescued_captive",
                             actor.getGameProfile().getName())));
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(actor,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.PRISONER_FREED);
             event.setCanceled(true);
             return;
         }
@@ -129,13 +140,6 @@ public final class PrisonerService {
         SiegeParticipationSavedData.Participation battle = SiegeParticipationSavedData.get(actor.server)
                 .forPlayer(targetId).orElseGet(() -> SiegeParticipationSavedData.get(actor.server)
                         .forPlayer(actor.getUUID()).orElse(null));
-        int downedTicks = event.getTarget() instanceof ServerPlayer player
-                ? CompatEventHandler.playerDownedTicks(player) : event.getTarget().tickCount;
-        if (downedTicks >= 0 && downedTicks < S2TerritoryConfig.captureProtectionTicks()) {
-            actor.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
-                    "message.moveearth_addtional.prisoner.capture_protected")));
-            return;
-        }
         ATTEMPTS.put(actor.getUUID(), new RestraintAttempt(targetId, actor.server.getTickCount(),
                 actorNation, targetHome, targetConflictNation == null ? targetHome : targetConflictNation,
                 battle == null ? null : battle.siegeId(), battle == null ? null : battle.contractId()));
@@ -186,11 +190,17 @@ public final class PrisonerService {
         }
         int elapsed = captor.server.getTickCount() - attempt.startedTick;
         int required = S2TerritoryConfig.restraintTicks();
-        if (elapsed < required) {
-            captor.displayClientMessage(Component.translatable(
-                            "message.moveearth_addtional.prisoner.status.restraining",
-                            Math.min(100, elapsed * 100 / Math.max(1, required)))
-                    .withStyle(ChatFormatting.GOLD), true);
+        int downedTicks = target instanceof ServerPlayer player
+                ? CompatEventHandler.playerDownedTicks(player) : target.tickCount;
+        int protectionRemaining = PrisonerRestraintPolicy.protectionRemaining(
+                S2TerritoryConfig.captureProtectionTicks(), downedTicks);
+        if (!PrisonerRestraintPolicy.canComplete(elapsed, required, protectionRemaining)) {
+            Component status = protectionRemaining > 0
+                    ? Component.translatable("message.moveearth_addtional.prisoner.status.protection_wait",
+                            (protectionRemaining + 19) / 20)
+                    : Component.translatable("message.moveearth_addtional.prisoner.status.restraining",
+                            Math.min(100, elapsed * 100 / Math.max(1, required)));
+            captor.displayClientMessage(status.copy().withStyle(ChatFormatting.GOLD), true);
             return;
         }
         PrisonerSavedData data = PrisonerSavedData.get(captor.server);
@@ -308,6 +318,8 @@ public final class PrisonerService {
                     "message.moveearth_addtional.prisoner.intake.too_far",
                     (int) Math.ceil(Math.sqrt(captive.distanceToSqr(intake.getCenter()))),
                     (int) Math.sqrt(INTAKE_DISTANCE_SQR))));
+            PacketDistributor.sendToPlayer(captor, new S2C_PrisonerActionResultPacket(false,
+                    "screen.moveearth_addtional.prisoner.action.too_far"));
             return false;
         }
         if (data.imprison(custody.playerId(), captor.level().dimension().location(), intake,
@@ -327,6 +339,10 @@ public final class PrisonerService {
         captor.server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
                 "message.moveearth_addtional.prisoner.captured", name,
                 NationSavedData.get(captor.server).nation(owner).map(NationSavedData.Nation::name).orElse("?"))), false);
+        PacketDistributor.sendToPlayer(captor, new S2C_PrisonerActionResultPacket(true,
+                "screen.moveearth_addtional.prisoner.action.imprisoned"));
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(captor,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.PRISONER_IMPRISONED);
         return true;
     }
 
@@ -440,7 +456,10 @@ public final class PrisonerService {
     }
 
     private static void releaseBy(ServerPlayer actor, UUID targetId) {
-        if (targetId == null) return;
+        if (targetId == null) {
+            sendFailure(actor, "message.moveearth_addtional.prisoner.release_denied");
+            return;
+        }
         PrisonerSavedData data = PrisonerSavedData.get(actor.server);
         NationSavedData nations = NationSavedData.get(actor.server);
         UUID actorNation = nations.nationIdFor(actor.getUUID()).orElse(null);
@@ -467,6 +486,8 @@ public final class PrisonerService {
         }
         actor.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
                 "message.moveearth_addtional.prisoner.release_success", playerName(actor.server, targetId))));
+        PacketDistributor.sendToPlayer(actor, new S2C_PrisonerActionResultPacket(true,
+                "screen.moveearth_addtional.prisoner.action.released"));
     }
 
     private static void transferEscort(ServerPlayer actor, UUID newCaptorId) {
@@ -489,6 +510,8 @@ public final class PrisonerService {
         }
         actor.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
                 "message.moveearth_addtional.prisoner.transfer_success", newCaptor.getGameProfile().getName())));
+        PacketDistributor.sendToPlayer(actor, new S2C_PrisonerActionResultPacket(true,
+                "screen.moveearth_addtional.prisoner.action.transferred"));
         newCaptor.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
                 "message.moveearth_addtional.prisoner.transfer_received",
                 playerName(actor.server, custody.playerId()), formatTicks(custody.remainingTicks()))));
@@ -643,6 +666,8 @@ public final class PrisonerService {
     }
 
     public static int returnAll(MinecraftServer server, UUID firstNation, UUID secondNation) {
+        ATTEMPTS.values().removeIf(attempt -> PrisonerPairPolicy.matches(
+                attempt.captiveConflictNation, attempt.captorNation, firstNation, secondNation));
         PrisonerSavedData data = PrisonerSavedData.get(server);
         List<PrisonerSavedData.Prisoner> released = data.releaseBetween(firstNation, secondNation);
         int custodyReleased = 0;
@@ -712,10 +737,9 @@ public final class PrisonerService {
         if (!isDowned(captor.server, target, attempt.targetId)) {
             return "message.moveearth_addtional.prisoner.restraint_cancelled.target_recovered";
         }
-        return hasCaptureConflict(captor.server, attempt.targetId,
-                attempt.captiveConflictNation,
-                attempt.captorNation) ? null
-                : "message.moveearth_addtional.prisoner.restraint_cancelled.conflict_ended";
+        // The Siege was checked when restraint started. Its timer can roll over while the
+        // captor is physically securing the downed player; that must not erase this attempt.
+        return null;
     }
 
     private static String escortCancellationKey(ServerPlayer captor, Entity captive,
@@ -730,10 +754,8 @@ public final class PrisonerService {
         if (!captor.isAlive() || CompatEventHandler.isPlayerDown(captor)) {
             return "message.moveearth_addtional.prisoner.escort_cancelled.captor_incapacitated";
         }
-        return hasCaptureConflict(captor.server, custody.playerId(),
-                custody.conflictNation(),
-                custody.holdingNation()) ? null
-                : "message.moveearth_addtional.prisoner.escort_cancelled.conflict_ended";
+        // Custody survives a Siege timer rollover. Peace/settlement explicitly returns captives.
+        return null;
     }
 
     private static void cancelCustody(ServerPlayer captor, Entity captive,
@@ -749,6 +771,7 @@ public final class PrisonerService {
 
     private static void sendFailure(ServerPlayer player, String translationKey) {
         player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(translationKey)));
+        PacketDistributor.sendToPlayer(player, new S2C_PrisonerActionResultPacket(false, translationKey));
     }
 
     private static String nationName(MinecraftServer server, UUID nationId) {

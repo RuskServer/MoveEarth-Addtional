@@ -95,7 +95,13 @@ public final class SiegeDamageService {
                 return false;
             }
             ReinforcementDamage result = damageReinforcement(level, pos, entry, kind, penalty, true);
-            if (result.appliedDamage() > 0) SiegeService.recordAttack(attacker, level, pos, true);
+            if (result.appliedDamage() > 0) {
+                var applied = SiegeService.recordAttack(attacker, level, pos, true);
+                if (attacker != null && applied.siege() != null) {
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(attacker,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.ARTILLERY_HIT);
+                }
+            }
             return true;
         }
         var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
@@ -171,7 +177,13 @@ public final class SiegeDamageService {
                 ReinforcementDamage result = damageReinforcement(
                         level, located.pos(), entry, kind, penalty, false);
                 if (result.appliedDamage() > 0) {
-                    SiegeService.recordAttack(attribution, level, located.pos(), true);
+                    var applied = SiegeService.recordAttack(
+                            attribution, level, located.pos(), true);
+                    if (applied.siege() != null && attribution != null && attribution.actorId() != null) {
+                        ServerPlayer actor = level.getServer().getPlayerList().getPlayer(attribution.actorId());
+                        if (actor != null) com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(actor,
+                                com.ruskserver.moveearth_addtional.advancement.ModCriteria.ARTILLERY_HIT);
+                    }
                     reinforcementChanged = true;
                     changedPositions.add(located.pos().immutable());
                 }

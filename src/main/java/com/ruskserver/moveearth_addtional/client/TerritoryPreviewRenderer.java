@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryPreviewPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
+import com.ruskserver.moveearth_addtional.s2.nation.NationFoundationSite;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryPreviewArea;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -57,19 +58,44 @@ public final class TerritoryPreviewRenderer {
         buffers.endBatch();
     }
 
+    /**
+     * The one line under the selection title.
+     *
+     * <p>Comes from the same verdict the server will reach, so the reason shown
+     * while aiming and the reason returned after confirming are the same
+     * sentence rather than two that can drift apart.
+     */
+    private static Component foundationNotice() {
+        NationFoundationSite.Verdict verdict = NationFoundationClientState.verdict();
+        if (NationFoundationClientState.candidate() == null || verdict == null) {
+            return Component.translatable("overlay.moveearth_addtional.nation.foundation.invalid");
+        }
+        return verdict.allowed()
+                ? Component.translatable("overlay.moveearth_addtional.nation.foundation.confirm")
+                : Component.translatable(verdict.messageKey());
+    }
+
     private static void renderFoundation(PoseStack poseStack, MultiBufferSource.BufferSource buffers, Vec3 camera) {
         BlockPos pos = NationFoundationClientState.candidate();
         if (pos == null) return;
+        // A refused site is still drawn, in red. Hiding it left the player with a
+        // blank screen and no way to tell a bad spot from one they were not
+        // aiming at, which is the whole reason this selection was hard to use.
+        boolean placeable = NationFoundationClientState.placeable();
+        float red = placeable ? 0.22F : 1.0F;
+        float green = placeable ? 1.0F : 0.36F;
+        float blue = placeable ? 0.48F : 0.36F;
         VertexConsumer outline = buffers.getBuffer(RenderType.lines());
         LevelRenderer.renderLineBox(poseStack, outline,
                 new AABB(pos).inflate(0.012D).move(-camera.x, -camera.y, -camera.z),
-                0.22F, 1.0F, 0.48F, 1.0F);
+                red, green, blue, 1.0F);
+        if (!placeable) return;
         TerritoryPreviewArea area = new TerritoryPreviewArea(pos.getX() >> 4, pos.getZ() >> 4, 1);
         double y = pos.getY() + 0.035D;
         AABB reserved = new AABB(area.minBlockX(), y, area.minBlockZ(),
                 area.maxBlockXExclusive(), y + 0.16D, area.maxBlockZExclusive())
                 .move(-camera.x, -camera.y, -camera.z);
-        LevelRenderer.renderLineBox(poseStack, outline, reserved, 0.22F, 1.0F, 0.48F, 1.0F);
+        LevelRenderer.renderLineBox(poseStack, outline, reserved, red, green, blue, 1.0F);
     }
 
     private static void renderVault(VaultClientState.VaultMarker vault, Minecraft minecraft,
@@ -189,11 +215,9 @@ public final class TerritoryPreviewRenderer {
             graphics.drawString(minecraft.font,
                     Component.translatable("overlay.moveearth_addtional.nation.foundation.title"),
                     x + 11, y + 8, 0xFF68E09B, false);
-            graphics.drawString(minecraft.font,
-                    Component.translatable(NationFoundationClientState.candidate() == null
-                            ? "overlay.moveearth_addtional.nation.foundation.invalid"
-                            : "overlay.moveearth_addtional.nation.foundation.confirm"),
-                    x + 11, y + 23, 0xFFE8EDF3, false);
+            graphics.drawString(minecraft.font, foundationNotice(),
+                    x + 11, y + 23,
+                    NationFoundationClientState.placeable() ? 0xFFE8EDF3 : 0xFFFF8F8F, false);
             return;
         }
         boolean showLeakCount = showClosure && !closure.unreinforcedLeakBlocks().isEmpty();

@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_NationSettingsPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
@@ -10,7 +11,6 @@ import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
 import com.ruskserver.moveearth_addtional.s2.nation.NationNamePolicy;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -25,8 +25,8 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
     private static int nextRequestId;
     private S2NationSnapshot snapshot;
     private final List<S2NationSnapshot.MemberView> successorCandidates;
-    private EditBox nameEdit;
-    private EditBox tagEdit;
+    private MoveEarthTextField nameEdit;
+    private MoveEarthTextField tagEdit;
     private UUID selectedSuccessor;
     private String selectedSuccessorName = "";
     private Confirm confirm = Confirm.NONE;
@@ -46,25 +46,17 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
 
     @Override protected void init() {
         Rect panel = panelBounds();
-        nameEdit = new EditBox(font, panel.x() + 28, panel.y() + 91, 220, 18,
+        nameEdit = new MoveEarthTextField(font, panel.x() + 23, panel.y() + 88, 230, 24,
                 Component.translatable("screen.moveearth_addtional.nation.name"));
-        tagEdit = new EditBox(font, panel.x() + 28, panel.y() + 142, 110, 18,
+        tagEdit = new MoveEarthTextField(font, panel.x() + 23, panel.y() + 139, 120, 24,
                 Component.translatable("screen.moveearth_addtional.nation.tag"));
         nameEdit.setMaxLength(NationNamePolicy.MAX_NAME_LENGTH);
         tagEdit.setMaxLength(NationNamePolicy.MAX_TAG_LENGTH);
         nameEdit.setValue(snapshot.nationName());
         tagEdit.setValue(snapshot.nationTag());
-        configure(nameEdit);
-        configure(tagEdit);
         addRenderableWidget(nameEdit);
         addRenderableWidget(tagEdit);
         setInitialFocus(nameEdit);
-    }
-
-    private static void configure(EditBox edit) {
-        edit.setBordered(false);
-        edit.setTextColor(TEXT);
-        edit.setTextColorUneditable(MUTED);
     }
 
     @Override public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) { }
@@ -81,10 +73,8 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
 
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.name"),
                 panel.x() + 28, panel.y() + 73, MUTED, false);
-        drawField(graphics, nameEdit);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.tag"),
                 panel.x() + 28, panel.y() + 124, MUTED, false);
-        drawField(graphics, tagEdit);
         NationNamePolicy.Validation validation = validation();
         if (!validation.valid()) {
             graphics.drawString(font, Component.translatable(
@@ -158,13 +148,6 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
         drawButton(graphics, font, modalConfirm(modal),
                 Component.translatable("screen.moveearth_addtional.nation.settings.confirm"), DANGER,
                 modalConfirm(modal).contains(mouseX, mouseY), pendingRequestId < 0);
-    }
-
-    private static void drawField(GuiGraphics graphics, EditBox field) {
-        Rect bounds = new Rect(field.getX() - 5, field.getY() - 3,
-                field.getWidth() + 10, field.getHeight() + 6);
-        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), CARD);
-        drawBorder(graphics, bounds, field.isFocused() ? ACCENT : BORDER);
     }
 
     @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {

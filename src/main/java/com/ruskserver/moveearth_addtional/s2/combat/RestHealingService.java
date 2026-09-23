@@ -102,7 +102,11 @@ public final class RestHealingService {
         state.healTicks = 0;
         if (amount <= 0.0F) return;
         amount = data.consume(player.getUUID(), amount, maximum);
-        if (amount > 0.0F) player.heal(amount);
+        if (amount > 0.0F) {
+            player.heal(amount);
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.REST_HEALED);
+        }
     }
 
     @SubscribeEvent

@@ -50,6 +50,10 @@ public final class CombatTagService {
             CombatTagSavedData data = CombatTagSavedData.get(victim.server);
             data.tag(victim.getUUID(), attacker.getUUID(), duration);
             data.tag(attacker.getUUID(), victim.getUUID(), duration);
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(victim,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.COMBAT_STARTED);
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(attacker,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.COMBAT_STARTED);
             return;
         }
         if (event.getEntity() instanceof ArmorStand body && body.getPersistentData().hasUUID(BODY_OWNER)) {

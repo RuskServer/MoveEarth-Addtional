@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.warehouse;
 
+import com.ruskserver.moveearth_addtional.ModSounds;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.entity.ModEntities;
 import com.ruskserver.moveearth_addtional.entity.WarehouseRaiderEntity;
@@ -11,13 +12,12 @@ import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
-import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.BossEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.MenuType;
@@ -38,6 +38,9 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.HashSet;
 
 /** Operator-gated combat prototype. No public activation or loot until the reward phase is ready. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
@@ -51,6 +54,7 @@ public final class WarehouseEncounterService {
     private static final int REINFORCEMENT_GUARDS = 2;
     private static final Map<Integer, ServerBossEvent> BARS = new HashMap<>();
     private static final Map<Integer, Integer> MISSING_TICKS = new HashMap<>();
+    private static final Map<Integer, Set<UUID>> PARTICIPANTS = new HashMap<>();
 
     private WarehouseEncounterService() { }
 
@@ -99,6 +103,7 @@ public final class WarehouseEncounterService {
         RaiderSquadMemory.removeRaid(-region);
         clearBar(region);
         MISSING_TICKS.remove(region);
+        PARTICIPANTS.remove(region);
         ServerLevel level = server.overworld();
         if (previous.boss() != null) {
             Entity boss = level.getEntity(previous.boss());
@@ -129,13 +134,24 @@ public final class WarehouseEncounterService {
         player.openMenu(new SimpleMenuProvider(
                 (id, inventory, ignored) -> new ChestMenu(MenuType.GENERIC_9x1, id, inventory, loot, 1),
                 Component.literal("地方" + site.regionId() + " 倉庫戦利品")));
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.WAREHOUSE_LOOT_OPENED);
         return true;
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onDamage(LivingDamageEvent.Post event) {
-        if (!(event.getEntity() instanceof WarehouseRaiderEntity boss) || !isBoss(boss)
-                || !(boss.level() instanceof ServerLevel level)) return;
+        if (!(event.getEntity() instanceof WarehouseRaiderEntity boss)
+                || taggedRegion(boss) <= 0 || !(boss.level() instanceof ServerLevel level)) return;
+        if (event.getSource().getEntity() instanceof ServerPlayer participant) {
+            if (isBoss(boss)) {
+                PARTICIPANTS.computeIfAbsent(taggedRegion(boss), ignored -> new HashSet<>())
+                        .add(participant.getUUID());
+            }
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(participant,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.WAREHOUSE_RAID_PARTICIPATED);
+        }
+        if (!isBoss(boss)) return;
         int region = taggedRegion(boss);
         if (WarehouseEncounterPolicy.firstHalfHealthHit(
                 WarehouseEncounterState.get(level.getServer()).get(region).phase()
@@ -167,6 +183,14 @@ public final class WarehouseEncounterService {
                         + "の倉庫警備隊長が倒されました。建物内の輸送コンテナから戦利品を回収できます"), false);
         Moveearth_addtional.LOGGER.info("Warehouse encounter defeated: region={} cycle={}", region,
                 WarehouseEncounterState.get(level.getServer()).get(region).cycle());
+        for (UUID participantId : PARTICIPANTS.getOrDefault(region, Set.of())) {
+            ServerPlayer participant = level.getServer().getPlayerList().getPlayer(participantId);
+            if (participant != null) {
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(participant,
+                        com.ruskserver.moveearth_addtional.advancement.ModCriteria.WAREHOUSE_BOSS_DEFEATED);
+            }
+        }
+        PARTICIPANTS.remove(region);
     }
 
     @SubscribeEvent
@@ -197,6 +221,13 @@ public final class WarehouseEncounterService {
             int region = site.regionId();
             state.advance(region, OpenTimeService.now(server));
             WarehouseEncounterState.Encounter encounter = state.get(region);
+            for (ServerPlayer player : level.players()) {
+                if (!player.isSpectator() && WarehouseSitePolicy.insideStructure(site.min().getX(), site.min().getY(),
+                        site.min().getZ(), player.getBlockX(), player.getBlockY(), player.getBlockZ())) {
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.WAREHOUSE_ENTERED);
+                }
+            }
             if (encounter.phase() == WarehouseEncounterState.Phase.DORMANT
                     && OpenTimeService.isOpen(server)
                     && server.getPlayerList().getPlayers().stream().anyMatch(player ->
@@ -228,6 +259,7 @@ public final class WarehouseEncounterService {
                     RaiderSquadMemory.removeRaid(-region);
                     clearBar(region);
                     discardGuards(level, region);
+                    PARTICIPANTS.remove(region);
                     Moveearth_addtional.LOGGER.warn("Warehouse encounter failed: missing boss in region {}", region);
                 }
                 continue;
@@ -249,6 +281,7 @@ public final class WarehouseEncounterService {
         BARS.values().forEach(ServerBossEvent::removeAllPlayers);
         BARS.clear();
         MISSING_TICKS.clear();
+        PARTICIPANTS.clear();
         for (WarehouseSites.Site site : WarehouseSites.get(event.getServer()).all()) {
             RaiderSquadMemory.removeRaid(-site.regionId());
         }
@@ -365,14 +398,11 @@ public final class WarehouseEncounterService {
     private static void announceHalfHealth(MinecraftServer server, int region, BlockPos pos) {
         int approxX = Math.floorDiv(pos.getX(), 256) * 256;
         int approxZ = Math.floorDiv(pos.getZ(), 256) * 256;
-        Component title = Component.literal("倉庫襲撃中");
-        Component subtitle = Component.literal("地方" + region + " / およそ X=" + approxX + " Z=" + approxZ);
         server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(
                 "地方" + region
-                        + "の警備隊長が半分まで削られました。" + subtitle.getString()), false);
+                        + "の警備隊長が半分まで削られました。およそ X=" + approxX + " Z=" + approxZ), false);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            player.connection.send(new ClientboundSetTitleTextPacket(title));
-            player.connection.send(new ClientboundSetSubtitleTextPacket(subtitle));
+            player.playNotifySound(ModSounds.SERVER_NOTICE.get(), SoundSource.MASTER, 0.85F, 1.0F);
         }
         Moveearth_addtional.LOGGER.info("Warehouse half-health alert: region={} approxX={} approxZ={}",
                 region, approxX, approxZ);

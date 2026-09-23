@@ -1,0 +1,37 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "opened": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "nation_hub_opened"
+      }
+    }
+  },
+  "display": {
+    "announce_to_chat": false,
+    "description": {
+      "translate": "advancements.moveearth_addtional.open_nation_hub.description",
+      "with": [
+        {
+          "keybind": "key.moveearth_addtional.s2_hub"
+        }
+      ]
+    },
+    "frame": "task",
+    "icon": {
+      "count": 1,
+      "id": "minecraft:filled_map"
+    },
+    "show_toast": true,
+    "title": {
+      "translate": "advancements.moveearth_addtional.open_nation_hub.title"
+    }
+  },
+  "requirements": [
+    [
+      "opened"
+    ]
+  ],
+  "sends_telemetry_event": false
+}

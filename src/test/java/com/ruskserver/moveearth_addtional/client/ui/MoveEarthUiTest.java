@@ -32,4 +32,40 @@ class MoveEarthUiTest {
         assertEquals(200, MoveEarthUiMath.scroll(190, -2, 24, 300, 100));
         assertEquals(0, MoveEarthUiMath.scroll(20, 1, 24, 80, 100));
     }
+
+    /**
+     * The fault this replaced: every screen drew its own card around an unbordered
+     * EditBox, and an unbordered EditBox draws its text at plain {@code getY()} —
+     * vanilla's vertical centring lives in the border, not in the field. In a
+     * 24-pixel box the text therefore sat at the top, five pixels above where it
+     * looked like it should be.
+     */
+    @Test
+    void textSitsInTheMiddleOfItsBox() {
+        assertEquals(8, MoveEarthUiMath.textTop(24, 8));
+        assertEquals(6, MoveEarthUiMath.textTop(20, 8));
+        assertEquals(5, MoveEarthUiMath.textTop(18, 8));
+    }
+
+    @Test
+    void anOddGapLeavesTheExtraPixelBelowTheText() {
+        // Vanilla rounds the same way, so a field here lines up with a
+        // vanilla-bordered one of the same height sitting next to it.
+        assertEquals(5, MoveEarthUiMath.textTop(19, 8));
+        assertEquals(5, MoveEarthUiMath.textTop(18, 8));
+    }
+
+    @Test
+    void aBoxTooShortForItsTextStillStartsInside() {
+        assertEquals(0, MoveEarthUiMath.textTop(8, 8));
+        assertEquals(0, MoveEarthUiMath.textTop(4, 8));
+        assertEquals(0, MoveEarthUiMath.textTop(0, 8));
+    }
+
+    @Test
+    void paddingIsTakenOffBothSidesAndNeverGoesNegative() {
+        assertEquals(14, MoveEarthUiMath.textWidth(24, 5));
+        assertEquals(0, MoveEarthUiMath.textWidth(10, 5));
+        assertEquals(0, MoveEarthUiMath.textWidth(4, 5));
+    }
 }

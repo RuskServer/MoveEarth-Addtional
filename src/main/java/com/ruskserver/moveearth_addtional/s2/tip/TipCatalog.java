@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 /** Stable IDs and translation keys for server-selected help tips. */
 public final class TipCatalog {
     public static final List<Tip> ALL = List.of(
+            tip("advancements", "basics"),
             tip("nation_hub", "basics"),
             tip("nation_application", "nation"),
             tip("nation_roles", "nation"),

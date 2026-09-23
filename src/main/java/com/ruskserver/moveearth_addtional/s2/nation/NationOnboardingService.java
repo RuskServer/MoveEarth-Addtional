@@ -95,7 +95,11 @@ public final class NationOnboardingService {
             case APPLY -> {
                 NationSavedData.ApplicationResult result = nations.applyToNation(player.getUUID(),
                         player.getGameProfile().getName(), nationId, expectedRevision);
-                if (result.success()) notifyManagers(player, nationId);
+                if (result.success()) {
+                    notifyManagers(player, nationId);
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_APPLIED);
+                }
                 sendOnboarding(player, applicationMessage(result.status()), result.success());
             }
             case CANCEL -> {
@@ -158,6 +162,8 @@ public final class NationOnboardingService {
                 }
                 releaseForSearch(applicant);
                 if (nationId != null) RandomSpawnHandler.beginNationSpawnSearch(applicant, nationId);
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(applicant,
+                        com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_CITIZEN);
             } else {
                 sendOnboarding(applicant, applicationMessage(result.status()), false);
             }

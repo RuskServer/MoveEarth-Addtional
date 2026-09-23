@@ -117,10 +117,11 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 Component.translatable("screen.moveearth_addtional.s2.refresh"), ACCENT,
                 refreshEnabled && refresh.contains(mouseX, mouseY), refreshEnabled);
 
-        int tabWidth = Math.max(72, (panel.width() - 36) / S2HubTab.values().length);
+        int tabWidth = (panel.width() - 24) / S2HubTab.values().length;
         for (S2HubTab candidate : S2HubTab.values()) {
             Rect bounds = tabBounds(panel, candidate, tabWidth);
-            drawTab(graphics, font, bounds, tabLabel(candidate), candidate == tab,
+            drawTab(graphics, font, bounds, tabWidth < 64
+                            ? Component.literal(Integer.toString(candidate.ordinal() + 1)) : tabLabel(candidate), candidate == tab,
                     bounds.contains(mouseX, mouseY));
         }
 
@@ -143,6 +144,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         if (surrenderTargetId != null) drawSurrenderConfirmation(graphics, mouseX, mouseY);
         if (vaultChangeConfirmation) drawVaultConfirmation(graphics, mouseX, mouseY);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
+        if (tabWidth < 64) for (S2HubTab candidate : S2HubTab.values()) {
+            if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
+                graphics.renderTooltip(font, tabLabel(candidate), mouseX, mouseY);
+                break;
+            }
+        }
     }
 
     private void drawUnaffiliated(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
@@ -726,7 +733,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                     requestId, snapshot.revision(), tab, C2S_S2HubActionPacket.Action.REFRESH));
             return true;
         }
-        int tabWidth = Math.max(72, (panel.width() - 36) / S2HubTab.values().length);
+        int tabWidth = (panel.width() - 24) / S2HubTab.values().length;
         for (S2HubTab candidate : S2HubTab.values()) {
             if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
                 if (candidate == S2HubTab.REGION) {

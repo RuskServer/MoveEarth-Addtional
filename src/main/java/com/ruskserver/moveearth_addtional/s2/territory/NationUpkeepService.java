@@ -82,13 +82,20 @@ public final class NationUpkeepService {
         NationUpkeepSavedData.get(player.server).configure(nationId, reference, enabled,
                 System.currentTimeMillis());
         invalidatePenalty(nationId);
+        if (enabled && reference != null) {
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.TREASURY_CONFIGURED);
+        }
         return true;
     }
 
     public static boolean payNow(ServerPlayer player) {
         if (!canManage(player)) return false;
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
-        return nationId != null && charge(player.server, nationId, System.currentTimeMillis());
+        boolean paid = nationId != null && charge(player.server, nationId, System.currentTimeMillis());
+        if (paid) com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.UPKEEP_PAID);
+        return paid;
     }
 
     /** Transfers configured treasury gold, rolling the withdrawal back if the receiver deposit fails. */

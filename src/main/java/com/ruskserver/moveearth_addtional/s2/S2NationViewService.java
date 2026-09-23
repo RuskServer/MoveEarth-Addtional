@@ -201,6 +201,9 @@ public final class S2NationViewService {
 
     public void sendHub(ServerPlayer player, S2HubTab tab) {
         PacketDistributor.sendToPlayer(player, new S2C_S2HubSnapshotPacket(tab, snapshotFor(player)));
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(
+                player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_HUB_OPENED);
     }
 
     private static java.util.List<S2NationSnapshot.SiegeView> individualSieges(

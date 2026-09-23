@@ -17,6 +17,7 @@ import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 
 public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int radius)
         implements CustomPacketPayload {
+    private static final double MAX_INTERACTION_DISTANCE_SQR = 8.0D * 8.0D;
     public static final Type<C2S_SetTerritoryCoreRadiusPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "set_territory_core_radius"));
     public static final StreamCodec<FriendlyByteBuf, C2S_SetTerritoryCoreRadiusPacket> STREAM_CODEC = StreamCodec.of(
@@ -36,12 +37,15 @@ public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int 
             NationSavedData data = NationSavedData.get(player.server);
             boolean validRadius = radius >= TerritoryPreviewArea.MIN_RADIUS
                     && radius <= TerritoryPreviewArea.MAX_RADIUS;
-            boolean closeEnough = player.blockPosition().distSqr(pos) <= 64.0D;
-            TerritoryCoreBlockEntity core = player.level().getBlockEntity(pos)
-                    instanceof TerritoryCoreBlockEntity found ? found : null;
+            boolean closeEnough = ServerPacketGuards.canAccessLoadedBlock(
+                    player, pos, MAX_INTERACTION_DISTANCE_SQR);
             java.util.UUID playerNation = data.nationIdFor(player.getUUID()).orElse(null);
-            boolean allowed = core != null && playerNation != null && playerNation.equals(core.nationId())
+            boolean authorized = playerNation != null
                     && data.can(player.getUUID(), S2Permission.MANAGE_TERRITORY);
+            TerritoryCoreBlockEntity core = validRadius && closeEnough && authorized
+                    && player.level().getBlockEntity(pos)
+                    instanceof TerritoryCoreBlockEntity found ? found : null;
+            boolean allowed = core != null && playerNation.equals(core.nationId());
             boolean siegeLocked = core != null && core.coreId() != null
                     && SiegeSavedData.get(player.server).isCoreLocked(core.coreId());
             TerritorySavedData.UpdateResult update = null;

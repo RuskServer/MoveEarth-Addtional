@@ -28,6 +28,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
     private Component toast;
     private int toastTicks;
     private boolean createOpen;
+    private boolean waiveConfirmation;
     private int providerIndex;
     private int coreIndex;
     private int memberIndex;
@@ -84,6 +85,18 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
             case HISTORY -> renderHistory(graphics, content, mouseX, mouseY);
         }
         if (createOpen) renderCreate(graphics, panel, mouseX, mouseY);
+        if (waiveConfirmation) {
+            drawModalBackdrop(graphics, width, height);
+            Rect modal = new Rect(panel.x() + Math.max(18, (panel.width() - 320) / 2),
+                    panel.y() + Math.max(18, (panel.height() - 112) / 2), Math.min(320, panel.width() - 36), 112);
+            drawPanel(graphics, modal);
+            graphics.drawString(font, Component.translatable("screen.moveearth_addtional.recovery.waive.confirm"),
+                    modal.x() + 14, modal.y() + 18, DANGER, false);
+            drawButton(graphics, font, new Rect(modal.x() + 14, modal.bottom() - 37, 100, 24),
+                    Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED, false, true);
+            drawButton(graphics, font, new Rect(modal.right() - 114, modal.bottom() - 37, 100, 24),
+                    Component.translatable("screen.moveearth_addtional.recovery.waive"), DANGER, false, true);
+        }
         if (toast != null && toastTicks > 0) drawToast(graphics, font, width, height, toast, ACCENT);
     }
 
@@ -287,6 +300,19 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
 
     @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
         Rect panel = panel();
+        if (waiveConfirmation) {
+            if (button != 0) return true;
+            Rect modal = new Rect(panel.x() + Math.max(18, (panel.width() - 320) / 2),
+                    panel.y() + Math.max(18, (panel.height() - 112) / 2), Math.min(320, panel.width() - 36), 112);
+            if (new Rect(modal.right() - 114, modal.bottom() - 37, 100, 24).contains(mouseX, mouseY)
+                    && snapshot.recovery() != null && !snapshot.recovery().protectionWaived()) {
+                action(C2S_RecoveryDispatchActionPacket.Action.WAIVE_PROTECTION, snapshot.recovery().id(), null, null,
+                        snapshot.recovery().revision(), 0, 0, 0, List.of());
+            }
+            waiveConfirmation = false;
+            return true;
+        }
+        if (button != 0 && !(createOpen && button == 1)) return super.mouseClicked(mouseX, mouseY, button);
         if (createOpen) return createClicked(panel, mouseX, mouseY, button);
         if (close(panel).contains(mouseX, mouseY)) { onClose(); return true; }
         for (Tab value : Tab.values()) if (tabBounds(panel, value.ordinal()).contains(mouseX, mouseY)) {
@@ -299,8 +325,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
             Rect rival = new Rect(waive.right() + 8, y, 210, 28);
             if (waive.contains(mouseX, mouseY) && snapshot.canManageSiege()
                     && !snapshot.recovery().protectionWaived()) {
-                action(C2S_RecoveryDispatchActionPacket.Action.WAIVE_PROTECTION, snapshot.recovery().id(), null, null,
-                        snapshot.recovery().revision(), 0, 0, 0, List.of()); return true;
+                waiveConfirmation = true; return true;
             }
             if (rival.contains(mouseX, mouseY) && snapshot.canManageDiplomacy()
                     && snapshot.recovery().attackerNationId() != null) {
@@ -342,6 +367,14 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (waiveConfirmation && keyCode == 256) {
+            waiveConfirmation = false;
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
     private boolean createClicked(Rect panel, double mouseX, double mouseY, int button) {
         Rect modal = createModal(panel);
         if (modalClose(modal).contains(mouseX, mouseY)) { createOpen = false; return true; }
@@ -355,7 +388,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         if (field(modal, y).contains(mouseX, mouseY)) { subsidy = cycle(subsidy, button, 10, 100000); return true; } y += 31;
         if (field(modal, y).contains(mouseX, mouseY)) { durationMinutes = cycle(durationMinutes, button, 15, 240); return true; }
         Rect confirm = new Rect(modal.x() + 16, modal.bottom() - 38, modal.width() - 32, 27);
-        if (confirm.contains(mouseX, mouseY)) {
+        if (button == 0 && confirm.contains(mouseX, mouseY)) {
             var providers = providers(); var cores = eligibleCores();
             if (providers.isEmpty() || cores.isEmpty()) return true;
             var provider = providers.get(Math.floorMod(providerIndex, providers.size()));

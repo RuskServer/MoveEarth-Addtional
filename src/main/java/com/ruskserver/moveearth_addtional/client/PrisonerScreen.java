@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_PrisonerActionPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_PrisonerSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.S2C_PrisonerActionResultPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -18,6 +19,9 @@ public final class PrisonerScreen extends Screen implements SuppressesChatOverla
     private S2C_PrisonerSnapshotPacket snapshot;
     private int scroll;
     private int refreshTicks;
+    private Component toast;
+    private int toastTicks;
+    private int toastColor;
 
     public PrisonerScreen(S2C_PrisonerSnapshotPacket snapshot) {
         super(Component.translatable("screen.moveearth_addtional.prisoner.title"));
@@ -35,7 +39,14 @@ public final class PrisonerScreen extends Screen implements SuppressesChatOverla
                 snapshot.intakePos(), snapshot.intake(), snapshot.entries(), snapshot.candidates());
     }
 
+    public void handleResult(S2C_PrisonerActionResultPacket result) {
+        toast = Component.translatable(result.messageKey());
+        toastColor = result.success() ? SUCCESS : DANGER;
+        toastTicks = 100;
+    }
+
     @Override public void tick() {
+        if (toastTicks > 0) toastTicks--;
         if (++refreshTicks >= 40) {
             refreshTicks = 0;
             PacketDistributor.sendToServer(new C2S_RequestPrisonerScreenPacket(snapshot.intakePos()));
@@ -73,7 +84,8 @@ public final class PrisonerScreen extends Screen implements SuppressesChatOverla
             drawCard(graphics, intake, snapshot.intake().canImprison() ? SUCCESS : GOLD, false, false);
             graphics.drawString(font, Component.translatable("screen.moveearth_addtional.prisoner.intake"),
                     intake.x() + 12, intake.y() + 8, ACCENT, false);
-            graphics.drawString(font, intakeStatus(), intake.x() + 12, intake.y() + 24,
+            graphics.drawString(font, font.plainSubstrByWidth(intakeStatus().getString(),
+                            Math.max(0, imprison(intake).x() - intake.x() - 20)), intake.x() + 12, intake.y() + 24,
                     snapshot.intake().canImprison() ? SUCCESS : DANGER, false);
             Rect imprison = imprison(intake);
             drawButton(graphics, font, imprison,
@@ -125,6 +137,7 @@ public final class PrisonerScreen extends Screen implements SuppressesChatOverla
         graphics.disableScissor();
         drawScrollbar(graphics, new Rect(list.right() - 4, list.y(), 4, list.height()),
                 list.height(), contentHeight(), scroll);
+        if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
     }
 
     private Component intakeStatus() {
@@ -147,6 +160,7 @@ public final class PrisonerScreen extends Screen implements SuppressesChatOverla
             return true;
         }
         Rect list = list(panel);
+        if (!list.contains(mouseX, mouseY)) return super.mouseClicked(mouseX, mouseY, button);
         int y = list.y() - scroll;
         for (var entry : snapshot.entries()) {
             Rect row = new Rect(list.x(), y, list.width() - 7, ROW_HEIGHT - 4);
@@ -186,7 +200,11 @@ public final class PrisonerScreen extends Screen implements SuppressesChatOverla
     private void clampScroll() { scroll = Math.min(scroll, Math.max(0, contentHeight() - list(panel()).height())); }
     private int contentHeight() { return Math.max(1, snapshot.entries().size() * ROW_HEIGHT
             + (snapshot.candidates().isEmpty() ? 0 : 19 + snapshot.candidates().size() * 32)); }
-    private Rect panel() { return new Rect((width - PANEL_WIDTH) / 2, (height - PANEL_HEIGHT) / 2, PANEL_WIDTH, PANEL_HEIGHT); }
+    private Rect panel() {
+        int w = Math.min(PANEL_WIDTH, width - 20);
+        int h = Math.min(PANEL_HEIGHT, height - 20);
+        return new Rect((width - w) / 2, (height - h) / 2, w, h);
+    }
     private Rect close(Rect panel) { return new Rect(panel.right() - 31, panel.y() + 11, 18, 18); }
     private Rect status(Rect panel) { return new Rect(panel.x() + 18, panel.y() + 48, panel.width() - 36, 43); }
     private Rect intake(Rect panel) { return new Rect(panel.x() + 18, panel.y() + 99, panel.width() - 36, 48); }

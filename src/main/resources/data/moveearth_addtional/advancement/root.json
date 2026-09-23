@@ -1,0 +1,29 @@
+{
+  "criteria": {
+    "joined": {
+      "trigger": "minecraft:tick"
+    }
+  },
+  "display": {
+    "announce_to_chat": false,
+    "background": "minecraft:textures/gui/advancements/backgrounds/stone.png",
+    "description": {
+      "translate": "advancements.moveearth_addtional.root.description"
+    },
+    "frame": "task",
+    "icon": {
+      "count": 1,
+      "id": "moveearth_addtional:territory_core"
+    },
+    "show_toast": false,
+    "title": {
+      "translate": "advancements.moveearth_addtional.root.title"
+    }
+  },
+  "requirements": [
+    [
+      "joined"
+    ]
+  ],
+  "sends_telemetry_event": false
+}

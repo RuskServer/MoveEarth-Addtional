@@ -44,6 +44,8 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
     private double panY = 12.0D;
     private double zoom = 1.0D;
     private boolean dragging;
+    private boolean narrowDetails;
+    private int detailsScroll;
     private EditBox search;
 
     public TechnologyScreen(TechnologySnapshot snapshot) {
@@ -66,6 +68,7 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
                 Component.translatable("screen.moveearth_addtional.technology.search"));
         search.setHint(Component.translatable("screen.moveearth_addtional.technology.search"));
         search.setMaxLength(64);
+        search.setVisible(panel.width() >= 600);
         addRenderableWidget(search);
     }
 
@@ -86,9 +89,18 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         drawButton(graphics, font, refresh, Component.translatable("screen.moveearth_addtional.s2.refresh"),
                 ACCENT, refresh.contains(mouseX, mouseY), true);
 
-        TechnologySnapshot.Node hovered = drawQuestCanvas(graphics, listArea(panel), mouseX, mouseY);
-        drawDetails(graphics, detailArea(panel), mouseX, mouseY);
-        drawTracked(graphics, panel);
+        boolean narrow = panel.width() < 600;
+        if (narrow) {
+            Rect toggle = narrowToggle(panel);
+            drawButton(graphics, font, toggle, Component.translatable(narrowDetails
+                            ? "screen.moveearth_addtional.technology.show_nodes"
+                            : "screen.moveearth_addtional.technology.show_details"), ACCENT,
+                    toggle.contains(mouseX, mouseY), true);
+        }
+        TechnologySnapshot.Node hovered = null;
+        if (!narrow || !narrowDetails) hovered = drawQuestCanvas(graphics, listArea(panel), mouseX, mouseY);
+        if (!narrow || narrowDetails) drawDetails(graphics, detailArea(panel), mouseX, mouseY);
+        if (!narrow) drawTracked(graphics, panel);
         super.render(graphics, mouseX, mouseY, partialTick);
         if (hovered != null) drawNodeTooltip(graphics, hovered, mouseX, mouseY);
     }
@@ -244,6 +256,14 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
                         ? "screen.moveearth_addtional.technology.untrack" : "screen.moveearth_addtional.technology.track"),
                 node.tracked() ? SUCCESS : ACCENT, pin.contains(mouseX, mouseY), true);
 
+        GuideAction action = guideAction(node);
+        int bodyTop = area.y() + 38;
+        int bodyBottom = area.bottom() - (action == null ? 4 : 34);
+        int contentHeight = detailsContentHeight(node, area);
+        detailsScroll = Math.min(detailsScroll, Math.max(0, contentHeight - Math.max(1, bodyBottom - bodyTop)));
+        graphics.enableScissor(area.x() + 2, bodyTop, area.right() - 2, bodyBottom);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, -detailsScroll, 0);
         int y = area.y() + 39;
         for (var line : font.split(description(node), area.width() - 24)) {
             graphics.drawString(font, line, area.x() + 12, y, MUTED, false);
@@ -255,12 +275,6 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
             graphics.drawString(font, text, area.x() + 12, y,
                     objective.current() >= objective.required() ? SUCCESS : TEXT, false);
             y += 13;
-        }
-        GuideAction action = guideAction(node);
-        if (action != null) {
-            Rect button = guideActionButton(area);
-            drawButton(graphics, font, button, Component.translatable(action.labelKey()), SUCCESS,
-                    button.contains(mouseX, mouseY), true);
         }
         if (!node.jeiItems().isEmpty()) {
             y += 6;
@@ -276,6 +290,13 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
                 x += 26;
             }
         }
+        graphics.pose().popPose();
+        graphics.disableScissor();
+        if (action != null) {
+            Rect button = guideActionButton(area);
+            drawButton(graphics, font, button, Component.translatable(action.labelKey()), SUCCESS,
+                    button.contains(mouseX, mouseY), true);
+        }
     }
 
     @Override
@@ -290,27 +311,35 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
             PacketDistributor.sendToServer(new C2S_RequestTechnologyPacket());
             return true;
         }
+        boolean narrow = panel.width() < 600;
+        if (narrow && narrowToggle(panel).contains(mouseX, mouseY)) {
+            narrowDetails = !narrowDetails;
+            return true;
+        }
         Rect graph = listArea(panel);
-        for (TechnologySnapshot.Node node : visible()) {
+        for (TechnologySnapshot.Node node : narrow && narrowDetails ? List.<TechnologySnapshot.Node>of() : visible()) {
             if (nodeBounds(graph, node).contains(mouseX, mouseY)) {
                 selected = node.id();
+                detailsScroll = 0;
+                if (narrow) narrowDetails = true;
                 return true;
             }
         }
         TechnologySnapshot.Node node = node(selected);
         Rect details = detailArea(panel);
-        if (node != null && pinButton(details).contains(mouseX, mouseY)) {
+        if ((!narrow || narrowDetails) && node != null && pinButton(details).contains(mouseX, mouseY)) {
             PacketDistributor.sendToServer(new C2S_SetTechnologyTrackedPacket(node.id(), !node.tracked()));
             return true;
         }
         GuideAction guideAction = node == null ? null : guideAction(node);
-        if (guideAction != null && guideActionButton(details).contains(mouseX, mouseY)) {
+        if ((!narrow || narrowDetails) && guideAction != null && guideActionButton(details).contains(mouseX, mouseY)) {
             PacketDistributor.sendToServer(new C2S_TechnologyActionPacket(guideAction.action()));
             return true;
         }
-        if (node != null && !node.jeiItems().isEmpty()) {
-            int itemY = jeiItemY(node, details);
-            if (mouseY >= itemY && mouseY < itemY + 22) {
+        if ((!narrow || narrowDetails) && node != null && !node.jeiItems().isEmpty()) {
+            int itemY = jeiItemY(node, details) - detailsScroll;
+            if (mouseY >= Math.max(itemY, details.y() + 38)
+                    && mouseY < Math.min(itemY + 22, details.bottom() - (guideAction(node) == null ? 4 : 34))) {
                 int itemIndex = (int) ((mouseX - details.x() - 12) / 26);
                 if (itemIndex >= 0 && itemIndex < Math.min(8, node.jeiItems().size())
                         && mouseX >= details.x() + 12
@@ -320,7 +349,7 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
                 }
             }
         }
-        if (graph.contains(mouseX, mouseY)) {
+        if ((!narrow || !narrowDetails) && graph.contains(mouseX, mouseY)) {
             dragging = true;
             return true;
         }
@@ -329,8 +358,19 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double sx, double sy) {
-        Rect graph = listArea(panel());
-        if (graph.contains(mouseX, mouseY)) {
+        Rect panel = panel();
+        Rect graph = listArea(panel);
+        Rect details = detailArea(panel);
+        if ((panel.width() >= 600 || narrowDetails) && details.contains(mouseX, mouseY)) {
+            TechnologySnapshot.Node node = node(selected);
+            if (node != null) {
+                int bottom = details.bottom() - (guideAction(node) == null ? 4 : 34);
+                int maximum = Math.max(0, detailsContentHeight(node, details) - (bottom - details.y() - 38));
+                detailsScroll = scroll(detailsScroll, sy, 18, maximum + 1, 1);
+                return true;
+            }
+        }
+        if ((panel().width() >= 600 || !narrowDetails) && graph.contains(mouseX, mouseY)) {
             double before = zoom;
             zoom = Math.max(0.65D, Math.min(1.5D, zoom + sy * 0.1D));
             double localX = mouseX - graph.x() - panX;
@@ -390,6 +430,12 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         return area.y() + 39 + descriptionLines * 10 + 8 + node.objectives().size() * 13 + 19;
     }
 
+    private int detailsContentHeight(TechnologySnapshot.Node node, Rect area) {
+        int lines = font.split(description(node), area.width() - 24).size();
+        return lines * 10 + 8 + node.objectives().size() * 13
+                + (node.jeiItems().isEmpty() ? 0 : 6 + 13 + 22) + 2;
+    }
+
     private Rect panel() {
         int w = Math.min(1080, width - 12);
         int h = Math.min(620, height - 12);
@@ -403,12 +449,19 @@ public final class TechnologyScreen extends Screen implements SuppressesChatOver
         return new Rect(x, panel.y() + 10, Math.max(110, right - x), 20);
     }
     private static Rect listArea(Rect panel) {
+        if (panel.width() < 600) return new Rect(panel.x() + 16, panel.y() + 76,
+                panel.width() - 32, panel.height() - 92);
         int details = Math.min(320, Math.max(250, panel.width() / 3));
         return new Rect(panel.x() + 16, panel.y() + 58, panel.width() - 48 - details, panel.height() - 108);
     }
     private static Rect detailArea(Rect panel) {
+        if (panel.width() < 600) return listArea(panel);
         int details = Math.min(320, Math.max(250, panel.width() / 3));
         return new Rect(panel.right() - details - 16, panel.y() + 58, details, panel.height() - 108);
+    }
+
+    private static Rect narrowToggle(Rect panel) {
+        return new Rect(panel.x() + 16, panel.y() + 46, 120, 23);
     }
 
     private Rect nodeBounds(Rect graph, TechnologySnapshot.Node node) {

@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_NationRolePacket;
@@ -11,7 +12,6 @@ import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.RoleNamePolicy;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -33,7 +33,7 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
     private final String roleId;
     private final int roleMemberCount;
     private long permissionMask;
-    private EditBox nameEdit;
+    private MoveEarthTextField nameEdit;
     private int pendingRequestId = -1;
     private Component toast;
     private int toastTicks;
@@ -55,13 +55,10 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
     @Override
     protected void init() {
         Rect panel = panelBounds();
-        nameEdit = new EditBox(font, panel.x() + 25, panel.y() + 72,
-                panel.width() - 50, 18, Component.translatable("screen.moveearth_addtional.nation.role.name"));
+        nameEdit = new MoveEarthTextField(font, panel.x() + 20, panel.y() + 69,
+                panel.width() - 40, 24, Component.translatable("screen.moveearth_addtional.nation.role.name"));
         nameEdit.setMaxLength(RoleNamePolicy.MAX_LENGTH);
         nameEdit.setValue(initialName);
-        nameEdit.setBordered(false);
-        nameEdit.setTextColor(TEXT);
-        nameEdit.setTextColorUneditable(MUTED);
         addRenderableWidget(nameEdit);
         setInitialFocus(nameEdit);
     }
@@ -91,11 +88,6 @@ public final class NationRoleEditorScreen extends Screen implements SuppressesCh
 
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.role.name"),
                 panel.x() + 25, panel.y() + 57, MUTED, false);
-        Rect field = new Rect(nameEdit.getX() - 5, nameEdit.getY() - 3,
-                nameEdit.getWidth() + 10, nameEdit.getHeight() + 6);
-        graphics.fill(field.x(), field.y(), field.right(), field.bottom(), CARD);
-        drawBorder(graphics, field, nameEdit.isFocused() ? ACCENT : BORDER);
-
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.role.permissions"),
                 panel.x() + 25, panel.y() + 107, MUTED, false);
         for (int index = 0; index < EDITABLE_PERMISSIONS.size(); index++) {

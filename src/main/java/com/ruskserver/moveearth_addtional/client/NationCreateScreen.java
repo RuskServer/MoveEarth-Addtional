@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_CreateNationPacket;
@@ -9,7 +10,6 @@ import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.nation.NationNamePolicy;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
@@ -24,8 +24,8 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
     private static int nextRequestId;
 
     private long revision;
-    private EditBox nameEdit;
-    private EditBox tagEdit;
+    private MoveEarthTextField nameEdit;
+    private MoveEarthTextField tagEdit;
     private int pendingRequestId = -1;
     private Component toast;
     private int toastTicks;
@@ -51,25 +51,17 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
     @Override
     protected void init() {
         Rect panel = panelBounds();
-        nameEdit = new EditBox(font, panel.x() + 30, panel.y() + 76,
-                panel.width() - 60, 18, Component.translatable("screen.moveearth_addtional.nation.name"));
-        tagEdit = new EditBox(font, panel.x() + 30, panel.y() + 127,
-                124, 18, Component.translatable("screen.moveearth_addtional.nation.tag"));
+        nameEdit = new MoveEarthTextField(font, panel.x() + 25, panel.y() + 73,
+                panel.width() - 50, 24, Component.translatable("screen.moveearth_addtional.nation.name"));
+        tagEdit = new MoveEarthTextField(font, panel.x() + 25, panel.y() + 124,
+                134, 24, Component.translatable("screen.moveearth_addtional.nation.tag"));
         nameEdit.setMaxLength(NationNamePolicy.MAX_NAME_LENGTH);
         tagEdit.setMaxLength(NationNamePolicy.MAX_TAG_LENGTH);
-        configure(nameEdit);
-        configure(tagEdit);
         nameEdit.setValue(initialName);
         tagEdit.setValue(initialTag);
         addRenderableWidget(nameEdit);
         addRenderableWidget(tagEdit);
         setInitialFocus(nameEdit);
-    }
-
-    private static void configure(EditBox edit) {
-        edit.setBordered(false);
-        edit.setTextColor(TEXT);
-        edit.setTextColorUneditable(MUTED);
     }
 
     public void handleResult(S2C_S2ActionResultPacket packet) {
@@ -103,10 +95,8 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
 
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.name"),
                 panel.x() + 30, panel.y() + 61, MUTED, false);
-        drawField(graphics, nameEdit);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.tag"),
                 panel.x() + 30, panel.y() + 112, MUTED, false);
-        drawField(graphics, tagEdit);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.tag_hint"),
                 panel.x() + 164, panel.y() + 132, MUTED, false);
 
@@ -147,12 +137,6 @@ public final class NationCreateScreen extends Screen implements SuppressesChatOv
 
         super.render(graphics, mouseX, mouseY, partialTick);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, DANGER);
-    }
-
-    private static void drawField(GuiGraphics graphics, EditBox field) {
-        Rect bounds = new Rect(field.getX() - 5, field.getY() - 3, field.getWidth() + 10, field.getHeight() + 6);
-        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), CARD);
-        drawBorder(graphics, bounds, field.isFocused() ? ACCENT : BORDER);
     }
 
     @Override

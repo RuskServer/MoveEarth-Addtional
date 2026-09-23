@@ -40,15 +40,6 @@ public class ClientEventHandler {
             event.getToolTip().add(Component.translatable(
                     "tooltip.moveearth_addtional.restraints.rule").withStyle(ChatFormatting.DARK_GRAY));
         }
-        var id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem());
-        var node = TechnologyClientState.forItem(id);
-        if (node == null) return;
-        String key = switch (node.state()) {
-            case LOCKED, DISABLED -> "tooltip.moveearth_addtional.technology.required";
-            case AVAILABLE, IN_PROGRESS -> "tooltip.moveearth_addtional.technology.objective";
-            case COMPLETED, INHERITED -> "tooltip.moveearth_addtional.technology.unlocked";
-        };
-        event.getToolTip().add(Component.translatable(key, Component.translatable(node.titleKey())));
     }
 
     @SubscribeEvent

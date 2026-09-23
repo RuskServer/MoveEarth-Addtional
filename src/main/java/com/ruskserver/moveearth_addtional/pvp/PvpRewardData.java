@@ -2,7 +2,6 @@ package com.ruskserver.moveearth_addtional.pvp;
 
 import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenPvpTasksPacket;
-import com.ruskserver.moveearth_addtional.tpa.OpenDayCycle;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -184,7 +183,7 @@ public final class PvpRewardData extends SavedData {
     }
 
     private static String currentDailyCycle() {
-        return OpenDayCycle.currentId();
+        return ServerOpenDayCycle.currentId();
     }
 
     @Override

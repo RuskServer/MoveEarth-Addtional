@@ -8,6 +8,7 @@ import com.ruskserver.moveearth_addtional.s2.technology.TechnologyDefinition;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -34,12 +35,15 @@ public final class NationFoundationService {
         if (nationStatus != NationSavedData.Status.CREATED) {
             return new Result(map(nationStatus), nations.revision(), null);
         }
-        if (!player.level().dimension().location().equals(dimension)) {
+        ServerLevel level = player.server.getLevel(player.level().dimension());
+        if (!player.level().dimension().location().equals(dimension) || level == null) {
+            // The client named a dimension the player is not standing in, which
+            // no verdict describes: it is a stale screen, not a bad site.
             return new Result(Status.INVALID_LOCATION, nations.revision(), null);
         }
-        ServerLevel level = player.server.getLevel(player.level().dimension());
-        if (level == null || !validLocation(player, level, corePos)) {
-            return new Result(Status.INVALID_LOCATION, nations.revision(), null);
+        NationFoundationSite.Verdict verdict = NationFoundationSite.judge(read(player, level, corePos));
+        if (!verdict.allowed()) {
+            return rejected(verdict, nations.revision());
         }
         TerritorySavedData territories = TerritorySavedData.get(player.server);
         if (territories.validateRegistration(UUID.randomUUID(), dimension, corePos, INITIAL_RADIUS)
@@ -76,28 +80,43 @@ public final class NationFoundationService {
                 null, 1L, corePos);
         technology.recordObjective(player, TechnologyDefinition.ObjectiveType.TERRITORY_ACTION,
                 ResourceLocation.fromNamespaceAndPath("moveearth_addtional", "found_capital"), 1L, corePos);
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_CITIZEN);
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_FOUNDED);
         return new Result(Status.CREATED, nations.revision(), registered.core());
     }
 
-    private static boolean validLocation(ServerPlayer player, ServerLevel level, BlockPos pos) {
-        if (!level.hasChunkAt(pos) || level.isOutsideBuildHeight(pos)
-                || !level.getWorldBorder().isWithinBounds(pos)
-                || player.distanceToSqr(Vec3.atCenterOf(pos)) > 100.0D) return false;
-        Vec3 eye = player.getEyePosition();
-        BlockHitResult sight = level.clip(new ClipContext(eye, Vec3.atCenterOf(pos.below()),
-                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
-        if (sight.getType() != HitResult.Type.BLOCK || !sight.getBlockPos().equals(pos.below())) return false;
+    /**
+     * Reads the world at a candidate site. The sight trace uses
+     * {@link ClipContext.Block#COLLIDER} on purpose: grass, flowers and a single
+     * snow layer have an outline but no collision, and a trace that stopped on
+     * them would report the plant as the ground.
+     */
+    private static NationFoundationSite.Reading read(ServerPlayer player, ServerLevel level, BlockPos pos) {
+        if (!level.hasChunkAt(pos)) return NationFoundationSite.Reading.unloaded();
+        boolean withinWorld = !level.isOutsideBuildHeight(pos)
+                && level.getWorldBorder().isWithinBounds(pos);
+        boolean withinReach = player.distanceToSqr(Vec3.atCenterOf(pos))
+                <= NationFoundationSite.REACH_SQR;
+        BlockPos support = pos.below();
+        BlockHitResult sight = level.clip(new ClipContext(player.getEyePosition(),
+                Vec3.atCenterOf(support), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+        boolean sightClear = sight.getType() == HitResult.Type.BLOCK
+                && sight.getBlockPos().equals(support);
+        boolean onVehicle = false;
         try {
-            if (Sable.HELPER.getContaining(level, pos) instanceof ServerSubLevel) return false;
+            onVehicle = Sable.HELPER.getContaining(level, pos) instanceof ServerSubLevel;
         } catch (RuntimeException | LinkageError ignored) {
             // Sable is optional at runtime; normal-world validation remains authoritative.
         }
         BlockState target = level.getBlockState(pos);
-        if (!target.canBeReplaced() || !level.getFluidState(pos).isEmpty()) return false;
-        BlockPos support = pos.below();
-        if (!level.getBlockState(support).isFaceSturdy(level, support, net.minecraft.core.Direction.UP)) return false;
-        return level.getEntities((net.minecraft.world.entity.Entity) null, new AABB(pos),
-                entity -> !entity.isSpectator()).isEmpty();
+        boolean occupiedByEntity = !level.getEntities((net.minecraft.world.entity.Entity) null,
+                new AABB(pos), entity -> !entity.isSpectator()).isEmpty();
+        return new NationFoundationSite.Reading(true, withinWorld, withinReach, sightClear, onVehicle,
+                target.canBeReplaced(), !level.getFluidState(pos).isEmpty(),
+                level.getBlockState(support).isFaceSturdy(level, support, Direction.UP),
+                occupiedByEntity);
     }
 
     private static Status map(NationSavedData.Status status) {
@@ -110,12 +129,27 @@ public final class NationFoundationService {
         };
     }
 
+    private static Result rejected(NationFoundationSite.Verdict verdict, long revision) {
+        return new Result(Status.INVALID_LOCATION, revision, null, verdict);
+    }
+
     public enum Status {
         CREATED, INVALID, DUPLICATE, ALREADY_MEMBER, STALE,
         INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED
     }
 
-    public record Result(Status status, long revision, TerritorySavedData.CoreRecord core) {
+    /**
+     * @param verdict why a site was refused; null unless the status is
+     *                {@link Status#INVALID_LOCATION}. It is carried rather than
+     *                folded into the status so the player is told the one thing
+     *                that is wrong instead of a list of what might be.
+     */
+    public record Result(Status status, long revision, TerritorySavedData.CoreRecord core,
+                         NationFoundationSite.Verdict verdict) {
+        public Result(Status status, long revision, TerritorySavedData.CoreRecord core) {
+            this(status, revision, core, null);
+        }
+
         public boolean success() { return status == Status.CREATED; }
     }
 }

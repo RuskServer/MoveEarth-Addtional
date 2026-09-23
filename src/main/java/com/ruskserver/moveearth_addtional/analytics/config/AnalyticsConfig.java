@@ -4,6 +4,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -235,6 +237,7 @@ public final class AnalyticsConfig {
             try (OutputStream out = Files.newOutputStream(configFile)) {
                 props.store(out, "MoveEarth Analytics Configuration");
             }
+            restrictOwnerAccess(configFile);
         } catch (Exception e) {
             System.err.println("[MoveEarth-Analytics] Failed to save config: " + e.getMessage());
         }
@@ -264,6 +267,19 @@ public final class AnalyticsConfig {
     private static boolean isValidToken(String token) {
         return token != null && token.length() >= 16 && token.length() <= 256
                 && token.chars().noneMatch(Character::isWhitespace);
+    }
+
+    private static void restrictOwnerAccess(Path configFile) {
+        try {
+            Files.setPosixFilePermissions(configFile, EnumSet.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE));
+        } catch (UnsupportedOperationException ignored) {
+            // Windows and some mounted filesystems do not expose POSIX permissions.
+        } catch (Exception exception) {
+            System.err.println("[MoveEarth-Analytics] Failed to restrict config permissions: "
+                    + exception.getMessage());
+        }
     }
 
     private static int parseInt(Properties props, String key, int fallback, int minimum, int maximum) {

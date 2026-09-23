@@ -41,7 +41,11 @@ public record C2S_CreateNationPacket(int requestId, long expectedRevision, Strin
                 case DUPLICATE -> "screen.moveearth_addtional.nation.duplicate";
                 case ALREADY_MEMBER -> "screen.moveearth_addtional.nation.already_member";
                 case STALE -> "screen.moveearth_addtional.nation.stale";
-                case INVALID_LOCATION -> "screen.moveearth_addtional.nation.invalid_location";
+                // The same sentence the selection overlay was already showing,
+                // rather than a generic one listing every possible cause.
+                case INVALID_LOCATION -> result.verdict() == null
+                        ? "screen.moveearth_addtional.nation.invalid_location"
+                        : result.verdict().messageKey();
                 case TERRITORY_CONFLICT -> "screen.moveearth_addtional.nation.territory_conflict";
                 case PLACEMENT_FAILED -> "screen.moveearth_addtional.nation.placement_failed";
             };

@@ -66,6 +66,8 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
         core.bind(record);
         player.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
                 "message.moveearth_addtional.vehicle_core.registered")));
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.VEHICLE_CORE_REGISTERED);
     }
 
     @Override

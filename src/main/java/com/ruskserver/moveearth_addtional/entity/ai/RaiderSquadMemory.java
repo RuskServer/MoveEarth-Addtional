@@ -14,7 +14,7 @@ public final class RaiderSquadMemory {
     }
 
     public static void reportTarget(int raidId, Vec3 position, long gameTime) {
-        if (raidId <= 0) return;
+        if (raidId == 0) return;
         SquadState state = SQUADS.computeIfAbsent(raidId, ignored -> new SquadState());
         state.lastSeen = position;
         state.lastSeenAt = gameTime;

@@ -11,13 +11,15 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * 管理者クライアントからサーバーへロードアウトの表示順序変更を送信するパケット。
  */
 public record C2S_ReorderLoadoutsPacket(List<String> orderedIds) implements CustomPacketPayload {
+
+    public static final int MAX_LOADOUTS = 128;
+    public static final int MAX_ID_LENGTH = 64;
 
     public static final Type<C2S_ReorderLoadoutsPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "pvp_reorder_loadouts"));
@@ -30,11 +32,8 @@ public record C2S_ReorderLoadoutsPacket(List<String> orderedIds) implements Cust
                 }
             },
             buf -> {
-                int count = buf.readVarInt();
-                List<String> list = new ArrayList<>(count);
-                for (int i = 0; i < count; i++) {
-                    list.add(buf.readUtf());
-                }
+                List<String> list = NetworkDecodeLimits.readList(buf.readVarInt(), MAX_LOADOUTS,
+                        "loadout", () -> buf.readUtf(MAX_ID_LENGTH));
                 return new C2S_ReorderLoadoutsPacket(list);
             }
     );

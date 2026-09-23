@@ -63,6 +63,8 @@ public record C2S_RequestTerritoryPreviewPacket(int radius, boolean coreBound, B
             TerritoryPreviewArea area = new TerritoryPreviewArea(chunk.x, chunk.z, safeRadius);
             com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(player.server)
                     .recordAction(player, "territory_previewed");
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.TERRITORY_VIEWED);
             PacketDistributor.sendToPlayer(player, new S2C_TerritoryPreviewPacket(
                     player.level().dimension().location(), area.centerChunkX(), area.centerChunkZ(),
                     area.radius(), area.chunkCount()));

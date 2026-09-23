@@ -9,7 +9,7 @@ import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -35,13 +35,13 @@ public final class PvpLoadoutEditorScreen extends Screen implements com.ruskserv
     private int scrollOffset = 0;
 
     // 編集用入力ボックス
-    private EditBox idEdit;
-    private EditBox nameEdit;
-    private EditBox descEdit;
-    private EditBox weaponSummaryEdit;
-    private EditBox attachSummaryEdit;
-    private EditBox ttkEdit;
-    private EditBox colorEdit;
+    private MoveEarthTextField idEdit;
+    private MoveEarthTextField nameEdit;
+    private MoveEarthTextField descEdit;
+    private MoveEarthTextField weaponSummaryEdit;
+    private MoveEarthTextField attachSummaryEdit;
+    private MoveEarthTextField ttkEdit;
+    private MoveEarthTextField colorEdit;
 
     private boolean isCreatingNew = false;
     private PvpLoadoutDefinition editingCopy;
@@ -83,18 +83,17 @@ public final class PvpLoadoutEditorScreen extends Screen implements com.ruskserv
         int formX = left + 230;
 
         // 入力フィールドの初期化
-        idEdit = new EditBox(font, formX + 70, top + 40, 140, 16, Component.literal("ID"));
-        nameEdit = new EditBox(font, formX + 70, top + 64, 180, 16, Component.literal("表示名"));
-        descEdit = new EditBox(font, formX + 70, top + 88, 290, 16, Component.literal("説明"));
-        weaponSummaryEdit = new EditBox(font, formX + 70, top + 112, 290, 16, Component.literal("武器概要"));
-        attachSummaryEdit = new EditBox(font, formX + 70, top + 136, 290, 16, Component.literal("アタッチメント概要"));
-        ttkEdit = new EditBox(font, formX + 70, top + 160, 100, 16, Component.literal("TTK"));
-        colorEdit = new EditBox(font, formX + 230, top + 160, 90, 16, Component.literal("Color"));
+        idEdit = new MoveEarthTextField(font, formX + 68, top + 38, 144, 20, Component.literal("ID"));
+        nameEdit = new MoveEarthTextField(font, formX + 68, top + 62, 184, 20, Component.literal("表示名"));
+        descEdit = new MoveEarthTextField(font, formX + 68, top + 86, 294, 20, Component.literal("説明"));
+        weaponSummaryEdit = new MoveEarthTextField(font, formX + 68, top + 110, 294, 20,
+                Component.literal("武器概要"));
+        attachSummaryEdit = new MoveEarthTextField(font, formX + 68, top + 134, 294, 20,
+                Component.literal("アタッチメント概要"));
+        ttkEdit = new MoveEarthTextField(font, formX + 68, top + 158, 104, 20, Component.literal("TTK"));
+        colorEdit = new MoveEarthTextField(font, formX + 228, top + 158, 94, 20, Component.literal("Color"));
 
-        for (EditBox field : fields()) {
-            field.setBordered(false);
-            field.setTextColor(TEXT);
-            field.setTextColorUneditable(MUTED);
+        for (MoveEarthTextField field : fields()) {
             addRenderableWidget(field);
         }
 
@@ -287,12 +286,6 @@ public final class PvpLoadoutEditorScreen extends Screen implements com.ruskserv
         graphics.drawString(font, "TTK:", formX, top + 164, MUTED, false);
         graphics.drawString(font, "Color:", formX + 180, top + 164, MUTED, false);
 
-        for (EditBox field : fields()) {
-            MoveEarthUi.Rect bounds = fieldBounds(field);
-            graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), CARD);
-            drawBorder(graphics, bounds, field.isFocused() ? ACCENT : BORDER);
-        }
-
         // 武器スロット構成のプレビュー
         renderWeaponsPreview(graphics, formX, top + 188);
         renderActions(graphics, left, top, mouseX, mouseY);
@@ -478,13 +471,8 @@ public final class PvpLoadoutEditorScreen extends Screen implements com.ruskserv
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    private List<EditBox> fields() {
+    private List<MoveEarthTextField> fields() {
         return List.of(idEdit, nameEdit, descEdit, weaponSummaryEdit, attachSummaryEdit, ttkEdit, colorEdit);
-    }
-
-    private static MoveEarthUi.Rect fieldBounds(EditBox field) {
-        return new MoveEarthUi.Rect(field.getX() - 2, field.getY() - 2,
-                field.getWidth() + 4, field.getHeight() + 4);
     }
 
     private static MoveEarthUi.Rect newBounds(int left, int top) {

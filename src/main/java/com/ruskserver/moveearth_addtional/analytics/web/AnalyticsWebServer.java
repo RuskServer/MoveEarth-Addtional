@@ -22,7 +22,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -35,6 +37,7 @@ public class AnalyticsWebServer {
 
     private static final Gson GSON = new GsonBuilder().create();
     private HttpServer server;
+    private ExecutorService executor;
 
     // --- レート制限（1秒間に最大20リクエスト） ---
     private static final int MAX_REQUESTS_PER_SECOND = 20;
@@ -86,15 +89,21 @@ public class AnalyticsWebServer {
             server.createContext("/api/profiles", new ChunkProfilesApiHandler());
             server.createContext("/api/export", new ExportApiHandler());
 
-            server.setExecutor(Executors.newFixedThreadPool(4, r -> {
+            executor = Executors.newFixedThreadPool(4, r -> {
                 Thread t = new Thread(r, "MoveEarth-Analytics-Web-Worker");
                 t.setDaemon(true);
                 return t;
-            }));
+            });
+            server.setExecutor(executor);
 
             server.start();
             System.out.println("[MoveEarth] プレイヤー分析Webダッシュボードを開始しました: http://" + host + ":" + port);
         } catch (Exception e) {
+            if (server != null) {
+                server.stop(0);
+            }
+            shutdownExecutor();
+            server = null;
             System.err.println("[MoveEarth] Webダッシュボードの起動に失敗しました: " + e.getMessage());
         }
     }
@@ -103,9 +112,10 @@ public class AnalyticsWebServer {
         if (server != null) {
             server.stop(1);
             server = null;
-            rateLimitMap.clear();
             System.out.println("[MoveEarth] プレイヤー分析Webダッシュボードを停止しました。");
         }
+        shutdownExecutor();
+        rateLimitMap.clear();
     }
 
     public boolean isRunning() {
@@ -152,18 +162,26 @@ public class AnalyticsWebServer {
             }
         }
 
-        // 2. Query param ?token=<token>
-        Map<String, String> params = parseQueryParams(exchange.getRequestURI());
-        String tokenParam = params.get("token");
-        if (expectedToken.equals(tokenParam)) {
-            return true;
-        }
-
-        boolean tokenSupplied = headerSupplied || tokenParam != null && !tokenParam.isBlank();
+        boolean tokenSupplied = headerSupplied;
         String code = tokenSupplied ? "AUTH_TOKEN_INVALID" : "AUTH_TOKEN_MISSING";
         sendResponse(exchange, 401, "{\"error\":\"Unauthorized\",\"code\":\"" + code + "\"}",
                 "application/json; charset=UTF-8");
         return false;
+    }
+
+    private void shutdownExecutor() {
+        ExecutorService current = executor;
+        executor = null;
+        if (current == null) return;
+        current.shutdown();
+        try {
+            if (!current.awaitTermination(2, TimeUnit.SECONDS)) {
+                current.shutdownNow();
+            }
+        } catch (InterruptedException exception) {
+            current.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     // --- 各種ハンドラー ---

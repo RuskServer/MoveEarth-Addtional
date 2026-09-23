@@ -1,4 +1,4 @@
-package com.ruskserver.moveearth_addtional.tpa;
+package com.ruskserver.moveearth_addtional.pvp;
 
 import com.ruskserver.moveearth_addtional.ServerSchedule;
 
@@ -7,12 +7,12 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
-/** Identifies the server opening day. A new cycle starts at 19:00 JST. */
-public final class OpenDayCycle {
+/** Shared opening-day boundary used by PvP daily rewards. */
+public final class ServerOpenDayCycle {
     public static final ZoneId JST = ZoneId.of("Asia/Tokyo");
     private static final int RESET_HOUR = ServerSchedule.OPEN_HOUR;
 
-    private OpenDayCycle() {
+    private ServerOpenDayCycle() {
     }
 
     public static String currentId() {

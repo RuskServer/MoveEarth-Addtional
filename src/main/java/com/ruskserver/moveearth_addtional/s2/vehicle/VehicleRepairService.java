@@ -78,6 +78,8 @@ public final class VehicleRepairService {
                     + (result.emergency() ? "emergency" : "normal"), result.gain(), updated.health(), updated.maximumHealth()), true);
         });
         level.playSound(null, event.getPos(), SoundEvents.ANVIL_USE, SoundSource.BLOCKS, 2F, 1.2F);
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.VEHICLE_REPAIRED);
         ReinforcementService.syncNearbyManagers(level, event.getPos());
     }
 

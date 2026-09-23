@@ -98,11 +98,11 @@ public final class CoreSabotageService {
                     message(attacker, "cancelled"); charge.bar.removeAllPlayers(); iterator.remove(); continue;
                 }
                 charge.ticks++;
-                charge.bar.setProgress(Math.min(1F, charge.ticks / 400F));
-                if (charge.ticks >= 400) {
+                if (charge.ticks >= CoreSabotageDisplayPolicy.INSTALL_TICKS) {
                     attacker.getOffhandItem().shrink(4);
                     charge.armed = true; charge.ticks = 0;
-                    charge.bar.setName(Component.translatable("message.moveearth_addtional.sabotage.armed"));
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(attacker,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.CORE_SABOTAGE_COMPLETED);
                 }
             } else {
                 ServerPlayer defender = charge.defender == null ? null
@@ -111,24 +111,39 @@ public final class CoreSabotageService {
                         && defender.serverLevel() == level && nearAndLooking(defender, charge.pos, charge.defenderStart)) {
                     charge.defuseTicks++;
                     defender.displayClientMessage(Component.translatable(
-                            "message.moveearth_addtional.sabotage.defuse_progress", (100 - charge.defuseTicks + 19) / 20), true);
-                    if (charge.defuseTicks >= 100) {
+                            "message.moveearth_addtional.sabotage.defuse_progress",
+                            CoreSabotageDisplayPolicy.remainingSeconds(charge.defuseTicks,
+                                    CoreSabotageDisplayPolicy.DEFUSE_TICKS)), true);
+                    if (charge.defuseTicks >= CoreSabotageDisplayPolicy.DEFUSE_TICKS) {
+                        com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(defender,
+                                com.ruskserver.moveearth_addtional.advancement.ModCriteria.CORE_SABOTAGE_COMPLETED);
                         message(defender, "defused"); charge.bar.removeAllPlayers(); iterator.remove(); continue;
                     }
                 } else { charge.defender = null; charge.defuseTicks = 0; }
                 charge.ticks++;
-                charge.bar.setProgress(Math.max(0F, 1F - charge.ticks / 800F));
-                if (charge.ticks >= 800) {
+                if (charge.ticks >= CoreSabotageDisplayPolicy.FUSE_TICKS) {
                     // Re-check attack eligibility at detonation, then use ordinary protection/scaling and fall handling.
                     if (SiegeService.recordAttack(attacker, level, charge.pos, false).siege() != null) {
                         var after = TerritoryCoreHealthService.damage(level, charge.pos,
                                 Math.max(1, (int) Math.ceil(core.maximumHealth() * 0.2D)));
                         if (after != null && after.health() < core.health()) {
                             SiegeService.recordAttack(attacker, level, charge.pos, true);
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(attacker,
+                                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.CORE_SABOTAGE_COMPLETED);
                         }
                     }
                     charge.bar.removeAllPlayers(); iterator.remove(); continue;
                 }
+            }
+            updateBar(charge);
+            int soundInterval = CoreSabotageDisplayPolicy.warningInterval(charge.armed, charge.ticks);
+            if (charge.ticks % soundInterval == 0) {
+                int fuseRemaining = CoreSabotageDisplayPolicy.remainingSeconds(
+                        charge.ticks, CoreSabotageDisplayPolicy.FUSE_TICKS);
+                float pitch = !charge.armed ? 0.7F : fuseRemaining <= 3 ? 1.8F
+                        : fuseRemaining <= 10 ? 1.55F : 1.25F;
+                level.playSound(null, charge.pos, SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.BLOCKS,
+                        2F, pitch);
             }
             if (charge.ticks % 20 == 0) {
                 Set<ServerPlayer> viewers = new HashSet<>();
@@ -139,8 +154,6 @@ public final class CoreSabotageService {
                     if (!viewers.contains(viewer)) charge.bar.removePlayer(viewer);
                 }
                 viewers.forEach(charge.bar::addPlayer);
-                level.playSound(null, charge.pos, SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.BLOCKS,
-                        2F, charge.armed ? 1.4F : 0.7F);
             }
         }
     }
@@ -201,16 +214,47 @@ public final class CoreSabotageService {
         player.displayClientMessage(Component.translatable("message.moveearth_addtional.sabotage." + key), true);
     }
 
+    private static void updateBar(Charge charge) {
+        int phase = !charge.armed ? 0 : charge.defender != null ? 2 : 1;
+        int seconds = CoreSabotageDisplayPolicy.remainingSeconds(charge.ticks,
+                charge.armed ? CoreSabotageDisplayPolicy.FUSE_TICKS
+                        : CoreSabotageDisplayPolicy.INSTALL_TICKS);
+        int defuseSeconds = phase == 2 ? CoreSabotageDisplayPolicy.remainingSeconds(
+                charge.defuseTicks, CoreSabotageDisplayPolicy.DEFUSE_TICKS) : -1;
+        if (phase != charge.lastBarPhase) {
+            charge.bar.setColor(phase == 0 ? BossEvent.BossBarColor.YELLOW
+                    : phase == 2 ? BossEvent.BossBarColor.BLUE : BossEvent.BossBarColor.RED);
+        }
+        if (phase != charge.lastBarPhase || seconds != charge.lastBarSeconds
+                || defuseSeconds != charge.lastDefuseSeconds) {
+            charge.bar.setName(switch (phase) {
+                case 0 -> Component.translatable("message.moveearth_addtional.sabotage.bar.installing", seconds);
+                case 2 -> Component.translatable("message.moveearth_addtional.sabotage.bar.defusing",
+                        defuseSeconds, seconds);
+                default -> Component.translatable("message.moveearth_addtional.sabotage.bar.armed", seconds);
+            });
+            charge.lastBarPhase = phase;
+            charge.lastBarSeconds = seconds;
+            charge.lastDefuseSeconds = defuseSeconds;
+        }
+        charge.bar.setProgress(phase == 0
+                ? Math.min(1F, charge.ticks / (float) CoreSabotageDisplayPolicy.INSTALL_TICKS)
+                : phase == 2
+                ? Math.min(1F, charge.defuseTicks / (float) CoreSabotageDisplayPolicy.DEFUSE_TICKS)
+                : Math.max(0F, 1F - charge.ticks / (float) CoreSabotageDisplayPolicy.FUSE_TICKS));
+    }
+
     private static final class Charge {
         final UUID coreId, defendingNation, attacker;
         final net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension;
         final BlockPos pos;
         final Vec3 start;
         final ServerBossEvent bar = new ServerBossEvent(Component.translatable(
-                "message.moveearth_addtional.sabotage.installing"), BossEvent.BossBarColor.RED,
+                "message.moveearth_addtional.sabotage.bar.installing", 20), BossEvent.BossBarColor.YELLOW,
                 BossEvent.BossBarOverlay.PROGRESS);
         boolean armed;
         int ticks, defuseTicks;
+        int lastBarPhase = -1, lastBarSeconds = -1, lastDefuseSeconds = -1;
         UUID defender;
         Vec3 defenderStart;
         Charge(TerritorySavedData.CoreRecord core, ServerPlayer player) {

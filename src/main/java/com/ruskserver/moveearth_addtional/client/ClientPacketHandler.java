@@ -50,6 +50,10 @@ public class ClientPacketHandler {
         else if (packet.openScreen()) minecraft.setScreen(new PrisonerScreen(packet));
     }
 
+    public static void handlePrisonerActionResult(S2C_PrisonerActionResultPacket packet) {
+        if (Minecraft.getInstance().screen instanceof PrisonerScreen screen) screen.handleResult(packet);
+    }
+
     public static void handleRecoveryDispatch(S2C_RecoveryDispatchSnapshotPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof RecoveryDispatchScreen screen) screen.update(packet);

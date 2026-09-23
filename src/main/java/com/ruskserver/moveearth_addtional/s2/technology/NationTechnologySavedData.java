@@ -26,6 +26,8 @@ import java.util.LinkedHashSet;
 
 /** Server-authoritative guide progress. Personal progress is never inherited from a nation. */
 public final class NationTechnologySavedData extends SavedData {
+    /** Old schema-3 progress is a migration source only. */
+    private static final boolean LEGACY_READ_ONLY = true;
     private final Map<UUID, NationProgress> nations = new HashMap<>();
     private final Map<UUID, NationProgress> players = new HashMap<>();
     private long revision;
@@ -41,6 +43,7 @@ public final class NationTechnologySavedData extends SavedData {
     }
 
     public TrackResult setTracked(ServerPlayer player, ResourceLocation technologyId, boolean tracked) {
+        if (LEGACY_READ_ONLY) return TrackResult.UNCHANGED;
         TechnologyDefinition definition = TechnologyDefinitions.INSTANCE.get(technologyId).orElse(null);
         if (definition == null) return TrackResult.UNKNOWN;
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
@@ -108,10 +111,12 @@ public final class NationTechnologySavedData extends SavedData {
     }
 
     public void recordPlacement(ServerPlayer player, BlockState state) {
+        if (LEGACY_READ_ONLY) return;
         recordPlacement(player, state, player.blockPosition());
     }
 
     public void recordPlacement(ServerPlayer player, BlockState state, BlockPos pos) {
+        if (LEGACY_READ_ONLY) return;
         Set<ResourceLocation> candidates = candidateIds(TechnologyDefinition.ObjectiveType.PLACE_BLOCK,
                 TechnologyDefinition.ObjectiveType.PLACE_STRUCTURE);
         advance(player, candidates, definition -> definition.objectives().stream()
@@ -121,6 +126,7 @@ public final class NationTechnologySavedData extends SavedData {
     }
 
     public void recordCraft(ServerPlayer player, ItemStack stack) {
+        if (LEGACY_READ_ONLY) return;
         Set<ResourceLocation> candidates = candidateIds(TechnologyDefinition.ObjectiveType.CRAFT_ITEM,
                 TechnologyDefinition.ObjectiveType.OBTAIN_ITEM);
         advance(player, candidates, definition -> definition.objectives().stream()
@@ -131,6 +137,7 @@ public final class NationTechnologySavedData extends SavedData {
     /** Common integration entry point for Create addons and MoveEarth subsystems. */
     public void recordObjective(ServerPlayer player, TechnologyDefinition.ObjectiveType type,
                                 ResourceLocation target, long amount, BlockPos pos) {
+        if (LEGACY_READ_ONLY) return;
         Set<ResourceLocation> candidates = candidateIds(type);
         advance(player, candidates, definition -> definition.objectives().stream()
                 .filter(objective -> objective.type() == type)
@@ -165,6 +172,7 @@ public final class NationTechnologySavedData extends SavedData {
     }
 
     public boolean refreshComputed(MinecraftServer server, UUID nationId) {
+        if (LEGACY_READ_ONLY) return false;
         if (nationId == null) return false;
         boolean activeCapital = TerritorySavedData.get(server).cores().stream()
                 .anyMatch(core -> core.nationId().equals(nationId)
@@ -302,6 +310,7 @@ public final class NationTechnologySavedData extends SavedData {
     }
 
     public void removeNation(UUID nationId) {
+        if (LEGACY_READ_ONLY) return;
         if (nations.remove(nationId) != null) { revision++; setDirty(); }
     }
 

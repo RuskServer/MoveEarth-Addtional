@@ -4,7 +4,6 @@ import com.mojang.logging.LogUtils;
 import com.ruskserver.moveearth_addtional.config.RegionResourceConfig;
 import com.ruskserver.moveearth_addtional.config.DelayedChunkCacheConfig;
 import com.ruskserver.moveearth_addtional.config.AeronauticsSwivelConfig;
-import com.ruskserver.moveearth_addtional.config.TpaConfig;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.config.TipConfig;
@@ -59,11 +58,6 @@ public class Moveearth_addtional {
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
-                TpaConfig.SPEC,
-                "moveearth_addtional-tpa.toml"
-        );
-        modContainer.registerConfig(
-                ModConfig.Type.SERVER,
                 S2TerritoryConfig.SPEC,
                 "moveearth_addtional-s2-territory.toml"
         );
@@ -85,9 +79,11 @@ public class Moveearth_addtional {
 
         CbcReinforcementCompat.registerIfPresent();
         WarnauticsReinforcementCompat.registerIfPresent();
+        com.ruskserver.moveearth_addtional.advancement.PlayerReviveAdvancementCompat.registerIfPresent();
 
         // Register Sounds
         ModSounds.SOUND_EVENTS.register(modEventBus);
+        com.ruskserver.moveearth_addtional.advancement.ModCriteria.TRIGGERS.register(modEventBus);
 
         // Register Blocks, Items, BlockEntities, CreativeModeTabs
         com.ruskserver.moveearth_addtional.block.ModBlocks.BLOCKS.register(modEventBus);

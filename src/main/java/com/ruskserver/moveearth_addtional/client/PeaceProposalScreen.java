@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_SiegeActionPacket;
@@ -7,7 +8,6 @@ import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.siege.PeaceTermsPolicy;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -22,7 +22,7 @@ public final class PeaceProposalScreen extends Screen implements SuppressesChatO
     private final long revision;
     private final UUID opponentNationId;
     private final String opponentName;
-    private EditBox goldEdit;
+    private MoveEarthTextField goldEdit;
     private int pendingRequestId = -1;
     private Component toast;
     private int toastTicks;
@@ -36,13 +36,12 @@ public final class PeaceProposalScreen extends Screen implements SuppressesChatO
 
     @Override protected void init() {
         Rect panel = panelBounds();
-        goldEdit = new EditBox(font, panel.x() + 28, panel.y() + 103,
-                panel.width() - 56, 18, Component.translatable("screen.moveearth_addtional.peace.gold"));
+        goldEdit = new MoveEarthTextField(font, panel.x() + 23, panel.y() + 100,
+                panel.width() - 46, 24, Component.translatable("screen.moveearth_addtional.peace.gold"));
+        goldEdit.focusBorder(GOLD);
         goldEdit.setMaxLength(7);
         goldEdit.setFilter(value -> value.isEmpty() || value.chars().allMatch(Character::isDigit));
         goldEdit.setValue("0");
-        goldEdit.setBordered(false);
-        goldEdit.setTextColor(TEXT);
         addRenderableWidget(goldEdit);
         setInitialFocus(goldEdit);
     }
@@ -58,10 +57,6 @@ public final class PeaceProposalScreen extends Screen implements SuppressesChatO
                 panel.x() + 20, panel.y() + 36, MUTED, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.peace.gold"),
                 panel.x() + 28, panel.y() + 84, GOLD, false);
-        Rect field = new Rect(goldEdit.getX() - 5, goldEdit.getY() - 3,
-                goldEdit.getWidth() + 10, goldEdit.getHeight() + 6);
-        graphics.fill(field.x(), field.y(), field.right(), field.bottom(), CARD);
-        drawBorder(graphics, field, goldEdit.isFocused() ? GOLD : BORDER);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.peace.payer_note"),
                 panel.x() + 28, panel.y() + 132, MUTED, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.peace.prisoners_note"),

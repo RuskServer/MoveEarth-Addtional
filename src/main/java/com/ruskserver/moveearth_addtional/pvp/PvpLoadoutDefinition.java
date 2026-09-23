@@ -25,6 +25,10 @@ import java.util.Objects;
  */
 public class PvpLoadoutDefinition {
 
+    public static final int MAX_TEXT_LENGTH = 512;
+    public static final int MAX_WEAPONS = 9;
+    public static final int MAX_ATTACHMENTS_PER_WEAPON = 16;
+
     private String id;
     private String displayName;
     private String description;
@@ -136,18 +140,15 @@ public class PvpLoadoutDefinition {
     }
 
     public static PvpLoadoutDefinition read(RegistryFriendlyByteBuf buf) {
-        String id = buf.readUtf();
-        String displayName = buf.readUtf();
-        String description = buf.readUtf();
-        String weaponSummary = buf.readUtf();
-        String attachmentSummary = buf.readUtf();
-        String bodyTtk = buf.readUtf();
+        String id = buf.readUtf(64);
+        String displayName = buf.readUtf(128);
+        String description = buf.readUtf(MAX_TEXT_LENGTH);
+        String weaponSummary = buf.readUtf(MAX_TEXT_LENGTH);
+        String attachmentSummary = buf.readUtf(MAX_TEXT_LENGTH);
+        String bodyTtk = buf.readUtf(128);
         int color = buf.readInt();
-        int weaponCount = buf.readVarInt();
-        List<WeaponDefinition> weapons = new ArrayList<>(weaponCount);
-        for (int i = 0; i < weaponCount; i++) {
-            weapons.add(WeaponDefinition.read(buf));
-        }
+        List<WeaponDefinition> weapons = com.ruskserver.moveearth_addtional.network.NetworkDecodeLimits.readList(
+                buf.readVarInt(), MAX_WEAPONS, "weapon", () -> WeaponDefinition.read(buf));
         return new PvpLoadoutDefinition(id, displayName, description, weaponSummary, attachmentSummary, bodyTtk, color, weapons);
     }
 
@@ -215,11 +216,8 @@ public class PvpLoadoutDefinition {
         public static WeaponDefinition read(RegistryFriendlyByteBuf buf) {
             int slot = buf.readVarInt();
             ResourceLocation gunId = buf.readResourceLocation();
-            int count = buf.readVarInt();
-            List<ResourceLocation> attachments = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                attachments.add(buf.readResourceLocation());
-            }
+            List<ResourceLocation> attachments = com.ruskserver.moveearth_addtional.network.NetworkDecodeLimits.readList(
+                    buf.readVarInt(), MAX_ATTACHMENTS_PER_WEAPON, "attachment", buf::readResourceLocation);
             return new WeaponDefinition(slot, gunId, attachments);
         }
 

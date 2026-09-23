@@ -16,8 +16,10 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.OnDatapackSyncEvent;
 
-/** Converts real player activity into personal guide progress after protection handlers accept it. */
-@EventBusSubscriber(modid = Moveearth_addtional.MODID)
+/**
+ * Legacy event bridge retained only so old worlds can be migrated. It is intentionally
+ * not registered: vanilla advancements now own progress collection and presentation.
+ */
 public final class TechnologyEvents {
     private TechnologyEvents() { }
 

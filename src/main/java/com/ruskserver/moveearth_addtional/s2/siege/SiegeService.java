@@ -100,6 +100,17 @@ public final class SiegeService {
         if (result.siege() != null) {
             RecoveryService.recordBattleWalls(level, result.siege(), core);
             DispatchContractService.bindEligible(level.getServer(), result.siege());
+            ServerPlayer participant = attribution.actorId() == null ? null
+                    : level.getServer().getPlayerList().getPlayer(attribution.actorId());
+            if (participant != null) {
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(participant,
+                        com.ruskserver.moveearth_addtional.advancement.ModCriteria.SIEGE_PARTICIPATED);
+                if (com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
+                        .at(level, participant.blockPosition()).isPresent()) {
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(participant,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.MOBILE_FORCE_PARTICIPATED);
+                }
+            }
         }
         notifyTransition(level.getServer(), nations, result);
         if (effectiveDamage && core.health() == 0 && result.siege() != null) {
@@ -439,6 +450,16 @@ public final class SiegeService {
         NationNotificationService.publish(server, notificationParties(attacker, individualAttacker, defender),
                 NationNotificationSavedData.EventType.SIEGE_ENDED, dimension, pos, null,
                 java.util.List.of(reason));
+        if ("attacker_withdrew".equals(reason)) {
+            NationSavedData nations = NationSavedData.get(server);
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (nations.nationIdFor(player.getUUID()).filter(defender::equals).isPresent()
+                        && SiegeActivityTracker.activeRecently(player)) {
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.TERRITORY_DEFENDED);
+                }
+            }
+        }
     }
 
     private static void publishSiege(MinecraftServer server, SiegeSavedData.SiegeRecord siege,

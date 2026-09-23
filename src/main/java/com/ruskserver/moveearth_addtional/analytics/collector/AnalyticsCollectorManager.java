@@ -308,15 +308,6 @@ public class AnalyticsCollectorManager {
         pAcc.jobsXp += xp;
     }
 
-    public void recordTpaSuccess(ServerPlayer player) {
-        long now = System.currentTimeMillis();
-        UUID uuid = player.getUUID();
-        PlayerActivityTracker.INSTANCE.recordActivity(uuid, ActivityCategory.TPA, now);
-
-        PlayerBucketAccumulator pAcc = getOrCreatePlayerBucket(player);
-        pAcc.tpaSuccesses++;
-    }
-
     private PlayerBucketAccumulator getOrCreatePlayerBucket(ServerPlayer player) {
         UUID uuid = player.getUUID();
         boolean inPvpArena = PvpMatchManager.INSTANCE.isActive(player)

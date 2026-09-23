@@ -218,6 +218,8 @@ public final class TerritoryClosureRecheckManager {
                             : "message.moveearth_addtional.territory_core.exposed",
                     core.pos().getX(), core.pos().getY(), core.pos().getZ());
             player.sendSystemMessage(active ? MoveEarthMessage.success(body) : MoveEarthMessage.warning(body));
+            if (active) com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.TERRITORY_SEALED);
         }
         NationNotificationService.publish(server, java.util.List.of(core.nationId()),
                 active ? NationNotificationSavedData.EventType.TERRITORY_RESEALED

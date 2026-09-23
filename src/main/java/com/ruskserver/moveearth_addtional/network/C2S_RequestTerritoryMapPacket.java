@@ -100,6 +100,8 @@ public record C2S_RequestTerritoryMapPacket(ResourceLocation dimension) implemen
             S2C_TerritoryMapPacket response = new S2C_TerritoryMapPacket(dimension, nationEntries, cores);
             long signature = signature(response);
             LAST_REQUESTS.put(player.getUUID(), new RequestState(now, dimension, signature));
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.TERRITORY_VIEWED);
             if (previous != null && previous.dimension.equals(dimension) && previous.signature == signature) return;
             PacketDistributor.sendToPlayer(player, response);
         });

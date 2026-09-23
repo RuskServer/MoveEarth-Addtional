@@ -25,6 +25,8 @@ public record C2S_ConfigurePaymentPacket(
         BankReference newReference
 ) implements CustomPacketPayload {
 
+    private static final double MAX_INTERACTION_DISTANCE_SQR = 8.0D * 8.0D;
+
     public static final CustomPacketPayload.Type<C2S_ConfigurePaymentPacket> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "configure_payment"));
 
@@ -61,6 +63,9 @@ public record C2S_ConfigurePaymentPacket(
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer player) {
                 var level = player.serverLevel();
+                if (!ServerPacketGuards.canAccessLoadedBlock(player, pos, MAX_INTERACTION_DISTANCE_SQR)) {
+                    return;
+                }
                 var blockEntity = level.getBlockEntity(pos);
                 
                 if (blockEntity instanceof PlayerDetectorBlockEntity detector) {

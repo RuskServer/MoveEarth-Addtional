@@ -20,8 +20,6 @@ public enum ActivityCategory {
     JOBS("jobs", "Jobs活動"),
     /** 2ブロック以上の有効移動・探索 */
     MOVEMENT("movement", "移動"),
-    /** TPAによるテレポート */
-    TPA("tpa", "TPA移動"),
     /** その他有効活動 */
     OTHER("other", "その他");
 

@@ -124,14 +124,14 @@ public class AnalyticsWebServerTest {
     }
 
     @Test
-    public void testInvalidTokenIsDistinguishedFromMissingToken() throws Exception {
+    public void testQueryTokenIsRejectedAndNotAcceptedAsAuthentication() throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(uri("/api/health?token=stale-token"))
                 .GET().build();
         HttpResponse<String> response = HttpClient.newHttpClient()
                 .send(request, HttpResponse.BodyHandlers.ofString());
         assertEquals(401, response.statusCode());
-        assertTrue(response.body().contains("AUTH_TOKEN_INVALID"));
+        assertTrue(response.body().contains("AUTH_TOKEN_MISSING"));
     }
 
     @Test
@@ -149,10 +149,11 @@ public class AnalyticsWebServerTest {
     }
 
     @Test
-    public void testGetOverviewApiWithQueryToken() throws Exception {
+    public void testGetOverviewApiWithBearerToken() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(uri("/api/overview?window=7d&token=" + AnalyticsConfig.getAuthToken()))
+                .uri(uri("/api/overview?window=7d"))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken())
                 .GET()
                 .build();
 
@@ -165,7 +166,8 @@ public class AnalyticsWebServerTest {
     public void testGetHealthApiWithToken() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(uri("/api/health?token=" + AnalyticsConfig.getAuthToken()))
+                .uri(uri("/api/health"))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken())
                 .GET()
                 .build();
 
@@ -179,20 +181,23 @@ public class AnalyticsWebServerTest {
         HttpClient client = HttpClient.newHttpClient();
         String token = AnalyticsConfig.getAuthToken();
         HttpResponse<String> performance = client.send(HttpRequest.newBuilder()
-                        .uri(uri("/api/performance?window=7d&token=" + token))
+                        .uri(uri("/api/performance?window=7d"))
+                        .header("Authorization", "Bearer " + token)
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, performance.statusCode());
         assertTrue(performance.body().contains("\"tps\":19.8"));
 
         HttpResponse<String> chunks = client.send(HttpRequest.newBuilder()
-                        .uri(uri("/api/chunks?window=7d&dimension=minecraft%3Aoverworld&token=" + token))
+                        .uri(uri("/api/chunks?window=7d&dimension=minecraft%3Aoverworld"))
+                        .header("Authorization", "Bearer " + token)
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, chunks.statusCode());
         assertTrue(chunks.body().contains("\"summaries\""));
         assertTrue(chunks.body().contains("\"chunkX\":3"));
 
         HttpResponse<String> profiles = client.send(HttpRequest.newBuilder()
-                        .uri(uri("/api/profiles?window=7d&token=" + token))
+                        .uri(uri("/api/profiles?window=7d"))
+                        .header("Authorization", "Bearer " + token)
                         .GET().build(), HttpResponse.BodyHandlers.ofString());
         assertEquals(200, profiles.statusCode());
         assertTrue(profiles.body().contains("\"status\""));
@@ -204,7 +209,8 @@ public class AnalyticsWebServerTest {
         HttpClient client = HttpClient.newHttpClient();
         // 負数や巨大値のlimitを指定しても正常に200が返る
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(uri("/api/players?window=7d&limit=-1&token=" + AnalyticsConfig.getAuthToken()))
+                .uri(uri("/api/players?window=7d&limit=-1"))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken())
                 .GET()
                 .build();
 
@@ -213,7 +219,8 @@ public class AnalyticsWebServerTest {
 
         // Groups API
         HttpRequest groupReq = HttpRequest.newBuilder()
-                .uri(uri("/api/groups?window=7d&token=" + AnalyticsConfig.getAuthToken()))
+                .uri(uri("/api/groups?window=7d"))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken())
                 .GET()
                 .build();
         HttpResponse<String> groupResp = client.send(groupReq, HttpResponse.BodyHandlers.ofString());
@@ -225,7 +232,8 @@ public class AnalyticsWebServerTest {
         HttpClient client = HttpClient.newHttpClient();
         String token = AnalyticsConfig.getAuthToken();
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(uri("/api/detectors?group=" + groupOwnerUuid + "&window=7d&token=" + token))
+                .uri(uri("/api/detectors?group=" + groupOwnerUuid + "&window=7d"))
+                .header("Authorization", "Bearer " + token)
                 .GET()
                 .build();
 
@@ -234,7 +242,8 @@ public class AnalyticsWebServerTest {
         assertTrue(response.body().contains("北門\\u003cscript\\u003e"));
 
         HttpRequest invalid = HttpRequest.newBuilder()
-                .uri(uri("/api/detectors?group=invalid&token=" + token))
+                .uri(uri("/api/detectors?group=invalid"))
+                .header("Authorization", "Bearer " + token)
                 .GET()
                 .build();
         assertEquals(400, client.send(invalid, HttpResponse.BodyHandlers.ofString()).statusCode());
@@ -249,7 +258,8 @@ public class AnalyticsWebServerTest {
         // 40回連続リクエスト（秒跨ぎがあっても確実に20req/secを超過させる）
         for (int i = 0; i < 40; i++) {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(uri("/api/health?token=" + token))
+                    .uri(uri("/api/health"))
+                    .header("Authorization", "Bearer " + token)
                     .GET()
                     .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());

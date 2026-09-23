@@ -983,14 +983,10 @@
         let currentTab = 'overview';
         let cachedPlayers = [];
 
-        // トークンの初期化 (URLパラメータ ?token=... または sessionStorage)
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('token')) {
-            const suppliedToken = (urlParams.get('token') || '').trim();
+        // 認証情報はURLへ載せず、このタブのsessionStorageだけに保持する。
+        if (!sessionStorage.getItem('me_analytics_token')) {
+            const suppliedToken = (window.prompt('MoveEarth Analytics APIトークンを入力してください') || '').trim();
             if (suppliedToken) sessionStorage.setItem('me_analytics_token', suppliedToken);
-            urlParams.delete('token');
-            const cleanQuery = urlParams.toString();
-            history.replaceState(null, '', window.location.pathname + (cleanQuery ? `?${cleanQuery}` : '') + window.location.hash);
         }
 
         function getAuthToken() {
@@ -1009,9 +1005,7 @@
 
         async function apiFetch(url) {
             const token = getAuthToken();
-            const sep = url.includes('?') ? '&' : '?';
-            const authUrl = token ? `${url}${sep}token=${encodeURIComponent(token)}` : url;
-            return fetch(authUrl, {
+            return fetch(url, {
                 headers: token ? { 'Authorization': `Bearer ${token}` } : {}
             });
         }
@@ -1867,12 +1861,24 @@
             } catch (e) { console.error(e); }
         }
 
-        function exportData(format, type = 'players') {
+        async function exportData(format, type = 'players') {
             const windowVal = document.getElementById('windowSelector').value;
-            const token = getAuthToken();
-            const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
             const dim = document.getElementById('performanceDimSelector')?.value || 'all';
-            window.location.href = `/api/export?format=${format}&type=${type}&dimension=${encodeURIComponent(dim)}&window=${windowVal}${tokenQuery}`;
+            const response = await apiFetch(`/api/export?format=${format}&type=${type}&dimension=${encodeURIComponent(dim)}&window=${windowVal}`);
+            if (!response.ok) {
+                alert(response.status === 401 ? 'API認証に失敗しました。' : 'エクスポートに失敗しました。');
+                return;
+            }
+            const blob = await response.blob();
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename="?([^";]+)"?/i);
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = match ? match[1] : `moveearth-analytics.${format}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(link.href);
         }
 
         function openPlayerModalByUuid(uuid) {

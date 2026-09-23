@@ -143,18 +143,19 @@ public final class AnalyticsCommand {
 
         String host = AnalyticsConfig.getWebServerHost();
         int port = AnalyticsConfig.getWebServerPort();
-        String token = AnalyticsConfig.getAuthToken();
-        String url = "http://" + host + ":" + port + "/?token=" + token;
+        String url = "http://" + host + ":" + port + "/";
 
         Component linkComponent = Component.literal(url)
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.UNDERLINE)
                 .withStyle(style -> style
                         .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("クリックしてブラウザで開く（認証トークン付）"))));
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal("クリックしてブラウザで開く"))));
 
         source.sendSuccess(() -> Component.literal("[MoveEarth] 分析Webダッシュボード: ")
                 .withStyle(ChatFormatting.GOLD)
-                .append(linkComponent), false);
+                .append(linkComponent)
+                .append(Component.literal(" 認証画面には /analytics token の値を入力してください。")
+                        .withStyle(ChatFormatting.GRAY)), false);
 
         return 1;
     }

@@ -123,6 +123,14 @@ ordering = "AFTER"
 side = "BOTH"
 
 [[dependencies."${mod_id}"]]
+modId = "lightmanscurrency"
+type = "required"
+reason = "MoveEarth directly uses Lightman's Currency bank accounts for detector fees, nation upkeep, and recovery payments."
+versionRange = "[1.21-2.3.0.4g,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
 modId = "mekanism"
 type = "required"
 reason = "MoveEarth's industrial progression is balanced against Mekanism 10.7.19.85 recipe and machine behavior."

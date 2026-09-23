@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.network.C2S_LinkNationDiscordPacket;
 import com.ruskserver.moveearth_addtional.network.C2S_LinkDiscordAccountPacket;
@@ -10,7 +11,6 @@ import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -31,7 +31,7 @@ public final class NationNotificationsScreen extends Screen implements Suppresse
     private int pendingRequestId = -1;
     private boolean pendingLink;
     private boolean pendingAccountLink;
-    private EditBox linkCode;
+    private MoveEarthTextField linkCode;
     private Component toast;
     private int toastTicks;
     private int toastColor = SUCCESS;
@@ -50,13 +50,10 @@ public final class NationNotificationsScreen extends Screen implements Suppresse
 
     @Override protected void init() {
         Rect panel = panelBounds();
-        linkCode = new EditBox(font, panel.x() + 33, panel.y() + 228, 176, 18,
+        linkCode = new MoveEarthTextField(font, panel.x() + 28, panel.y() + 225, 186, 24,
                 Component.translatable("screen.moveearth_addtional.notifications.link_code"));
         linkCode.setMaxLength(16);
         linkCode.setFilter(value -> value.matches("[A-Za-z0-9-]*"));
-        linkCode.setBordered(false);
-        linkCode.setTextColor(TEXT);
-        linkCode.setTextColorUneditable(MUTED);
         linkCode.setEditable(canManage && pendingRequestId < 0);
         addRenderableWidget(linkCode);
     }
@@ -87,7 +84,6 @@ public final class NationNotificationsScreen extends Screen implements Suppresse
 
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.notifications.link_code"),
                 panel.x() + 28, panel.y() + 210, MUTED, false);
-        drawField(graphics, linkCode);
         Rect link = linkBounds(panel);
         boolean linkEnabled = canManage && pendingRequestId < 0 && !linkCode.getValue().isBlank();
         drawButton(graphics, font, link,
@@ -118,13 +114,6 @@ public final class NationNotificationsScreen extends Screen implements Suppresse
                 SUCCESS, saveEnabled && save.contains(mouseX, mouseY), saveEnabled);
         super.render(graphics, mouseX, mouseY, partialTick);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
-    }
-
-    private static void drawField(GuiGraphics graphics, EditBox field) {
-        Rect bounds = new Rect(field.getX() - 5, field.getY() - 3,
-                field.getWidth() + 10, field.getHeight() + 6);
-        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), CARD);
-        drawBorder(graphics, bounds, field.isFocused() ? ACCENT : BORDER);
     }
 
     private void drawToggle(GuiGraphics graphics, Rect bounds, Component label, boolean enabled,

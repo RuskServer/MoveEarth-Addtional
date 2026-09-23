@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class SqliteAnalyticsStorageEngineTest {
 
-    private static final long JST_18_OPEN_DAY_OFFSET_SECONDS = 32_400L;
+    private static final long JST_19_OPEN_DAY_OFFSET_SECONDS = 36_000L;
 
     @TempDir
     Path tempDir;
@@ -133,9 +133,9 @@ public class SqliteAnalyticsStorageEngineTest {
         UUID groupOwner = UUID.randomUUID();
         String dim = "minecraft:overworld";
 
-        // Day 10 (JST 18:00基準): 2つの5分バケット
-        long bucket1 = JST_18_OPEN_DAY_OFFSET_SECONDS + 86400L * 10 + 300L;
-        long bucket2 = JST_18_OPEN_DAY_OFFSET_SECONDS + 86400L * 10 + 600L;
+        // Day 10 (JST 19:00基準): 2つの5分バケット
+        long bucket1 = JST_19_OPEN_DAY_OFFSET_SECONDS + 86400L * 10 + 300L;
+        long bucket2 = JST_19_OPEN_DAY_OFFSET_SECONDS + 86400L * 10 + 600L;
 
         PlayerActivityBucket p1 = new PlayerActivityBucket(
                 bucket1, playerUuid, dim, groupOwner, 180, 50.0, 10, 5, 2, 3, 1, 0, 150.0, 1);
@@ -153,7 +153,7 @@ public class SqliteAnalyticsStorageEngineTest {
         }
 
         // 日次集約の実行 (Day 11 開始前まで)
-        engine.aggregateDaily(JST_18_OPEN_DAY_OFFSET_SECONDS + 86400L * 11);
+        engine.aggregateDaily(JST_19_OPEN_DAY_OFFSET_SECONDS + 86400L * 11);
 
         // 日次データの検証 (Day 10)
         try (Connection conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath.toAbsolutePath());
@@ -410,8 +410,8 @@ public class SqliteAnalyticsStorageEngineTest {
     @Test
     public void testAggregateDailyIdempotent() throws Exception {
         UUID player = UUID.randomUUID();
-        long t1 = JST_18_OPEN_DAY_OFFSET_SECONDS + 1000L; // 開放日 0 の 1000秒後
-        long t2 = JST_18_OPEN_DAY_OFFSET_SECONDS + 2000L; // 開放日 0 の 2000秒後
+        long t1 = JST_19_OPEN_DAY_OFFSET_SECONDS + 1000L; // 開放日 0 の 1000秒後
+        long t2 = JST_19_OPEN_DAY_OFFSET_SECONDS + 2000L; // 開放日 0 の 2000秒後
 
         PlayerActivityBucket b1 = new PlayerActivityBucket(
                 t1, player, "minecraft:overworld", null, 300, 10.0, 10, 5, 0, 0, 0, 0, 10.0, 0);
@@ -422,12 +422,12 @@ public class SqliteAnalyticsStorageEngineTest {
 
         // 日次集約を 3 回連続実行
         for (int i = 0; i < 3; i++) {
-            engine.aggregateDaily(JST_18_OPEN_DAY_OFFSET_SECONDS + 86400L);
+            engine.aggregateDaily(JST_19_OPEN_DAY_OFFSET_SECONDS + 86400L);
         }
 
         // 3回実行しても重複加算されず、合計値（300+300=600秒, breaks=30, places=15）が正確に維持される
         var summary = engine.queryPlayerSummary(player, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.ALL_TIME,
-                JST_18_OPEN_DAY_OFFSET_SECONDS + 86400L + 100L);
+                JST_19_OPEN_DAY_OFFSET_SECONDS + 86400L + 100L);
         assertTrue(summary.isPresent());
         assertEquals(600, summary.get().totalActiveSeconds());
         assertEquals(30, summary.get().totalBreaks());
@@ -439,11 +439,11 @@ public class SqliteAnalyticsStorageEngineTest {
         UUID transientPlayer = UUID.randomUUID(); // 毎日2分だけ活動 (7日で14分だが各日10分未満)
         UUID activePlayer = UUID.randomUUID();    // 1日だけ15分活動 (10分以上)
 
-        long baseJst18 = JST_18_OPEN_DAY_OFFSET_SECONDS;
+        long baseJst19 = JST_19_OPEN_DAY_OFFSET_SECONDS;
 
         // 1. transientPlayer: 7日間にわたり毎日 120秒（2分）ずつ活動 (合計 840秒 = 14分)
         for (int day = 0; day < 7; day++) {
-            long t = baseJst18 + day * 86400L + 1800L;
+            long t = baseJst19 + day * 86400L + 1800L;
             PlayerActivityBucket b = new PlayerActivityBucket(
                     t, transientPlayer, "minecraft:overworld", null, 120, 10.0, 1, 1, 0, 0, 0, 0, 5.0, 0);
             engine.writeBatch(List.of(new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(b))));
@@ -451,11 +451,11 @@ public class SqliteAnalyticsStorageEngineTest {
 
         // 2. activePlayer: Day 1 に 900秒（15分）活動 (10分以上)
         PlayerActivityBucket bActive = new PlayerActivityBucket(
-                baseJst18 + 86400L + 1800L, activePlayer, "minecraft:overworld", null, 900, 100.0, 20, 10, 0, 0, 0, 0, 50.0, 0);
+                baseJst19 + 86400L + 1800L, activePlayer, "minecraft:overworld", null, 900, 100.0, 20, 10, 0, 0, 0, 0, 50.0, 0);
         engine.writeBatch(List.of(new AnalyticsEventQueue.PlayerActivityFlushEvent(List.of(bActive))));
 
-        // now は Day 6（7日目）の 19:00 JST (baseJst18 + 6 * 86400L + 3600L)
-        long now = baseJst18 + 6 * 86400L + 3600L;
+        // now は Day 6（7日目）の 20:00 JST (baseJst19 + 6 * 86400L + 3600L)
+        long now = baseJst19 + 6 * 86400L + 3600L;
 
         // transientPlayer: 7日間合算で14分あるが、1日あたり10分未満なので activeDays = 0
         var tSummary = engine.queryPlayerSummary(transientPlayer, com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow.DAYS_7, now);
@@ -478,8 +478,8 @@ public class SqliteAnalyticsStorageEngineTest {
     @Test
     public void testFirstSeenAtAndOngoingSession() throws Exception {
         UUID onlinePlayer = UUID.randomUUID();
-        long now = JST_18_OPEN_DAY_OFFSET_SECONDS + 7200L;
-        long firstSeen = JST_18_OPEN_DAY_OFFSET_SECONDS;
+        long now = JST_19_OPEN_DAY_OFFSET_SECONDS + 7200L;
+        long firstSeen = JST_19_OPEN_DAY_OFFSET_SECONDS;
 
         // 1. player_identity に first_seen_at を登録
         engine.writeBatch(List.of(

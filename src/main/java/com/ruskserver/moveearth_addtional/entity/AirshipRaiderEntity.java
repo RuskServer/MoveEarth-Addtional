@@ -32,7 +32,7 @@ import net.minecraft.world.damagesource.DamageSource;
 
 import java.util.Optional;
 
-public final class AirshipRaiderEntity extends Zombie {
+public class AirshipRaiderEntity extends Zombie {
     private AirshipRaidDifficulty raidDifficulty = AirshipRaidDifficulty.NORMAL;
     private RaiderRole role = RaiderRole.RIFLEMAN;
     private int raidId;

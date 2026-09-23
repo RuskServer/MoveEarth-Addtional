@@ -70,6 +70,7 @@ public final class ReinforcementService {
         int repaired = 0;
         int skipped = 0;
         boolean repairWaiting = false;
+        boolean siegeRepair = false;
         List<BlockPos> changedPositions = new java.util.ArrayList<>();
         for (ReinforcementBrushPattern.Offset offset : ReinforcementBrushPattern.offsets(axis, brushRadius)) {
             BlockPos target = pos.offset(offset.x(), offset.y(), offset.z());
@@ -94,6 +95,10 @@ public final class ReinforcementService {
                     && data.repairBlockedUntil(target, level.getGameTime()) <= level.getGameTime()) {
                 updated = existing.repair();
                 repaired++;
+                siegeRepair |= TerritorySavedData.get(player.server).controllingCore(
+                                player.server, level.dimension().location(), target)
+                        .map(core -> SiegeSavedData.get(player.server).isNationLocked(core.nationId()))
+                        .orElse(false);
             } else {
                 skipped++;
                 continue;
@@ -105,6 +110,10 @@ public final class ReinforcementService {
             }
             data.put(target, updated);
             changedPositions.add(target.immutable());
+            if (existing == null) {
+                com.ruskserver.moveearth_addtional.advancement.AdvancementEvents.trackReinforcement(
+                        player, level.dimension(), target, updated.activatesAt());
+            }
             if (!player.getAbilities().instabuild) materialStack.shrink(1);
             player.getMainHandItem().hurtAndBreak(1, player, EquipmentSlot.MAINHAND);
             if (player.getMainHandItem().isEmpty()) break;
@@ -132,6 +141,10 @@ public final class ReinforcementService {
                             com.ruskserver.moveearth_addtional.s2.technology.TechnologyDefinition.ObjectiveType.REINFORCE_BLOCKS,
                             ResourceLocation.fromNamespaceAndPath("moveearth_addtional", "reinforced_block"),
                             reinforced, pos);
+        }
+        if (siegeRepair) {
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.SIEGE_REINFORCEMENT_REPAIRED);
         }
         syncChangedNearbyManagers(level, changedPositions);
         return InteractionResult.SUCCESS;
