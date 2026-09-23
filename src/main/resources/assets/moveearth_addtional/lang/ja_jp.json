@@ -1094,5 +1094,14 @@
   "screen.moveearth_addtional.region.waiting": "読み込み中…",
   "screen.moveearth_addtional.region.elsewhere": "他地方の資源: %s",
   "screen.moveearth_addtional.region.trace": "他地方の資源も %s%% ほどは出ます。自給はできません",
-  "item.moveearth_addtional.precision_firing_assembly": "精密射撃機構"
+  "item.moveearth_addtional.precision_firing_assembly": "精密射撃機構",
+  "message.moveearth_addtional.minecart.no_home": "からくりトロッコは自国の稼働領土内でのみ組み立てられます。",
+  "message.moveearth_addtional.minecart.crosses_territory": "接着された全ブロックを同じ自国領土内に収めてください。",
+  "message.moveearth_addtional.minecart.too_large": "輸送用からくりトロッコは256ブロックまでです。",
+  "message.moveearth_addtional.minecart.too_many_containers": "輸送用からくりトロッコに載せられるコンテナは16個までです。",
+  "message.moveearth_addtional.minecart.reinforced": "補強されたブロックはからくりトロッコで移動できません。",
+  "message.moveearth_addtional.minecart.protected_block": "コア・収監設備・残骸・兵器類は輸送用からくりトロッコに搭載できません。",
+  "message.moveearth_addtional.minecart.foreign_disassembly": "敵国・他国領土内では、この輸送用からくりトロッコを降ろせません。",
+  "message.moveearth_addtional.minecart.itemization_disabled": "このサーバーでは、からくりトロッコをアイテム化・再設置できません。",
+  "message.moveearth_addtional.minecart.assembler_permission": "トロッコ組立駅は領土管理権限を持つ自国民だけが、自国の稼働領土内に設置できます。"
 }

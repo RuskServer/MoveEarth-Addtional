@@ -31,6 +31,9 @@
     "RnsMiningBehaviourStressMixin",
     "CreateBlockBreakerMixin",
     "CreateMovingBlockBreakerMixin",
+    "CartAssemblerRestrictionMixin",
+    "MinecartContraptionActorMixin",
+    "MinecartContraptionItemMixin",
     "CbcAutocannonRateMixin",
     "CdgOilChunksMixin"
   ],

@@ -1094,5 +1094,14 @@
   "screen.moveearth_addtional.region.waiting": "Loading...",
   "screen.moveearth_addtional.region.elsewhere": "Belongs to other regions: %s",
   "screen.moveearth_addtional.region.trace": "About %s%% of those still turns up here. Not enough to live on",
-  "item.moveearth_addtional.precision_firing_assembly": "Precision Firing Assembly"
+  "item.moveearth_addtional.precision_firing_assembly": "Precision Firing Assembly",
+  "message.moveearth_addtional.minecart.no_home": "Minecart contraptions can only be assembled inside active home territory.",
+  "message.moveearth_addtional.minecart.crosses_territory": "Every attached block must remain inside the same home territory.",
+  "message.moveearth_addtional.minecart.too_large": "Freight contraptions are limited to 256 blocks.",
+  "message.moveearth_addtional.minecart.too_many_containers": "Freight contraptions are limited to 16 containers.",
+  "message.moveearth_addtional.minecart.reinforced": "Reinforced blocks cannot be moved by a minecart contraption.",
+  "message.moveearth_addtional.minecart.protected_block": "Cores, prison equipment, wreckage, and weapon systems cannot be mounted on a freight contraption.",
+  "message.moveearth_addtional.minecart.foreign_disassembly": "This freight contraption cannot be unloaded inside foreign territory.",
+  "message.moveearth_addtional.minecart.itemization_disabled": "Minecart contraptions cannot be picked up or deployed as items on this server.",
+  "message.moveearth_addtional.minecart.assembler_permission": "Cart assemblers require territory-management permission and must be placed inside active home territory."
 }
