@@ -19,9 +19,11 @@ import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.time.Instant;
@@ -55,9 +57,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private boolean regionViewReceived;
 
     private S2HubTab tab;
+    private final S2HubNavigation navigation;
     private S2NationSnapshot snapshot;
     private int scrollOffset;
     private int pendingRequestId = -1;
+    private int pendingTicks;
+    private int invitationIndex;
     private Component toast;
     private int toastColor = SUCCESS;
     private int toastTicks;
@@ -66,25 +71,31 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private UUID surrenderTargetId;
     private String surrenderTargetName = "";
     private boolean vaultChangeConfirmation;
+    private boolean leaveConfirmation;
+    private boolean onlineMembersOnly;
+    private EditBox memberSearch;
 
     public S2HubScreen(S2C_S2HubSnapshotPacket packet) {
         super(Component.translatable("screen.moveearth_addtional.s2.title"));
         this.snapshot = packet.snapshot();
         this.tab = packet.tab() == null ? lastTab : packet.tab();
+        this.navigation = new S2HubNavigation(this.tab);
         lastTab = this.tab;
     }
 
     public void update(S2C_S2HubSnapshotPacket packet) {
         this.snapshot = packet.snapshot();
-        this.tab = packet.tab();
+        this.tab = navigation.networkTab();
         lastTab = tab;
         clampScroll();
+        invitationIndex = Math.min(invitationIndex, Math.max(0, snapshot.invitations().size() - 1));
     }
 
     public void handleResult(S2C_S2ActionResultPacket packet) {
         if (pendingRequestId >= 0 && packet.requestId() != pendingRequestId) return;
         if (pendingRequestId < 0 && !packet.success()) return;
         pendingRequestId = -1;
+        pendingTicks = 0;
         Component body = Component.translatable(packet.messageKey());
         toast = packet.success() ? MoveEarthMessage.success(body) : MoveEarthMessage.error(body);
         toastColor = packet.success() ? SUCCESS : DANGER;
@@ -94,6 +105,28 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     @Override
     public void tick() {
         if (toastTicks > 0) toastTicks--;
+        if (pendingRequestId >= 0 && ++pendingTicks >= 200) {
+            pendingRequestId = -1;
+            pendingTicks = 0;
+            toast = MoveEarthMessage.error(Component.translatable("screen.moveearth_addtional.s2.timeout"));
+            toastColor = DANGER;
+            toastTicks = 100;
+        }
+    }
+
+    @Override
+    protected void init() {
+        Rect bounds = memberSearchBounds(hubLayout().content());
+        memberSearch = new EditBox(font, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                Component.translatable("screen.moveearth_addtional.s2.members.search"));
+        memberSearch.setHint(Component.translatable("screen.moveearth_addtional.s2.members.search"));
+        memberSearch.setMaxLength(48);
+        memberSearch.setResponder(ignored -> {
+            scrollOffset = 0;
+            navigation.saveScrollOffset(0);
+        });
+        memberSearch.setVisible(false);
+        addRenderableWidget(memberSearch);
     }
 
     @Override
@@ -103,7 +136,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         drawBackground(graphics, width, height);
-        Rect panel = panelBounds();
+        S2HubLayout.Layout layout = hubLayout();
+        Rect panel = layout.panel();
         drawPanel(graphics, panel);
         graphics.drawString(font, title, panel.x() + 18, panel.y() + 14, TEXT, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.subtitle"),
@@ -116,40 +150,68 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         drawButton(graphics, font, refresh,
                 Component.translatable("screen.moveearth_addtional.s2.refresh"), ACCENT,
                 refreshEnabled && refresh.contains(mouseX, mouseY), refreshEnabled);
+        if (snapshot.member()) {
+            Rect settings = headerSettingsBounds(panel);
+            drawButton(graphics, font, settings,
+                    Component.translatable(isOwner()
+                            ? "screen.moveearth_addtional.nation.settings.open"
+                            : "screen.moveearth_addtional.nation.leave"), isOwner() ? GOLD : DANGER,
+                    pendingRequestId < 0 && settings.contains(mouseX, mouseY), pendingRequestId < 0);
+        }
 
-        int tabWidth = (panel.width() - 24) / S2HubTab.values().length;
-        for (S2HubTab candidate : S2HubTab.values()) {
-            Rect bounds = tabBounds(panel, candidate, tabWidth);
-            drawTab(graphics, font, bounds, tabWidth < 64
-                            ? Component.literal(Integer.toString(candidate.ordinal() + 1)) : tabLabel(candidate), candidate == tab,
+        for (S2HubNavigation.Section candidate : S2HubNavigation.Section.values()) {
+            Rect bounds = sectionBounds(layout, candidate);
+            drawTab(graphics, font, bounds, sectionLabel(candidate), candidate == navigation.section(),
+                    bounds.contains(mouseX, mouseY));
+        }
+        List<S2HubNavigation.Page> pages = navigation.pages();
+        if (pages.size() > 1) for (int index = 0; index < pages.size(); index++) {
+            S2HubNavigation.Page candidate = pages.get(index);
+            Rect bounds = S2HubLayout.item(layout.subpages(), index, pages.size());
+            drawTab(graphics, font, bounds, pageLabel(candidate), candidate == navigation.page(),
                     bounds.contains(mouseX, mouseY));
         }
 
-        Rect content = contentBounds(panel);
+        Rect content = layout.content();
         // Before the membership check, not after it. A region describes the
         // ground rather than a nation, and the player who most needs to know
         // what is under their feet is the one still deciding where to settle.
-        if (tab == S2HubTab.REGION) {
+        if (navigation.page() == S2HubNavigation.Page.REGION) {
             drawRegions(graphics, content, mouseX, mouseY);
-        } else if (!snapshot.member() && tab == S2HubTab.SIEGE && !snapshot.sieges().isEmpty()) {
-            drawSieges(graphics, content, mouseX, mouseY);
-        } else if (!snapshot.member()) drawUnaffiliated(graphics, content, mouseX, mouseY);
-        else if (tab == S2HubTab.OVERVIEW) drawOverview(graphics, content, mouseX, mouseY);
-        else if (tab == S2HubTab.MEMBERS) drawMembers(graphics, content, mouseX, mouseY);
-        else if (tab == S2HubTab.ROLES) drawRoles(graphics, content, mouseX, mouseY);
-        else if (tab == S2HubTab.DIPLOMACY) drawDiplomacy(graphics, content, mouseX, mouseY);
-        else drawSieges(graphics, content, mouseX, mouseY);
+        } else if (!snapshot.member() && navigation.section() != S2HubNavigation.Section.WAR) {
+            drawUnaffiliated(graphics, content, mouseX, mouseY);
+        } else switch (navigation.page()) {
+            case HOME -> drawOverview(graphics, content, mouseX, mouseY);
+            case TERRITORY -> drawTerritory(graphics, content, mouseX, mouseY);
+            case FINANCE -> drawFinance(graphics, content, mouseX, mouseY);
+            case MEMBERS -> drawMembers(graphics, content, mouseX, mouseY);
+            case ROLES -> drawRoles(graphics, content, mouseX, mouseY);
+            case RELATIONS -> drawDiplomacy(graphics, content, mouseX, mouseY);
+            case PEACE -> drawConflictRows(graphics, content, mouseX, mouseY, true, true, false, false);
+            case SIEGES -> drawConflictRows(graphics, content, mouseX, mouseY, false, false, false, true);
+            case PRISONERS -> drawConflictRows(graphics, content, mouseX, mouseY, false, false, true, false);
+            case RECOVERY -> drawRecoveryEntry(graphics, content, mouseX, mouseY);
+            case REGION -> drawRegions(graphics, content, mouseX, mouseY);
+        }
+
+        if (memberSearch != null) {
+            Rect search = memberSearchBounds(content);
+            memberSearch.setX(search.x());
+            memberSearch.setY(search.y());
+            memberSearch.setWidth(search.width());
+            memberSearch.setVisible(snapshot.member()
+                    && navigation.page() == S2HubNavigation.Page.MEMBERS
+                    && content.width() >= 520
+                    && kickTargetId == null && surrenderTargetId == null
+                    && !vaultChangeConfirmation && !leaveConfirmation);
+        }
+        super.render(graphics, mouseX, mouseY, partialTick);
 
         if (kickTargetId != null) drawKickConfirmation(graphics, mouseX, mouseY);
         if (surrenderTargetId != null) drawSurrenderConfirmation(graphics, mouseX, mouseY);
         if (vaultChangeConfirmation) drawVaultConfirmation(graphics, mouseX, mouseY);
+        if (leaveConfirmation) drawLeaveConfirmation(graphics, mouseX, mouseY);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
-        if (tabWidth < 64) for (S2HubTab candidate : S2HubTab.values()) {
-            if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
-                graphics.renderTooltip(font, tabLabel(candidate), mouseX, mouseY);
-                break;
-            }
-        }
     }
 
     private void drawUnaffiliated(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
@@ -168,7 +230,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 Component.translatable("screen.moveearth_addtional.territory.preview"), SUCCESS,
                 preview.contains(mouseX, mouseY), true);
         if (!snapshot.invitations().isEmpty()) {
-            S2NationSnapshot.InvitationView invitation = snapshot.invitations().getFirst();
+            S2NationSnapshot.InvitationView invitation = snapshot.invitations().get(invitationIndex);
             Rect invitationCard = invitationBounds(content);
             drawCard(graphics, invitationCard, GOLD, false, invitationCard.contains(mouseX, mouseY));
             String nation = invitation.nationTag().isBlank() ? invitation.nationName()
@@ -176,6 +238,14 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             graphics.drawString(font, Component.translatable(
                             "screen.moveearth_addtional.nation.invitation", nation),
                     invitationCard.x() + 13, invitationCard.y() + 10, GOLD, false);
+            if (snapshot.invitations().size() > 1) {
+                Component count = Component.literal((invitationIndex + 1) + " / " + snapshot.invitations().size());
+                graphics.drawString(font, count, invitationCard.right() - 79, invitationCard.y() + 9, MUTED, false);
+                drawButton(graphics, font, invitationPreviousBounds(invitationCard), Component.literal("‹"), ACCENT,
+                        invitationPreviousBounds(invitationCard).contains(mouseX, mouseY), true);
+                drawButton(graphics, font, invitationNextBounds(invitationCard), Component.literal("›"), ACCENT,
+                        invitationNextBounds(invitationCard).contains(mouseX, mouseY), true);
+            }
             Rect accept = invitationAcceptBounds(invitationCard);
             Rect decline = invitationDeclineBounds(invitationCard);
             boolean enabled = pendingRequestId < 0;
@@ -194,48 +264,95 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     private void drawOverview(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        if (!snapshot.member()) {
+            drawUnaffiliated(graphics, content, mouseX, mouseY);
+            return;
+        }
         String nationTitle = snapshot.nationTag().isBlank()
                 ? snapshot.nationName() : "[" + snapshot.nationTag() + "] " + snapshot.nationName();
-        graphics.drawString(font, nationTitle, content.x(), content.y(), ACCENT, false);
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.role", snapshot.roleName()),
+        graphics.drawString(font, font.plainSubstrByWidth(nationTitle, Math.max(40, content.width() - 120)),
+                content.x(), content.y(), ACCENT, false);
+        Component roleText = Component.translatable("screen.moveearth_addtional.s2.role", snapshot.roleName());
+        graphics.drawString(font, font.plainSubstrByWidth(roleText.getString(), Math.max(40, content.width() / 2)),
                 content.x(), content.y() + 15, MUTED, false);
         Component ownerText = Component.translatable(
                 "screen.moveearth_addtional.s2.owner", snapshot.ownerName());
-        graphics.drawString(font, ownerText,
-                content.right() - font.width(ownerText), content.y() + 15, GOLD, false);
+        String owner = font.plainSubstrByWidth(ownerText.getString(), Math.max(40, content.width() / 2));
+        graphics.drawString(font, owner,
+                content.right() - font.width(owner), content.y() + 15, GOLD, false);
 
-        int gap = 8;
-        int cardWidth = (content.width() - gap) / 2;
-        drawMetric(graphics, new Rect(content.x(), content.y() + 38, cardWidth, 58),
-                "screen.moveearth_addtional.s2.members", snapshot.onlineMembers() + " / " + snapshot.totalMembers());
-        drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 38, cardWidth, 58),
-                "screen.moveearth_addtional.s2.territory", Integer.toString(snapshot.territoryChunks()));
-        drawMetric(graphics, new Rect(content.x(), content.y() + 104, cardWidth, 58),
-                "screen.moveearth_addtional.s2.cores", Integer.toString(snapshot.activeCores()));
-        drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 104, cardWidth, 58),
-                "screen.moveearth_addtional.s2.upkeep", Component.translatable(
-                        "screen.moveearth_addtional.s2.upkeep_value", snapshot.upkeep()).getString());
-        S2HubOverviewLayout.Actions actions = S2HubOverviewLayout.calculate(content);
-        int siegeY = content.y() + 166;
-        int siegeHeight = Math.max(1, actions.treasury().y() - 3 - siegeY);
-        Rect siege = new Rect(content.x(), siegeY, content.width(), siegeHeight);
-        drawCard(graphics, siege, DANGER, false, false);
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.siege"),
-                siege.x() + 13, siege.y() + 5, MUTED, false);
-        graphics.drawString(font, snapshot.siegeStatus(), siege.x() + 13, siege.y() + 17, TEXT, false);
-        Rect preview = memberPreviewBounds(content);
+        if (content.height() >= 210) {
+            int gap = 6;
+            int cardWidth = (content.width() - gap) / 2;
+            drawMetric(graphics, new Rect(content.x(), content.y() + 34, cardWidth, 44),
+                    "screen.moveearth_addtional.s2.members", snapshot.onlineMembers() + " / " + snapshot.totalMembers());
+            drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 34, cardWidth, 44),
+                    "screen.moveearth_addtional.s2.territory", Integer.toString(snapshot.territoryChunks()));
+            drawMetric(graphics, new Rect(content.x(), content.y() + 84, cardWidth, 44),
+                    "screen.moveearth_addtional.s2.cores", Integer.toString(snapshot.activeCores()));
+            drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 84, cardWidth, 44),
+                    "screen.moveearth_addtional.s2.upkeep", Component.translatable(
+                            "screen.moveearth_addtional.s2.upkeep_value", snapshot.upkeep()).getString());
+        }
+        if (content.height() >= 100) {
+            Rect attention = homeAttentionBounds(content);
+            int attentionColor = !snapshot.peaceProposals().isEmpty() || !snapshot.sieges().isEmpty()
+                    ? DANGER : snapshot.invitations().isEmpty() ? SUCCESS : GOLD;
+            drawCard(graphics, attention, attentionColor, false, attention.contains(mouseX, mouseY));
+            graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.attention"),
+                    attention.x() + 13, attention.y() + 7, MUTED, false);
+            Component attentionText = !snapshot.peaceProposals().isEmpty()
+                    ? Component.translatable("screen.moveearth_addtional.s2.attention.peace", snapshot.peaceProposals().size())
+                    : !snapshot.sieges().isEmpty()
+                    ? Component.translatable("screen.moveearth_addtional.s2.attention.siege", snapshot.sieges().size())
+                    : Component.translatable("screen.moveearth_addtional.s2.attention.none");
+            graphics.drawString(font, attentionText, attention.x() + 13, attention.y() + 21, TEXT, false);
+        }
+        Rect territory = homeQuickBounds(content, 0);
+        Rect finance = homeQuickBounds(content, 1);
+        Rect members = homeQuickBounds(content, 2);
+        drawButton(graphics, font, territory, pageLabel(S2HubNavigation.Page.TERRITORY), SUCCESS,
+                territory.contains(mouseX, mouseY), true);
+        drawButton(graphics, font, finance, pageLabel(S2HubNavigation.Page.FINANCE), GOLD,
+                finance.contains(mouseX, mouseY), true);
+        drawButton(graphics, font, members, pageLabel(S2HubNavigation.Page.MEMBERS), ACCENT,
+                members.contains(mouseX, mouseY), true);
+    }
+
+    private void drawMetric(GuiGraphics graphics, Rect bounds, String labelKey, String value) {
+        drawCard(graphics, bounds, ACCENT, false, false);
+        graphics.drawString(font, Component.translatable(labelKey), bounds.x() + 13, bounds.y() + 10, MUTED, false);
+        graphics.drawString(font, value, bounds.x() + 13, bounds.y() + 25, TEXT, false);
+    }
+
+    private void drawTerritory(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.domestic.territory.detail"),
+                content.x(), content.y() + 2, MUTED, false);
+        if (content.height() >= 100) {
+            int gap = 8;
+            int cardWidth = (content.width() - gap) / 2;
+            drawMetric(graphics, new Rect(content.x(), content.y() + 24, cardWidth, 58),
+                    "screen.moveearth_addtional.s2.territory", Integer.toString(snapshot.territoryChunks()));
+            drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 24, cardWidth, 58),
+                    "screen.moveearth_addtional.s2.cores", Integer.toString(snapshot.activeCores()));
+        }
+        Rect preview = territoryPreviewBounds(content);
         drawButton(graphics, font, preview,
                 Component.translatable("screen.moveearth_addtional.territory.preview"), SUCCESS,
                 preview.contains(mouseX, mouseY), true);
-        Rect treasury = treasuryBounds(content);
+    }
+
+    private void drawFinance(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        if (content.height() >= 100) {
+            drawMetric(graphics, new Rect(content.x(), content.y(), content.width(), 58),
+                    "screen.moveearth_addtional.s2.upkeep", Component.translatable(
+                            "screen.moveearth_addtional.s2.upkeep_value", snapshot.upkeep()).getString());
+        }
+        Rect treasury = financeTreasuryBounds(content);
         drawButton(graphics, font, treasury,
                 Component.translatable("screen.moveearth_addtional.treasury.open"), GOLD,
                 treasury.contains(mouseX, mouseY), true);
-        Rect recovery = recoveryDispatchBounds(content);
-        drawButton(graphics, font, recovery,
-                Component.translatable("screen.moveearth_addtional.recovery.open"), SUCCESS,
-                recovery.contains(mouseX, mouseY), true);
-        Rect vault = vaultBounds(content);
+        Rect vault = financeVaultBounds(content);
         Component vaultLabel = snapshot.vaultConfigured()
                 ? snapshot.vaultChangeCooldownTicks() > 0L
                 ? Component.translatable("screen.moveearth_addtional.vault.cooldown",
@@ -243,31 +360,32 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 : Component.translatable("screen.moveearth_addtional.vault.current",
                 snapshot.vaultChunkX(), snapshot.vaultChunkZ())
                 : Component.translatable("screen.moveearth_addtional.vault.set");
-        boolean vaultEnabled = canManageTerritory() && pendingRequestId < 0
+        boolean enabled = canManageTerritory() && pendingRequestId < 0
                 && snapshot.vaultChangeCooldownTicks() <= 0L;
         drawButton(graphics, font, vault, vaultLabel, ACCENT,
-                vaultEnabled && vault.contains(mouseX, mouseY), vaultEnabled);
-        if (isOwner()) {
-            Rect settings = memberLeaveBounds(content);
-            drawButton(graphics, font, settings,
-                    Component.translatable("screen.moveearth_addtional.nation.settings.open"), ACCENT,
-                    settings.contains(mouseX, mouseY), true);
-        } else {
-            Rect leave = memberLeaveBounds(content);
-            boolean enabled = pendingRequestId < 0;
-            drawButton(graphics, font, leave,
-                    Component.translatable("screen.moveearth_addtional.nation.leave"), DANGER,
-                    enabled && leave.contains(mouseX, mouseY), enabled);
-        }
+                enabled && vault.contains(mouseX, mouseY), enabled);
     }
 
-    private void drawMetric(GuiGraphics graphics, Rect bounds, String labelKey, String value) {
-        drawCard(graphics, bounds, ACCENT, false, false);
-        graphics.drawString(font, Component.translatable(labelKey), bounds.x() + 13, bounds.y() + 10, MUTED, false);
-        graphics.drawString(font, value, bounds.x() + 13, bounds.y() + 29, TEXT, false);
+    private void drawRecoveryEntry(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        Rect card = new Rect(content.x(), content.y() + 12, content.width(), Math.min(112, content.height()));
+        drawCard(graphics, card, SUCCESS, false, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.recovery.title"),
+                card.x() + 14, card.y() + 14, SUCCESS, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.recovery.subtitle"),
+                card.x() + 14, card.y() + 34, MUTED, false);
+        Rect open = recoveryEntryBounds(content);
+        drawButton(graphics, font, open,
+                Component.translatable("screen.moveearth_addtional.recovery.open"), SUCCESS,
+                open.contains(mouseX, mouseY), true);
     }
 
     private void drawMembers(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        Rect filter = memberFilterBounds(content);
+        drawButton(graphics, font, filter,
+                Component.translatable(onlineMembersOnly
+                        ? "screen.moveearth_addtional.s2.members.filter.online"
+                        : "screen.moveearth_addtional.s2.members.filter.all"), ACCENT,
+                filter.contains(mouseX, mouseY), true);
         if (canManageMembers()) {
             Rect applications = memberApplicationsBounds(content);
             drawButton(graphics, font, applications,
@@ -278,7 +396,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                     Component.translatable("screen.moveearth_addtional.nation.invite_member"), SUCCESS,
                     invite.contains(mouseX, mouseY), true);
         }
-        drawRows(graphics, memberListBounds(content), snapshot.members(), mouseX, mouseY, true);
+        drawRows(graphics, memberListBounds(content), visibleMembers(), mouseX, mouseY, true);
     }
 
     private void drawRoles(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
@@ -423,22 +541,35 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         }
     }
 
-    private void drawSieges(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.siege.detail"),
+    private void drawConflictRows(GuiGraphics graphics, Rect content, int mouseX, int mouseY,
+                                  boolean includePeace, boolean includeTruces,
+                                  boolean includePrisoners, boolean includeSieges) {
+        graphics.drawString(font, Component.translatable(includePeace
+                        ? "screen.moveearth_addtional.s2.diplomacy.peace.detail"
+                        : includePrisoners ? "screen.moveearth_addtional.s2.war.prisoners.detail"
+                        : "screen.moveearth_addtional.siege.detail"),
                 content.x(), content.y() + 4, MUTED, false);
-        Rect prisoners = prisonerManagementBounds(content);
-        drawButton(graphics, font, prisoners,
-                Component.translatable("screen.moveearth_addtional.prisoner.open"), GOLD,
-                prisoners.contains(mouseX, mouseY), true);
+        if (includePrisoners) {
+            Rect prisoners = prisonerManagementBounds(content);
+            drawButton(graphics, font, prisoners,
+                    Component.translatable("screen.moveearth_addtional.prisoner.open"), GOLD,
+                    prisoners.contains(mouseX, mouseY), true);
+        }
         Rect list = diplomacyListBounds(content);
-        if (snapshot.sieges().isEmpty() && snapshot.peaceProposals().isEmpty()
-                && snapshot.truces().isEmpty() && snapshot.prisoners().isEmpty()) {
-            graphics.drawCenteredString(font, Component.translatable("screen.moveearth_addtional.siege.empty"),
+        if ((!includeSieges || snapshot.sieges().isEmpty())
+                && (!includePeace || snapshot.peaceProposals().isEmpty())
+                && (!includeTruces || snapshot.truces().isEmpty())
+                && (!includePrisoners || snapshot.prisoners().isEmpty())) {
+            String emptyKey = includePeace ? "screen.moveearth_addtional.s2.diplomacy.peace.empty"
+                    : includePrisoners ? "screen.moveearth_addtional.prisoner.list.empty"
+                    : "screen.moveearth_addtional.siege.empty";
+            graphics.drawCenteredString(font, Component.translatable(emptyKey),
                     list.x() + list.width() / 2, list.y() + 42, MUTED);
             return;
         }
         graphics.enableScissor(list.x(), list.y(), list.right(), list.bottom());
         int row = 0;
+        if (includePeace) {
         for (S2NationSnapshot.PeaceView peace : snapshot.peaceProposals()) {
             Rect card = siegeCard(list, row++);
             if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
@@ -468,6 +599,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
+        }
+        if (includeTruces) {
         for (S2NationSnapshot.TruceView truce : snapshot.truces()) {
             Rect card = siegeCard(list, row++);
             if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
@@ -482,6 +615,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                             formatTicks(truce.remainingTicks())),
                     card.x() + 13, card.y() + 31, SUCCESS, false);
         }
+        }
+        if (includePrisoners) {
         for (S2NationSnapshot.PrisonerView prisoner : snapshot.prisoners()) {
             Rect card = siegeCard(list, row++);
             if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
@@ -506,6 +641,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         enabled && peace.contains(mouseX, mouseY), enabled);
             }
         }
+        }
+        if (includeSieges) {
         for (S2NationSnapshot.SiegeView siege : snapshot.sieges()) {
             Rect card = siegeCard(list, row++);
             if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
@@ -564,9 +701,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         enabled && canWithdraw);
             }
         }
+        }
         graphics.disableScissor();
         drawScrollbar(graphics, new Rect(list.right() - 4, list.y(), 4, list.height()),
-                list.height(), siegeRowCount() * SIEGE_ROW_HEIGHT, scrollOffset);
+                list.height(), conflictRowCount() * SIEGE_ROW_HEIGHT, scrollOffset);
     }
 
     private void drawRows(GuiGraphics graphics, Rect content, List<?> rows,
@@ -684,9 +822,38 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 confirm.contains(mouseX, mouseY), true);
     }
 
+    private void drawLeaveConfirmation(GuiGraphics graphics, int mouseX, int mouseY) {
+        drawModalBackdrop(graphics, width, height);
+        Rect modal = kickModalBounds();
+        drawPanel(graphics, modal);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.nation.leave_title"),
+                modal.x() + 16, modal.y() + 15, DANGER, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.nation.leave_detail", snapshot.nationName()).getString(),
+                modal.width() - 32), modal.x() + 16, modal.y() + 38, TEXT, false);
+        Rect cancel = modalCancelBounds(modal);
+        Rect confirm = modalConfirmBounds(modal);
+        drawButton(graphics, font, cancel,
+                Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED,
+                cancel.contains(mouseX, mouseY), true);
+        drawButton(graphics, font, confirm,
+                Component.translatable("screen.moveearth_addtional.nation.leave"), DANGER,
+                confirm.contains(mouseX, mouseY), true);
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+        if (leaveConfirmation) {
+            Rect modal = kickModalBounds();
+            if (modalCancelBounds(modal).contains(mouseX, mouseY)) {
+                leaveConfirmation = false;
+            } else if (modalConfirmBounds(modal).contains(mouseX, mouseY) && pendingRequestId < 0) {
+                sendMembershipAction(C2S_NationMembershipPacket.Action.LEAVE, new UUID(0L, 0L));
+                leaveConfirmation = false;
+            }
+            return true;
+        }
         if (vaultChangeConfirmation) {
             Rect modal = kickModalBounds();
             if (modalCancelBounds(modal).contains(mouseX, mouseY)) {
@@ -721,7 +888,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             }
             return true;
         }
-        Rect panel = panelBounds();
+        S2HubLayout.Layout layout = hubLayout();
+        Rect panel = layout.panel();
         if (closeBounds(panel).contains(mouseX, mouseY)) {
             onClose();
             return true;
@@ -729,29 +897,32 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         if (pendingRequestId < 0 && refreshBounds(panel).contains(mouseX, mouseY)) {
             int requestId = ++nextRequestId;
             pendingRequestId = requestId;
+            pendingTicks = 0;
             PacketDistributor.sendToServer(new C2S_S2HubActionPacket(
-                    requestId, snapshot.revision(), tab, C2S_S2HubActionPacket.Action.REFRESH));
+                    requestId, snapshot.revision(), navigation.networkTab(), C2S_S2HubActionPacket.Action.REFRESH));
             return true;
         }
-        int tabWidth = (panel.width() - 24) / S2HubTab.values().length;
-        for (S2HubTab candidate : S2HubTab.values()) {
-            if (tabBounds(panel, candidate, tabWidth).contains(mouseX, mouseY)) {
-                if (candidate == S2HubTab.REGION) {
-                    // Asked for on selection rather than carried in the hub
-                    // snapshot, which is sent on every refresh to every player
-                    // whichever tab they are on. The tab still draws here like
-                    // the others; only the fetch is separate.
-                    PacketDistributor.sendToServer(new C2S_RequestRegionViewPacket());
-                }
-                tab = candidate;
-                lastTab = candidate;
-                scrollOffset = 0;
+        if (snapshot.member() && pendingRequestId < 0 && headerSettingsBounds(panel).contains(mouseX, mouseY)) {
+            if (isOwner()) minecraft.setScreen(new NationSettingsScreen(snapshot));
+            else leaveConfirmation = true;
+            return true;
+        }
+        for (S2HubNavigation.Section candidate : S2HubNavigation.Section.values()) {
+            if (sectionBounds(layout, candidate).contains(mouseX, mouseY)) {
+                selectSection(candidate);
                 return true;
             }
         }
-        if (tab != S2HubTab.REGION
-                && ((!snapshot.member() && tab != S2HubTab.SIEGE) || tab == S2HubTab.OVERVIEW)) {
-            Rect content = contentBounds(panel);
+        List<S2HubNavigation.Page> pages = navigation.pages();
+        if (pages.size() > 1) for (int index = 0; index < pages.size(); index++) {
+            if (S2HubLayout.item(layout.subpages(), index, pages.size()).contains(mouseX, mouseY)) {
+                selectPage(pages.get(index));
+                return true;
+            }
+        }
+        Rect content = layout.content();
+        if (navigation.page() != S2HubNavigation.Page.REGION
+                && (!snapshot.member() && navigation.section() != S2HubNavigation.Section.WAR)) {
             if (!snapshot.member()) {
                 Rect create = new Rect(content.x() + 16,
                         content.y() + Math.min(118, content.height()) - 34, 138, 22);
@@ -760,8 +931,18 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                     return true;
                 }
                 if (!snapshot.invitations().isEmpty() && pendingRequestId < 0) {
-                    S2NationSnapshot.InvitationView invitation = snapshot.invitations().getFirst();
+                    S2NationSnapshot.InvitationView invitation = snapshot.invitations().get(invitationIndex);
                     Rect invitationCard = invitationBounds(content);
+                    if (snapshot.invitations().size() > 1
+                            && invitationPreviousBounds(invitationCard).contains(mouseX, mouseY)) {
+                        invitationIndex = Math.floorMod(invitationIndex - 1, snapshot.invitations().size());
+                        return true;
+                    }
+                    if (snapshot.invitations().size() > 1
+                            && invitationNextBounds(invitationCard).contains(mouseX, mouseY)) {
+                        invitationIndex = (invitationIndex + 1) % snapshot.invitations().size();
+                        return true;
+                    }
                     if (invitationAcceptBounds(invitationCard).contains(mouseX, mouseY)) {
                         sendMembershipAction(C2S_NationMembershipPacket.Action.ACCEPT, invitation.nationId());
                         return true;
@@ -771,42 +952,57 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         return true;
                     }
                 }
-            } else if (!isOwner() && pendingRequestId < 0
-                    && memberLeaveBounds(content).contains(mouseX, mouseY)) {
-                sendMembershipAction(C2S_NationMembershipPacket.Action.LEAVE, new UUID(0L, 0L));
-                return true;
             }
-            Rect preview = snapshot.member()
-                    ? memberPreviewBounds(content)
-                    : new Rect(content.x() + 162,
+            Rect preview = new Rect(content.x() + 162,
                     content.y() + Math.min(118, content.height()) - 34, 148, 22);
             if (preview.contains(mouseX, mouseY)) {
                 minecraft.setScreen(new TerritoryCoreWizardScreen());
                 return true;
             }
-            if (snapshot.member() && treasuryBounds(content).contains(mouseX, mouseY)) {
+        }
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.HOME) {
+            for (int index = 0; index < 3; index++) if (homeQuickBounds(content, index).contains(mouseX, mouseY)) {
+                selectPage(index == 0 ? S2HubNavigation.Page.TERRITORY
+                        : index == 1 ? S2HubNavigation.Page.FINANCE : S2HubNavigation.Page.MEMBERS);
+                return true;
+            }
+            if (content.height() >= 100 && homeAttentionBounds(content).contains(mouseX, mouseY)) {
+                selectPage(!snapshot.peaceProposals().isEmpty()
+                        ? S2HubNavigation.Page.PEACE : S2HubNavigation.Page.SIEGES);
+                return true;
+            }
+        }
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.TERRITORY
+                && territoryPreviewBounds(content).contains(mouseX, mouseY)) {
+            minecraft.setScreen(new TerritoryCoreWizardScreen());
+            return true;
+        }
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.FINANCE) {
+            if (financeTreasuryBounds(content).contains(mouseX, mouseY)) {
                 PacketDistributor.sendToServer(new C2S_NationTreasuryPacket(
                         C2S_NationTreasuryPacket.Action.OPEN, null));
                 return true;
             }
-            if (snapshot.member() && recoveryDispatchBounds(content).contains(mouseX, mouseY)) {
-                PacketDistributor.sendToServer(new C2S_RequestRecoveryDispatchPacket(true));
-                return true;
-            }
-            if (snapshot.member() && isOwner() && memberLeaveBounds(content).contains(mouseX, mouseY)) {
-                minecraft.setScreen(new NationSettingsScreen(snapshot));
-                return true;
-            }
-            if (snapshot.member() && canManageTerritory() && pendingRequestId < 0
+            if (canManageTerritory() && pendingRequestId < 0
                     && snapshot.vaultChangeCooldownTicks() <= 0L
-                    && vaultBounds(content).contains(mouseX, mouseY)) {
+                    && financeVaultBounds(content).contains(mouseX, mouseY)) {
                 if (snapshot.vaultConfigured()) vaultChangeConfirmation = true;
                 else sendSiegeAction(C2S_SiegeActionPacket.Action.SET_VAULT, new UUID(0L, 0L), 0L);
                 return true;
             }
         }
-        if (snapshot.member() && tab == S2HubTab.MEMBERS) {
-            Rect content = contentBounds(panel);
+        if (navigation.page() == S2HubNavigation.Page.RECOVERY
+                && recoveryEntryBounds(content).contains(mouseX, mouseY)) {
+            PacketDistributor.sendToServer(new C2S_RequestRecoveryDispatchPacket(true));
+            return true;
+        }
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.MEMBERS) {
+            if (memberFilterBounds(content).contains(mouseX, mouseY)) {
+                onlineMembersOnly = !onlineMembersOnly;
+                scrollOffset = 0;
+                navigation.saveScrollOffset(0);
+                return true;
+            }
             if (canManageMembers() && memberInviteBounds(content).contains(mouseX, mouseY)) {
                 minecraft.setScreen(new NationInviteScreen(snapshot.revision(), snapshot.inviteCandidates()));
                 return true;
@@ -818,8 +1014,9 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             }
             Rect list = memberListBounds(content);
             if (pendingRequestId < 0 && list.contains(mouseX, mouseY)) {
-                for (int index = 0; index < snapshot.members().size(); index++) {
-                    S2NationSnapshot.MemberView member = snapshot.members().get(index);
+                List<S2NationSnapshot.MemberView> visible = visibleMembers();
+                for (int index = 0; index < visible.size(); index++) {
+                    S2NationSnapshot.MemberView member = visible.get(index);
                     Rect card = new Rect(list.x(), list.y() + index * ROW_HEIGHT - scrollOffset,
                             list.width() - 8, ROW_HEIGHT - 5);
                     if (canAssignRole(member) && roleAssignBounds(card).contains(mouseX, mouseY)) {
@@ -835,8 +1032,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
-        if (snapshot.member() && tab == S2HubTab.ROLES) {
-            Rect content = contentBounds(panel);
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.ROLES) {
             if (canManageRoles() && roleCreateBounds(content).contains(mouseX, mouseY)) {
                 minecraft.setScreen(new NationRoleEditorScreen(snapshot.revision(), null));
                 return true;
@@ -854,9 +1050,9 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
-        if (snapshot.member() && tab == S2HubTab.DIPLOMACY && canManageDiplomacy()
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.RELATIONS && canManageDiplomacy()
                 && pendingRequestId < 0) {
-            Rect list = diplomacyListBounds(contentBounds(panel));
+            Rect list = diplomacyListBounds(content);
             if (list.contains(mouseX, mouseY)) {
                 for (int index = 0; index < snapshot.diplomacy().size(); index++) {
                     S2NationSnapshot.DiplomacyView relation = snapshot.diplomacy().get(index);
@@ -870,17 +1066,20 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
-        if (tab == S2HubTab.SIEGE
-                && (snapshot.member() || !snapshot.sieges().isEmpty())
+        if ((navigation.page() == S2HubNavigation.Page.PEACE
+                || navigation.page() == S2HubNavigation.Page.SIEGES
+                || navigation.page() == S2HubNavigation.Page.PRISONERS)
+                && (snapshot.member() || !snapshot.sieges().isEmpty() || !snapshot.prisoners().isEmpty())
                 && pendingRequestId < 0) {
-            Rect content = contentBounds(panel);
-            if (prisonerManagementBounds(content).contains(mouseX, mouseY)) {
+            if (navigation.page() == S2HubNavigation.Page.PRISONERS
+                    && prisonerManagementBounds(content).contains(mouseX, mouseY)) {
                 PacketDistributor.sendToServer(new C2S_RequestPrisonerScreenPacket(null));
                 return true;
             }
             Rect list = diplomacyListBounds(content);
             if (list.contains(mouseX, mouseY)) {
                 int row = 0;
+                if (navigation.page() == S2HubNavigation.Page.PEACE) {
                 for (S2NationSnapshot.PeaceView peace : snapshot.peaceProposals()) {
                     Rect card = siegeCard(list, row++);
                     if (canManageDiplomacy() && peace.incoming()
@@ -895,6 +1094,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                     }
                 }
                 row += snapshot.truces().size();
+                }
+                if (navigation.page() == S2HubNavigation.Page.PRISONERS) {
                 for (S2NationSnapshot.PrisonerView prisoner : snapshot.prisoners()) {
                     Rect card = siegeCard(list, row++);
                     if (canManageDiplomacy() && siegePeaceBounds(card).contains(mouseX, mouseY)) {
@@ -903,6 +1104,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         return true;
                     }
                 }
+                }
+                if (navigation.page() == S2HubNavigation.Page.SIEGES) {
                 for (S2NationSnapshot.SiegeView siege : snapshot.sieges()) {
                     Rect card = siegeCard(list, row++);
                     if (!siege.individualAttacker() && canManageDiplomacy()
@@ -917,6 +1120,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         return true;
                     }
                 }
+                }
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
@@ -924,14 +1128,16 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        Rect content = contentBounds(panelBounds());
+        Rect content = hubLayout().content();
         if (content.contains(mouseX, mouseY)
-                && (snapshot.member() || tab == S2HubTab.SIEGE) && tab != S2HubTab.OVERVIEW) {
+                && (snapshot.member() || navigation.section() == S2HubNavigation.Section.WAR)
+                && rowCount() > 0) {
             int rows = rowCount();
             Rect viewport = listBounds(content);
-            int rowHeight = tab == S2HubTab.SIEGE ? SIEGE_ROW_HEIGHT : ROW_HEIGHT;
+            int rowHeight = isConflictPage() ? SIEGE_ROW_HEIGHT : ROW_HEIGHT;
             scrollOffset = MoveEarthUi.scroll(scrollOffset, scrollY, rowHeight,
                     rows * rowHeight, viewport.height());
+            navigation.saveScrollOffset(scrollOffset);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
@@ -939,14 +1145,16 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     private void clampScroll() {
         int rows = rowCount();
-        Rect content = contentBounds(panelBounds());
+        Rect content = hubLayout().content();
         int viewportHeight = listBounds(content).height();
-        int rowHeight = tab == S2HubTab.SIEGE ? SIEGE_ROW_HEIGHT : ROW_HEIGHT;
+        int rowHeight = isConflictPage() ? SIEGE_ROW_HEIGHT : ROW_HEIGHT;
         scrollOffset = Math.min(scrollOffset, Math.max(0, rows * rowHeight - viewportHeight));
+        navigation.saveScrollOffset(scrollOffset);
     }
 
     private void sendMembershipAction(C2S_NationMembershipPacket.Action action, UUID targetId) {
         pendingRequestId = ++nextRequestId;
+        pendingTicks = 0;
         PacketDistributor.sendToServer(new C2S_NationMembershipPacket(
                 pendingRequestId, snapshot.revision(), action, targetId));
     }
@@ -990,10 +1198,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return canManageRoles() && !"owner".equals(role.id()) && !"member".equals(role.id());
     }
 
-    private Rect panelBounds() {
-        int panelWidth = Math.min(PANEL_WIDTH, Math.max(260, width - 20));
-        int panelHeight = Math.min(PANEL_HEIGHT, Math.max(220, height - 20));
-        return new Rect((width - panelWidth) / 2, (height - panelHeight) / 2, panelWidth, panelHeight);
+    private S2HubLayout.Layout hubLayout() {
+        return S2HubLayout.calculate(width, height, navigation.pages().size() > 1);
     }
 
     private static Rect closeBounds(Rect panel) {
@@ -1004,32 +1210,50 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return new Rect(panel.right() - 122, panel.y() + 10, 84, 20);
     }
 
-    private static Rect tabBounds(Rect panel, S2HubTab tab, int tabWidth) {
-        return new Rect(panel.x() + 12 + tab.ordinal() * tabWidth, panel.y() + 48, tabWidth, 27);
+    private static Rect headerSettingsBounds(Rect panel) {
+        return new Rect(panel.right() - 182, panel.y() + 10, 52, 20);
     }
 
-    private static Rect contentBounds(Rect panel) {
-        return new Rect(panel.x() + 18, panel.y() + 88, panel.width() - 36, panel.height() - 104);
+    private static Rect sectionBounds(S2HubLayout.Layout layout, S2HubNavigation.Section section) {
+        return S2HubLayout.item(layout.sections(), section.ordinal(), S2HubNavigation.Section.values().length);
     }
 
-    private static Rect memberPreviewBounds(Rect content) {
-        return S2HubOverviewLayout.calculate(content).preview();
+    private static Rect homeAttentionBounds(Rect content) {
+        int y = content.height() < 210 ? content.y() + 38 : Math.min(content.bottom() - 53, content.y() + 136);
+        return new Rect(content.x(), y, content.width(), 42);
     }
 
-    private static Rect treasuryBounds(Rect content) {
-        return S2HubOverviewLayout.calculate(content).treasury();
+    private static Rect homeQuickBounds(Rect content, int index) {
+        Rect row = new Rect(content.x(), content.bottom() - 23, content.width(), 22);
+        Rect raw = S2HubLayout.item(row, index, 3);
+        int inset = index == 0 ? 0 : 3;
+        int rightInset = index == 2 ? 0 : 3;
+        return new Rect(raw.x() + inset, raw.y(), Math.max(1, raw.width() - inset - rightInset), raw.height());
     }
 
-    private static Rect vaultBounds(Rect content) {
-        return S2HubOverviewLayout.calculate(content).vault();
+    private static Rect territoryPreviewBounds(Rect content) {
+        return new Rect(content.x(), Math.min(content.bottom() - 23, content.y() + 92), content.width(), 22);
     }
 
-    private static Rect recoveryDispatchBounds(Rect content) {
-        return S2HubOverviewLayout.calculate(content).recovery();
+    private static Rect financeTreasuryBounds(Rect content) {
+        if (content.height() < 100) {
+            Rect raw = S2HubLayout.item(new Rect(content.x(), content.bottom() - 23, content.width(), 22), 0, 2);
+            return insetAction(raw, 0, 3);
+        }
+        return new Rect(content.x(), content.y() + 68, content.width(), 22);
     }
 
-    private static Rect memberLeaveBounds(Rect content) {
-        return S2HubOverviewLayout.calculate(content).membership();
+    private static Rect financeVaultBounds(Rect content) {
+        if (content.height() < 100) {
+            Rect raw = S2HubLayout.item(new Rect(content.x(), content.bottom() - 23, content.width(), 22), 1, 2);
+            return insetAction(raw, 3, 0);
+        }
+        return new Rect(content.x(), content.y() + 98, content.width(), 22);
+    }
+
+    private static Rect recoveryEntryBounds(Rect content) {
+        return new Rect(content.x() + 14, Math.min(content.bottom() - 30, content.y() + 78),
+                Math.max(1, content.width() - 28), 22);
     }
 
     private static Rect invitationBounds(Rect content) {
@@ -1044,12 +1268,42 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return new Rect(card.right() - 90, card.y() + 28, 78, 22);
     }
 
+    private static Rect invitationPreviousBounds(Rect card) {
+        return new Rect(card.right() - 48, card.y() + 4, 18, 18);
+    }
+
+    private static Rect invitationNextBounds(Rect card) {
+        return new Rect(card.right() - 26, card.y() + 4, 18, 18);
+    }
+
     private static Rect memberInviteBounds(Rect content) {
-        return new Rect(content.right() - 132, content.y(), 132, 22);
+        if (content.width() >= 520) return memberActionSlice(content, 72, 100, 2, 0);
+        return insetAction(S2HubLayout.item(new Rect(content.x(), content.y(), content.width(), 22), 2, 3), 2, 3);
     }
 
     private static Rect memberApplicationsBounds(Rect content) {
-        return new Rect(content.right() - 272, content.y(), 132, 22);
+        if (content.width() >= 520) return memberActionSlice(content, 47, 72, 2, 2);
+        return insetAction(S2HubLayout.item(new Rect(content.x(), content.y(), content.width(), 22), 1, 3), 2, 2);
+    }
+
+    private static Rect memberFilterBounds(Rect content) {
+        if (content.width() >= 520) return memberActionSlice(content, 32, 47, 2, 2);
+        return insetAction(S2HubLayout.item(new Rect(content.x(), content.y(), content.width(), 22), 0, 3), 3, 2);
+    }
+
+    private static Rect memberSearchBounds(Rect content) {
+        return memberActionSlice(content, 0, 32, 0, 2);
+    }
+
+    private static Rect memberActionSlice(Rect content, int startPercent, int endPercent,
+                                          int leftInset, int rightInset) {
+        int left = content.x() + content.width() * startPercent / 100;
+        int right = content.x() + content.width() * endPercent / 100;
+        return new Rect(left + leftInset, content.y(), Math.max(1, right - left - leftInset - rightInset), 22);
+    }
+
+    private static Rect insetAction(Rect bounds, int left, int right) {
+        return new Rect(bounds.x() + left, bounds.y(), Math.max(1, bounds.width() - left - right), bounds.height());
     }
 
     private static Rect memberListBounds(Rect content) {
@@ -1130,52 +1384,94 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return new Rect(modal.right() - 94, modal.bottom() - 34, 82, 22);
     }
 
-    private static Component tabLabel(S2HubTab tab) {
-        return Component.translatable(switch (tab) {
-            case OVERVIEW -> "screen.moveearth_addtional.s2.tab.overview";
-            case MEMBERS -> "screen.moveearth_addtional.s2.tab.members";
-            case ROLES -> "screen.moveearth_addtional.s2.tab.roles";
-            case DIPLOMACY -> "screen.moveearth_addtional.s2.tab.diplomacy";
-            case SIEGE -> "screen.moveearth_addtional.s2.tab.siege";
-            case REGION -> "screen.moveearth_addtional.s2.tab.region";
-        });
+    private static Component sectionLabel(S2HubNavigation.Section section) {
+        return Component.translatable("screen.moveearth_addtional.s2.section."
+                + section.name().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private static Component pageLabel(S2HubNavigation.Page page) {
+        return Component.translatable("screen.moveearth_addtional.s2.page."
+                + page.name().toLowerCase(java.util.Locale.ROOT));
     }
 
     private int rowCount() {
-        return switch (tab) {
-            case MEMBERS -> snapshot.members().size();
+        return switch (navigation.page()) {
+            case MEMBERS -> visibleMembers().size();
             case ROLES -> snapshot.roles().size();
-            case DIPLOMACY -> snapshot.diplomacy().size();
-            case SIEGE -> siegeRowCount();
-            case REGION -> 0;
+            case RELATIONS -> snapshot.diplomacy().size();
+            case PEACE -> snapshot.peaceProposals().size() + snapshot.truces().size();
+            case SIEGES -> snapshot.sieges().size();
+            case PRISONERS -> snapshot.prisoners().size();
             default -> 0;
         };
     }
 
-    private int siegeRowCount() {
-        return snapshot.sieges().size() + snapshot.peaceProposals().size()
-                + snapshot.truces().size() + snapshot.prisoners().size();
+    private int conflictRowCount() {
+        return rowCount();
+    }
+
+    private boolean isConflictPage() {
+        return navigation.page() == S2HubNavigation.Page.PEACE
+                || navigation.page() == S2HubNavigation.Page.SIEGES
+                || navigation.page() == S2HubNavigation.Page.PRISONERS;
+    }
+
+    private List<S2NationSnapshot.MemberView> visibleMembers() {
+        String query = memberSearch == null ? "" : memberSearch.getValue().strip().toLowerCase(java.util.Locale.ROOT);
+        return snapshot.members().stream()
+                .filter(member -> !onlineMembersOnly || member.online())
+                .filter(member -> query.isEmpty()
+                        || member.name().toLowerCase(java.util.Locale.ROOT).contains(query)
+                        || member.roleName().toLowerCase(java.util.Locale.ROOT).contains(query))
+                .toList();
     }
 
     private Rect listBounds(Rect content) {
-        return switch (tab) {
+        return switch (navigation.page()) {
             case MEMBERS -> memberListBounds(content);
             case ROLES -> roleListBounds(content);
-            case DIPLOMACY -> diplomacyListBounds(content);
-            case SIEGE -> diplomacyListBounds(content);
-            case REGION -> diplomacyListBounds(content);
+            case RELATIONS, PEACE, SIEGES, PRISONERS -> diplomacyListBounds(content);
             default -> content;
         };
     }
 
+    private void selectSection(S2HubNavigation.Section section) {
+        navigation.saveScrollOffset(scrollOffset);
+        navigation.selectSection(section);
+        scrollOffset = navigation.scrollOffset();
+        tab = navigation.networkTab();
+        lastTab = tab;
+        if (section == S2HubNavigation.Section.REGION) {
+            regionViewReceived = false;
+            PacketDistributor.sendToServer(new C2S_RequestRegionViewPacket());
+        }
+        clampScroll();
+    }
+
+    private void selectPage(S2HubNavigation.Page page) {
+        navigation.saveScrollOffset(scrollOffset);
+        if (page.section() != navigation.section()) navigation.selectSection(page.section());
+        navigation.selectPage(page);
+        scrollOffset = navigation.scrollOffset();
+        tab = navigation.networkTab();
+        lastTab = tab;
+        if (page == S2HubNavigation.Page.REGION) {
+            regionViewReceived = false;
+            PacketDistributor.sendToServer(new C2S_RequestRegionViewPacket());
+        }
+        clampScroll();
+    }
+
     private void sendDiplomacyAction(C2S_NationDiplomacyPacket.Action action, UUID targetNationId) {
         pendingRequestId = ++nextRequestId;
+        pendingTicks = 0;
         PacketDistributor.sendToServer(new C2S_NationDiplomacyPacket(
                 pendingRequestId, snapshot.revision(), action, targetNationId));
     }
 
     private void sendSiegeAction(C2S_SiegeActionPacket.Action action, UUID targetId, long gold) {
         pendingRequestId = ++nextRequestId;
+        pendingTicks = 0;
         PacketDistributor.sendToServer(new C2S_SiegeActionPacket(
                 pendingRequestId, snapshot.revision(), action, targetId, gold));
     }
@@ -1212,6 +1508,41 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         String formatted = LAST_SEEN_FORMAT.format(
                 Instant.ofEpochMilli(lastSeenAt).atZone(ZoneId.systemDefault()));
         return Component.translatable("screen.moveearth_addtional.s2.last_seen", formatted);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE
+                && (kickTargetId != null || surrenderTargetId != null
+                || vaultChangeConfirmation || leaveConfirmation)) {
+            kickTargetId = null;
+            kickTargetName = "";
+            surrenderTargetId = null;
+            surrenderTargetName = "";
+            vaultChangeConfirmation = false;
+            leaveConfirmation = false;
+            return true;
+        }
+        if (memberSearch != null && memberSearch.isFocused()
+                && keyCode != GLFW.GLFW_KEY_TAB && keyCode != GLFW.GLFW_KEY_ESCAPE) {
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+        if (keyCode == GLFW.GLFW_KEY_TAB) {
+            S2HubNavigation.Section[] sections = S2HubNavigation.Section.values();
+            int direction = hasShiftDown() ? -1 : 1;
+            selectSection(sections[Math.floorMod(navigation.section().ordinal() + direction, sections.length)]);
+            return true;
+        }
+        if (keyCode == GLFW.GLFW_KEY_LEFT || keyCode == GLFW.GLFW_KEY_RIGHT) {
+            List<S2HubNavigation.Page> pages = navigation.pages();
+            if (pages.size() > 1) {
+                int current = pages.indexOf(navigation.page());
+                int direction = keyCode == GLFW.GLFW_KEY_LEFT ? -1 : 1;
+                selectPage(pages.get(Math.floorMod(current + direction, pages.size())));
+                return true;
+            }
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
