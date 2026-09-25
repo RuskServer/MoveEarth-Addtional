@@ -140,30 +140,29 @@ git clone https://github.com/RuskServer/MoveEarth-Addtional.git
 cd MoveEarth-Addtional
 ```
 
-### ローカル依存JAR
+### 依存MOD・ライブラリ
 
-再配布条件やファイルサイズの都合により、`lib/`はGit管理外です。各MODを正規の配布元から入手し、
-プロジェクト直下の`lib/`へ配置してください。現在の開発環境で使用するファイルは次のとおりです。
+依存MODとライブラリはすべてGradleがMavenリポジトリから取得します。手作業で`lib/`へJARを置く
+必要はありません（旧手順の`lib/`はビルドから参照されなくなりました）。
 
-```text
-lib/
-├─ FarmersDelight-1.21.1-1.3.3.jar
-├─ LocalizedChat-neoforge-1.21.1-5.2.1.jar
-├─ PlayerRevive_NEOFORGE_v2.1.2_mc1.21.1.jar
-├─ create-1.21.1-6.0.10.jar
-├─ create-aeronautics-bundled-1.21.1-1.3.2.jar
-├─ discord-rpc-1.0.4.jar
-└─ tacz-neoforge-1.21.1-1.1.8-hotfix-r6.jar
-```
+| 取得元 | 対象 |
+| --- | --- |
+| Modrinth Maven | Create、TaCZ（1.21.1 NeoForge移植版）、PlayerRevive、Localized Chat、Farmer's Delight、Create Aeronautics、Jade、Create: Rock & Stone、Create: Diesel Generators |
+| CreateMod Maven | Ponder、Flywheel |
+| FirstDark Maven | `discord-rpc` |
+| その他 | Sable、JEI、Cold Sweat、Curios、JDA、SQLite JDBC |
 
-Sable、Jade、JEI、Cold Sweat、Curios、Lightman's Currencyなどの開発用APIはGradleが取得します。
-`discord-rpc`はクライアント機能をコンパイルするためのローカルライブラリであり、単体の導入MODでは
-ありません。依存JARをコミットしたりPull Requestへ添付したりしないでください。
+各バージョンは`build.gradle`で固定しています。`discord-rpc`はクライアント機能のためにMod本体へ
+クラスを統合するライブラリであり、単体の導入MODではありません。依存JARをコミットしたり
+Pull Requestへ添付したりしないでください。
 
 ### ビルドとテスト
 
 このリポジトリでは、`.local-tools/jdk-21`と`.local-tools/gradle-home`を利用するスクリプトを
 標準手順としています。
+
+初回、または依存バージョンを変更した後は、`--offline`を付けずに一度実行して依存を
+`.local-tools/gradle-home`へ取得してください。以降はオフラインで実行できます。
 
 ```shell
 tools/gradle-local.sh test --offline
