@@ -10,6 +10,15 @@
 | [Siege・略奪・兵站](siege_logistics_plan.md) | 第1〜4段階実装済み | 実装計画を完了 |
 | [バニラ進捗再実装](progress_system_rebuild_plan.md) | 第1〜3段階と導線変更を実装済み | 旧データ削除のみ移行期間後に実施 |
 | [旧個人ガイド](technology_tree_plan.md) | バニラ進捗方式へ置換 | 現行方式はバニラ進捗再実装計画を参照 |
+| [Discord通知UX改善](discord_notification_ux_improvement_plan.md) | 第1〜5段階と導線改修を実装済み | Discord側の動作確認済み |
+| [S2 Hub表示・導線再整理](s2_hub_ui_reorganization_plan.md) | 実装・実機確認済み | 今後の改修は新しい計画として作成 |
+| [機動砲兵・攻城役割分担](mobile_artillery_plan.md) | 第一段階と車両修理を実装済み | 第二段階は見送り |
+| [Jobsシステム設計（MVP）](Jobsシステム設計.md) | 経済再構築計画へ置換 | PT・PTショップは廃止。現行は`economy_rebuild_plan.md`を参照 |
+| [README更新計画](README_update_plan.md) | README更新を実施済み | 計画を完了 |
+| [突発イベントシステム草案](MMO的イベント案.md) | v3.2では現状の実装で暫定停止中 | v3.2以降に再開する場合は新しい計画として扱う |
+| [木の生成](tree_generation_plan.md) | 広葉樹の生成を実装済み | 仕上がりに満足したため一旦停止。針葉樹・dark_forest・savanna・jungle・細枝は未着手 |
+| [スライムと蜂蜜の代替生産](slime_honey_recipe_plan.md) | 砂糖からの蜂蜜・スライムのミキサーレシピを実装済み | 文書冒頭の「計画のみ」は実装前の記述。残りは産出量の調整 |
+| [Mekanism統合](mekanism_integration_research.md) | 推奨実装順の第1〜12段階を実装済み | 残りは実サーバーでの計測と、核融合・SPSの採否判断 |
 | [プレイヤー分析システム](プレイヤー分析システム実装計画.md) | 停止中 | 開発を停止している計画を作業対象から退避 |
 | [領土システム実装](停止中_領土システム実装計画.md) | 停止中 | 現行のS2領土実装とは別の停止中計画を退避 |
 | [領土システム構想](停止中_領土システム構想.md) | 停止中 | 現行のS2領土実装とは別の停止中構想を退避 |
