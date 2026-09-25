@@ -4,10 +4,11 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinition;
 import com.ruskserver.moveearth_addtional.jobs.JobDefinitions;
 import com.ruskserver.moveearth_addtional.jobs.JobProgressSavedData;
-import com.ruskserver.moveearth_addtional.jobs.JobPointIncome;
 import com.ruskserver.moveearth_addtional.jobs.JobsScreenSync;
 import com.ruskserver.moveearth_addtional.jobs.JobXpFormat;
 import net.minecraft.commands.CommandSourceStack;
@@ -67,12 +68,6 @@ public final class JobsCommand {
                                                                 EntityArgument.getPlayer(context, "player"),
                                                                 StringArgumentType.getString(context, "job"),
                                                                 IntegerArgumentType.getInteger(context, "amount")))))))
-                        .then(Commands.literal("addpoints")
-                                .then(Commands.argument("player", EntityArgument.player())
-                                        .then(Commands.argument("amount", IntegerArgumentType.integer())
-                                                .executes(context -> addPoints(context.getSource(),
-                                                        EntityArgument.getPlayer(context, "player"),
-                                                        IntegerArgumentType.getInteger(context, "amount"))))))
                         .then(Commands.literal("reset")
                                 .then(Commands.argument("player", EntityArgument.player())
                                         .executes(context -> reset(context.getSource(),
@@ -91,7 +86,7 @@ public final class JobsCommand {
     }
 
     private static int list(CommandSourceStack source) {
-        source.sendSuccess(() -> Component.literal("[Jobs] 利用可能な職業:"), false);
+        source.sendSuccess(() -> MoveEarthMessage.info("Jobs: 利用可能な職業:"), false);
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
             source.sendSuccess(() -> Component.literal("- " + definition.id() + " : "
                     + definition.displayName() + " (最大Lv." + definition.maxLevel() + ")"), false);
@@ -103,21 +98,15 @@ public final class JobsCommand {
         JobProgressSavedData data = JobProgressSavedData.get(player.getServer());
         data.reconcileActiveJobs(player.getUUID(), JobDefinitions.INSTANCE.ids());
         JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(player.getUUID());
-        player.sendSystemMessage(Component.literal("[Jobs] ポイント: " + snapshot.points()
-                + " / 選択中: " + snapshot.activeJobs().size() + "/" + JobProgressSavedData.MAX_ACTIVE_JOBS));
-        JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(player.getUUID(),
-                player.getServer().overworld().getGameTime());
-        long seconds = (recurring.ticksRemaining() + 19L) / 20L;
-        String recurringText = recurring.pointsInWindow() >= JobPointIncome.MAX_POINTS_PER_WINDOW
-                ? "今時間の継続報酬は上限です"
-                : "次の継続ポイントまで " + JobXpFormat.format(recurring.xpTowardsNextPoint())
-                + "/" + JobXpFormat.format(JobPointIncome.XP_PER_POINT) + " XP";
-        player.sendSystemMessage(Component.literal("[Jobs] " + recurringText + " / 今時間 "
-                + recurring.pointsInWindow() + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW
-                + " PT / 残り " + String.format(java.util.Locale.ROOT, "%02d:%02d",
-                seconds / 60L, seconds % 60L)));
+        player.sendSystemMessage(MoveEarthMessage.info("Jobs: 選択中: " + snapshot.activeJobs().size()
+                + "/" + JobProgressSavedData.MAX_ACTIVE_JOBS));
+        EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.getServer());
+        EconomyLedgerSavedData.JobIncomeSnapshot income = ledger.jobIncome(player.getUUID(), System.currentTimeMillis());
+        player.sendSystemMessage(MoveEarthMessage.info("Jobs: 残高 "
+                + ledger.balance(EconomyLedgerSavedData.Account.player(player.getUUID()))
+                + " | 行動報酬 今の時間帯 " + income.paidThisHour() + "/20、本日 " + income.paidToday() + "/80"));
         if (snapshot.activeJobs().isEmpty()) {
-            player.sendSystemMessage(Component.literal("[Jobs] /jobs join <職業> で職業を選択できます。"));
+            player.sendSystemMessage(MoveEarthMessage.info("Jobs: /jobs join <職業> で職業を選択できます。"));
             return 1;
         }
         for (ResourceLocation id : snapshot.activeJobs()) {
@@ -136,16 +125,16 @@ public final class JobsCommand {
     private static int join(ServerPlayer player, String input) {
         Optional<JobDefinition> definition = resolve(input);
         if (definition.isEmpty()) {
-            player.sendSystemMessage(Component.literal("[Jobs] 不明な職業です: " + input));
+            player.sendSystemMessage(MoveEarthMessage.error("Jobs: 不明な職業です: " + input));
             return 0;
         }
         JobProgressSavedData.JoinResult result = JobProgressSavedData.get(player.getServer())
                 .join(player.getUUID(), definition.get().id());
         switch (result) {
-            case JOINED -> player.sendSystemMessage(Component.literal("[Jobs] "
+            case JOINED -> player.sendSystemMessage(MoveEarthMessage.success("Jobs: "
                     + definition.get().displayName() + "を選択しました。"));
-            case ALREADY_ACTIVE -> player.sendSystemMessage(Component.literal("[Jobs] その職業は選択済みです。"));
-            case LIMIT_REACHED -> player.sendSystemMessage(Component.literal("[Jobs] 選択できる職業は最大"
+            case ALREADY_ACTIVE -> player.sendSystemMessage(MoveEarthMessage.warning("Jobs: その職業は選択済みです。"));
+            case LIMIT_REACHED -> player.sendSystemMessage(MoveEarthMessage.warning("Jobs: 選択できる職業は最大"
                     + JobProgressSavedData.MAX_ACTIVE_JOBS + "個です。"));
         }
         return result == JobProgressSavedData.JoinResult.JOINED ? 1 : 0;
@@ -161,15 +150,15 @@ public final class JobsCommand {
                 .findFirst()
                 .orElse(parsed));
         if (jobId == null) {
-            player.sendSystemMessage(Component.literal("[Jobs] 不明な職業です: " + input));
+            player.sendSystemMessage(MoveEarthMessage.error("Jobs: 不明な職業です: " + input));
             return 0;
         }
         if (!data.leave(player.getUUID(), jobId)) {
-            player.sendSystemMessage(Component.literal("[Jobs] その職業は選択していません。"));
+            player.sendSystemMessage(MoveEarthMessage.warning("Jobs: その職業は選択していません。"));
             return 0;
         }
         String displayName = definition.map(JobDefinition::displayName).orElse(jobId.toString());
-        player.sendSystemMessage(Component.literal("[Jobs] " + displayName
+        player.sendSystemMessage(MoveEarthMessage.success("Jobs: " + displayName
                 + "を解除しました。進捗は保持されます。"));
         return 1;
     }
@@ -177,12 +166,12 @@ public final class JobsCommand {
     private static int info(CommandSourceStack source, String input) {
         Optional<JobDefinition> definition = resolve(input);
         if (definition.isEmpty()) {
-            source.sendFailure(Component.literal("[Jobs] 不明な職業です: " + input));
+            source.sendFailure(MoveEarthMessage.error("Jobs: 不明な職業です: " + input));
             return 0;
         }
         JobDefinition value = definition.get();
-        source.sendSuccess(() -> Component.literal("[Jobs] " + value.displayName() + " (" + value.id()
-                + ") 最大Lv." + value.maxLevel() + " / レベルごとに " + value.pointsPerLevel() + "ポイント"), false);
+        source.sendSuccess(() -> MoveEarthMessage.info("Jobs: " + value.displayName() + " (" + value.id()
+                + ") 最大Lv." + value.maxLevel()), false);
         if (!value.description().isBlank()) {
             source.sendSuccess(() -> Component.literal("- " + value.description()), false);
         }
@@ -192,12 +181,12 @@ public final class JobsCommand {
     private static int top(CommandSourceStack source, String input) {
         Optional<JobDefinition> definition = resolve(input);
         if (definition.isEmpty()) {
-            source.sendFailure(Component.literal("[Jobs] 不明な職業です: " + input));
+            source.sendFailure(MoveEarthMessage.error("Jobs: 不明な職業です: " + input));
             return 0;
         }
         JobDefinition job = definition.get();
         var entries = JobProgressSavedData.get(source.getServer()).leaderboard(job.id(), 10);
-        source.sendSuccess(() -> Component.literal("[Jobs] " + job.displayName() + " ランキング"), false);
+        source.sendSuccess(() -> MoveEarthMessage.info("Jobs: " + job.displayName() + " ランキング"), false);
         if (entries.isEmpty()) {
             source.sendSuccess(() -> Component.literal("- まだランキング対象者がいません"), false);
             return 1;
@@ -215,27 +204,20 @@ public final class JobsCommand {
     private static int addXp(CommandSourceStack source, ServerPlayer player, String input, int amount) {
         Optional<JobDefinition> definition = resolve(input);
         if (definition.isEmpty()) {
-            source.sendFailure(Component.literal("[Jobs] 不明な職業です: " + input));
+            source.sendFailure(MoveEarthMessage.error("Jobs: 不明な職業です: " + input));
             return 0;
         }
         JobProgressSavedData.AwardResult result = JobProgressSavedData.get(source.getServer())
                 .awardAdmin(player.getUUID(), definition.get(), amount,
                         source.getServer().overworld().getGameTime());
-        source.sendSuccess(() -> Component.literal("[Jobs] " + player.getScoreboardName() + "に "
+        source.sendSuccess(() -> MoveEarthMessage.success("Jobs: " + player.getScoreboardName() + "に "
                 + JobXpFormat.format(result.awardedXp()) + " XPを付与しました。"), true);
         return result.awardedXp() > 0 ? 1 : 0;
     }
 
-    private static int addPoints(CommandSourceStack source, ServerPlayer player, int amount) {
-        JobProgressSavedData.get(source.getServer()).addPoints(player.getUUID(), amount);
-        source.sendSuccess(() -> Component.literal("[Jobs] " + player.getScoreboardName() + "のポイントを "
-                + amount + "変更しました。"), true);
-        return 1;
-    }
-
     private static int reset(CommandSourceStack source, ServerPlayer player) {
         JobProgressSavedData.get(source.getServer()).reset(player.getUUID());
-        source.sendSuccess(() -> Component.literal("[Jobs] " + player.getScoreboardName()
+        source.sendSuccess(() -> MoveEarthMessage.success("Jobs: " + player.getScoreboardName()
                 + "の職業データをリセットしました。"), true);
         return 1;
     }

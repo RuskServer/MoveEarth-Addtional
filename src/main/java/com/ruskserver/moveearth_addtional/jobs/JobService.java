@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.jobs;
 
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -29,20 +30,16 @@ public final class JobService {
 
         com.ruskserver.moveearth_addtional.analytics.collector.AnalyticsCollectorManager.INSTANCE.recordJobsXp(player, result.awardedXp());
 
+        EconomyLedgerSavedData.JobIncomeSnapshot income = EconomyLedgerSavedData.get(player.getServer())
+                .awardJobIncome(player.getUUID(), result.awardedXp(), System.currentTimeMillis());
+
         JobProgressSavedData.ProgressSnapshot progress = data.snapshot(player.getUUID())
                 .progress(definition.id());
-        JobProgressBossBar.show(player, definition, progress, result.awardedXp());
+        JobProgressBossBar.show(player, definition, progress, result.awardedXp(), income.justEarned());
 
         if (result.leveledUp()) {
             player.sendSystemMessage(MoveEarthMessage.success("JOBS  •  " + definition.displayName()
-                    + " がレベル " + result.newLevel() + " になりました（+"
-                    + result.pointsEarned() + "ポイント）"));
-        } else if (result.recurringPointsEarned() > 0) {
-            JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(player.getUUID(),
-                    player.getServer().overworld().getGameTime());
-            player.sendSystemMessage(MoveEarthMessage.success("JOBS  •  継続報酬 +"
-                    + result.recurringPointsEarned() + " PT（今時間 " + recurring.pointsInWindow()
-                    + "/" + JobPointIncome.MAX_POINTS_PER_WINDOW + "）"));
+                    + " がレベル " + result.newLevel() + " になりました"));
         }
     }
 

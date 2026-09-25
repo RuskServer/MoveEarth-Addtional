@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,6 +29,10 @@ class MoveEarthAdvancementResourcesTest {
             "warfare/imprison", "warfare/free_prisoner", "warfare/core_sabotage", "warfare/defend",
             "exploration/warehouse", "exploration/warehouse_raid", "exploration/warehouse_boss",
             "exploration/warehouse_loot");
+    private static final List<String> NEW_ADVANCEMENTS = List.of(
+            "nation/market_trade", "agriculture/harvest", "agriculture/farm_delivery",
+            "agriculture/harvest_event", "industry/uranium", "industry/fissile_fuel",
+            "industry/fission", "industry/turbine");
 
     @Test
     void rootUsesVanillaJoinCriterion() {
@@ -55,13 +60,15 @@ class MoveEarthAdvancementResourcesTest {
     }
 
     @Test
-    void allThirtySevenAdvancementsHaveResolvableParentsTranslationsAndCriteria() {
+    void allAdvancementsHaveResolvableParentsTranslationsAndCriteria() {
         assertEquals(37, ADVANCEMENTS.size());
-        Set<String> ids = Set.copyOf(ADVANCEMENTS);
+        List<String> all = java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList();
+        assertEquals(45, all.size());
+        Set<String> ids = Set.copyOf(all);
         JsonObject ja = read("/assets/moveearth_addtional/lang/ja_jp.json");
         JsonObject en = read("/assets/moveearth_addtional/lang/en_us.json");
         int rootChildren = 0;
-        for (String id : ADVANCEMENTS) {
+        for (String id : all) {
             JsonObject advancement = advancement(id);
             JsonObject criteria = advancement.getAsJsonObject("criteria");
             assertNotNull(criteria, id + " criteria");
@@ -97,8 +104,12 @@ class MoveEarthAdvancementResourcesTest {
                 ModCriteria.PRISONER_IMPRISONED, ModCriteria.PRISONER_FREED,
                 ModCriteria.CORE_SABOTAGE_COMPLETED, ModCriteria.TERRITORY_DEFENDED,
                 ModCriteria.WAREHOUSE_ENTERED, ModCriteria.WAREHOUSE_RAID_PARTICIPATED,
-                ModCriteria.WAREHOUSE_BOSS_DEFEATED, ModCriteria.WAREHOUSE_LOOT_OPENED);
-        for (String id : ADVANCEMENTS) {
+                ModCriteria.WAREHOUSE_BOSS_DEFEATED, ModCriteria.WAREHOUSE_LOOT_OPENED,
+                ModCriteria.MARKET_TRADE_COMPLETED, ModCriteria.CROP_HARVESTED,
+                ModCriteria.FARM_GOODS_DELIVERED, ModCriteria.HARVEST_EVENT_PARTICIPATED,
+                ModCriteria.MEKANISM_MACHINE_OPERATED, ModCriteria.FISSILE_FUEL_PRODUCED,
+                ModCriteria.FISSION_REACTOR_OPERATED, ModCriteria.TURBINE_OPERATED);
+        for (String id : java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList()) {
             JsonObject criteria = advancement(id).getAsJsonObject("criteria");
             criteria.entrySet().forEach(entry -> {
                 JsonObject criterion = entry.getValue().getAsJsonObject();
@@ -106,6 +117,48 @@ class MoveEarthAdvancementResourcesTest {
                 String event = criterion.getAsJsonObject("conditions").get("event").getAsString();
                 assertTrue(registered.contains(event), id + " event " + event);
             });
+        }
+    }
+
+    @Test
+    void optionalTechBranchesHaveModConditionsAndPeacefulBranchesDoNotDependOnWar() {
+        Map<String, Set<String>> required = Map.of(
+                "industry/electricity", Set.of("electroenergetics"),
+                "industry/mekanism", Set.of("electroenergetics", "mekanism"),
+                "industry/uranium", Set.of("electroenergetics", "mekanism"),
+                "industry/fissile_fuel", Set.of("electroenergetics", "mekanism"),
+                "industry/fission", Set.of("electroenergetics", "mekanism", "mekanismgenerators"),
+                "industry/turbine", Set.of("electroenergetics", "mekanism", "mekanismgenerators"));
+        for (var entry : required.entrySet()) {
+            JsonObject advancement = advancement(entry.getKey());
+            var conditions = advancement.getAsJsonArray("neoforge:conditions");
+            assertNotNull(conditions, entry.getKey());
+            Set<String> mods = new java.util.HashSet<>();
+            conditions.forEach(condition -> {
+                JsonObject object = condition.getAsJsonObject();
+                assertEquals("neoforge:mod_loaded", object.get("type").getAsString());
+                mods.add(object.get("modid").getAsString());
+            });
+            assertEquals(entry.getValue(), mods, entry.getKey());
+        }
+        for (String id : java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList()) {
+            if (id.startsWith("warfare/")) continue;
+            JsonObject advancement = advancement(id);
+            if (advancement.has("parent")) {
+                assertFalse(advancement.get("parent").getAsString().contains(":warfare/"), id);
+            }
+        }
+    }
+
+    @Test
+    void ordinaryTasksToastWithoutBroadcastingChat() {
+        for (String id : java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList()) {
+            if (id.equals("root")) continue;
+            JsonObject display = advancement(id).getAsJsonObject("display");
+            assertTrue(display.get("show_toast").getAsBoolean(), id);
+            if (display.get("frame").getAsString().equals("task")) {
+                assertFalse(display.get("announce_to_chat").getAsBoolean(), id);
+            }
         }
     }
 

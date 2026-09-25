@@ -22,7 +22,8 @@ public final class RecoveryFundService {
         RecoveryFundSavedData data = RecoveryFundSavedData.get(server);
         var transaction = data.prepare(RecoveryFundSavedData.Type.NATION_TRANSFER, nationId, null,
                 amount, OpenTimeService.now(server), "nation_transfer");
-        EconomyGateway.Result withdrawal = EconomyGateway.withdraw(server, nationId, amount);
+        EconomyGateway.Result withdrawal = EconomyGateway.withdraw(server, nationId, amount,
+                transaction.id(), "recovery_fund_contribution");
         if (withdrawal != EconomyGateway.Result.SUCCESS) {
             if (withdrawal == EconomyGateway.Result.ERROR) {
                 data.reviewRequired(transaction.id(), "withdrawal:" + withdrawal.name());

@@ -7,11 +7,8 @@ import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;
-import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValueParser;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.Account;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -20,8 +17,6 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.HashMap;
@@ -51,42 +46,36 @@ public final class NationUpkeepService {
         UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         if (nationId == null) return;
         NationUpkeepSavedData.AccountState state = NationUpkeepSavedData.get(player.server).state(nationId);
-        List<BankReference> references = new ArrayList<>();
-        List<String> names = new ArrayList<>();
-        for (BankReference reference : BankAPI.getApi().GetAllBankReferences(false)) {
-            try {
-                if (reference != null && reference.isValid() && reference.allowedAccess(player)) {
-                    IBankAccount account = reference.get();
-                    if (account != null) {
-                        references.add(reference);
-                        names.add(account.getName().getString());
-                    }
-                }
-            } catch (RuntimeException ignored) {
-            }
-        }
-        int selected = state.reference() == null ? -1 : references.indexOf(state.reference());
         TerritorySavedData territories = TerritorySavedData.get(player.server);
         long upkeep = TerritoryUpkeepPolicy.calculateConfigured(territories.controlledChunkCount(nationId),
                 territories.activeOutpostCount(nationId), VehicleSavedData.get(player.server).count(nationId));
+        EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
+        java.util.List<String> recent = ledger.recent(Account.nation(nationId), 5).stream()
+                .map(tx -> (Account.nation(nationId).equals(tx.to()) ? "+" : "-")
+                        + tx.amount() + "  " + tx.reason())
+                .toList();
         PacketDistributor.sendToPlayer(player, new S2C_NationTreasuryPacket(canManage(player), upkeep,
-                state.enabled(), state.nextDueAt(), state.failedPayments(), state.overdueSince(),
-                penalty(state, System.currentTimeMillis()), selected, references, names));
+                S2TerritoryConfig.upkeepCycleHours(),
+                ledger.balance(Account.nation(nationId)), ledger.balance(Account.player(player.getUUID())),
+                state.nextDueAt(), state.failedPayments(), state.overdueSince(),
+                penalty(state, System.currentTimeMillis()), recent));
     }
 
-    public static boolean configure(ServerPlayer player, BankReference reference, boolean enabled) {
-        if (!canManage(player)) return false;
+    public static boolean moveFunds(ServerPlayer player, long amount, boolean intoNation) {
+        if (amount <= 0L) return false;
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
         if (nationId == null) return false;
-        if (reference != null && (!reference.isValid() || !reference.allowedAccess(player))) return false;
-        NationUpkeepSavedData.get(player.server).configure(nationId, reference, enabled,
-                System.currentTimeMillis());
-        invalidatePenalty(nationId);
-        if (enabled && reference != null) {
+        if (!intoNation && !canManage(player)) return false;
+        Account nation = Account.nation(nationId);
+        Account personal = Account.player(player.getUUID());
+        EconomyLedgerSavedData.Result result = EconomyLedgerSavedData.get(player.server).transfer(
+                UUID.randomUUID(), intoNation ? personal : nation, intoNation ? nation : personal,
+                amount, intoNation ? "treasury_deposit" : "treasury_withdrawal");
+        if (result == EconomyLedgerSavedData.Result.APPLIED && intoNation) {
             com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                     com.ruskserver.moveearth_addtional.advancement.ModCriteria.TREASURY_CONFIGURED);
         }
-        return true;
+        return result == EconomyLedgerSavedData.Result.APPLIED;
     }
 
     public static boolean payNow(ServerPlayer player) {
@@ -98,39 +87,21 @@ public final class NationUpkeepService {
         return paid;
     }
 
-    /** Transfers configured treasury gold, rolling the withdrawal back if the receiver deposit fails. */
+    /** Atomic nation-to-nation compensation. */
     public static TransferResult transferGold(MinecraftServer server, UUID payerNation,
-                                              UUID receiverNation, long amount) {
+                                              UUID receiverNation, long amount, UUID transactionId) {
         if (amount < 0L) return TransferResult.INVALID_AMOUNT;
         if (amount == 0L) return TransferResult.SUCCESS;
-        try {
-            NationUpkeepSavedData data = NationUpkeepSavedData.get(server);
-            BankReference payerReference = data.state(payerNation).reference();
-            BankReference receiverReference = data.state(receiverNation).reference();
-            IBankAccount payer = payerReference == null || !payerReference.isValid()
-                    ? null : payerReference.get();
-            IBankAccount receiver = receiverReference == null || !receiverReference.isValid()
-                    ? null : receiverReference.get();
-            if (payer == null) return TransferResult.PAYER_ACCOUNT_MISSING;
-            if (receiver == null) return TransferResult.RECEIVER_ACCOUNT_MISSING;
-            MoneyValue value = MoneyValueParser.ParseConfigString(
-                    "coin;" + amount + "-lightmanscurrency:coin_gold", MoneyValue::empty);
-            if (value.isEmpty() || !payer.getStoredMoney().containsValue(value)) {
-                return TransferResult.INSUFFICIENT_FUNDS;
-            }
-            var withdrawn = BankAPI.getApi().BankWithdrawFromServer(payer, value);
-            if (!withdrawn.getFirst()) return TransferResult.INSUFFICIENT_FUNDS;
-            if (BankAPI.getApi().BankDepositFromServer(receiver, value)) return TransferResult.SUCCESS;
-            if (!BankAPI.getApi().BankDepositFromServer(payer, value)) {
-                Moveearth_addtional.LOGGER.error(
-                        "Failed to roll back peace compensation for nation {}", payerNation);
-            }
-            return TransferResult.DEPOSIT_FAILED;
-        } catch (RuntimeException exception) {
-            Moveearth_addtional.LOGGER.warn("Peace compensation transfer failed from {} to {}",
-                    payerNation, receiverNation, exception);
-            return TransferResult.DEPOSIT_FAILED;
-        }
+        if (payerNation == null) return TransferResult.PAYER_ACCOUNT_MISSING;
+        if (receiverNation == null) return TransferResult.RECEIVER_ACCOUNT_MISSING;
+        return switch (EconomyLedgerSavedData.get(server).transfer(transactionId,
+                Account.nation(payerNation), Account.nation(receiverNation), amount,
+                "peace_compensation", transactionId)) {
+            case APPLIED, ALREADY_APPLIED -> TransferResult.SUCCESS;
+            case INSUFFICIENT_FUNDS -> TransferResult.INSUFFICIENT_FUNDS;
+            case INVALID -> TransferResult.INVALID_AMOUNT;
+            case OVERFLOW, CONFLICT -> TransferResult.DEPOSIT_FAILED;
+        };
     }
 
     public enum TransferResult {
@@ -210,6 +181,36 @@ public final class NationUpkeepService {
     private static boolean charge(MinecraftServer server, UUID nationId, long now) {
         NationUpkeepSavedData data = NationUpkeepSavedData.get(server);
         NationUpkeepSavedData.AccountState state = data.state(nationId);
+        UUID chargeId = UUID.nameUUIDFromBytes(("nation_upkeep:" + nationId + ":" + state.nextDueAt())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var priorAid = RecoveryFundSavedData.get(server)
+                .transaction(RecoveryFundSavedData.Type.UPKEEP_SUBSIDY, chargeId).orElse(null);
+        EconomyLedgerSavedData.Transaction prior = EconomyLedgerSavedData.get(server).transaction(chargeId);
+        if (prior != null) {
+            if (!Account.nation(nationId).equals(prior.from()) || prior.to() != null
+                    || !"nation_upkeep".equals(prior.reason())) {
+                Moveearth_addtional.LOGGER.error("Conflicting upkeep transaction for nation {}", nationId);
+                return false;
+            }
+            if (priorAid != null && priorAid.state() == RecoveryFundSavedData.State.RESERVED
+                    && !RecoveryFundService.consumeAid(server,
+                    NationRecoverySavedData.get(server).eligibleForNation(nationId,
+                            com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server))
+                            .map(NationRecoverySavedData.Episode::id).orElse(null),
+                    priorAid.id(), priorAid.amount())) {
+                Moveearth_addtional.LOGGER.error("Unable to reconcile upkeep aid for nation {}", nationId);
+                return false;
+            }
+            data.paymentSucceeded(nationId, now);
+            invalidatePenalty(nationId);
+            return true;
+        }
+        if (priorAid != null && priorAid.state() == RecoveryFundSavedData.State.PAID) {
+            // A fully subsidized charge has no ledger withdrawal to use as its receipt.
+            data.paymentSucceeded(nationId, now);
+            invalidatePenalty(nationId);
+            return true;
+        }
         TerritorySavedData territories = TerritorySavedData.get(server);
         long amount = TerritoryUpkeepPolicy.calculateConfigured(territories.controlledChunkCount(nationId),
                 territories.activeOutpostCount(nationId), VehicleSavedData.get(server).count(nationId));
@@ -224,9 +225,11 @@ public final class NationUpkeepService {
         NationRecoverySavedData.Episode episode = NationRecoverySavedData.get(server)
                 .eligibleForNation(nationId, com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server))
                 .orElse(null);
-        if (episode != null) {
-            UUID chargeId = UUID.nameUUIDFromBytes((nationId + ":" + state.nextDueAt())
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        if (priorAid != null && priorAid.state() == RecoveryFundSavedData.State.RESERVED) {
+            aidTransaction = priorAid.id();
+            episodeId = episode == null ? null : episode.id();
+            subsidy = priorAid.amount();
+        } else if (episode != null) {
             RecoveryFundService.Result aid = RecoveryFundService.reserveAid(server, episode, chargeId, amount,
                     RecoveryFundSavedData.Type.UPKEEP_SUBSIDY);
             if (aid.success()) {
@@ -238,14 +241,12 @@ public final class NationUpkeepService {
         }
         long ownAmount = Math.max(0L, amount - subsidy);
         try {
-            EconomyGateway.Result withdrawal = EconomyGateway.withdraw(server, nationId, ownAmount);
+            EconomyGateway.Result withdrawal = EconomyGateway.withdraw(server, nationId, ownAmount,
+                    chargeId, "nation_upkeep");
             if (withdrawal == EconomyGateway.Result.SUCCESS) {
                 if (aidTransaction != null && !RecoveryFundService.consumeAid(server, episodeId,
                         aidTransaction, subsidy)) {
-                    EconomyGateway.deposit(server, nationId, ownAmount);
                     Moveearth_addtional.LOGGER.error("Failed to commit upkeep recovery aid for nation {}", nationId);
-                    data.paymentFailed(nationId, now);
-                    invalidatePenalty(nationId);
                     return false;
                 }
                 data.paymentSucceeded(nationId, now);

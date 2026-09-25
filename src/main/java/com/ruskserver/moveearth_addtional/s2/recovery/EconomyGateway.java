@@ -1,58 +1,51 @@
 package com.ruskserver.moveearth_addtional.s2.recovery;
 
-import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepSavedData;
-import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValueParser;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.Account;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.UUID;
 
-/** Narrow adapter around the external bank API. Every caller must journal before invoking it. */
+/** Nation-account operations shared by upkeep, recovery and dispatch. */
 public final class EconomyGateway {
     private EconomyGateway() { }
 
+    public static long balance(MinecraftServer server, UUID nationId) {
+        return EconomyLedgerSavedData.get(server).balance(Account.nation(nationId));
+    }
+
     public static Result withdraw(MinecraftServer server, UUID nationId, long amount) {
-        if (amount < 0L) return Result.INVALID_AMOUNT;
+        return withdraw(server, nationId, amount, UUID.randomUUID(), "nation_expense");
+    }
+
+    public static Result withdraw(MinecraftServer server, UUID nationId, long amount,
+                                  UUID transactionId, String reason) {
+        if (amount < 0L || nationId == null) return Result.INVALID_AMOUNT;
         if (amount == 0L) return Result.SUCCESS;
-        try {
-            IBankAccount account = account(server, nationId);
-            if (account == null) return Result.ACCOUNT_MISSING;
-            MoneyValue value = value(amount);
-            if (value.isEmpty() || !account.getStoredMoney().containsValue(value)) return Result.INSUFFICIENT_FUNDS;
-            return BankAPI.getApi().BankWithdrawFromServer(account, value).getFirst()
-                    ? Result.SUCCESS : Result.INSUFFICIENT_FUNDS;
-        } catch (RuntimeException exception) {
-            Moveearth_addtional.LOGGER.warn("Recovery economy withdrawal failed for nation {}", nationId, exception);
-            return Result.ERROR;
-        }
+        return map(EconomyLedgerSavedData.get(server).transfer(transactionId,
+                Account.nation(nationId), null, amount, reason));
     }
 
     public static Result deposit(MinecraftServer server, UUID nationId, long amount) {
-        if (amount < 0L) return Result.INVALID_AMOUNT;
+        return deposit(server, nationId, amount, UUID.randomUUID(), "nation_income");
+    }
+
+    public static Result deposit(MinecraftServer server, UUID nationId, long amount,
+                                 UUID transactionId, String reason) {
+        if (amount < 0L || nationId == null) return Result.INVALID_AMOUNT;
         if (amount == 0L) return Result.SUCCESS;
-        try {
-            IBankAccount account = account(server, nationId);
-            if (account == null) return Result.ACCOUNT_MISSING;
-            return BankAPI.getApi().BankDepositFromServer(account, value(amount)) ? Result.SUCCESS : Result.ERROR;
-        } catch (RuntimeException exception) {
-            Moveearth_addtional.LOGGER.warn("Recovery economy deposit failed for nation {}", nationId, exception);
-            return Result.ERROR;
-        }
+        return map(EconomyLedgerSavedData.get(server).transfer(transactionId,
+                null, Account.nation(nationId), amount, reason));
     }
 
-    private static IBankAccount account(MinecraftServer server, UUID nationId) {
-        BankReference reference = NationUpkeepSavedData.get(server).state(nationId).reference();
-        return reference != null && reference.isValid() ? reference.get() : null;
+    private static Result map(EconomyLedgerSavedData.Result result) {
+        return switch (result) {
+            case APPLIED, ALREADY_APPLIED -> Result.SUCCESS;
+            case INSUFFICIENT_FUNDS -> Result.INSUFFICIENT_FUNDS;
+            case INVALID -> Result.INVALID_AMOUNT;
+            case OVERFLOW, CONFLICT -> Result.ERROR;
+        };
     }
 
-    private static MoneyValue value(long amount) {
-        return MoneyValueParser.ParseConfigString(
-                "coin;" + amount + "-lightmanscurrency:coin_gold", MoneyValue::empty);
-    }
-
-    public enum Result { SUCCESS, INVALID_AMOUNT, ACCOUNT_MISSING, INSUFFICIENT_FUNDS, ERROR }
+    public enum Result { SUCCESS, INVALID_AMOUNT, INSUFFICIENT_FUNDS, ERROR }
 }

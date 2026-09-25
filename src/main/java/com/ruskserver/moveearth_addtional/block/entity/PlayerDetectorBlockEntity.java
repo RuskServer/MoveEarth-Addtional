@@ -1,21 +1,17 @@
 package com.ruskserver.moveearth_addtional.block.entity;
 
 import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
+import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
 import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
 import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValue;
-import io.github.lightman314.lightmanscurrency.api.money.value.MoneyValueParser;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -29,9 +25,10 @@ import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.syncher.SynchedEntityData;
 import com.ruskserver.moveearth_addtional.mixin.EntityDataAccessorMixin;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -52,7 +49,6 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     private int tickCounter = 0;
 
     // 維持費支払い用データ
-    private BankReference bankReference = null;
     private long nextPaymentTime = 0L;
     private boolean isActive = false;
 
@@ -60,6 +56,9 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     private long placedTime = 0L;
     private UUID dummyEntityUUID = null;
     private boolean dummyEntitiesReconciled = false;
+    private final Map<UUID, Long> lastIntruderAlerts = new HashMap<>();
+    private final Set<GlowPair> privateGlows = new HashSet<>();
+    private static final long ALERT_INTERVAL_MS = 60_000L;
 
     // リフレクションによる protected な DATA_SHARED_FLAGS_ID 取得
     private static final net.minecraft.network.syncher.EntityDataAccessor<Byte> DATA_SHARED_FLAGS =
@@ -98,15 +97,6 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             throw new IllegalArgumentException(validation.errorMessage());
         }
         this.detectorName = validation.normalized();
-        this.setChanged();
-    }
-
-    public BankReference getBankReference() {
-        return this.bankReference;
-    }
-
-    public void setBankReference(BankReference bankReference) {
-        this.bankReference = bankReference;
         this.setChanged();
     }
 
@@ -168,9 +158,6 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(tag.getString("DetectorName"));
             this.detectorName = validation.valid() ? validation.normalized() : "";
         }
-        if (tag.contains("BankReference")) {
-            this.bankReference = BankReference.load(tag.getCompound("BankReference"));
-        }
         if (tag.contains("NextPaymentTime")) {
             this.nextPaymentTime = tag.getLong("NextPaymentTime");
         }
@@ -197,9 +184,6 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (!this.detectorName.isEmpty()) {
             tag.putString("DetectorName", this.detectorName);
         }
-        if (this.bankReference != null) {
-            tag.put("BankReference", this.bankReference.save());
-        }
         tag.putLong("NextPaymentTime", this.nextPaymentTime);
         tag.putBoolean("IsActive", this.isActive);
         tag.putLong("PlacedTime", this.placedTime);
@@ -211,13 +195,15 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     @Override
     public void onLoad() {
         super.onLoad();
-        if (this.level instanceof ServerLevel) {
+        if (this.level instanceof ServerLevel serverLevel) {
             LoadedDetectorRegistry.register(this);
+            ensurePositionRegistered(serverLevel);
         }
     }
 
     @Override
     public void onChunkUnloaded() {
+        if (this.level instanceof ServerLevel serverLevel) clearPrivateGlows(serverLevel);
         LoadedDetectorRegistry.unregister(this);
         super.onChunkUnloaded();
     }
@@ -229,11 +215,17 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
         ServerLevel serverLevel = (ServerLevel) level;
 
+        if (!blockEntity.ensurePositionRegistered(serverLevel)) {
+            blockEntity.clearPrivateGlows(serverLevel);
+            return;
+        }
+
         blockEntity.tickCounter++;
         if (blockEntity.tickCounter >= 100) { // 5秒周期 (100 ticks)
             blockEntity.tickCounter = 0;
 
             if (blockEntity.ownerUUID == null) {
+                blockEntity.clearPrivateGlows(serverLevel);
                 return;
             }
 
@@ -247,21 +239,16 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
             // 維持費支払い期限のチェックと自動引き落とし
             if (blockEntity.isActive && currentTime >= blockEntity.nextPaymentTime) {
-                boolean paySuccess = false;
-                if (blockEntity.bankReference != null && blockEntity.bankReference.isValid()) {
-                    IBankAccount account = blockEntity.bankReference.get();
-                    if (account != null) {
-                        MoneyValue fee = MoneyValueParser.ParseConfigString("coin;5-lightmanscurrency:coin_gold", () -> MoneyValue.empty());
-                        if (account.getStoredMoney().containsValue(fee)) {
-                            var result = BankAPI.getApi().BankWithdrawFromServer(account, fee);
-                            if (result.getFirst()) {
-                                paySuccess = true;
-                                // 2時間の延長 (7,200,000 ミリ秒)
-                                blockEntity.nextPaymentTime = currentTime + (2 * 60 * 60 * 1000);
-                                blockEntity.setChanged();
-                            }
-                        }
-                    }
+                UUID chargeId = UUID.nameUUIDFromBytes(("detector:" + serverLevel.dimension().location()
+                        + ":" + pos.asLong() + ":" + blockEntity.nextPaymentTime).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                EconomyLedgerSavedData.Result charge = EconomyLedgerSavedData.get(serverLevel.getServer()).transfer(chargeId,
+                        EconomyLedgerSavedData.Account.player(blockEntity.ownerUUID), null, 5L,
+                        "detector_upkeep");
+                boolean paySuccess = charge == EconomyLedgerSavedData.Result.APPLIED
+                        || charge == EconomyLedgerSavedData.Result.ALREADY_APPLIED;
+                if (paySuccess) {
+                    blockEntity.nextPaymentTime = currentTime + 2 * 60 * 60 * 1000L;
+                    blockEntity.setChanged();
                 }
 
                 if (!paySuccess) {
@@ -274,11 +261,13 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
             // 非アクティブな場合は、検知処理をスキップ
             if (!blockEntity.isActive) {
+                blockEntity.clearPrivateGlows(serverLevel);
                 return;
             }
 
             // 設置から20分間は作動しない（ウォーミングアップ猶予時間）
             if (currentTime < blockEntity.placedTime + WARMUP_DURATION_MS) {
+                blockEntity.clearPrivateGlows(serverLevel);
                 return;
             }
 
@@ -293,6 +282,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             Set<UUID> currentMembers = new HashSet<>();
             Set<UUID> currentVisitors = new HashSet<>();
             Set<UUID> currentIntruders = new HashSet<>();
+            Set<GlowPair> currentGlows = new HashSet<>();
 
             for (ServerPlayer player : players) {
                 double dist = player.position().distanceTo(Vec3.atCenterOf(pos));
@@ -302,7 +292,6 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     // 所有者およびホワイトリストに入っているプレイヤーは除外
                     if (player.getUUID().equals(blockEntity.ownerUUID) || whitelistData.isWhitelisted(blockEntity.ownerUUID, player.getUUID())) {
                         currentMembers.add(player.getUUID());
-                        blockEntity.sendGlowingPacket(player, false); // 発光を解除
                         continue;
                     }
 
@@ -317,30 +306,33 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                             targetName,
                             dist
                     );
-                    Component chatMessage = Component.literal(warningMsg);
+                    Component chatMessage = MoveEarthMessage.warning(warningMsg);
 
-                    Set<String> alertRecipients = new HashSet<>(whitelistData.getMemberNamesForDisplay(blockEntity.ownerUUID));
-                    if (blockEntity.ownerName != null) {
-                        alertRecipients.add(blockEntity.ownerName);
-                    }
-
-                    for (ServerPlayer onlinePlayer : serverLevel.getServer().getPlayerList().getPlayers()) {
-                        if (alertRecipients.contains(onlinePlayer.getScoreboardName())) {
-                            onlinePlayer.sendSystemMessage(chatMessage);
+                    boolean alertDue = currentTime - blockEntity.lastIntruderAlerts.getOrDefault(player.getUUID(), 0L)
+                            >= ALERT_INTERVAL_MS;
+                    for (ServerPlayer viewer : serverLevel.getServer().getPlayerList().getPlayers()) {
+                        if (!viewer.getUUID().equals(blockEntity.ownerUUID)
+                                && !whitelistData.isWhitelisted(blockEntity.ownerUUID, viewer.getUUID())) continue;
+                        if (alertDue) viewer.sendSystemMessage(chatMessage);
+                        if (dist <= 30.0 && viewer.level() == serverLevel && viewer != player) {
+                            blockEntity.sendPrivateGlowPacket(viewer, player, true);
+                            currentGlows.add(new GlowPair(viewer.getUUID(), player.getUUID()));
                         }
                     }
-
-                    // 2. 30ブロック以内の場合、侵入者に発光を付与し、さらにダミー発光をそのプレイヤーにのみ送信
-                    if (dist <= 30.0) {
-                        player.addEffect(new MobEffectInstance(MobEffects.GLOWING, 120, 0, false, false));
-                        blockEntity.sendGlowingPacket(player, true);
-                    } else {
-                        blockEntity.sendGlowingPacket(player, false);
-                    }
-                } else {
-                    blockEntity.sendGlowingPacket(player, false);
+                    if (alertDue) blockEntity.lastIntruderAlerts.put(player.getUUID(), currentTime);
                 }
             }
+            blockEntity.lastIntruderAlerts.keySet().retainAll(currentIntruders);
+            blockEntity.privateGlows.removeIf(pair -> {
+                if (currentGlows.contains(pair)) return false;
+                ServerPlayer viewer = serverLevel.getServer().getPlayerList().getPlayer(pair.viewer());
+                ServerPlayer target = serverLevel.getServer().getPlayerList().getPlayer(pair.target());
+                if (viewer != null && target != null && viewer.level() == target.level()) {
+                    blockEntity.sendPrivateGlowPacket(viewer, target, false);
+                }
+                return true;
+            });
+            blockEntity.privateGlows.addAll(currentGlows);
 
             // 分析用侵入トラッカーへスキャン結果を記録
             String posHash = Integer.toHexString(Objects.hash(serverLevel.dimension().location().toString(), pos.getX(), pos.getY(), pos.getZ()));
@@ -584,6 +576,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
     }
 
     public void onDestroy(ServerLevel level) {
+        clearPrivateGlows(level);
         removeDummyEntity(level);
         if (this.worldPosition != null) {
             String posHash = Integer.toHexString(Objects.hash(level.dimension().location().toString(), this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()));
@@ -596,37 +589,51 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         LoadedDetectorRegistry.unregister(this);
         super.setRemoved();
         if (this.level instanceof ServerLevel serverLevel && this.worldPosition != null) {
+            clearPrivateGlows(serverLevel);
             removeDummyEntity(serverLevel);
             String posHash = Integer.toHexString(Objects.hash(serverLevel.dimension().location().toString(), this.worldPosition.getX(), this.worldPosition.getY(), this.worldPosition.getZ()));
             com.ruskserver.moveearth_addtional.analytics.tracker.IntrusionTracker.INSTANCE.removeDetector(posHash);
         }
     }
 
-    private void sendGlowingPacket(ServerPlayer player, boolean isGlowing) {
-        if (this.dummyEntityUUID != null && player.level() instanceof ServerLevel serverLevel && DATA_SHARED_FLAGS != null) {
-            net.minecraft.world.entity.Entity entity = serverLevel.getEntity(this.dummyEntityUUID);
-            if (entity != null) {
-                byte flags = entity.getEntityData().get(DATA_SHARED_FLAGS);
-                byte newFlags;
-                if (isGlowing) {
-                    newFlags = (byte) (flags | (1 << 6)); // GLOWINGビットをON
-                } else {
-                    newFlags = (byte) (flags & ~(1 << 6)); // GLOWINGビットをOFF
-                }
+    public boolean ensurePositionRegistered(ServerLevel level) {
+        DetectorBlockPositionSavedData data = DetectorBlockPositionSavedData.get(level);
+        if (data.containsPosition(worldPosition)) return true;
+        if (data.isTooClose(worldPosition)) {
+            if (isActive) setActive(false);
+            return false;
+        }
+        data.addPosition(worldPosition);
+        return true;
+    }
 
-                List<SynchedEntityData.DataValue<?>> packedData = new ArrayList<>();
-                packedData.add(SynchedEntityData.DataValue.create(DATA_SHARED_FLAGS, newFlags));
-
-                player.connection.send(new ClientboundSetEntityDataPacket(entity.getId(), packedData));
+    private void clearPrivateGlows(ServerLevel level) {
+        for (GlowPair pair : privateGlows) {
+            ServerPlayer viewer = level.getServer().getPlayerList().getPlayer(pair.viewer());
+            ServerPlayer target = level.getServer().getPlayerList().getPlayer(pair.target());
+            if (viewer != null && target != null && viewer.level() == target.level()) {
+                sendPrivateGlowPacket(viewer, target, false);
             }
         }
+        privateGlows.clear();
+        lastIntruderAlerts.clear();
     }
+
+    private void sendPrivateGlowPacket(ServerPlayer viewer, ServerPlayer target, boolean glowing) {
+        if (DATA_SHARED_FLAGS == null) return;
+        byte flags = target.getEntityData().get(DATA_SHARED_FLAGS);
+        byte adjusted = glowing ? (byte) (flags | (1 << 6)) : flags;
+        viewer.connection.send(new ClientboundSetEntityDataPacket(target.getId(),
+                List.of(SynchedEntityData.DataValue.create(DATA_SHARED_FLAGS, adjusted))));
+    }
+
+    private record GlowPair(UUID viewer, UUID target) {}
 
     private void notifyOwnerOfPaymentFailure(ServerLevel level, PlayerDetectorBlockEntity blockEntity) {
         if (blockEntity.ownerUUID != null) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(blockEntity.ownerUUID);
             if (player != null) {
-                player.sendSystemMessage(Component.literal("§c【" + blockEntity.getDetectorDisplayName()
+                player.sendSystemMessage(MoveEarthMessage.error("【" + blockEntity.getDetectorDisplayName()
                         + "】維持費（5ゴールド）の引き落としに失敗したため、検知機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
             }
         }

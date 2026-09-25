@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.s2.territory;
 
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 
-/** Initial upkeep estimate, expressed in Lightman's Currency gold-coin units per cycle. */
+/** Initial upkeep estimate, expressed in MoveEarth ledger units per cycle. */
 public final class TerritoryUpkeepPolicy {
     public static final int CHUNKS_PER_COIN = 8;
     public static final long OUTPOST_BASE_COST = 8L;

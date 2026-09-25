@@ -20,7 +20,6 @@ public record JobDefinition(
         String displayName,
         String description,
         int maxLevel,
-        int pointsPerLevel,
         int baseXp,
         int linearXp,
         int quadraticXp,

@@ -1,1 +1,11 @@
-{"parent":"moveearth_addtional:industry/steam","criteria":{"done":{"trigger":"moveearth_addtional:event","conditions":{"event":"electricity_built"}}},"display":{"icon":{"id":"minecraft:redstone"},"title":{"translate":"advancements.moveearth_addtional.electricity.title"},"description":{"translate":"advancements.moveearth_addtional.electricity.description"},"frame":"goal","show_toast":true,"announce_to_chat":true}}
+{
+  "neoforge:conditions": [ { "type": "neoforge:mod_loaded", "modid": "electroenergetics" } ],
+  "parent": "moveearth_addtional:industry/steam",
+  "criteria": { "done": { "trigger": "moveearth_addtional:event", "conditions": { "event": "electricity_built" } } },
+  "display": {
+    "icon": { "id": "electroenergetics:converter" },
+    "title": { "translate": "advancements.moveearth_addtional.electricity.title" },
+    "description": { "translate": "advancements.moveearth_addtional.electricity.description" },
+    "frame": "goal", "show_toast": true, "announce_to_chat": true
+  }
+}

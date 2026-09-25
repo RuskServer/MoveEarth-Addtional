@@ -1,1 +1,14 @@
-{"parent":"moveearth_addtional:industry/electricity","criteria":{"obtained":{"trigger":"minecraft:inventory_changed","conditions":{"items":[{"items":"mekanism:metallurgic_infuser"}]}}},"display":{"icon":{"id":"mekanism:metallurgic_infuser"},"title":{"translate":"advancements.moveearth_addtional.mekanism.title"},"description":{"translate":"advancements.moveearth_addtional.mekanism.description"},"frame":"goal","show_toast":true,"announce_to_chat":true}}
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "electroenergetics" },
+    { "type": "neoforge:mod_loaded", "modid": "mekanism" }
+  ],
+  "parent": "moveearth_addtional:industry/electricity",
+  "criteria": { "obtained": { "trigger": "moveearth_addtional:event", "conditions": { "event": "mekanism_machine_operated" } } },
+  "display": {
+    "icon": { "id": "mekanism:metallurgic_infuser" },
+    "title": { "translate": "advancements.moveearth_addtional.mekanism.title" },
+    "description": { "translate": "advancements.moveearth_addtional.mekanism.description" },
+    "frame": "goal", "show_toast": true, "announce_to_chat": true
+  }
+}

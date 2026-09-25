@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["BIB", "CRC", "BIB"],
+  "key": {
+    "B": { "item": "create:brass_casing" },
+    "I": { "item": "minecraft:iron_block" },
+    "C": { "item": "minecraft:chest" },
+    "R": { "item": "minecraft:comparator" }
+  },
+  "result": { "id": "moveearth_addtional:market_station", "count": 1 }
+}

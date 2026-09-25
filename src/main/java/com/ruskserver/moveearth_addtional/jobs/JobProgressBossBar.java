@@ -19,14 +19,15 @@ public final class JobProgressBossBar {
     }
 
     public static void show(ServerPlayer player, JobDefinition definition,
-                            JobProgressSavedData.ProgressSnapshot progress, double gainedXp) {
+                            JobProgressSavedData.ProgressSnapshot progress, double gainedXp, int earnedCurrency) {
         double nextLevelXp = progress.level() >= definition.maxLevel()
                 ? 0.0D : definition.xpNeededForNextLevel(progress.level());
         JobBossBarDisplay.Display display = JobBossBarDisplay.create(
                 definition.displayName(), progress.level(), progress.xpInLevel(), nextLevelXp, gainedXp);
 
         ActiveBar active = ACTIVE.computeIfAbsent(player.getUUID(), ignored -> new ActiveBar());
-        active.event.setName(Component.literal(display.title()));
+        active.event.setName(Component.literal(display.title()
+                + (earnedCurrency > 0 ? "  +" + earnedCurrency + " 通貨" : "")));
         active.event.setProgress(display.progress());
         active.event.addPlayer(player);
         active.ticksRemaining = DISPLAY_TICKS;

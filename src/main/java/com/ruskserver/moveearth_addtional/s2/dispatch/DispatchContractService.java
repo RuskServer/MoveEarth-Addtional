@@ -157,7 +157,8 @@ public final class DispatchContractService {
             var transaction = journal.prepare(RecoveryFundSavedData.Type.DISPATCH_EMPLOYER,
                     funding.employerNation(), funding.id(), own, OpenTimeService.now(actor.server), "dispatch_escrow");
             employerTransaction = transaction.id();
-            EconomyGateway.Result withdrawal = EconomyGateway.withdraw(actor.server, funding.employerNation(), own);
+            EconomyGateway.Result withdrawal = EconomyGateway.withdraw(actor.server, funding.employerNation(), own,
+                    transaction.id(), "dispatch_escrow_funding");
             if (withdrawal != EconomyGateway.Result.SUCCESS) {
                 if (withdrawal == EconomyGateway.Result.ERROR) {
                     journal.reviewRequired(transaction.id(), "withdrawal:" + withdrawal.name());
@@ -296,12 +297,18 @@ public final class DispatchContractService {
         earned = Math.min(earned, saturatedAdd(settling.ownEscrow(), settling.subsidyEscrow()));
         long subsidyUsed = Math.min(earned, settling.subsidyEscrow());
         long ownUsed = Math.max(0L, earned - subsidyUsed);
-        if (EconomyGateway.deposit(server, settling.providerNation(), earned) != EconomyGateway.Result.SUCCESS) {
+        UUID providerPayment = UUID.nameUUIDFromBytes((contractId + ":provider_payment")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        if (EconomyGateway.deposit(server, settling.providerNation(), earned,
+                providerPayment, "dispatch_provider_payment") != EconomyGateway.Result.SUCCESS) {
             data.review(contractId, "provider_deposit_failed");
             return false;
         }
         long ownRefund = Math.max(0L, settling.ownEscrow() - ownUsed);
-        if (EconomyGateway.deposit(server, settling.employerNation(), ownRefund) != EconomyGateway.Result.SUCCESS) {
+        UUID employerRefund = UUID.nameUUIDFromBytes((contractId + ":employer_refund")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        if (EconomyGateway.deposit(server, settling.employerNation(), ownRefund,
+                employerRefund, "dispatch_employer_refund") != EconomyGateway.Result.SUCCESS) {
             data.review(contractId, "employer_refund_failed");
             return false;
         }

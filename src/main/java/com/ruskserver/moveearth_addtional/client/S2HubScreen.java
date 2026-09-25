@@ -980,7 +980,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         if (snapshot.member() && navigation.page() == S2HubNavigation.Page.FINANCE) {
             if (financeTreasuryBounds(content).contains(mouseX, mouseY)) {
                 PacketDistributor.sendToServer(new C2S_NationTreasuryPacket(
-                        C2S_NationTreasuryPacket.Action.OPEN, null));
+                        C2S_NationTreasuryPacket.Action.OPEN, 0L));
                 return true;
             }
             if (canManageTerritory() && pendingRequestId < 0

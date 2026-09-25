@@ -15,7 +15,7 @@
       "count": 1,
       "id": "moveearth_addtional:territory_core"
     },
-    "show_toast": false,
+    "show_toast": true,
     "title": {
       "translate": "advancements.moveearth_addtional.root.title"
     }

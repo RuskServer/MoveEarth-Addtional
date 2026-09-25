@@ -1,7 +1,6 @@
 package com.ruskserver.moveearth_addtional.s2.territory;
 
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -26,15 +25,6 @@ public final class NationUpkeepSavedData extends SavedData {
 
     public void removeNation(UUID nationId) {
         if (accounts.remove(nationId) != null) setDirty();
-    }
-
-    public void configure(UUID nationId, BankReference reference, boolean enabled, long now) {
-        AccountState state = state(nationId);
-        state.reference = reference;
-        state.enabled = enabled && reference != null;
-        if (state.enabled && state.nextDueAt <= 0L) state.nextDueAt = now + S2TerritoryConfig.upkeepCycleMillis();
-        if (!state.enabled) state.nextAttemptAt = 0L;
-        setDirty();
     }
 
     public void ensureScheduled(UUID nationId, long now) {
@@ -68,17 +58,10 @@ public final class NationUpkeepSavedData extends SavedData {
             AccountState state = entry.getValue();
             CompoundTag value = new CompoundTag();
             value.putUUID("Nation", entry.getKey());
-            value.putBoolean("Enabled", state.enabled);
             value.putLong("NextDueAt", state.nextDueAt);
             value.putLong("NextAttemptAt", state.nextAttemptAt);
             value.putInt("FailedPayments", state.failedPayments);
             value.putLong("OverdueSince", state.overdueSince);
-            try {
-                if (state.reference != null && state.reference.isValid()) {
-                    value.put("BankReference", state.reference.save());
-                }
-            } catch (RuntimeException ignored) {
-            }
             list.add(value);
         }
         tag.put("Accounts", list);
@@ -92,7 +75,6 @@ public final class NationUpkeepSavedData extends SavedData {
             CompoundTag value = list.getCompound(index);
             if (!value.hasUUID("Nation")) continue;
             AccountState state = new AccountState();
-            state.enabled = value.getBoolean("Enabled");
             state.nextDueAt = Math.max(0L, value.getLong("NextDueAt"));
             state.nextAttemptAt = Math.max(0L, value.getLong("NextAttemptAt"));
             state.failedPayments = Math.max(0, value.getInt("FailedPayments"));
@@ -100,13 +82,6 @@ public final class NationUpkeepSavedData extends SavedData {
             if (state.failedPayments > 0 && state.overdueSince <= 0L) {
                 state.overdueSince = state.nextDueAt > 0L ? state.nextDueAt : System.currentTimeMillis();
             }
-            if (value.contains("BankReference", Tag.TAG_COMPOUND)) {
-                try {
-                    state.reference = BankReference.load(value.getCompound("BankReference"));
-                } catch (RuntimeException ignored) {
-                }
-            }
-            if (state.reference == null) state.enabled = false;
             data.accounts.put(value.getUUID("Nation"), state);
         }
         return data;
@@ -119,15 +94,11 @@ public final class NationUpkeepSavedData extends SavedData {
     }
 
     public static final class AccountState {
-        private BankReference reference;
-        private boolean enabled;
         private long nextDueAt;
         private long nextAttemptAt;
         private int failedPayments;
         private long overdueSince;
 
-        public BankReference reference() { return reference; }
-        public boolean enabled() { return enabled; }
         public long nextDueAt() { return nextDueAt; }
         public long nextAttemptAt() { return nextAttemptAt; }
         public int failedPayments() { return failedPayments; }

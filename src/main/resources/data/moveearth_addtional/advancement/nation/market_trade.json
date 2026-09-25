@@ -1,0 +1,10 @@
+{
+  "parent": "moveearth_addtional:nation/view_territory",
+  "criteria": { "done": { "trigger": "moveearth_addtional:event", "conditions": { "event": "market_trade_completed" } } },
+  "display": {
+    "icon": { "id": "minecraft:emerald" },
+    "title": { "translate": "advancements.moveearth_addtional.market_trade.title" },
+    "description": { "translate": "advancements.moveearth_addtional.market_trade.description" },
+    "frame": "task", "show_toast": true, "announce_to_chat": false
+  }
+}

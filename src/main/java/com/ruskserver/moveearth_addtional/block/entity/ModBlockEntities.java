@@ -16,4 +16,6 @@ public class ModBlockEntities {
             () -> BlockEntityType.Builder.of(TerritoryCoreBlockEntity::new, ModBlocks.TERRITORY_CORE.get()).build(null));
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VehicleCoreBlockEntity>> VEHICLE_CORE = BLOCK_ENTITIES.register("vehicle_core",
             () -> BlockEntityType.Builder.of(VehicleCoreBlockEntity::new, ModBlocks.VEHICLE_CORE.get()).build(null));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MarketStationBlockEntity>> MARKET_STATION = BLOCK_ENTITIES.register("market_station",
+            () -> BlockEntityType.Builder.of(MarketStationBlockEntity::new, ModBlocks.MARKET_STATION.get()).build(null));
 }

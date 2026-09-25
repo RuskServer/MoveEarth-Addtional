@@ -310,6 +310,7 @@ public final class S2TerritoryConfig {
     public static long outpostBaseCost() { return OUTPOST_BASE_COST.getAsLong(); }
     public static long vehicleCoreCost() { return VEHICLE_CORE_COST.getAsLong(); }
     public static long upkeepCycleMillis() { return UPKEEP_CYCLE_HOURS.getAsInt() * 3_600_000L; }
+    public static int upkeepCycleHours() { return UPKEEP_CYCLE_HOURS.getAsInt(); }
     public static long upkeepRetryMillis() { return UPKEEP_RETRY_MINUTES.getAsInt() * 60_000L; }
     public static long upkeepWeakenMillis() { return UPKEEP_WEAKEN_AFTER_HOURS.getAsInt() * 3_600_000L; }
     public static long upkeepDisableMillis() { return UPKEEP_DISABLE_AFTER_HOURS.getAsInt() * 3_600_000L; }

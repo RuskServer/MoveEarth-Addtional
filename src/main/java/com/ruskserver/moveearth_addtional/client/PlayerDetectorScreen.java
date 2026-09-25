@@ -6,7 +6,6 @@ import com.ruskserver.moveearth_addtional.network.C2S_SetDetectorNamePacket;
 import com.ruskserver.moveearth_addtional.network.C2S_UpdateDetectorManagerPacket;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -18,7 +17,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
-import java.util.Collections;
 
 import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
 
@@ -53,10 +51,7 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
     private boolean isPaymentActive = false;
     private long nextPaymentTime = 0L;
     private long placedTime = 0L;
-    private BankReference currentReference = null;
-    private List<BankReference> availableAccounts = Collections.emptyList();
-    private List<String> availableAccountNames = Collections.emptyList();
-    private int selectedAccountIndex = -1;
+    private long ownerBalance;
 
     public PlayerDetectorScreen(
             Component title,
@@ -112,25 +107,12 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
     }
 
     public void updatePaymentData(BlockPos pos, boolean isActive, long nextPaymentTime, long placedTime,
-                                  BankReference currentReference, List<BankReference> availableAccounts,
-                                  List<String> availableAccountNames) {
+                                  long ownerBalance) {
         this.blockPos = pos;
         this.isPaymentActive = isActive;
         this.nextPaymentTime = nextPaymentTime;
         this.placedTime = placedTime;
-        this.currentReference = currentReference;
-        this.availableAccounts = availableAccounts;
-        this.availableAccountNames = availableAccountNames;
-
-        this.selectedAccountIndex = -1;
-        if (currentReference != null) {
-            for (int i = 0; i < this.availableAccounts.size(); i++) {
-                if (this.availableAccounts.get(i).equals(currentReference)) {
-                    this.selectedAccountIndex = i;
-                    break;
-                }
-            }
-        }
+        this.ownerBalance = ownerBalance;
         rebuildWidgets();
     }
 
@@ -264,53 +246,12 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
             // --- タブ 1: 維持費決済設定 ---
             int payY = topPos + 115;
 
-            Button prevAccountBtn = Button.builder(Component.literal("◀"), b -> {
-                if (!this.availableAccounts.isEmpty()) {
-                    this.selectedAccountIndex--;
-                    if (this.selectedAccountIndex < -1) {
-                        this.selectedAccountIndex = this.availableAccounts.size() - 1;
-                    }
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 40, payY, 25, 20).build();
-
-            Button nextAccountBtn = Button.builder(Component.literal("▶"), b -> {
-                if (!this.availableAccounts.isEmpty()) {
-                    this.selectedAccountIndex++;
-                    if (this.selectedAccountIndex >= this.availableAccounts.size()) {
-                        this.selectedAccountIndex = -1;
-                    }
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 335, payY, 25, 20).build();
-
-            prevAccountBtn.active = (blockPos != null) && !this.availableAccounts.isEmpty();
-            nextAccountBtn.active = (blockPos != null) && !this.availableAccounts.isEmpty();
-            addRenderableWidget(prevAccountBtn);
-            addRenderableWidget(nextAccountBtn);
-
-            // 口座保存ボタン
-            Button saveAccountBtn = Button.builder(Component.literal("口座保存"), b -> {
-                BankReference newRef = null;
-                if (this.selectedAccountIndex >= 0 && this.selectedAccountIndex < this.availableAccounts.size()) {
-                    newRef = this.availableAccounts.get(this.selectedAccountIndex);
-                }
-                PacketDistributor.sendToServer(new C2S_ConfigurePaymentPacket(this.blockPos, false, newRef));
-            }).bounds(leftPos + 90, topPos + 160, 100, 20).build();
-            saveAccountBtn.active = (blockPos != null);
-            addRenderableWidget(saveAccountBtn);
-
-            // 有効化・支払うボタン
             Button activateBtn = Button.builder(Component.literal("支払 / 有効化"), b -> {
-                BankReference newRef = null;
-                if (this.selectedAccountIndex >= 0 && this.selectedAccountIndex < this.availableAccounts.size()) {
-                    newRef = this.availableAccounts.get(this.selectedAccountIndex);
-                }
-                PacketDistributor.sendToServer(new C2S_ConfigurePaymentPacket(this.blockPos, true, newRef));
-            }).bounds(leftPos + 210, topPos + 160, 100, 20).build();
+                PacketDistributor.sendToServer(new C2S_ConfigurePaymentPacket(this.blockPos));
+            }).bounds(leftPos + 145, topPos + 160, 110, 20).build();
             
             boolean isExpiredOrInactive = !this.isPaymentActive || (System.currentTimeMillis() >= this.nextPaymentTime);
-            activateBtn.active = (blockPos != null) && (selectedAccountIndex >= 0) && isExpiredOrInactive;
+            activateBtn.active = (blockPos != null) && isExpiredOrInactive;
             addRenderableWidget(activateBtn);
         } else if (this.activeTab == 2) {
             this.detectorNameInput = new EditBox(
@@ -530,18 +471,8 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
             guiGraphics.drawCenteredString(this.font, "稼働状態: " + statusText, leftPos + 200, topPos + 85, statusColor);
 
             // 口座選択のラベル
-            guiGraphics.drawCenteredString(this.font, "引き落とし口座の選択", leftPos + 200, topPos + 105, 0xAAAAAA);
-
-            // 口座名
-            String accountName;
-            if (this.selectedAccountIndex == -1) {
-                accountName = "§7未設定 (稼働停止)";
-            } else if (this.selectedAccountIndex < this.availableAccountNames.size()) {
-                accountName = this.availableAccountNames.get(this.selectedAccountIndex);
-            } else {
-                accountName = "§c口座名の同期に失敗";
-            }
-            guiGraphics.drawCenteredString(this.font, accountName, leftPos + 200, topPos + 121, 0xFFFFFF);
+            guiGraphics.drawCenteredString(this.font, "所有者残高: " + ownerBalance + " / 維持費: 5 / 2時間",
+                    leftPos + 200, topPos + 121, 0xFFFFFF);
         } else if (this.activeTab == 2) {
             guiGraphics.fill(leftPos + 20, topPos + 55, leftPos + 380, topPos + 180, 0xFF222222);
             guiGraphics.fill(leftPos + 20, topPos + 55, leftPos + 380, topPos + 56, 0xFF555555);

@@ -37,6 +37,14 @@ public final class ModCriteria {
     public static final String WAREHOUSE_RAID_PARTICIPATED = "warehouse_raid_participated";
     public static final String WAREHOUSE_BOSS_DEFEATED = "warehouse_boss_defeated";
     public static final String WAREHOUSE_LOOT_OPENED = "warehouse_loot_opened";
+    public static final String MARKET_TRADE_COMPLETED = "market_trade_completed";
+    public static final String CROP_HARVESTED = "crop_harvested";
+    public static final String FARM_GOODS_DELIVERED = "farm_goods_delivered";
+    public static final String HARVEST_EVENT_PARTICIPATED = "harvest_event_participated";
+    public static final String MEKANISM_MACHINE_OPERATED = "mekanism_machine_operated";
+    public static final String FISSILE_FUEL_PRODUCED = "fissile_fuel_produced";
+    public static final String FISSION_REACTOR_OPERATED = "fission_reactor_operated";
+    public static final String TURBINE_OPERATED = "turbine_operated";
 
     public static final DeferredRegister<CriterionTrigger<?>> TRIGGERS =
             DeferredRegister.create(Registries.TRIGGER_TYPE, Moveearth_addtional.MODID);

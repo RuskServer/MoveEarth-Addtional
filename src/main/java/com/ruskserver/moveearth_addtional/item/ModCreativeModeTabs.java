@@ -20,6 +20,7 @@ public class ModCreativeModeTabs {
                         output.accept(ModItems.PLAYER_DETECTOR.get());
                         output.accept(ModItems.TERRITORY_CORE.get());
                         output.accept(ModItems.VEHICLE_CORE.get());
+                        output.accept(ModItems.MARKET_STATION.get());
                         output.accept(ModItems.PRISON_INTAKE.get());
                         output.accept(ModItems.RESTRAINTS.get());
                         output.accept(ModItems.WEAPON_CRATE.get());

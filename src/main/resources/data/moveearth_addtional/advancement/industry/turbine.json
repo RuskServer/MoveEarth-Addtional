@@ -1,0 +1,15 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "electroenergetics" },
+    { "type": "neoforge:mod_loaded", "modid": "mekanism" },
+    { "type": "neoforge:mod_loaded", "modid": "mekanismgenerators" }
+  ],
+  "parent": "moveearth_addtional:industry/fission",
+  "criteria": { "operated": { "trigger": "moveearth_addtional:event", "conditions": { "event": "turbine_operated" } } },
+  "display": {
+    "icon": { "id": "mekanismgenerators:turbine_valve" },
+    "title": { "translate": "advancements.moveearth_addtional.turbine.title" },
+    "description": { "translate": "advancements.moveearth_addtional.turbine.description" },
+    "frame": "challenge", "show_toast": true, "announce_to_chat": true
+  }
+}

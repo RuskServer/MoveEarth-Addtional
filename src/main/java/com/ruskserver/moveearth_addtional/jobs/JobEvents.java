@@ -1,6 +1,9 @@
 package com.ruskserver.moveearth_addtional.jobs;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.advancement.ModCriteria;
+import com.ruskserver.moveearth_addtional.event.HarvestFestival;
+import com.ruskserver.moveearth_addtional.event.ResourceEvent;
 import com.ruskserver.moveearth_addtional.pvp.PvpMatchManager;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
@@ -89,7 +92,7 @@ public final class JobEvents {
         }
 
         PendingHarvestKey key = new PendingHarvestKey(player.getUUID(), level.dimension(), event.getPos().immutable());
-        PENDING_HARVESTS.put(key, new PendingHarvest(state.getBlock(), level.getGameTime(), rewards));
+        PENDING_HARVESTS.put(key, new PendingHarvest(state, level.getGameTime(), rewards));
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -127,6 +130,12 @@ public final class JobEvents {
             double reward = definition.blockBreakXp(state);
             if (reward > 0) {
                 JobService.INSTANCE.awardBlockBreak(player, definition, reward);
+                if ("farmer".equals(definition.id().getPath())) {
+                    ModCriteria.trigger(player, ModCriteria.CROP_HARVESTED);
+                    HarvestFestival.harvest(player, state);
+                }
+                if ("miner".equals(definition.id().getPath()))
+                    ResourceEvent.mine(player, level, event.getPos(), state);
             }
         }
     }
@@ -236,7 +245,7 @@ public final class JobEvents {
             }
 
             BlockState current = level.getBlockState(key.pos());
-            if (current.getBlock() != pending.block()) {
+            if (current.getBlock() != pending.state().getBlock()) {
                 iterator.remove();
                 continue;
             }
@@ -246,6 +255,10 @@ public final class JobEvents {
             if (harvested) {
                 for (PendingJobReward reward : pending.rewards()) {
                     JobService.INSTANCE.awardAction(player, reward.definition(), reward.xp());
+                    if ("farmer".equals(reward.definition().id().getPath())) {
+                        ModCriteria.trigger(player, ModCriteria.CROP_HARVESTED);
+                        HarvestFestival.harvest(player, pending.state());
+                    }
                 }
                 iterator.remove();
             } else if (level.getGameTime() - pending.gameTime() >= HARVEST_VERIFICATION_TICKS) {
@@ -257,7 +270,7 @@ public final class JobEvents {
     private record PendingHarvestKey(UUID playerId, ResourceKey<Level> dimension, BlockPos pos) {
     }
 
-    private record PendingHarvest(Block block, long gameTime, List<PendingJobReward> rewards) {
+    private record PendingHarvest(BlockState state, long gameTime, List<PendingJobReward> rewards) {
     }
 
     private record PendingJobReward(JobDefinition definition, double xp) {

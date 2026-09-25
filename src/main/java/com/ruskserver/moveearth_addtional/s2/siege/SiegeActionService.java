@@ -88,7 +88,7 @@ public final class SiegeActionService {
             return Result.PRISONER_DATA_INVALID;
         }
         NationUpkeepService.TransferResult transfer = NationUpkeepService.transferGold(player.server,
-                proposal.proposerNation(), proposal.receiverNation(), proposal.goldCompensation());
+                proposal.proposerNation(), proposal.receiverNation(), proposal.goldCompensation(), proposalId);
         if (transfer != NationUpkeepService.TransferResult.SUCCESS) {
             return switch (transfer) {
                 case PAYER_ACCOUNT_MISSING -> Result.PAYER_ACCOUNT_MISSING;

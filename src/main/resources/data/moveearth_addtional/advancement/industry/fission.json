@@ -1,0 +1,15 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "electroenergetics" },
+    { "type": "neoforge:mod_loaded", "modid": "mekanism" },
+    { "type": "neoforge:mod_loaded", "modid": "mekanismgenerators" }
+  ],
+  "parent": "moveearth_addtional:industry/fissile_fuel",
+  "criteria": { "operated": { "trigger": "moveearth_addtional:event", "conditions": { "event": "fission_reactor_operated" } } },
+  "display": {
+    "icon": { "id": "mekanismgenerators:fission_reactor_port" },
+    "title": { "translate": "advancements.moveearth_addtional.fission.title" },
+    "description": { "translate": "advancements.moveearth_addtional.fission.description" },
+    "frame": "goal", "show_toast": true, "announce_to_chat": true
+  }
+}

@@ -43,6 +43,8 @@ public final class StorageWreckageService {
         SiegeService.AttackAttribution finalAttack = attack;
         event.getAffectedBlocks().removeIf(pos -> {
             if (level.getBlockState(pos).is(ModBlocks.STORAGE_WRECKAGE.get())) return true;
+            if (level.getBlockState(pos).is(ModBlocks.MARKET_STATION.get()))
+                return com.ruskserver.moveearth_addtional.economy.MarketService.wreckStation(level, pos, finalAttack);
             if (!level.getBlockState(pos).is(com.ruskserver.moveearth_addtional.s2.nation.NationStorageEvents.STORAGE_BLOCKS)) {
                 return false;
             }
@@ -53,6 +55,8 @@ public final class StorageWreckageService {
     /** Used by optional blast bridges whose affected-block list never reaches NeoForge ExplosionEvent. */
     public static boolean wreckStorage(ServerLevel level, BlockPos pos, SiegeService.AttackAttribution attack) {
         if (level.getBlockState(pos).is(ModBlocks.STORAGE_WRECKAGE.get())) return true;
+        if (level.getBlockState(pos).is(ModBlocks.MARKET_STATION.get()))
+            return com.ruskserver.moveearth_addtional.economy.MarketService.wreckStation(level, pos, attack);
         if (!level.getBlockState(pos).is(com.ruskserver.moveearth_addtional.s2.nation.NationStorageEvents.STORAGE_BLOCKS)) {
             return false;
         }
@@ -103,6 +107,7 @@ public final class StorageWreckageService {
     }
 
     public static void recover(ServerPlayer player, BlockPos pos) {
+        if (com.ruskserver.moveearth_addtional.economy.MarketService.recoverWreckage(player, pos)) return;
         StorageWreckageSavedData data = StorageWreckageSavedData.get(player.server);
         StorageWreckageSavedData.Wreckage wreckage = data.get(player.level().dimension().location(), pos);
         if (wreckage == null) return;
@@ -148,11 +153,36 @@ public final class StorageWreckageService {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBreak(BlockEvent.BreakEvent event) {
+        if (event.getLevel() instanceof ServerLevel marketLevel
+                && event.getState().is(ModBlocks.MARKET_STATION.get())) {
+            var entity = marketLevel.getBlockEntity(event.getPos());
+            if (entity instanceof com.ruskserver.moveearth_addtional.block.entity.MarketStationBlockEntity station
+                    && station.stationId() != null) {
+                var ledger = com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData
+                        .get(marketLevel.getServer());
+                boolean pending = ledger.outstanding(station.stationId()) > 0
+                        || ledger.marketOrders().stream().anyMatch(order -> order.stationId().equals(station.stationId()));
+                if (pending && event.getPlayer() instanceof ServerPlayer player
+                        && !SiegeLootService.access(player, event.getPos()).allowed()) {
+                    event.setCanceled(true);
+                    player.sendSystemMessage(MoveEarthMessage.warning(Component.literal(
+                            "市場在庫または注文が残っています。取消・受取を済ませてください")));
+                    return;
+                }
+                if (pending && com.ruskserver.moveearth_addtional.economy.MarketService
+                        .wreckStation(marketLevel, event.getPos())) {
+                    event.setCanceled(true);
+                    return;
+                }
+            }
+        }
         if (!(event.getLevel() instanceof ServerLevel level)
                 || !event.getState().is(ModBlocks.STORAGE_WRECKAGE.get())) return;
         StorageWreckageSavedData.Wreckage wreckage = StorageWreckageSavedData.get(level.getServer())
                 .get(level.dimension().location(), event.getPos());
-        if (wreckage != null && !wreckage.items().isEmpty()) event.setCanceled(true);
+        if (wreckage != null && !wreckage.items().isEmpty()
+                || com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.get(level.getServer())
+                .marketWreckage(level.dimension().location(), event.getPos()) != null) event.setCanceled(true);
     }
 
     public static void removed(Level level, BlockPos pos) {

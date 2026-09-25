@@ -1,0 +1,10 @@
+{
+  "parent": "moveearth_addtional:getting_started/open_nation_hub",
+  "criteria": { "done": { "trigger": "moveearth_addtional:event", "conditions": { "event": "crop_harvested" } } },
+  "display": {
+    "icon": { "id": "minecraft:wheat" },
+    "title": { "translate": "advancements.moveearth_addtional.harvest.title" },
+    "description": { "translate": "advancements.moveearth_addtional.harvest.description" },
+    "frame": "task", "show_toast": true, "announce_to_chat": false
+  }
+}

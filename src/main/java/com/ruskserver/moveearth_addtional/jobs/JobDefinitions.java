@@ -111,7 +111,6 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         String displayName = boundedString(json, "display_name", id.toString(), 64);
         String description = boundedString(json, "description", "", 160);
         int maxLevel = positive(json, "max_level", 50);
-        int pointsPerLevel = positive(json, "points_per_level", 1);
 
         JsonObject curve = GsonHelper.getAsJsonObject(json, "xp_curve");
         int baseXp = positive(curve, "base", 100);
@@ -145,7 +144,7 @@ public final class JobDefinitions extends SimplePreparableReloadListener<Map<Res
         double gunCraftXp = parseActionXp(json, "gun_craft");
         double attachmentCraftXp = parseActionXp(json, "attachment_craft");
         double gunDisassemblyXp = parseActionXp(json, "gun_disassembly");
-        return new JobDefinition(id, displayName, description, maxLevel, pointsPerLevel,
+        return new JobDefinition(id, displayName, description, maxLevel,
                 baseXp, linearXp, quadraticXp, blockRewards, killRewards, breedRewards, craftRewards,
                 gunCraftXp, attachmentCraftXp, gunDisassemblyXp);
     }

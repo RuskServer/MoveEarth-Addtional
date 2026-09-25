@@ -6,9 +6,8 @@ import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
 import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenDetectorScreenPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_SyncDetectorPaymentPacket;
-import io.github.lightman314.lightmanscurrency.api.money.bank.BankAPI;
-import io.github.lightman314.lightmanscurrency.api.money.bank.IBankAccount;
-import io.github.lightman314.lightmanscurrency.api.money.bank.reference.BankReference;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -48,13 +47,13 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
     @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(level, pos, state, placer, stack);
-        if (!level.isClientSide() && placer instanceof Player player) {
+        if (level instanceof ServerLevel serverLevel) {
             BlockEntity blockEntity = level.getBlockEntity(pos);
             if (blockEntity instanceof PlayerDetectorBlockEntity detectorEntity) {
-                detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
-            }
-            if (level instanceof ServerLevel serverLevel) {
-                DetectorBlockPositionSavedData.get(serverLevel).addPosition(pos);
+                if (placer instanceof Player player) {
+                    detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
+                }
+                detectorEntity.ensurePositionRegistered(serverLevel);
             }
         }
     }
@@ -81,10 +80,14 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
 
         BlockEntity blockEntity = level.getBlockEntity(pos);
         if (blockEntity instanceof PlayerDetectorBlockEntity detectorEntity) {
+            if (!detectorEntity.ensurePositionRegistered((ServerLevel) level)) {
+                player.sendSystemMessage(MoveEarthMessage.error("近くに別の検知ブロックがあるため、このブロックは作動できません。"));
+                return InteractionResult.CONSUME;
+            }
             if (detectorEntity.getOwnerUUID() == null) {
                 // 所有者がいない場合は、最初に右クリックしたプレイヤーを所有者にする
                 detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
-                player.sendSystemMessage(Component.literal("このブロックの所有者として登録されました。もう一度右クリックして設定を開いてください。"));
+                player.sendSystemMessage(MoveEarthMessage.success("このブロックの所有者として登録されました。もう一度右クリックして設定を開いてください。"));
                 return InteractionResult.SUCCESS;
             }
 
@@ -96,7 +99,7 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
             PlayerWhitelistSavedData accessData = PlayerWhitelistSavedData.get(serverLevel);
             boolean ownerAccess = ownerUuid.equals(player.getUUID());
             if (!ownerAccess && !accessData.isManager(ownerUuid, player.getUUID())) {
-                player.sendSystemMessage(Component.literal("この検知ブロックを管理する権限がありません。"));
+                player.sendSystemMessage(MoveEarthMessage.error("この検知ブロックを管理する権限がありません。"));
                 return InteractionResult.CONSUME;
             }
 
@@ -116,29 +119,13 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
 
             // 名称・決済・権限委任は所有者専用。管理者にはホワイトリスト画面だけを同期する。
             if (ownerAccess) {
-                List<BankReference> availableAccounts = new ArrayList<>();
-                List<String> availableAccountNames = new ArrayList<>();
-                for (BankReference ref : BankAPI.getApi().GetAllBankReferences(false)) {
-                    try {
-                        if (ref != null && ref.isValid() && ref.allowedAccess(player)) {
-                            IBankAccount account = ref.get();
-                            if (account != null) {
-                                availableAccounts.add(ref);
-                                availableAccountNames.add(account.getName().getString());
-                            }
-                        }
-                    } catch (RuntimeException ignored) {
-                        // Skip stale or otherwise unresolvable account references.
-                    }
-                }
                 PacketDistributor.sendToPlayer(serverPlayer, new S2C_SyncDetectorPaymentPacket(
                         pos,
                         detectorEntity.isActive(),
                         detectorEntity.getNextPaymentTime(),
                         detectorEntity.getPlacedTime(),
-                        detectorEntity.getBankReference(),
-                        availableAccounts,
-                        availableAccountNames
+                        EconomyLedgerSavedData.get(serverLevel.getServer()).balance(
+                                EconomyLedgerSavedData.Account.player(ownerUuid))
                 ));
             }
             return InteractionResult.SUCCESS;

@@ -11,7 +11,7 @@ public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         final PayloadRegistrar registrar = event.registrar(
-                "3.0-detector-admin1-oxygen1-s2ui38-advancements1-prisoners1-recovery1");
+                "3.0-detector-admin1-oxygen1-s2ui38-advancements2-prisoners1-recovery1-market5-waypoint2-balance1-eventhud1-eventscreen1");
 
         registrar.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2S_RequestS2HubPacket::handle);
         registrar.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2S_S2HubActionPacket::handle);
@@ -88,9 +88,16 @@ public class ModMessages {
         registrar.playToServer(C2S_ClaimPvpTaskPacket.TYPE, C2S_ClaimPvpTaskPacket.STREAM_CODEC, C2S_ClaimPvpTaskPacket::handle);
         registrar.playToClient(S2C_OpenJobsScreenPacket.TYPE, S2C_OpenJobsScreenPacket.STREAM_CODEC, S2C_OpenJobsScreenPacket::handle);
         registrar.playToClient(S2C_JobsLeaderboardPacket.TYPE, S2C_JobsLeaderboardPacket.STREAM_CODEC, S2C_JobsLeaderboardPacket::handle);
-        registrar.playToClient(S2C_JobShopPacket.TYPE, S2C_JobShopPacket.STREAM_CODEC, S2C_JobShopPacket::handle);
         registrar.playToServer(C2S_JobsActionPacket.TYPE, C2S_JobsActionPacket.STREAM_CODEC, C2S_JobsActionPacket::handle);
-        registrar.playToServer(C2S_JobShopActionPacket.TYPE, C2S_JobShopActionPacket.STREAM_CODEC, C2S_JobShopActionPacket::handle);
+        registrar.playToServer(C2S_MarketActionPacket.TYPE, C2S_MarketActionPacket.STREAM_CODEC, C2S_MarketActionPacket::handle);
+        registrar.playToClient(S2C_MarketSnapshotPacket.TYPE, S2C_MarketSnapshotPacket.STREAM_CODEC, S2C_MarketSnapshotPacket::handle);
+        registrar.playToClient(S2C_EconomyHudPacket.TYPE, S2C_EconomyHudPacket.STREAM_CODEC, S2C_EconomyHudPacket::handle);
+        registrar.playToClient(S2C_EventHudPacket.TYPE, S2C_EventHudPacket.STREAM_CODEC, S2C_EventHudPacket::handle);
+        registrar.playToClient(S2C_EventScreenPacket.TYPE, S2C_EventScreenPacket.STREAM_CODEC, S2C_EventScreenPacket::handle);
+        registrar.playToServer(C2S_EventScreenActionPacket.TYPE, C2S_EventScreenActionPacket.STREAM_CODEC, C2S_EventScreenActionPacket::handle);
+        registrar.playToClient(S2C_WaypointPacket.TYPE, S2C_WaypointPacket.STREAM_CODEC, S2C_WaypointPacket::handle);
+        registrar.playToServer(C2S_BalanceActionPacket.TYPE, C2S_BalanceActionPacket.STREAM_CODEC, C2S_BalanceActionPacket::handle);
+        registrar.playToClient(S2C_BalanceSnapshotPacket.TYPE, S2C_BalanceSnapshotPacket.STREAM_CODEC, S2C_BalanceSnapshotPacket::handle);
         registrar.playToClient(S2C_SyncLoadoutsPacket.TYPE, S2C_SyncLoadoutsPacket.STREAM_CODEC, S2C_SyncLoadoutsPacket::handle);
         registrar.playToClient(S2C_OpenLoadoutEditorPacket.TYPE, S2C_OpenLoadoutEditorPacket.STREAM_CODEC, S2C_OpenLoadoutEditorPacket::handle);
         registrar.playToServer(C2S_SaveLoadoutPacket.TYPE, C2S_SaveLoadoutPacket.STREAM_CODEC, C2S_SaveLoadoutPacket::handle);

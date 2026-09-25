@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.advancement;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
@@ -8,12 +9,15 @@ import com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedDat
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.advancements.AdvancementType;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.item.Items;
@@ -21,11 +25,14 @@ import net.minecraft.world.level.Level;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.AdvancementEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -36,24 +43,57 @@ public final class AdvancementEvents {
     private static final String MIGRATED = "MoveEarthVanillaAdvancementsV1";
     private static final String PENDING_REINFORCEMENTS = "MoveEarthPendingReinforcementAdvancements";
     private static final Map<UUID, Travel> FREIGHT = new HashMap<>();
+    private static final Set<UUID> RESTORING = new HashSet<>();
 
     private AdvancementEvents() { }
 
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (NationSavedData.get(player.server).nationIdFor(player.getUUID()).isPresent()) {
-            ModCriteria.trigger(player, ModCriteria.NATION_CITIZEN);
+        RESTORING.add(player.getUUID());
+        try {
+            EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
+            if (NationSavedData.get(player.server).nationIdFor(player.getUUID()).isPresent()) {
+                ModCriteria.trigger(player, ModCriteria.NATION_CITIZEN);
+            }
+            if (ledger.recent(EconomyLedgerSavedData.Account.player(player.getUUID()), 100).stream()
+                    .anyMatch(transaction -> transaction.reason().equals("market_sell_filled")
+                            || transaction.reason().equals("market_buy_filled"))) {
+                ModCriteria.trigger(player, ModCriteria.MARKET_TRADE_COMPLETED);
+            }
+            var harvestScore = ledger.harvestScores().get(player.getUUID());
+            if ("HARVEST".equals(ledger.eventKind()) && harvestScore != null && harvestScore.points() > 0)
+                ModCriteria.trigger(player, ModCriteria.HARVEST_EVENT_PARTICIPATED);
+            migrate(player);
+        } finally {
+            RESTORING.remove(player.getUUID());
         }
-        migrate(player);
+    }
+
+    @SubscribeEvent
+    public static void onAdvancementEarned(AdvancementEvent.AdvancementEarnEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)
+                || RESTORING.contains(player.getUUID())
+                || !Moveearth_addtional.MODID.equals(event.getAdvancement().id().getNamespace())) return;
+        var display = event.getAdvancement().value().display().orElse(null);
+        if (display == null || !display.shouldShowToast() || display.getType() == AdvancementType.CHALLENGE) return;
+        player.playNotifySound(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.MASTER, 0.65F, 1.15F);
     }
 
     @SubscribeEvent
     public static void onPlace(BlockEvent.EntityPlaceEvent event) {
         if (event.isCanceled() || !(event.getEntity() instanceof ServerPlayer player)) return;
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(event.getPlacedBlock().getBlock());
-        if (id != null && id.getNamespace().equals("electroenergetics")) {
+        if (id != null && id.toString().equals("electroenergetics:converter")) {
             ModCriteria.trigger(player, ModCriteria.ELECTRICITY_BUILT);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onMachineInspected(PlayerInteractEvent.RightClickBlock event) {
+        if (!event.isCanceled() && event.getEntity() instanceof ServerPlayer player
+                && event.getLevel() instanceof net.minecraft.server.level.ServerLevel level) {
+            MekanismAdvancementBridge.inspect(player, level, event.getPos());
         }
     }
 
@@ -92,11 +132,13 @@ public final class AdvancementEvents {
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         FREIGHT.remove(event.getEntity().getUUID());
+        RESTORING.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         FREIGHT.clear();
+        RESTORING.clear();
     }
 
     /** Track accepted welding work and award only after its delayed activation actually succeeds. */

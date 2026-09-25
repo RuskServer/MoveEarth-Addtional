@@ -13,10 +13,10 @@ public record S2C_OpenJobsScreenPacket(
         String subjectName,
         boolean selfView,
         boolean canAdmin,
-        int points,
-        double recurringXp,
-        int recurringPointsInWindow,
-        int recurringSecondsRemaining,
+        long balance,
+        int incomeThisHour,
+        int incomeToday,
+        double xpTowardsCurrency,
         int maxActiveJobs,
         List<JobEntry> jobs,
         List<String> onlinePlayers) implements CustomPacketPayload {
@@ -31,10 +31,10 @@ public record S2C_OpenJobsScreenPacket(
         buffer.writeUtf(packet.subjectName, 16);
         buffer.writeBoolean(packet.selfView);
         buffer.writeBoolean(packet.canAdmin);
-        buffer.writeVarInt(packet.points);
-        buffer.writeDouble(packet.recurringXp);
-        buffer.writeVarInt(packet.recurringPointsInWindow);
-        buffer.writeVarInt(packet.recurringSecondsRemaining);
+        buffer.writeVarLong(packet.balance);
+        buffer.writeVarInt(packet.incomeThisHour);
+        buffer.writeVarInt(packet.incomeToday);
+        buffer.writeDouble(packet.xpTowardsCurrency);
         buffer.writeVarInt(packet.maxActiveJobs);
         buffer.writeVarInt(packet.jobs.size());
         for (JobEntry job : packet.jobs) {
@@ -42,7 +42,6 @@ public record S2C_OpenJobsScreenPacket(
             buffer.writeUtf(job.displayName, 64);
             buffer.writeUtf(job.description, 160);
             buffer.writeVarInt(job.maxLevel);
-            buffer.writeVarInt(job.pointsPerLevel);
             buffer.writeBoolean(job.active);
             buffer.writeVarInt(job.level);
             buffer.writeDouble(job.xpInLevel);
@@ -59,10 +58,10 @@ public record S2C_OpenJobsScreenPacket(
         String subjectName = buffer.readUtf(16);
         boolean selfView = buffer.readBoolean();
         boolean canAdmin = buffer.readBoolean();
-        int points = buffer.readVarInt();
-        double recurringXp = buffer.readDouble();
-        int recurringPointsInWindow = buffer.readVarInt();
-        int recurringSecondsRemaining = buffer.readVarInt();
+        long balance = buffer.readVarLong();
+        int incomeThisHour = buffer.readVarInt();
+        int incomeToday = buffer.readVarInt();
+        double xpTowardsCurrency = buffer.readDouble();
         int maxActiveJobs = buffer.readVarInt();
         int jobCount = checkedSize(buffer.readVarInt(), MAX_JOBS, "job");
         List<JobEntry> jobs = new ArrayList<>(jobCount);
@@ -71,7 +70,6 @@ public record S2C_OpenJobsScreenPacket(
                     buffer.readResourceLocation(),
                     buffer.readUtf(64),
                     buffer.readUtf(160),
-                    buffer.readVarInt(),
                     buffer.readVarInt(),
                     buffer.readBoolean(),
                     buffer.readVarInt(),
@@ -84,8 +82,8 @@ public record S2C_OpenJobsScreenPacket(
         for (int i = 0; i < playerCount; i++) {
             onlinePlayers.add(buffer.readUtf(16));
         }
-        return new S2C_OpenJobsScreenPacket(subjectName, selfView, canAdmin, points, recurringXp,
-                recurringPointsInWindow, recurringSecondsRemaining, maxActiveJobs,
+        return new S2C_OpenJobsScreenPacket(subjectName, selfView, canAdmin, balance,
+                incomeThisHour, incomeToday, xpTowardsCurrency, maxActiveJobs,
                 List.copyOf(jobs), List.copyOf(onlinePlayers));
     }
 
@@ -106,7 +104,8 @@ public record S2C_OpenJobsScreenPacket(
     }
 
     public record JobEntry(ResourceLocation id, String displayName, String description,
-                           int maxLevel, int pointsPerLevel,
+                           int maxLevel,
                            boolean active, int level, double xpInLevel, double xpForNextLevel, double totalXp) {
     }
+
 }

@@ -8,6 +8,18 @@ import net.minecraft.network.chat.Component;
 
 public class ClientPacketHandler {
 
+    public static void handleBalance(S2C_BalanceSnapshotPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof BalanceScreen screen) screen.update(packet);
+        else if (packet.openScreen()) minecraft.setScreen(new BalanceScreen(packet));
+    }
+
+    public static void handleMarket(S2C_MarketSnapshotPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof MarketScreen screen) screen.update(packet);
+        else minecraft.setScreen(new MarketScreen(packet));
+    }
+
     public static void handleTerritoryPreview(S2C_TerritoryPreviewPacket packet) {
         TerritoryPreviewClientState.update(packet);
         if (Minecraft.getInstance().screen instanceof TerritoryCoreWizardScreen screen) {
@@ -151,12 +163,6 @@ public class ClientPacketHandler {
         }
     }
 
-    public static void handleJobShop(S2C_JobShopPacket packet) {
-        if (Minecraft.getInstance().screen instanceof JobsScreen screen) {
-            screen.updateShop(packet);
-        }
-    }
-
     public static void handleOpenPvp(S2C_OpenPvpScreenPacket packet) {
         Minecraft.getInstance().setScreen(new PvpScreen(packet.joined(), packet.active(), packet.hosting(),
                 packet.matchRunning(), packet.entryCount(), packet.points(), packet.tasks(), packet.selectedLoadoutId()));
@@ -238,9 +244,7 @@ public class ClientPacketHandler {
                     packet.isActive(),
                     packet.nextPaymentTime(),
                     packet.placedTime(),
-                    packet.currentReference(),
-                    packet.availableAccounts(),
-                    packet.availableAccountNames()
+                    packet.ownerBalance()
             );
         }
     }

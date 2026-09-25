@@ -1,0 +1,14 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "electroenergetics" },
+    { "type": "neoforge:mod_loaded", "modid": "mekanism" }
+  ],
+  "parent": "moveearth_addtional:industry/uranium",
+  "criteria": { "produced": { "trigger": "moveearth_addtional:event", "conditions": { "event": "fissile_fuel_produced" } } },
+  "display": {
+    "icon": { "id": "mekanism:chemical_infuser" },
+    "title": { "translate": "advancements.moveearth_addtional.fissile_fuel.title" },
+    "description": { "translate": "advancements.moveearth_addtional.fissile_fuel.description" },
+    "frame": "goal", "show_toast": true, "announce_to_chat": true
+  }
+}

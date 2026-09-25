@@ -1,0 +1,10 @@
+{
+  "parent": "moveearth_addtional:agriculture/harvest",
+  "criteria": { "done": { "trigger": "moveearth_addtional:event", "conditions": { "event": "farm_goods_delivered" } } },
+  "display": {
+    "icon": { "id": "minecraft:chest" },
+    "title": { "translate": "advancements.moveearth_addtional.farm_delivery.title" },
+    "description": { "translate": "advancements.moveearth_addtional.farm_delivery.description" },
+    "frame": "task", "show_toast": true, "announce_to_chat": false
+  }
+}

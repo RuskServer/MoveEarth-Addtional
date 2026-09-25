@@ -61,4 +61,8 @@ public class ModBlocks {
             () -> new StorageWreckageBlock(BlockBehaviour.Properties.of()
                     .strength(12.0F, 1200.0F).sound(SoundType.METAL).noOcclusion()
                     .pushReaction(PushReaction.BLOCK)));
+    public static final DeferredHolder<Block, MarketStationBlock> MARKET_STATION = BLOCKS.register("market_station",
+            () -> new MarketStationBlock(BlockBehaviour.Properties.of()
+                    .strength(8.0F, 1200.0F).sound(SoundType.METAL).noOcclusion()
+                    .requiresCorrectToolForDrops().pushReaction(PushReaction.BLOCK)));
 }

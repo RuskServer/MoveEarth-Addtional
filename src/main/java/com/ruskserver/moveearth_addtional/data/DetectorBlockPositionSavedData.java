@@ -31,6 +31,10 @@ public class DetectorBlockPositionSavedData extends SavedData {
         }
     }
 
+    public boolean containsPosition(BlockPos pos) {
+        return positions.contains(pos);
+    }
+
     public BlockPos getOverlapPosition(BlockPos newPos) {
         ChunkPos newChunk = new ChunkPos(newPos);
         for (BlockPos pos : positions) {

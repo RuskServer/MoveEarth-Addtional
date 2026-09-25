@@ -57,6 +57,60 @@ public final class NationAdministrationService {
             return validation;
         }
 
+        var ledger = com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.get(actor.server);
+        long treasuryBalance = ledger.balance(
+                com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.Account.nation(nationId));
+        if (treasuryBalance != 0L) {
+            actor.sendSystemMessage(MoveEarthMessage.warning(Component.literal(
+                    "国家金庫に " + treasuryBalance + " TC が残っています。国庫画面から引き出してから解散してください")));
+            return new NationSavedData.NationAdminResult(NationSavedData.NationAdminStatus.INVALID,
+                    expectedRevision);
+        }
+        boolean unsettledDispatch = com.ruskserver.moveearth_addtional.s2.dispatch.DispatchContractSavedData
+                .get(actor.server).all().stream().anyMatch(contract ->
+                        (nationId.equals(contract.employerNation()) || nationId.equals(contract.providerNation()))
+                                && contract.state() != com.ruskserver.moveearth_addtional.s2.dispatch.DispatchContractSavedData.State.COMPLETED
+                                && contract.state() != com.ruskserver.moveearth_addtional.s2.dispatch.DispatchContractSavedData.State.CANCELLED);
+        if (unsettledDispatch) {
+            actor.sendSystemMessage(MoveEarthMessage.warning(Component.literal(
+                    "未精算の派遣契約があります。契約を終了・精算してから解散してください")));
+            return new NationSavedData.NationAdminResult(NationSavedData.NationAdminStatus.INVALID,
+                    expectedRevision);
+        }
+
+        var station = com.ruskserver.moveearth_addtional.economy.MarketStationSavedData.get(actor.server)
+                .forNation(nationId).orElse(null);
+        if (station != null) {
+            boolean hasMarketGoods = ledger.outstanding(station.id()) > 0
+                    || ledger.marketOrders().stream().anyMatch(order -> order.stationId().equals(station.id()));
+            ServerLevel marketLevel = actor.server.getLevel(net.minecraft.resources.ResourceKey.create(
+                    net.minecraft.core.registries.Registries.DIMENSION, station.dimension()));
+            if (hasMarketGoods && (marketLevel == null || !marketLevel.hasChunkAt(station.pos())
+                    || !marketLevel.getBlockState(station.pos()).is(
+                    com.ruskserver.moveearth_addtional.block.ModBlocks.MARKET_STATION.get()))) {
+                actor.sendSystemMessage(MoveEarthMessage.warning(Component.literal(
+                        "Market Stationのチャンクを読み込み、注文・預託品を処理してから解散してください")));
+                return new NationSavedData.NationAdminResult(NationSavedData.NationAdminStatus.INVALID,
+                        expectedRevision);
+            }
+            if (hasMarketGoods) {
+                com.ruskserver.moveearth_addtional.economy.MarketService.wreckStation(marketLevel, station.pos());
+                if (ledger.outstanding(station.id()) > 0 || ledger.marketOrders().stream()
+                        .anyMatch(order -> order.stationId().equals(station.id()))) {
+                    actor.sendSystemMessage(MoveEarthMessage.warning(Component.literal(
+                            "市場在庫の移管に失敗したため、国家解散を中止しました")));
+                    return new NationSavedData.NationAdminResult(NationSavedData.NationAdminStatus.INVALID,
+                            expectedRevision);
+                }
+            }
+            if (marketLevel != null && marketLevel.hasChunkAt(station.pos())
+                    && marketLevel.getBlockState(station.pos()).is(
+                    com.ruskserver.moveearth_addtional.block.ModBlocks.MARKET_STATION.get()))
+                marketLevel.removeBlock(station.pos(), false);
+            com.ruskserver.moveearth_addtional.economy.MarketStationSavedData.get(actor.server)
+                    .remove(nationId, station.id());
+        }
+
         TerritorySavedData territories = TerritorySavedData.get(actor.server);
         NationSavedData.Nation nation = nations.nation(nationId).orElseThrow();
         String nationName = nation.name();
@@ -66,6 +120,8 @@ public final class NationAdministrationService {
         TerritorySavedData.VaultChunk vault = territories.vaultChunk(nationId).orElse(null);
         NationSavedData.NationAdminResult result = nations.disband(actor.getUUID(), expectedRevision);
         if (!result.success()) return result;
+
+        ledger.removeEmptyNationAccount(nationId);
 
         Map<net.minecraft.resources.ResourceLocation, Set<Long>> coveredChunks = coveredChunks(cores, vault);
         for (ServerLevel level : actor.server.getAllLevels()) {

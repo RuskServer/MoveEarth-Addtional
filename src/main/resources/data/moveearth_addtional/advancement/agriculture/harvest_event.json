@@ -1,0 +1,10 @@
+{
+  "parent": "moveearth_addtional:agriculture/harvest",
+  "criteria": { "done": { "trigger": "moveearth_addtional:event", "conditions": { "event": "harvest_event_participated" } } },
+  "display": {
+    "icon": { "id": "minecraft:hay_block" },
+    "title": { "translate": "advancements.moveearth_addtional.harvest_event.title" },
+    "description": { "translate": "advancements.moveearth_addtional.harvest_event.description" },
+    "frame": "goal", "show_toast": true, "announce_to_chat": true, "hidden": true
+  }
+}

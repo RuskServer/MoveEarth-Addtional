@@ -1,6 +1,8 @@
 package com.ruskserver.moveearth_addtional.jobs;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
 import com.ruskserver.moveearth_addtional.network.C2S_JobsActionPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_OpenJobsScreenPacket;
 import com.ruskserver.moveearth_addtional.network.S2C_JobsLeaderboardPacket;
@@ -31,8 +33,6 @@ public final class JobsScreenSync {
         data.rememberName(subject.getUUID(), subject.getGameProfile().getName());
         data.reconcileActiveJobs(subject.getUUID(), JobDefinitions.INSTANCE.ids());
         JobProgressSavedData.PlayerSnapshot snapshot = data.snapshot(subject.getUUID());
-        JobProgressSavedData.RecurringPointSnapshot recurring = data.recurringSnapshot(subject.getUUID(),
-                viewer.getServer().overworld().getGameTime());
         List<S2C_OpenJobsScreenPacket.JobEntry> entries = JobDefinitions.INSTANCE.all().stream()
                 .map(definition -> entry(definition, snapshot))
                 .toList();
@@ -41,15 +41,13 @@ public final class JobsScreenSync {
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
         boolean canAdmin = viewer.createCommandSourceStack().hasPermission(ADMIN_PERMISSION_LEVEL);
+        EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(viewer.getServer());
+        EconomyLedgerSavedData.JobIncomeSnapshot income = ledger.jobIncome(viewer.getUUID(), System.currentTimeMillis());
         PacketDistributor.sendToPlayer(viewer, new S2C_OpenJobsScreenPacket(
                 subject.getGameProfile().getName(), viewer.getUUID().equals(subject.getUUID()), canAdmin,
-                snapshot.points(), recurring.xpTowardsNextPoint(), recurring.pointsInWindow(),
-                secondsRemaining(recurring.ticksRemaining()), JobProgressSavedData.MAX_ACTIVE_JOBS,
-                entries, onlinePlayers));
-    }
-
-    private static int secondsRemaining(long ticks) {
-        return (int) Math.min(Integer.MAX_VALUE, Math.max(0, (ticks + 19L) / 20L));
+                ledger.balance(EconomyLedgerSavedData.Account.player(viewer.getUUID())),
+                income.paidThisHour(), income.paidToday(), income.carriedXp(),
+                JobProgressSavedData.MAX_ACTIVE_JOBS, entries, onlinePlayers));
     }
 
     public static void sendLeaderboard(ServerPlayer viewer, JobDefinition definition) {
@@ -71,7 +69,7 @@ public final class JobsScreenSync {
                 ? 0 : definition.xpNeededForNextLevel(progress.level());
         return new S2C_OpenJobsScreenPacket.JobEntry(
                 definition.id(), definition.displayName(), definition.description(),
-                definition.maxLevel(), definition.pointsPerLevel(),
+                definition.maxLevel(),
                 snapshot.activeJobs().contains(definition.id()), progress.level(), progress.xpInLevel(),
                 nextXp, progress.totalXp());
     }
@@ -85,14 +83,14 @@ public final class JobsScreenSync {
         }
 
         if (action.admin && !viewer.createCommandSourceStack().hasPermission(ADMIN_PERMISSION_LEVEL)) {
-            viewer.sendSystemMessage(Component.literal("[Jobs] この操作を行う権限がありません。"));
+            viewer.sendSystemMessage(MoveEarthMessage.error("Jobs: この操作を行う権限がありません。"));
             send(viewer, viewer);
             return;
         }
 
         ServerPlayer target = action.admin ? findTarget(viewer, packet.targetName()) : viewer;
         if (target == null) {
-            viewer.sendSystemMessage(Component.literal("[Jobs] 対象プレイヤーが見つかりません。"));
+            viewer.sendSystemMessage(MoveEarthMessage.error("Jobs: 対象プレイヤーが見つかりません。"));
             send(viewer, viewer);
             return;
         }
@@ -117,12 +115,6 @@ public final class JobsScreenSync {
                 data.awardAdmin(target.getUUID(), definition.get(), packet.amount(),
                         viewer.getServer().overworld().getGameTime());
                 audit(viewer, target, "XP +" + packet.amount() + " (" + definition.get().id() + ")");
-                send(viewer, target);
-            }
-            case ADD_POINTS -> {
-                if (packet.amount() == 0 || Math.abs((long) packet.amount()) > C2S_JobsActionPacket.MAX_ABSOLUTE_AMOUNT) return;
-                data.addPoints(target.getUUID(), packet.amount());
-                audit(viewer, target, "ポイント " + signed(packet.amount()));
                 send(viewer, target);
             }
             case RESET -> {
@@ -153,11 +145,7 @@ public final class JobsScreenSync {
     private static void audit(ServerPlayer viewer, ServerPlayer target, String operation) {
         String message = viewer.getScoreboardName() + " -> " + target.getScoreboardName() + ": " + operation;
         Moveearth_addtional.LOGGER.info("[Jobs admin] {}", message);
-        viewer.sendSystemMessage(Component.literal("[Jobs管理] " + message));
-    }
-
-    private static String signed(int amount) {
-        return amount > 0 ? "+" + amount : Integer.toString(amount);
+        viewer.sendSystemMessage(MoveEarthMessage.success("Jobs管理: " + message));
     }
 
     private enum Action {
@@ -167,7 +155,6 @@ public final class JobsScreenSync {
         RANKING(false),
         VIEW(true),
         ADD_XP(true),
-        ADD_POINTS(true),
         RESET(true);
 
         private final boolean admin;
