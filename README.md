@@ -56,6 +56,8 @@ PlayerReviveなどを、MoveEarth独自のゲーム進行へ統合します。
 **Lightman's Currencyを使用しています**。今後も正式依存として残すか、別方式へ置き換えるかは
 検討中ですが、現在の経済機能を使うサーバーでは導入してください。
 
+通常チャットはMoveEarthが同じディメンションの100ブロック以内へ配信し、受信者からの距離を1ブロック単位で四捨五入して、所属国家・役職とともに表示します。配信先はコンソールにも記録します。距離はサーバー設定`moveearth_addtional-chat.toml`の`radiusBlocks`で変更できます。Localized Chatは不要で、サーバーとクライアントのModpackから外してください。
+
 ### 任意連携
 
 | MOD | 追加される連携 |
@@ -67,7 +69,6 @@ PlayerReviveなどを、MoveEarth独自のゲーム進行へ統合します。
 | JEI 19.21.1.248以上 | Warehouse報酬とアイテム閲覧連携（クライアント） |
 | Cold Sweat 2.4以上 | 温度警告HUD（クライアント） |
 | PlayerRevive | ダウン、護送、捕虜体験の連携 |
-| LocalizedChat | チャット連携 |
 | Create Big Cannons | 砲撃と補強ダメージの連携 |
 | Create Warnautics | 爆発物・航空兵器と補強の連携 |
 
@@ -147,7 +148,7 @@ cd MoveEarth-Addtional
 
 | 取得元 | 対象 |
 | --- | --- |
-| Modrinth Maven | Create、TaCZ（1.21.1 NeoForge移植版）、PlayerRevive、Localized Chat、Farmer's Delight、Create Aeronautics、Jade、Create: Rock & Stone、Create: Diesel Generators |
+| Modrinth Maven | Create、TaCZ（1.21.1 NeoForge移植版）、PlayerRevive、Farmer's Delight、Create Aeronautics、Jade、Create: Rock & Stone、Create: Diesel Generators |
 | CreateMod Maven | Ponder、Flywheel |
 | FirstDark Maven | `discord-rpc` |
 | その他 | Sable、JEI、Cold Sweat、Curios、JDA、SQLite JDBC |

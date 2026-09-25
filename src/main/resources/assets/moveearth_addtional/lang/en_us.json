@@ -1,4 +1,6 @@
 {
+  "chat.type.moveearth_addtional.local": "%s: %s",
+  "chat.type.moveearth_addtional.local.narrate": "%s: %s",
   "block.moveearth_addtional.storage_wreckage": "Storage Wreckage",
   "message.moveearth_addtional.wreckage.denied": "You are not authorized to recover this storage wreckage.",
   "message.moveearth_addtional.wreckage.recovered": "Recovered %1$s items (%2$s stacks remain).",

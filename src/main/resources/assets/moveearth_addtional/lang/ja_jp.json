@@ -1,4 +1,6 @@
 {
+  "chat.type.moveearth_addtional.local": "%s: %s",
+  "chat.type.moveearth_addtional.local.narrate": "%s: %s",
   "block.moveearth_addtional.storage_wreckage": "収納残骸",
   "message.moveearth_addtional.wreckage.denied": "この収納残骸を回収する権限がありません。",
   "message.moveearth_addtional.wreckage.recovered": "%1$s個を回収しました（残り%2$sスタック）。",

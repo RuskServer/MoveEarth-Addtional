@@ -8,6 +8,7 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.config.DiscordBotConfig;
 import com.ruskserver.moveearth_addtional.config.TipConfig;
 import com.ruskserver.moveearth_addtional.config.MarketConfig;
+import com.ruskserver.moveearth_addtional.config.LocalChatConfig;
 import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
 import com.ruskserver.moveearth_addtional.config.StartupClientConfig;
 import com.ruskserver.moveearth_addtional.config.WaterWheelBalanceConfig;
@@ -69,6 +70,8 @@ public class Moveearth_addtional {
         );
         modContainer.registerConfig(ModConfig.Type.SERVER, MarketConfig.SPEC,
                 "moveearth_addtional-market.toml");
+        modContainer.registerConfig(ModConfig.Type.SERVER, LocalChatConfig.SPEC,
+                "moveearth_addtional-chat.toml");
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 RecoveryDispatchConfig.SPEC,

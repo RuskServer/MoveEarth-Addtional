@@ -1,0 +1,10 @@
+{
+  "chat": {
+    "parameters": ["sender", "content"],
+    "translation_key": "chat.type.moveearth_addtional.local"
+  },
+  "narration": {
+    "parameters": ["sender", "content"],
+    "translation_key": "chat.type.moveearth_addtional.local.narrate"
+  }
+}

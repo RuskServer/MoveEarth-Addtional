@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "StonecutterMenuMixin",
+    "PlayerListLocalChatMixin",
     "PvpFloatingCheckMixin",
     "ChunkMapTrackedEntityMixin",
     "ChunkMapDccMixin",

@@ -194,8 +194,6 @@ dependencies {
     implementation 'maven.modrinth:create:6.0.10+mc1.21.1'
     implementation 'maven.modrinth:tacz-1.21.1:1.1.8-hotfix-r6'
     implementation 'maven.modrinth:playerrevive:2.1.2'
-    // LocalizedChatLogHandler records who received each localized chat message.
-    implementation 'maven.modrinth:localized-chat:5.2.1'
     // Not referenced by code; only present so dev runs load the pack's recipes and vehicles.
     runtimeOnly 'maven.modrinth:farmers-delight:1.21.1-1.3.3'
     runtimeOnly 'maven.modrinth:create-aeronautics:1.3.2+mc1.21.1'
