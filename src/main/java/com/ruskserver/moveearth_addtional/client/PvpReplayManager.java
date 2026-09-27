@@ -1,6 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.S2C_KillcamReplayPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_KillcamReplayPacket;
 import com.ruskserver.moveearth_addtional.pvp.PvpReplayFrame;
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;

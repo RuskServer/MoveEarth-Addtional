@@ -1,5 +1,7 @@
 package com.ruskserver.moveearth_addtional.command;
 
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+
 import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -232,7 +234,7 @@ public final class AnalyticsCommand {
                     Component msg = AnalyticsTextFormatter.formatPlayerSummary(opt.get(), window);
                     source.sendSuccess(() -> msg, false);
                 } else {
-                    source.sendFailure(Component.literal("該当プレイヤーの分析データが見つかりませんでした。"));
+                    source.sendFailure(MoveEarthMessage.error("該当プレイヤーの分析データが見つかりませんでした。"));
                 }
             });
         });
@@ -256,7 +258,7 @@ public final class AnalyticsCommand {
                     Component msg = AnalyticsTextFormatter.formatGroupSummary(opt.get(), window);
                     source.sendSuccess(() -> msg, false);
                 } else {
-                    source.sendFailure(Component.literal("該当拠点の分析データが見つかりませんでした。"));
+                    source.sendFailure(MoveEarthMessage.error("該当拠点の分析データが見つかりませんでした。"));
                 }
             });
         });

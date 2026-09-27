@@ -9,10 +9,6 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-
 @EventBusSubscriber(value = Dist.CLIENT)
 public class OxygenClientOverlay {
     private static float maskOpacity;
@@ -63,8 +59,8 @@ public class OxygenClientOverlay {
         // Draw the readable meter after vanilla HUD elements; the lens itself is rendered in Pre.
         if (OxygenClientState.isDangerZone || OxygenClientState.hasGasMask || OxygenClientState.oxygenPercent < 1.0f) {
             GuiGraphics guiGraphics = event.getGuiGraphics();
-            renderOxygenMeter(guiGraphics, mc.font, mc.getWindow().getGuiScaledWidth(),
-                    mc.getWindow().getGuiScaledHeight(), System.currentTimeMillis());
+            renderOxygenMeter(guiGraphics, mc.font, mc.getWindow().getGuiScaledHeight(),
+                    System.currentTimeMillis());
         }
     }
 
@@ -105,95 +101,37 @@ public class OxygenClientOverlay {
         }
     }
 
-    private static void renderOxygenMeter(GuiGraphics guiGraphics, Font font, int screenWidth, int screenHeight, long now) {
+    private static void renderOxygenMeter(GuiGraphics guiGraphics, Font font, int screenHeight, long now) {
         int hudX = 10;
-        int hudY = screenHeight - 65;
-        int boxWidth = 140;
-        int boxHeight = 48;
+        int boxHeight = OxygenClientState.hasGasMask ? 27 : 16;
+        int hudY = screenHeight - 17 - boxHeight;
+        guiGraphics.fill(hudX, hudY, hudX + 108, hudY + boxHeight, 0xD0101015);
+        int borderColor = OxygenClientState.isExtremeZone ? 0xFFFF2222
+                : OxygenClientState.isDangerZone ? 0xFFFFAA00 : 0xFF00AAFF;
+        guiGraphics.fill(hudX, hudY, hudX + 2, hudY + boxHeight, borderColor);
 
-        // 背景
-        guiGraphics.fill(hudX, hudY, hudX + boxWidth, hudY + boxHeight, 0xD0101015);
-        // アクセントボーダー
-        int borderCol = OxygenClientState.isExtremeZone ? 0xFFFF2222 : (OxygenClientState.isDangerZone ? 0xFFFFAA00 : 0xFF00AAFF);
-        guiGraphics.fill(hudX, hudY, hudX + 3, hudY + boxHeight, borderCol);
+        float oxygen = Math.max(0.0F, Math.min(1.0F, OxygenClientState.oxygenPercent));
+        int oxygenColor = oxygen > 0.5F ? 0xFF00E5FF : oxygen > 0.25F ? 0xFFFFAA00 : 0xFFFF0033;
+        if (oxygen < 0.3F && (now / 200) % 2 == 0) oxygenColor = 0xFFFFFFFF;
+        renderMeterRow(guiGraphics, font, hudX, hudY + 4, "O2", oxygen, oxygenColor);
 
-        // タイトル
-        String statusText;
-        int statusColor;
-        if (OxygenClientState.isExtremeZone) {
-            statusText = "DEAD ZONE [EXTREME]";
-            statusColor = 0xFF5555;
-        } else if (OxygenClientState.isDangerZone) {
-            statusText = "HAZARD ZONE [NO O2]";
-            statusColor = 0xFFAA33;
-        } else {
-            statusText = "SURFACE [SAFE]";
-            statusColor = 0x55FF55;
+        if (OxygenClientState.hasGasMask) {
+            float filter = Math.max(0.0F, Math.min(1.0F, OxygenClientState.filterPercent));
+            int filterColor = filter > 0.5F ? 0xFF00FF66 : filter > 0.2F ? 0xFFFFAA00 : 0xFFFF2222;
+            if (filter <= 0.2F && (now / 250) % 2 == 0) filterColor = 0xFFFFFFFF;
+            renderMeterRow(guiGraphics, font, hudX, hudY + 15, "FLT", filter, filterColor);
         }
-        guiGraphics.drawString(font, statusText, hudX + 8, hudY + 4, statusColor, false);
+    }
 
-        // フィルター残量バー
-        int filterY = hudY + 16;
-        guiGraphics.drawString(font, "FILTER", hudX + 8, filterY, 0xAAAAAA, false);
-        int barX = hudX + 48;
-        int barW = 55;
-        int barH = 7;
-        // バー枠
-        guiGraphics.fill(barX - 1, filterY - 1, barX + barW + 1, filterY + barH + 1, 0xFF333333);
-        guiGraphics.fill(barX, filterY, barX + barW, filterY + barH, 0xFF1A1A1A);
-
-        float fPct = Math.max(0f, Math.min(1f, OxygenClientState.filterPercent));
-        int fFillW = Math.round(barW * fPct);
-        int fColor = fPct > 0.5f ? 0xFF00FF66 : (fPct > 0.2f ? 0xFFFFAA00 : 0xFFFF2222);
-        if (fPct <= 0.2f && (now / 250) % 2 == 0) {
-            fColor = 0xFFFFFFFF; // 危険時白赤点滅
-        }
-        if (fFillW > 0) {
-            guiGraphics.fill(barX, filterY, barX + fFillW, filterY + barH, fColor);
-        }
-        int fPctNum = Math.round(fPct * 100f);
-        guiGraphics.drawString(font, fPctNum + "%", barX + barW + 5, filterY, fColor, false);
-
-        // 酸素残量バー
-        int oxygenY = hudY + 27;
-        guiGraphics.drawString(font, "O2", hudX + 8, oxygenY, 0xAAAAAA, false);
-        guiGraphics.fill(barX - 1, oxygenY - 1, barX + barW + 1, oxygenY + barH + 1, 0xFF333333);
-        guiGraphics.fill(barX, oxygenY, barX + barW, oxygenY + barH, 0xFF1A1A1A);
-
-        float oPct = Math.max(0f, Math.min(1f, OxygenClientState.oxygenPercent));
-        int oFillW = Math.round(barW * oPct);
-        int oColor = oPct > 0.5f ? 0xFF00E5FF : (oPct > 0.25f ? 0xFFFFAA00 : 0xFFFF0033);
-        if (oPct < 0.3f && (now / 200) % 2 == 0) {
-            oColor = 0xFFFFFFFF;
-        }
-        if (oFillW > 0) {
-            guiGraphics.fill(barX, oxygenY, barX + oFillW, oxygenY + barH, oColor);
-        }
-        int oPctNum = Math.round(oPct * 100f);
-        guiGraphics.drawString(font, oPctNum + "%", barX + barW + 5, oxygenY, oColor, false);
-
-        // 負荷レート表示
-        int rateY = hudY + 38;
-        float rate = OxygenClientState.consumptionRate;
-        List<String> activeLoads = new ArrayList<>();
-        if (OxygenClientState.isExtremeZone) activeLoads.add("EXTREME");
-        if (OxygenClientState.isSprinting) activeLoads.add("SPRINT");
-        if (OxygenClientState.isMining) activeLoads.add("MINING");
-        if (OxygenClientState.isCombat) activeLoads.add("COMBAT");
-
-        String loadText;
-        if (activeLoads.isEmpty()) {
-            loadText = "IDLE";
-        } else {
-            loadText = activeLoads.getLast();
-            if (activeLoads.size() > 1) loadText += "+" + (activeLoads.size() - 1);
-        }
-        String rateStr = String.format(Locale.ROOT, "RATE: x%.1f [%s]", rate, loadText);
-        int rateColor = OxygenClientState.isCombat ? 0xFFFF3333
-                : OxygenClientState.isMining ? 0xFFFF8800
-                : OxygenClientState.isSprinting ? 0xFFFFFF55
-                : OxygenClientState.isExtremeZone ? 0xFFFFAA00
-                : 0xFF888888;
-        guiGraphics.drawString(font, rateStr, hudX + 8, rateY, rateColor, false);
+    private static void renderMeterRow(GuiGraphics guiGraphics, Font font, int hudX, int rowY,
+                                       String label, float percent, int color) {
+        int barX = hudX + 29;
+        int barWidth = 43;
+        guiGraphics.drawString(font, label, hudX + 7, rowY, 0xAAAAAA, false);
+        guiGraphics.fill(barX - 1, rowY + 1, barX + barWidth + 1, rowY + 8, 0xFF333333);
+        guiGraphics.fill(barX, rowY + 2, barX + barWidth, rowY + 7, 0xFF1A1A1A);
+        int fillWidth = Math.round(barWidth * percent);
+        if (fillWidth > 0) guiGraphics.fill(barX, rowY + 2, barX + fillWidth, rowY + 7, color);
+        guiGraphics.drawString(font, Math.round(percent * 100.0F) + "%", barX + barWidth + 4, rowY, color, false);
     }
 }

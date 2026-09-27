@@ -2,9 +2,9 @@ package com.ruskserver.moveearth_addtional.s2.dispatch;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
-import com.ruskserver.moveearth_addtional.network.C2S_RecoveryDispatchActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_RecoveryDispatchActionResultPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_RecoveryDispatchSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RecoveryDispatchActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;

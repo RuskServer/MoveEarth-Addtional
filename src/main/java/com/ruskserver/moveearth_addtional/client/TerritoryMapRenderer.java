@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.ruskserver.moveearth_addtional.network.S2C_TerritoryMapPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryMapPacket;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryMapProjection;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;

@@ -2,11 +2,11 @@ package com.ruskserver.moveearth_addtional.s2.nation;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.handler.RandomSpawnHandler;
-import com.ruskserver.moveearth_addtional.network.C2S_NationApplicationActionPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_OnboardingActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_NationApplicationsPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_CloseOnboardingPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_OnboardingPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationApplicationActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_OnboardingActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationApplicationsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_CloseOnboardingPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_OnboardingPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;

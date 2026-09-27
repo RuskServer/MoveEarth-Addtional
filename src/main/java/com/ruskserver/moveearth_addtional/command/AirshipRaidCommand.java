@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.ruskserver.moveearth_addtional.raid.AirshipRaidDifficulty;
 import com.ruskserver.moveearth_addtional.raid.AirshipRaidInstance;
 import com.ruskserver.moveearth_addtional.raid.AirshipRaidManager;
@@ -63,7 +64,7 @@ public final class AirshipRaidCommand {
 
     private static int setAutomatic(CommandSourceStack source, boolean enabled) {
         AirshipRaidSavedData.get(source.getServer()).setAutomaticEnabled(enabled);
-        source.sendSuccess(() -> Component.literal("飛行船の自動襲撃を" + (enabled ? "有効" : "無効") + "にしました。"), true);
+        source.sendSuccess(() -> MoveEarthMessage.success("飛行船の自動襲撃を" + (enabled ? "有効" : "無効") + "にしました。"), true);
         return 1;
     }
 
@@ -72,7 +73,7 @@ public final class AirshipRaidCommand {
         AirshipRaidSavedData data = AirshipRaidSavedData.get(server);
         long elapsed = server.overworld().getGameTime() - data.getLastAutomaticCheck();
         long remainingTicks = Math.max(0, AirshipRaidManager.AUTOMATIC_CHECK_INTERVAL - elapsed);
-        source.sendSuccess(() -> Component.literal("自動襲撃: " + (data.isAutomaticEnabled() ? "ON" : "OFF")
+        source.sendSuccess(() -> MoveEarthMessage.info("自動襲撃: " + (data.isAutomaticEnabled() ? "ON" : "OFF")
                 + " / 次回抽選まで約" + (remainingTicks / 1200L) + "分"
                 + " / 進行中: " + AirshipRaidManager.activeRaids().size()), false);
         return data.isAutomaticEnabled() ? 1 : 0;
@@ -80,13 +81,13 @@ public final class AirshipRaidCommand {
 
     private static int start(CommandSourceStack source, ServerPlayer target, AirshipRaidDifficulty difficulty) {
         AirshipRaidInstance raid = AirshipRaidManager.start(source.getServer(), target, difficulty, false);
-        source.sendSuccess(() -> Component.literal("襲撃 #" + raid.id() + " を開始しました。"), true);
+        source.sendSuccess(() -> MoveEarthMessage.success("襲撃 #" + raid.id() + " を開始しました。"), true);
         return raid.id();
     }
 
     private static int stop(CommandSourceStack source, int id) {
         if (!AirshipRaidManager.stop(source.getServer(), id)) {
-            source.sendFailure(Component.literal("襲撃 #" + id + " は存在しません。"));
+            source.sendFailure(MoveEarthMessage.error("襲撃 #" + id + " は存在しません。"));
             return 0;
         }
         return 1;
@@ -94,14 +95,14 @@ public final class AirshipRaidCommand {
 
     private static int stopAll(CommandSourceStack source) {
         int count = AirshipRaidManager.stopAll(source.getServer());
-        source.sendSuccess(() -> Component.literal(count + "件の襲撃を停止しました。"), true);
+        source.sendSuccess(() -> MoveEarthMessage.success(count + "件の襲撃を停止しました。"), true);
         return count;
     }
 
     private static int list(CommandSourceStack source) {
         Collection<AirshipRaidInstance> raids = AirshipRaidManager.activeRaids();
         if (raids.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("進行中の飛行船襲撃はありません。"), false);
+            source.sendSuccess(() -> MoveEarthMessage.info("進行中の飛行船襲撃はありません。"), false);
             return 0;
         }
         for (AirshipRaidInstance raid : raids) {
@@ -113,7 +114,7 @@ public final class AirshipRaidCommand {
     private static int status(CommandSourceStack source, int id) {
         AirshipRaidInstance raid = AirshipRaidManager.getRaid(id).orElse(null);
         if (raid == null) {
-            source.sendFailure(Component.literal("襲撃 #" + id + " は存在しません。"));
+            source.sendFailure(MoveEarthMessage.error("襲撃 #" + id + " は存在しません。"));
             return 0;
         }
         source.sendSuccess(() -> describe(raid), false);
@@ -121,7 +122,7 @@ public final class AirshipRaidCommand {
     }
 
     private static Component describe(AirshipRaidInstance raid) {
-        return Component.literal("#" + raid.id() + " 対象=" + raid.targetName()
+        return MoveEarthMessage.info("飛行船襲撃: #" + raid.id() + " 対象=" + raid.targetName()
                 + " 難易度=" + raid.difficulty().name().toLowerCase()
                 + " フェーズ=" + raid.phase().name().toLowerCase());
     }

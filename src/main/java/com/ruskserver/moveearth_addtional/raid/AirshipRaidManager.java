@@ -7,7 +7,8 @@ import com.ruskserver.moveearth_addtional.entity.ModEntities;
 import com.ruskserver.moveearth_addtional.entity.ai.RaiderRole;
 import com.ruskserver.moveearth_addtional.entity.ai.RaiderSquadMemory;
 import com.ruskserver.moveearth_addtional.compat.SableAirshipController;
-import com.ruskserver.moveearth_addtional.network.S2C_AnnouncementPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_AnnouncementPacket;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundSource;
@@ -58,8 +59,8 @@ public final class AirshipRaidManager {
         ACTIVE_RAIDS.put(id, raid);
         data.recordRaid(target.getUUID(), gameTime);
         String source = automatic ? "自動襲撃" : "手動襲撃";
-        server.getPlayerList().broadcastSystemMessage(Component.literal(
-                "[飛行船襲撃] " + source + " #" + id + " が " + target.getGameProfile().getName()
+        server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info(
+                "飛行船襲撃: " + source + " #" + id + " が " + target.getGameProfile().getName()
                         + " を対象に開始されました。難易度: " + difficulty.name().toLowerCase()), false);
         PacketDistributor.sendToPlayer(target, new S2C_AnnouncementPacket("警告: 敵性飛行船が接近しています"));
         target.playNotifySound(ModSounds.SERVER_NOTICE.get(), SoundSource.MASTER, 1.2F, 0.8F);
@@ -74,7 +75,7 @@ public final class AirshipRaidManager {
         RETREAT_STARTED.remove(id);
         RaiderSquadMemory.removeRaid(id);
         raid.setPhase(AirshipRaidPhase.FINISHED);
-        server.getPlayerList().broadcastSystemMessage(Component.literal("[飛行船襲撃] #" + id + " を停止しました。"), false);
+        server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info("飛行船襲撃: #" + id + " を停止しました。"), false);
         return true;
     }
 
@@ -88,7 +89,7 @@ public final class AirshipRaidManager {
         });
         ACTIVE_RAIDS.clear();
         if (count > 0) {
-            server.getPlayerList().broadcastSystemMessage(Component.literal("[飛行船襲撃] 全襲撃を停止しました。"), false);
+            server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info("飛行船襲撃: 全襲撃を停止しました。"), false);
         }
         return count;
     }
@@ -122,8 +123,8 @@ public final class AirshipRaidManager {
             ServerLevel hitLevel = server.getLevel(raid.levelKey());
             if (hitLevel != null) hitLevel.removeBlock(hitPos, false);
             raid.destroyCore();
-            server.getPlayerList().broadcastSystemMessage(Component.literal(
-                    "[飛行船襲撃] 浮力コア破壊 " + raid.destroyedCores() + "/4"), false);
+            server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(
+                    "飛行船襲撃: 浮力コア破壊 " + raid.destroyedCores() + "/4"), false);
         }
         if (raid.destroyedCores() >= 4 || raid.hullIntegrity() <= 0.0F) beginCrash(server, raid);
     }
@@ -137,8 +138,8 @@ public final class AirshipRaidManager {
         ServerLevel level = server.getLevel(raid.levelKey());
         if (level != null && raid.shipId() != null) SableAirshipController.beginCrash(level, raid.shipId(), raid.destroyedCores());
         raid.setPhase(AirshipRaidPhase.CRASHING, now);
-        server.getPlayerList().broadcastSystemMessage(Component.literal(
-                "[飛行船襲撃] #" + raid.id() + " 撃墜確認。墜落地点を警戒してください。"), false);
+        server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(
+                "飛行船襲撃: #" + raid.id() + " 撃墜確認。墜落地点を警戒してください。"), false);
         ServerPlayer target = server.getPlayerList().getPlayer(raid.targetId());
         if (target != null) {
             PacketDistributor.sendToPlayer(target, new S2C_AnnouncementPacket("敵飛行船を撃墜！ 残骸から物資を回収できます"));
@@ -173,15 +174,15 @@ public final class AirshipRaidManager {
             if (raid.phase() == AirshipRaidPhase.WRECKED) {
                 raid.setPhase(AirshipRaidPhase.SALVAGE, now);
                 spawnCrashSurvivors(server, raid);
-                server.getPlayerList().broadcastSystemMessage(Component.literal(
-                        "[飛行船襲撃] #" + raid.id() + " 残骸を15分間サルベージできます。"), false);
+                server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info(
+                        "飛行船襲撃: #" + raid.id() + " 残骸を15分間サルベージできます。"), false);
             }
             if (raid.phase() == AirshipRaidPhase.SALVAGE) {
                 long remaining = SALVAGE_TIME_LIMIT - (now - raid.phaseStartedAt());
                 if (remaining <= 2400L && !raid.salvageWarningSent()) {
                     raid.setSalvageWarningSent();
-                    server.getPlayerList().broadcastSystemMessage(Component.literal(
-                            "[飛行船襲撃] #" + raid.id() + " 残骸消滅まで残り2分。"), false);
+                    server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(
+                            "飛行船襲撃: #" + raid.id() + " 残骸消滅まで残り2分。"), false);
                 }
                 if (remaining <= 0L && !playersNearWreck(server, raid)) {
                     removeAirship(server, raid);
@@ -194,7 +195,7 @@ public final class AirshipRaidManager {
                 raid.setPhase(AirshipRaidPhase.RETREATING);
                 RETREAT_STARTED.put(raid.id(), now);
                 server.getPlayerList().broadcastSystemMessage(
-                        Component.literal("[飛行船襲撃] #" + raid.id() + " を撃退しました。"), false);
+                        MoveEarthMessage.success("飛行船襲撃: #" + raid.id() + " を撃退しました。"), false);
             }
             if (raid.phase() != AirshipRaidPhase.RETREATING && raid.phase() != AirshipRaidPhase.FINISHED
                     && raid.phase() != AirshipRaidPhase.CRASHING && raid.phase() != AirshipRaidPhase.WRECKED
@@ -205,7 +206,7 @@ public final class AirshipRaidManager {
                 raid.setPhase(AirshipRaidPhase.RETREATING);
                 RETREAT_STARTED.put(raid.id(), now);
                 server.getPlayerList().broadcastSystemMessage(
-                        Component.literal("[飛行船襲撃] #" + raid.id() + " は制限時間に達したため終了します。"), false);
+                        MoveEarthMessage.info("飛行船襲撃: #" + raid.id() + " は制限時間に達したため終了します。"), false);
                 ServerPlayer target = server.getPlayerList().getPlayer(raid.targetId());
                 if (target != null) {
                     PacketDistributor.sendToPlayer(target,

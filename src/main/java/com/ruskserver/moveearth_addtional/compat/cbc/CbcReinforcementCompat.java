@@ -3,11 +3,14 @@ package com.ruskserver.moveearth_addtional.compat.cbc;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.CbcMunitionDamage;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.SiegeDamageService;
+import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
+import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Explosion;
+import net.minecraft.world.level.Level;
 import net.minecraft.server.level.ServerPlayer;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
@@ -32,6 +35,7 @@ public final class CbcReinforcementCompat {
     private static final long DUPLICATE_IMPACT_TICKS = 3L;
     private static final Map<UUID, Long> INTERCEPTED_MUNITIONS = new HashMap<>();
     private static final Map<ProtectedImpact, Long> RECENT_PROTECTED_IMPACTS = new HashMap<>();
+    private static Method terrainDamageHook;
 
     private CbcReinforcementCompat() { }
 
@@ -97,6 +101,43 @@ public final class CbcReinforcementCompat {
             }
         } catch (ReflectiveOperationException exception) {
             Moveearth_addtional.LOGGER.debug("Failed to read CBC projectile damage event", exception);
+        }
+    }
+
+    /** CBC calls this before replacing a directly penetrated block with air. Its event has no projectile field. */
+    public static boolean canDamageTerrain(Entity projectile, Level level, BlockPos pos) {
+        if (level instanceof ServerLevel serverLevel) {
+            ReinforcementSavedData data = ReinforcementSavedData.get(serverLevel);
+            var entry = data.get(pos).orElse(null);
+            if (entry != null && entry.enabled() && !serverLevel.getBlockState(pos).isAir()) {
+                if (SiegeDamageService.penaltyAt(serverLevel, pos).reinforcementProtectionEnabled()) {
+                    var attribution = com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService
+                            .attribution(projectile, "cbc_projectile");
+                    SiegeDamageService.interceptCbcProtectedArea(
+                            attribution, serverLevel, pos, kind(projectile), 0);
+                    long gameTime = serverLevel.getGameTime();
+                    purgeOldImpacts(gameTime);
+                    long expires = gameTime + DUPLICATE_IMPACT_TICKS;
+                    INTERCEPTED_MUNITIONS.put(projectile.getUUID(), expires);
+                    RECENT_PROTECTED_IMPACTS.put(new ProtectedImpact(
+                            serverLevel.dimension().location().toString(), pos.immutable()), expires);
+                    return false;
+                }
+                // A disabled reinforcement must not survive an ordinary CBC block break.
+                data.remove(pos);
+                ReinforcementService.syncChangedNearbyManagers(serverLevel, java.util.Set.of(pos));
+            }
+        }
+        try {
+            Method hook = terrainDamageHook;
+            if (hook == null) {
+                hook = Class.forName("rbasamoyai.createbigcannons.munitions.ProjectileDamageHooks")
+                        .getMethod("canDamageTerrain", Level.class, BlockPos.class);
+                terrainDamageHook = hook;
+            }
+            return (Boolean) hook.invoke(null, level, pos);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Cannot invoke CBC terrain damage hook", exception);
         }
     }
 

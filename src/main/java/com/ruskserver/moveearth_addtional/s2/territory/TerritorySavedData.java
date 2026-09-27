@@ -702,7 +702,7 @@ public final class TerritorySavedData extends SavedData {
                         Math.max(0L, value.getLong("RegenDelayTicks")),
                         Math.max(0L, value.getLong("RegenProgressTicks")));
                 data.cores.put(new CoreKey(dimension, pos), core);
-            } catch (IllegalArgumentException ignored) {
+            } catch (RuntimeException ignored) {
             }
         }
         ListTag vaultList = tag.getList("Vaults", Tag.TAG_COMPOUND);
@@ -715,7 +715,7 @@ public final class TerritorySavedData extends SavedData {
                         value.getInt("ChunkX"), value.getInt("ChunkZ")));
                 long cooldown = Math.max(0L, value.getLong("ChangeCooldownTicks"));
                 if (cooldown > 0L) data.vaultChangeCooldowns.put(nationId, cooldown);
-            } catch (IllegalArgumentException ignored) { }
+            } catch (RuntimeException ignored) { }
         }
         data.rebuildIndexes();
         return data;

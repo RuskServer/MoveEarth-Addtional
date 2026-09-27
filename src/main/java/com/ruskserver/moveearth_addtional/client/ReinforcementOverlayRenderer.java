@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.item.ModItems;
-import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementVisualStyle;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementBrushPattern;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementGreedyMesher;
@@ -29,6 +29,7 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import org.joml.Quaternionf;
 
@@ -63,24 +64,34 @@ public final class ReinforcementOverlayRenderer {
         int renderLimit = (detailed ? DETAILED_RENDER_LIMIT : PASSIVE_RENDER_LIMIT) * FACES_PER_BLOCK;
         int rendered = 0;
         int movingRendered = 0;
+        float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         java.util.Map<ClientSubLevel, java.util.List<MovingFace>> movingFaces = new java.util.LinkedHashMap<>();
+        java.util.Map<ClientSubLevel, Pose3dc> movingPoses = new java.util.IdentityHashMap<>();
         outer:
         for (ReinforcementClientState.ChunkBucket chunk : ReinforcementClientState.chunks()) {
             AABB chunkBounds = new AABB(chunk.chunkX() << 4, chunk.minY(), chunk.chunkZ() << 4,
                     (chunk.chunkX() << 4) + 16, chunk.maxY() + 1, (chunk.chunkZ() << 4) + 16).inflate(0.03D);
+            boolean visibleChunk = event.getFrustum().isVisible(chunkBounds);
             for (ReinforcementClientState.MergedFace merged : chunk.faces()) {
                 ReinforcementGreedyMesher.Quad quad = merged.quad();
                 S2C_ReinforcementSnapshotPacket.Entry entry = merged.style();
                 // Use a source block, not the surface plane (which can lie outside the plot).
                 ClientSubLevel movingLevel = Sable.HELPER.getContainingClient(entry.pos());
                 if (movingLevel != null) {
+                    Pose3dc pose = movingPoses.computeIfAbsent(movingLevel,
+                            subLevel -> subLevel.renderPose(partialTick));
+                    Vec3 center = pose.transformPosition(new Vec3(
+                            quad.x() + quad.sizeX() * 0.5D,
+                            quad.y() + quad.sizeY() * 0.5D,
+                            quad.z() + quad.sizeZ() * 0.5D));
+                    if (center.distanceToSqr(camera) > MAX_RENDER_DISTANCE_SQUARED) continue;
                     if (rendered + movingRendered >= renderLimit) break outer;
                     movingFaces.computeIfAbsent(movingLevel, ignored -> new java.util.ArrayList<>())
                             .add(new MovingFace(merged, entry));
                     movingRendered++;
                     continue;
                 }
-                if (!event.getFrustum().isVisible(chunkBounds)) continue;
+                if (!visibleChunk) continue;
                 if (camera.distanceToSqr(quad.x() + quad.sizeX() * 0.5D,
                         quad.y() + quad.sizeY() * 0.5D, quad.z() + quad.sizeZ() * 0.5D)
                         > MAX_RENDER_DISTANCE_SQUARED) continue;
@@ -122,8 +133,7 @@ public final class ReinforcementOverlayRenderer {
                         INSTANCE_COLORS[colorIndex + 2], INSTANCE_COLORS[colorIndex + 3]);
             }
         }
-        renderMovingFaces(poseStack, buffers, movingFaces, camera,
-                event.getPartialTick().getGameTimeDeltaPartialTick(false), detailed, now);
+        renderMovingFaces(poseStack, buffers, movingFaces, camera, partialTick, detailed, now);
 
         BlockHitResult targetHit = targetHit(minecraft);
         BlockPos target = targetHit == null ? null : targetHit.getBlockPos();
@@ -207,21 +217,29 @@ public final class ReinforcementOverlayRenderer {
         if (!validWorld(minecraft) || minecraft.options.hideGui
                 || !minecraft.player.getMainHandItem().is(ModItems.WELDING_TOOL.get())) return;
         BlockPos target = targetPos(minecraft);
-        if (target == null) return;
+        // The crosshair sabotage prompt owns the screen while aiming at a core.
+        if (target == null || WeldingTargetClientState.hasPrompt(target)) return;
         var entry = ReinforcementClientState.at(target);
+        boolean unavailable = !ReinforcementClientState.allowed();
+        if (!unavailable && entry == null) {
+            // No local entry is either unreinforced own land or land we may not reinforce; wait for the server.
+            Boolean reinforceable = WeldingTargetClientState.reinforceable(target);
+            if (reinforceable == null) return;
+            unavailable = !reinforceable;
+        }
         int boxWidth = 236;
         boxWidth = Math.min(boxWidth, Math.max(140, graphics.guiWidth() - 24));
         int x = Math.max(12, graphics.guiWidth() - boxWidth - 12);
         int boxHeight = 72;
         int y = Math.max(12, (graphics.guiHeight() - boxHeight) / 2);
-        int accent = !ReinforcementClientState.allowed() ? 0xFF8F9AA8 : entry == null ? 0xFFFF6577
+        int accent = unavailable ? 0xFF8F9AA8 : entry == null ? 0xFFFF6577
                 : entry.siegeDisabled() ? 0xFFFF3D30
                 : !entry.enabled() ? 0xFFC67AFF
                 : entry.durability() < entry.material().maxDurability() ? 0xFFFFB454 : 0xFF68E09B;
         graphics.fill(x, y, x + boxWidth, y + boxHeight, 0xD012161D);
         graphics.fill(x, y, x + 3, y + boxHeight, accent);
         graphics.drawString(minecraft.font,
-                Component.translatable(!ReinforcementClientState.allowed()
+                Component.translatable(unavailable
                         ? "overlay.moveearth_addtional.reinforcement.unavailable"
                         : entry == null
                         ? "overlay.moveearth_addtional.reinforcement.unreinforced"
@@ -233,7 +251,7 @@ public final class ReinforcementOverlayRenderer {
                         ? "overlay.moveearth_addtional.reinforcement.filling"
                         : "overlay.moveearth_addtional.reinforcement.reinforced"),
                 x + 11, y + 8, accent, false);
-        Component detail = !ReinforcementClientState.allowed()
+        Component detail = unavailable
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.unavailable.detail")
                 : entry == null
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.material_hint")

@@ -37,9 +37,14 @@ public record S2NationSnapshot(
         List<RoleView> roles,
         List<DiplomacyView> diplomacy,
         List<InvitationView> invitations,
-        List<CandidateView> inviteCandidates) {
+        List<CandidateView> inviteCandidates,
+        com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention notificationAttention,
+        HomeStatus home) {
 
     public S2NationSnapshot {
+        if (home == null) home = HomeStatus.EMPTY;
+        if (notificationAttention == null)
+            notificationAttention = com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention.NONE;
         playerName = safe(playerName);
         nationName = safe(nationName);
         nationTag = safe(nationTag);
@@ -74,7 +79,23 @@ public record S2NationSnapshot(
         this(revision, playerName, serverAdmin, member, nationName, nationTag, roleName, "",
                 ownPermissionMask, onlineMembers, totalMembers, territoryChunks, activeCores,
                 upkeep, siegeStatus, false, "", 0, 0, 0L, sieges, List.of(), List.of(), List.of(), members, roles,
-                diplomacy, invitations, inviteCandidates);
+                diplomacy, invitations, inviteCandidates,
+                com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention.NONE,
+                HomeStatus.EMPTY);
+    }
+
+    /**
+     * Figures the hub home summarizes. {@code upkeepDueInMillis} is relative to when the snapshot was
+     * built, so client and server clocks never need to agree; 0 means no upkeep is scheduled.
+     * {@code pendingApplications} is only filled for members who can decide them.
+     */
+    public record HomeStatus(long treasury, long upkeepDueInMillis, boolean upkeepOverdue, int pendingApplications) {
+        public static final HomeStatus EMPTY = new HomeStatus(0L, 0L, false, 0);
+
+        public HomeStatus {
+            treasury = Math.max(0L, treasury);
+            pendingApplications = Math.max(0, pendingApplications);
+        }
     }
 
     public static S2NationSnapshot unaffiliated(String playerName, boolean serverAdmin) {

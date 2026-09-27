@@ -1,6 +1,49 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.*;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_BalanceSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_MarketSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationApplicationsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationTreasuryPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_OnboardingPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_OpenNationNotificationsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_S2HubSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_AnnouncementPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_JobsLeaderboardPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_KillcamReplayPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenDetectorScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenJobsScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenLoadoutEditorPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenPvpScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenPvpTasksPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenStatsScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenTerritoryCoreScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpEntryStatePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpHudPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpKillcamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpTeamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpZonePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementDeltaPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_StartMapVotePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorManagersPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorNamePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorPaymentPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncLoadoutsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncOxygenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncWhitelistPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryClosurePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryCoreHealthPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryMapPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryPreviewPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_UpdateMapVotePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.vehicle.S2C_OpenVehicleCoreScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.vehicle.S2C_WeldingTargetPacket;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -41,6 +84,10 @@ public class ClientPacketHandler {
     public static void handleOpenTerritoryCore(S2C_OpenTerritoryCoreScreenPacket packet) {
         Minecraft.getInstance().setScreen(new TerritoryCoreWizardScreen(
                 packet.pos(), packet.radius(), packet.coreState(), packet.health(), packet.maximumHealth()));
+    }
+
+    public static void handleWeldingTarget(S2C_WeldingTargetPacket packet) {
+        WeldingTargetClientState.update(packet);
     }
 
     public static void handleTerritoryCoreHealth(S2C_TerritoryCoreHealthPacket packet) {
@@ -88,7 +135,8 @@ public class ClientPacketHandler {
         Minecraft minecraft = Minecraft.getInstance();
         VaultClientState.update(packet.snapshot());
         if (minecraft.screen instanceof S2HubScreen screen) screen.update(packet);
-        else minecraft.setScreen(new S2HubScreen(packet));
+        // A background refresh sent by the hub must not reopen it after the player has moved on.
+        else if (!S2HubScreen.consumeBackgroundRefresh()) minecraft.setScreen(new S2HubScreen(packet));
     }
 
     public static void handleNationTreasury(S2C_NationTreasuryPacket packet) {
@@ -98,7 +146,9 @@ public class ClientPacketHandler {
     }
 
     public static void handleOpenNationNotifications(S2C_OpenNationNotificationsPacket packet) {
-        Minecraft.getInstance().setScreen(new NationNotificationsScreen(packet));
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.screen instanceof NationNotificationsScreen screen) screen.update(packet);
+        else minecraft.setScreen(new NationNotificationsScreen(packet));
     }
 
     public static void handleOnboarding(S2C_OnboardingPacket packet) {

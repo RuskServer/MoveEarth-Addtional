@@ -30,8 +30,10 @@ public final class DelayedChunkCacheConfig {
                 .defineInRange("sizeLimit", 64, 1, 4096);
 
         EXTRA_DISTANCE = BUILDER
-                .comment("Maximum cache distance beyond the player's normal view distance, in chunks.")
-                .defineInRange("extraDistance", 2, 0, 32);
+                .comment("Maximum cache distance beyond the player's normal view distance, in chunks.",
+                        "Capped at 3: the client keeps chunks only up to view distance + 3, so a cached chunk",
+                        "further out is discarded client-side while the server still counts it as sent.")
+                .defineInRange("extraDistance", 2, 0, 3);
 
         TIMEOUT_SECONDS = BUILDER
                 .comment("Maximum time that a departed chunk remains cached by the client.")

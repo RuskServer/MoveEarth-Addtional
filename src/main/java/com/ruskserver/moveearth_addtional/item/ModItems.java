@@ -52,6 +52,10 @@ public class ModItems {
     public static final DeferredHolder<Item, Item> CARBON_FILTER = ITEMS.register("carbon_filter",
             () -> new com.ruskserver.moveearth_addtional.oxygen.CarbonFilterItem(new Item.Properties().stacksTo(16).rarity(net.minecraft.world.item.Rarity.COMMON)));
 
+    /** MekaSuit plating: a long pressurized reaction step that makes the suit cost time. */
+    public static final DeferredHolder<Item, Item> MEKA_ARMOR_MATERIAL = ITEMS.register("meka_armor_material",
+            () -> new Item(new Item.Properties().rarity(net.minecraft.world.item.Rarity.EPIC)));
+
     public static final DeferredHolder<Item, Item> WELDING_TOOL = ITEMS.register("welding_tool",
             () -> new WeldingToolItem(new Item.Properties().stacksTo(1).durability(512)
                     .rarity(net.minecraft.world.item.Rarity.UNCOMMON)));

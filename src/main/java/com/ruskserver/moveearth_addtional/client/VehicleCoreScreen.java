@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
-import com.ruskserver.moveearth_addtional.network.S2C_OpenVehicleCoreScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.vehicle.S2C_OpenVehicleCoreScreenPacket;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;

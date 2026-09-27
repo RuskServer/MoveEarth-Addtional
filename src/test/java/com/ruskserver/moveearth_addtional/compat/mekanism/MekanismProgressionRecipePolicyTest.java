@@ -17,7 +17,7 @@ class MekanismProgressionRecipePolicyTest {
                 "mekanism", "transmitter/universal_cable/basic"));
         assertTrue(MekanismProgressionRecipePolicy.isLegacyRecipe(
                 "mekanism", "transmitter/universal_cable/ultimate"));
-        assertEquals(36, MekanismProgressionRecipePolicy.replacementPaths().size());
+        assertEquals(40, MekanismProgressionRecipePolicy.replacementPaths().size());
     }
 
     @Test

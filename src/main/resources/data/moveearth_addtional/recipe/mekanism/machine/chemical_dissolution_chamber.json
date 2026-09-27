@@ -9,7 +9,8 @@
       "modid": "electroenergetics"
     }
   ],
-  "type": "minecraft:crafting_shaped",
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
   "category": "misc",
   "key": {
     "C": {
@@ -24,6 +25,8 @@
     "P": {
       "item": "create:precision_mechanism"
     },
+    "R": { "item": "electroenergetics:radiator_panel" },
+    "W": { "item": "electroenergetics:transformer_core" },
     "T": {
       "item": "mekanism:basic_chemical_tank"
     },
@@ -32,9 +35,11 @@
     }
   },
   "pattern": [
-    "ITI",
-    "CXC",
-    "HPH"
+    "IHPHI",
+    "RCTCR",
+    "PXWXP",
+    "RCTCR",
+    "IHPHI"
   ],
   "result": {
     "count": 1,

@@ -141,10 +141,13 @@ public final class StorageWreckageService {
 
     private static boolean canAccess(ServerPlayer player, BlockPos pos,
                                      StorageWreckageSavedData.Wreckage wreckage) {
-        UUID nation = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
+        NationSavedData nations = NationSavedData.get(player.server);
+        UUID nation = nations.nationIdFor(player.getUUID()).orElse(null);
+        // Wreckage of a disbanded nation has no owner left to protect it.
+        boolean ownerKnown = wreckage.ownerNation() != null && nations.nation(wreckage.ownerNation()).isPresent();
         return StorageWreckagePolicy.mayRecover(
                 player.hasPermissions(2),
-                wreckage.ownerNation() != null,
+                ownerKnown,
                 nation != null && nation.equals(wreckage.ownerNation()),
                 wreckage.vehicleId() != null && VehicleLootSavedData.get(player.server)
                         .canLoot(player, player.serverLevel(), pos),

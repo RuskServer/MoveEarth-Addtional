@@ -1,6 +1,6 @@
 package com.ruskserver.moveearth_addtional.s2;
 
-import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_S2HubSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryUpkeepPolicy;
@@ -196,7 +196,36 @@ public final class S2NationViewService {
                 vault == null ? 0 : vault.chunkX(), vault == null ? 0 : vault.chunkZ(),
                 territories.vaultChangeCooldown(nation.id()), sieges, peaceProposals, truces, prisoners,
                 members, roles, diplomacy,
-                java.util.List.of(), candidates);
+                java.util.List.of(), candidates, notificationAttention(player, data, nation.id()),
+                homeStatus(player, data, nation.id()));
+    }
+
+    private static S2NationSnapshot.HomeStatus homeStatus(ServerPlayer player, NationSavedData nations,
+                                                          java.util.UUID nationId) {
+        long treasury = com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.get(player.server)
+                .balance(com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.Account.nation(nationId));
+        // accounts() rather than state(): building a view must not create upkeep records.
+        var upkeep = com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepSavedData.get(player.server)
+                .accounts().get(nationId);
+        long dueIn = upkeep == null || upkeep.nextDueAt() <= 0L ? 0L
+                : upkeep.nextDueAt() - System.currentTimeMillis();
+        boolean overdue = upkeep != null && upkeep.overdueSince() > 0L;
+        int applications = nations.can(player.getUUID(), S2Permission.MANAGE_MEMBERS)
+                ? nations.joinApplicationsFor(nationId).size() : 0;
+        return new S2NationSnapshot.HomeStatus(treasury, dueIn, overdue, applications);
+    }
+
+    private static com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention notificationAttention(
+            ServerPlayer player, NationSavedData nations, java.util.UUID nationId) {
+        var notifications = com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData
+                .get(player.server);
+        var health = notifications.deliveryHealth(nationId);
+        return com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention.of(
+                nations.can(player.getUUID(), S2Permission.MANAGE_NOTIFICATIONS),
+                com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkGateway.access().state()
+                        != com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkAccess.BotState.DISABLED,
+                notifications.link(nationId).linked(), health.retrying(),
+                health.lastSuccessAtMillis(), health.lastFailureAtMillis());
     }
 
     public void sendHub(ServerPlayer player, S2HubTab tab) {

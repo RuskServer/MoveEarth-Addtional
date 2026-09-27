@@ -65,6 +65,45 @@ public final class MoveEarthUi {
                 enabled ? accent : MUTED);
     }
 
+    /**
+     * One option of a segmented choice. The selected option uses the same selected-card treatment as
+     * /pvp loadout cards; a disabled but selected option stays visible so the current value is still readable.
+     */
+    public static void drawChoice(GuiGraphics graphics, Font font, Rect bounds, Component label,
+                                  int accent, boolean selected, boolean hovered, boolean enabled) {
+        boolean active = hovered && enabled && !selected;
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
+                selected ? CARD_SELECTED : active ? CARD_HOVER : CARD);
+        drawBorder(graphics, bounds, selected ? (enabled ? accent : BORDER_HOVER) : active ? BORDER_HOVER : BORDER);
+        int textY = bounds.y() + Math.max(1, (bounds.height() - 8) / 2);
+        int color = !enabled ? (selected ? MUTED : DISABLED) : selected ? accent : TEXT;
+        graphics.drawCenteredString(font, label, bounds.x() + bounds.width() / 2, textY, color);
+    }
+
+    /** Equal-width slot {@code index} of {@code count} across {@code row}, separated by {@code gap} pixels. */
+    public static Rect slot(Rect row, int index, int count, int gap) {
+        int safeCount = Math.max(1, count);
+        int width = Math.max(1, (row.width() - gap * (safeCount - 1)) / safeCount);
+        return new Rect(row.x() + index * (width + gap), row.y(), width, row.height());
+    }
+
+    /** Draws word-wrapped text and returns the height it used. */
+    public static int drawWrapped(GuiGraphics graphics, Font font, Component text, int x, int y,
+                                  int width, int color) {
+        int lineY = y;
+        for (var line : font.split(text, Math.max(1, width))) {
+            graphics.drawString(font, line, x, lineY, color, false);
+            lineY += LINE_HEIGHT;
+        }
+        return lineY - y;
+    }
+
+    public static int wrappedHeight(Font font, Component text, int width) {
+        return font.split(text, Math.max(1, width)).size() * LINE_HEIGHT;
+    }
+
+    public static final int LINE_HEIGHT = 10;
+
     public static void drawTab(GuiGraphics graphics, Font font, Rect bounds, Component label,
                                boolean selected, boolean hovered) {
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),

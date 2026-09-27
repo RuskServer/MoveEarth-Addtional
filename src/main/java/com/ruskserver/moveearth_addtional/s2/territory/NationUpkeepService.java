@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.s2.territory;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
-import com.ruskserver.moveearth_addtional.network.S2C_NationTreasuryPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationTreasuryPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;

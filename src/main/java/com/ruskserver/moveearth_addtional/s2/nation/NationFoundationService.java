@@ -92,6 +92,12 @@ public final class NationFoundationService {
                 && level.getWorldBorder().isWithinBounds(pos);
         boolean withinReach = player.distanceToSqr(Vec3.atCenterOf(pos))
                 <= NationFoundationSite.REACH_SQR;
+        if (!withinWorld || !withinReach) {
+            // judge() refuses these before reading anything else. Stopping here also keeps the
+            // sight trace from loading or generating every chunk between the player and a far site.
+            return new NationFoundationSite.Reading(true, withinWorld, withinReach,
+                    false, false, false, false, false, false);
+        }
         BlockPos support = pos.below();
         BlockHitResult sight = level.clip(new ClipContext(player.getEyePosition(),
                 Vec3.atCenterOf(support), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));

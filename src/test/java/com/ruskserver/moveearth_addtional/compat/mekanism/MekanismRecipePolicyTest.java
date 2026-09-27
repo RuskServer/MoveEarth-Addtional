@@ -99,23 +99,88 @@ class MekanismRecipePolicyTest {
     void removesCompactFactoriesAndCreateReplacementMachines() {
         assertCategory("mekanism", "factory/basic/enriching",
                 MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
-        assertCategory("mekanism", "energized_smelter",
-                MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
         assertCategory("mekanism", "formulaic_assemblicator",
                 MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
         assertCategory("mekanism", "purification_chamber",
                 MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
+        assertCategory("mekanism", "tier_installer/basic",
+                MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
+    }
+
+    @Test
+    void removesItemFluidAndHeatTransmittersButKeepsCablesAndTubes() {
+        assertCategory("mekanism", "transmitter/diversion_transporter",
+                MekanismRecipePolicy.RemovalCategory.LOGISTICS_BYPASS);
+        assertCategory("mekanism", "transmitter/restrictive_transporter",
+                MekanismRecipePolicy.RemovalCategory.LOGISTICS_BYPASS);
+        assertCategory("mekanism", "transmitter/mechanical_pipe/ultimate",
+                MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
+        assertCategory("mekanism", "transmitter/thermodynamic_conductor/basic",
+                MekanismRecipePolicy.RemovalCategory.CREATE_REPLACEMENT);
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "transmitter/pressurized_tube/elite"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "transmitter/universal_cable/basic"));
+    }
+
+    @Test
+    void removesRefinedObsidianGearButKeepsOtherMekanismToolsTiers() {
+        for (String path : new String[]{"refined_obsidian/armor/chestplate", "refined_obsidian/tools/paxel",
+                "refined_obsidian/tools/sword", "refined_obsidian/shield"}) {
+            assertCategory("mekanismtools", path, MekanismRecipePolicy.RemovalCategory.COMBAT_EQUIPMENT);
+        }
+        for (String path : new String[]{"osmium/armor/chestplate", "steel/armor/helmet", "bronze/tools/paxel",
+                "refined_obsidian/nugget_from_smelting"}) {
+            assertFalse(MekanismRecipePolicy.shouldRemove("mekanismtools", path));
+        }
+    }
+
+    @Test
+    void keepsOnlyTheBasicSolarGenerator() {
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanismgenerators", "generator/solar"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanismgenerators", "solar_panel"));
+        assertCategory("mekanismgenerators", "generator/advanced_solar",
+                MekanismRecipePolicy.RemovalCategory.INDEPENDENT_GENERATOR);
+        assertCategory("mekanismgenerators", "generator/wind",
+                MekanismRecipePolicy.RemovalCategory.INDEPENDENT_GENERATOR);
+        assertCategory("mekanismgenerators", "module_solar_recharging_unit",
+                MekanismRecipePolicy.RemovalCategory.COMBAT_EQUIPMENT);
+    }
+
+    @Test
+    void keepsTheMekaSuitButRemovesFlightMobilityAndNightVisionModules() {
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "mekasuit_bodyarmor"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "modification_station"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "module_radiation_shielding_unit"));
+        for (String module : new String[]{"module_gravitational_modulating_unit", "module_elytra_unit",
+                "module_hydraulic_propulsion_unit", "module_locomotive_boosting_unit",
+                "module_vision_enhancement_unit", "module_jetpack_unit"}) {
+            assertCategory("mekanism", module, MekanismRecipePolicy.RemovalCategory.COMBAT_EQUIPMENT);
+        }
+        assertCategory("mekanism", "meka_tool", MekanismRecipePolicy.RemovalCategory.COMBAT_EQUIPMENT);
+    }
+
+    @Test
+    void keepsEnergizedSmelterAndEverySmeltingFactoryTier() {
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "energized_smelter"));
+        for (String tier : new String[]{"basic", "advanced", "elite", "ultimate"}) {
+            assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "factory/" + tier + "/smelting"));
+        }
+    }
+
+    @Test
+    void keepsTheEnrichmentTierOfOreProcessing() {
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "processing/iron/dust/from_raw_ore"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "processing/iron/dust/from_raw_block"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "processing/iron/dust/from_ore"));
+        assertFalse(MekanismRecipePolicy.shouldRemove("mekanism", "processing/diamond/from_ore"));
     }
 
     @Test
     void removesOreMultiplicationButPreservesNuclearChemistry() {
-        assertCategory("mekanism", "processing/iron/dust/from_raw_ore",
+        assertCategory("mekanism", "processing/iron/shard/from_raw_ore",
                 MekanismRecipePolicy.RemovalCategory.ORE_MULTIPLICATION);
         assertCategory("mekanism", "processing/osmium/clump/from_ore",
                 MekanismRecipePolicy.RemovalCategory.ORE_MULTIPLICATION);
         assertCategory("mekanism", "processing/uranium/slurry/dirty/from_ore",
-                MekanismRecipePolicy.RemovalCategory.ORE_MULTIPLICATION);
-        assertCategory("mekanism", "processing/diamond/from_ore",
                 MekanismRecipePolicy.RemovalCategory.ORE_MULTIPLICATION);
 
         assertFalse(MekanismRecipePolicy.shouldRemove(

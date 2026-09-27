@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.economy;
 
-import com.ruskserver.moveearth_addtional.network.C2S_MarketActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_MarketSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.market.C2S_MarketActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_MarketSnapshotPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.tacz.guns.api.item.IGun;
 import net.minecraft.core.registries.BuiltInRegistries;

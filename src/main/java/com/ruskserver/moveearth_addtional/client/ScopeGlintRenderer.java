@@ -67,8 +67,8 @@ public final class ScopeGlintRenderer {
      */
     private static final double MAX_DISTANCE = 220.0D;
 
-    /** Apparent size, in blocks at one block away. Distance is cancelled out. */
-    private static final float APPARENT_SIZE = 0.055F;
+    /** Apparent half-size, in blocks at one block away. Distance is cancelled out. */
+    private static final float APPARENT_SIZE = 0.008F;
 
     /**
      * How far in front of the eyes the lens sits, in blocks.
@@ -80,8 +80,8 @@ public final class ScopeGlintRenderer {
      */
     private static final double LENS_OFFSET = 0.45D;
 
-    /** Never larger than this in world units, so it cannot swallow a face up close. */
-    private static final float MAX_WORLD_SIZE = 1.1F;
+    /** Prevent the distant glint from growing into a large sprite. */
+    private static final float MAX_WORLD_SIZE = 0.55F;
 
     /**
      * Whether Timeless Ammunition is here at all.
@@ -156,14 +156,11 @@ public final class ScopeGlintRenderer {
         }
         Vec3 toViewer = eye.subtract(lens).normalize();
         double facing = other.getViewVector(partialTick).dot(toViewer);
-        if (facing <= 0.0D) {
-            // Pointed away: the objective lens is not showing at all.
+        if (facing <= 0.65D) {
             return 0.0F;
         }
-        // Squared so the glint is faint across the wide arc and unmistakable
-        // down the barrel, without ever being absent from the arc.
-        float aim = (float) (facing * facing);
-        return (0.28F + 0.72F * aim) * ScopeGlintPolicy.aimingProgress(other, partialTick);
+        float alignment = (float) ((facing - 0.65D) / 0.35D);
+        return 0.45F * alignment * alignment * ScopeGlintPolicy.aimingProgress(other, partialTick);
     }
 
     /**
@@ -258,7 +255,7 @@ public final class ScopeGlintRenderer {
     private static void corner(VertexConsumer vertices, Matrix4f matrix, float x, float y,
                                float u, float v, int alpha) {
         vertices.addVertex(matrix, x, y, 0.0F)
-                .setColor(255, 255, 255, alpha)
+                .setColor(210, 225, 240, alpha)
                 .setUv(u, v)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(0xF000F0)

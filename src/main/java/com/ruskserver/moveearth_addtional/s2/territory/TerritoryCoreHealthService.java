@@ -3,7 +3,7 @@ package com.ruskserver.moveearth_addtional.s2.territory;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.ServerSchedule;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
-import com.ruskserver.moveearth_addtional.network.S2C_TerritoryCoreHealthPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryCoreHealthPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService;

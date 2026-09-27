@@ -28,8 +28,9 @@ public final class NationNotificationService {
         for (UUID nationId : new LinkedHashSet<>(nationIds)) {
             NationSavedData.Nation nation = nations.nation(nationId).orElse(null);
             if (nation == null) continue;
-            NationNotificationSavedData.Settings settings = notifications.settings(nationId);
-            if (settings.inGame() && inGameBody != null) {
+            NotificationPreference preference = notifications.preference(nationId, NotificationCategory.of(type));
+            if (notifications.settings(nationId).inGame()
+                    && preference.inGame() == NotificationPreference.InGameMode.IMMEDIATE && inGameBody != null) {
                 for (UUID memberId : nation.members().keySet()) {
                     ServerPlayer player = server.getPlayerList().getPlayer(memberId);
                     if (player != null) player.sendSystemMessage(MoveEarthMessage.warning(inGameBody));

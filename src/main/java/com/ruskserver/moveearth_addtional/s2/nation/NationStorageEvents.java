@@ -36,7 +36,8 @@ public final class NationStorageEvents {
     public static final TagKey<EntityType<?>> STORAGE_ENTITIES = TagKey.create(Registries.ENTITY_TYPE,
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "nation_storage_entity_types"));
     private static final Map<UUID, Long> LAST_NOTICE = new HashMap<>();
-    private static final Map<UUID, Boolean> OPEN_ENEMY_STORAGE = new HashMap<>();
+    /** Storage position each player opened under loot or vehicle rights; re-checked while open. */
+    private static final Map<UUID, BlockPos> OPEN_ENEMY_STORAGE = new HashMap<>();
 
     private NationStorageEvents() { }
 
@@ -46,7 +47,8 @@ public final class NationStorageEvents {
         if (!event.getLevel().getBlockState(event.getPos()).is(STORAGE_BLOCKS)
                 && !event.getItemStack().is(STORAGE_ITEMS)) return;
         if (canUse(player, event.getPos())) {
-            if (!canPlace(player, event.getPos())) OPEN_ENEMY_STORAGE.put(player.getUUID(), true);
+            if (!canPlace(player, event.getPos())) OPEN_ENEMY_STORAGE.put(player.getUUID(), event.getPos().immutable());
+            else OPEN_ENEMY_STORAGE.remove(player.getUUID());
             return;
         }
         event.setCanceled(true);
@@ -138,8 +140,12 @@ public final class NationStorageEvents {
                 continue;
             }
             if (id != null && NationStoragePolicy.isRestrictedMenuId(id.getNamespace(), id.getPath())) {
-                boolean enemySession = OPEN_ENEMY_STORAGE.containsKey(player.getUUID());
-                if (!stillMember || enemySession && !canUse(player, player.blockPosition())) {
+                BlockPos enemyStorage = OPEN_ENEMY_STORAGE.get(player.getUUID());
+                // Enemy sessions are judged at the storage itself, so the menu closes when the loot
+                // window ends even for a looter standing in their own land, and nation-less
+                // individual attackers keep the access their grant gives them.
+                boolean close = enemyStorage != null ? !canUse(player, enemyStorage) : !stillMember;
+                if (close) {
                     player.closeContainer();
                     OPEN_ENEMY_STORAGE.remove(player.getUUID());
                     notify(player);
@@ -153,6 +159,11 @@ public final class NationStorageEvents {
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
         UUID explicitOwner = NationStorageOwnershipSavedData.get(player.server)
                 .owner(player.level().dimension().location(), pos);
+        // A record left by a nation that no longer exists protects nothing; treating it as an
+        // owner would lock the storage for everyone, including its former members.
+        if (explicitOwner != null && NationSavedData.get(player.server).nation(explicitOwner).isEmpty()) {
+            explicitOwner = null;
+        }
         if (explicitOwner != null) {
             var loot = com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.access(player, pos);
             if (explicitOwner.equals(nationId) && (canPlace(player, pos)
@@ -168,16 +179,40 @@ public final class NationStorageEvents {
                 .canLoot(player, player.serverLevel(), pos);
     }
 
-    public static boolean automationRestricted(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
+    /**
+     * Whether a machine at {@code machine} (hopper, funnel, chute, mechanical arm) may not take
+     * items out of the storage at {@code storage}.
+     *
+     * <p>Inside a nation's land or a siege boundary, machines may only move items out of storage
+     * owned by the nation whose land the machine itself stands on. That stops extraction from
+     * across a border and an occupier's hoppers under chests the defender still owns. Storage in
+     * unclaimed land and storage on vehicles keep their previous rules.
+     */
+    public static boolean automationRestricted(net.minecraft.server.level.ServerLevel level,
+                                               BlockPos storage, BlockPos machine) {
+        net.minecraft.server.MinecraftServer server = level.getServer();
+        ResourceLocation dimension = level.dimension().location();
         if (com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.isLootRestrictedPosition(
-                level.getServer(), level.dimension().location(), pos)) return true;
+                server, dimension, storage)) return true;
         try {
             var vehicle = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
-                    .at(level, pos).orElse(null);
-            return vehicle != null && vehicle.vehicle().health() <= 0;
-        } catch (RuntimeException | LinkageError ignored) {
-            return false;
+                    .at(level, storage).orElse(null);
+            if (vehicle != null) return vehicle.vehicle().health() <= 0;
+        } catch (RuntimeException | LinkageError ignored) { }
+        UUID landOwner = com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService
+                .formerOwnerAt(server, dimension, storage);
+        if (landOwner == null) return false;
+        UUID owner = NationStorageOwnershipSavedData.get(server).owner(dimension, storage);
+        if (owner == null || NationSavedData.get(server).nation(owner).isEmpty()) owner = landOwner;
+        UUID machineSide = com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData.get(server)
+                .controllingNation(server, dimension, machine).orElse(null);
+        if (machineSide == null) {
+            try {
+                machineSide = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
+                        .at(level, machine).map(context -> context.vehicle().nationId()).orElse(null);
+            } catch (RuntimeException | LinkageError ignored) { }
         }
+        return !owner.equals(machineSide);
     }
 
     private static boolean canPlace(ServerPlayer player, BlockPos pos) {

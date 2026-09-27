@@ -3,7 +3,7 @@
   "category": "misc",
   "key": {
     "L": { "tag": "c:ingots/lead" },
-    "S": { "tag": "c:ingots/steel" },
+    "S": { "item": "mekanism:block_steel" },
     "T": { "item": "mekanism:basic_chemical_tank" }
   },
   "pattern": ["LSL", "LTL", "LSL"],

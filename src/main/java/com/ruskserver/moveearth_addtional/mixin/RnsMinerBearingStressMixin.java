@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.mixin;
 
 import com.bmaster.createrns.content.deposit.mining.IMinerHolderBE;
 import com.ruskserver.moveearth_addtional.compat.rns.RnsMinerStress;
+import com.ruskserver.moveearth_addtional.mixin.create.KineticStressAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 

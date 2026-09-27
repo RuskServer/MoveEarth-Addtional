@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.C2S_RequestTerritoryMapPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_TerritoryMapPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_RequestTerritoryMapPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryMapPacket;
 import net.minecraft.Util;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.PacketDistributor;

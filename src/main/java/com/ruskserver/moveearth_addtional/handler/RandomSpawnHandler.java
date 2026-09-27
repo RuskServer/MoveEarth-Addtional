@@ -343,7 +343,7 @@ public final class RandomSpawnHandler {
             return;
         }
         if (SiegeSavedData.get(player.server).isNationLocked(nationId)) {
-            player.sendSystemMessage(Component.literal("選択した国家がSiege中のため、国家周辺へは出現できません。"));
+            player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning("選択した国家がSiege中のため、国家周辺へは出現できません。"));
             beginInitialRandomSpawn(player);
             return;
         }

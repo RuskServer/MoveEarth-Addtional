@@ -2,9 +2,9 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_SiegeActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestS2HubPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_SiegeActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.siege.PeaceTermsPolicy;
 import net.minecraft.client.gui.GuiGraphics;

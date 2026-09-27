@@ -2,8 +2,8 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
-import com.ruskserver.moveearth_addtional.network.C2S_EventScreenActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_EventScreenPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_EventScreenActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_EventScreenPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;

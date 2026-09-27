@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.reinforcement;
 
-import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementDeltaPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementDeltaPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureRecheckManager;
@@ -37,6 +37,10 @@ public final class ReinforcementService {
     private static final Map<UUID, ScanSignature> LAST_SCANS = new HashMap<>();
     private static final Set<UUID> PENDING_SCANS = new HashSet<>();
     private static final Map<UUID, PendingDelta> PENDING_DELTAS = new HashMap<>();
+    /** Client-requested scans walk every reinforced block in range, so each player gets one per interval. */
+    private static final int REQUEST_INTERVAL_TICKS = 10;
+    private static final Map<UUID, Integer> LAST_REQUESTED_SCAN = new HashMap<>();
+    private static final Map<UUID, Integer> DEFERRED_REQUESTS = new HashMap<>();
 
     private ReinforcementService() {
     }
@@ -212,10 +216,7 @@ public final class ReinforcementService {
         }
         List<S2C_ReinforcementSnapshotPacket.Entry> entries = allowed
                 ? visible.values().stream()
-                .filter(value -> territories.allowsReinforcement(player.server, nationId,
-                        player.level().dimension().location(), value.pos())
-                        || SableVehicleTopology.at(player.serverLevel(), value.pos())
-                        .map(context -> nationId.equals(context.vehicle().nationId())).orElse(false))
+                .filter(value -> reinforceableFor(player, territories, nationId, value.pos()))
                 .sorted(java.util.Comparator.comparingDouble(value -> SableVehicleTopology.distanceSquared(
                         player.serverLevel(), player, value.pos())))
                 .limit(8192)
@@ -239,16 +240,51 @@ public final class ReinforcementService {
         PacketDistributor.sendToPlayer(player, new S2C_ReinforcementSnapshotPacket(dimension, allowed, entries));
     }
 
+    /** Whether {@code player} may see and manage reinforcement on {@code pos}; matches the scan filter. */
+    public static boolean reinforceableBy(ServerPlayer player, BlockPos pos) {
+        NationSavedData nations = NationSavedData.get(player.server);
+        UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
+        return nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)
+                && reinforceableFor(player, TerritorySavedData.get(player.server), nationId, pos);
+    }
+
+    private static boolean reinforceableFor(ServerPlayer player, TerritorySavedData territories,
+                                            UUID nationId, BlockPos pos) {
+        return territories.allowsReinforcement(player.server, nationId, player.level().dimension().location(), pos)
+                || SableVehicleTopology.at(player.serverLevel(), pos)
+                .map(context -> nationId.equals(context.vehicle().nationId())).orElse(false);
+    }
+
+    /**
+     * Entry point for scans the client asks for. A request inside the interval is not dropped: the
+     * latest one is deferred and served by {@link #flushPendingScans} once the interval has passed.
+     */
+    public static void requestScan(ServerPlayer player, int requestedRadius) {
+        int now = player.server.getTickCount();
+        Integer last = LAST_REQUESTED_SCAN.get(player.getUUID());
+        if (last != null && now - last < REQUEST_INTERVAL_TICKS) {
+            DEFERRED_REQUESTS.put(player.getUUID(), requestedRadius);
+            return;
+        }
+        LAST_REQUESTED_SCAN.put(player.getUUID(), now);
+        DEFERRED_REQUESTS.remove(player.getUUID());
+        sendScan(player, requestedRadius);
+    }
+
     public static void clearScanCache(UUID playerId) {
         LAST_SCANS.remove(playerId);
         PENDING_SCANS.remove(playerId);
         PENDING_DELTAS.remove(playerId);
+        LAST_REQUESTED_SCAN.remove(playerId);
+        DEFERRED_REQUESTS.remove(playerId);
     }
 
     public static void clearScanCache() {
         LAST_SCANS.clear();
         PENDING_SCANS.clear();
         PENDING_DELTAS.clear();
+        LAST_REQUESTED_SCAN.clear();
+        DEFERRED_REQUESTS.clear();
     }
 
     private static long signature(List<S2C_ReinforcementSnapshotPacket.Entry> entries) {
@@ -349,6 +385,16 @@ public final class ReinforcementService {
 
     /** Coalesces all block changes from the same server tick into one scan per nearby player. */
     public static void flushPendingScans(net.minecraft.server.MinecraftServer server) {
+        if (!DEFERRED_REQUESTS.isEmpty()) {
+            int now = server.getTickCount();
+            for (Map.Entry<UUID, Integer> request : Map.copyOf(DEFERRED_REQUESTS).entrySet()) {
+                Integer last = LAST_REQUESTED_SCAN.get(request.getKey());
+                if (last != null && now - last < REQUEST_INTERVAL_TICKS) continue;
+                DEFERRED_REQUESTS.remove(request.getKey());
+                ServerPlayer player = server.getPlayerList().getPlayer(request.getKey());
+                if (player != null) requestScan(player, request.getValue());
+            }
+        }
         if (!PENDING_SCANS.isEmpty()) {
             List<UUID> pending = List.copyOf(PENDING_SCANS);
             PENDING_SCANS.clear();

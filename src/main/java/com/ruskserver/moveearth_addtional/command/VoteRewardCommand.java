@@ -44,6 +44,8 @@ public final class VoteRewardCommand {
 
     private static int grant(CommandSourceStack source, ServerPlayer player) {
         Reward reward = createRandomReward(player);
+        boolean deferred = reward.currency() == 0
+                && com.ruskserver.moveearth_addtional.pvp.PvpMatchManager.INSTANCE.isActive(player);
         if (reward.currency() > 0) {
             var result = EconomyLedgerSavedData.get(source.getServer()).transfer(java.util.UUID.randomUUID(), null,
                     EconomyLedgerSavedData.Account.player(player.getUUID()), reward.currency(), "vote_reward");
@@ -53,10 +55,18 @@ public final class VoteRewardCommand {
             }
         } else {
             ItemStack stack = reward.stack();
-            if (!player.getInventory().add(stack)) player.drop(stack, false);
+            if (deferred) {
+                if (!EconomyLedgerSavedData.get(source.getServer()).awardEvent(java.util.UUID.randomUUID(),
+                        player.getUUID(), 0, java.util.List.of(stack), System.currentTimeMillis())) {
+                    source.sendFailure(MoveEarthMessage.error("投票報酬の保留に失敗しました。"));
+                    return 0;
+                }
+                player.sendSystemMessage(MoveEarthMessage.info("投票報酬を保留しました。試合終了後に /event claim で受け取れます。"));
+            } else if (!player.getInventory().add(stack)) player.drop(stack, false);
         }
 
-        player.sendSystemMessage(MoveEarthMessage.success("投票報酬を受け取りました: " + reward.description()));
+        player.sendSystemMessage(MoveEarthMessage.success(
+                (deferred ? "投票報酬を受取待ちにしました: " : "投票報酬を受け取りました: ") + reward.description()));
         Component broadcast = MoveEarthMessage.info(Component.literal("【投票】")
                 .withStyle(ChatFormatting.GOLD)
                 .append(Component.literal(player.getGameProfile().getName())

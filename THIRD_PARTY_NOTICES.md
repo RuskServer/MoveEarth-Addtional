@@ -86,10 +86,54 @@ dedicated-server Discord Bot integration. Voice/Opus support is excluded.
 - Source: https://github.com/discord-jda/JDA
 - License: Apache License, Version 2.0
 
-The generated nested runtime JAR retains the upstream license and notice files
-supplied by JDA and its runtime dependencies. Runtime dependency packages are
-relocated into a MoveEarth-private namespace to prevent module conflicts with
-libraries supplied by NeoForge or other mods.
+The dedicated-server JAR contains an isolated nested JDA runtime. Its license
+bundle is generated at `META-INF/licenses/discord-runtime/<group>/<module>/<version>/`
+inside that nested JAR. Each dependency gets an `ABOUT.txt`, its applicable
+license text, and any upstream legal files found in its original JAR under
+`upstream/`. This namespace prevents identically named `LICENSE` and `NOTICE`
+files from different dependencies overwriting each other. An unreviewed new
+runtime dependency fails the build until its license is added to the inventory.
+Runtime packages are relocated into a MoveEarth-private namespace to prevent
+module conflicts with libraries supplied by NeoForge or other mods.
+
+The current runtime inventory is JDA, Trove4j (`LGPL-2.1`), Jackson Core /
+Databind / Annotations, Tink, JSR-305, Gson, Error Prone Annotations,
+Protocol Buffers Java (`BSD-3-Clause`), nv-websocket-client, OkHttp, Kotlin
+stdlib, JetBrains Annotations, Okio, and Apache Commons Collections 4. The
+components other than Trove4j and Protocol Buffers use Apache-2.0 according
+to their published Maven metadata. Their exact versions are recorded in the
+generated `ABOUT.txt` files. The player JAR does not contain this JDA runtime.
+
+Trove4j's original source for the bundled 3.1.0 version is available as the
+[Maven Central source artifact](https://repo.maven.apache.org/maven2/net/sf/trove4j/core/3.1.0/core-3.1.0-sources.jar).
+The bytecode package relocation applied to it is specified in this project's
+`build.gradle` (`relocateDiscordBotRuntime`); the LGPL-2.1 text is included
+in both release JARs and in Trove4j's directory in the nested server runtime.
+Protocol Buffers' BSD-3-Clause notice is copied from the
+[upstream v28.2 license](https://github.com/protocolbuffers/protobuf/blob/v28.2/LICENSE).
+
+## Integration-only mods
+
+The following mods are separately supplied by the target modpack. MoveEarth
+references their APIs or hooks their runtime behavior but does **not** copy
+their JARs, source code, models, textures, or sounds into its release JARs.
+Their licenses apply to their own distributions; MoveEarth's GPL does not
+relicense them.
+
+| Mod | Upstream license | Source / license |
+| --- | --- | --- |
+| Create | MIT for code; upstream assets are All Rights Reserved | https://github.com/Creators-of-Create/Create/blob/mc1.21.1/dev/LICENSE.md |
+| Create Aeronautics / Simulated | MIT for code; upstream assets are All Rights Reserved | https://github.com/Creators-of-Aeronautics/Simulated-Project/blob/main/LICENSE.md |
+| Sable | PolyForm Shield License 1.0.0; **not MIT or an open-source license** | https://github.com/ryanhcode/sable/blob/main/LICENSE.md |
+| Sable Companion | MIT | https://github.com/ryanhcode/sable-companion/blob/main/LICENSE |
+| Create Big Cannons | MIT for source code and localization; CC BY-NC-SA 4.0 for handmade textures and models | https://github.com/Cannoneers-of-Create/CreateBigCannons/blob/create-v6-1.21.1/LICENSE.md |
+| Mekanism / Mekanism Generators | MIT | https://github.com/mekanism/Mekanism/blob/1.21.x/LICENSE |
+| TaCZ | GPL-3.0 for code; CC BY-NC-ND 4.0 for assets | https://modrinth.com/mod/timeless-and-classics-zero |
+| PlayerRevive | LGPL-3.0-only (as declared by the supplied NeoForge JAR) | https://modrinth.com/mod/playerrevive |
+
+Sable's PolyForm Shield terms are especially distinct from Sable Companion's
+MIT terms. Integration with Sable is not permission to redistribute Sable or
+to treat its code as MIT-licensed.
 
 ## Cold Sweat API
 
@@ -126,7 +170,7 @@ supplied by the target modpack; no Ponder code or assets are bundled here.
 
 ## Third-party dependencies
 
-Minecraft, NeoForge, TaCZ, FMIC, CIBR, Create and other third-party libraries,
+Minecraft, NeoForge, FMIC, CIBR and other third-party libraries,
 mods, and data packs retain their respective licenses. They are not
 relicensed by this project. Bundling a separately licensed component does not
 change that component's license or attribution requirements.

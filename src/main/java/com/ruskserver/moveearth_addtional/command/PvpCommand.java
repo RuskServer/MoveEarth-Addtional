@@ -5,7 +5,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
-import com.ruskserver.moveearth_addtional.network.S2C_OpenPvpScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenPvpScreenPacket;
 import com.ruskserver.moveearth_addtional.pvp.*;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -175,14 +175,14 @@ public final class PvpCommand {
 
     private static int openLoadoutEditor(ServerPlayer player) {
         var data = PvpLoadoutSavedData.get(player.server);
-        PacketDistributor.sendToPlayer(player, new com.ruskserver.moveearth_addtional.network.S2C_OpenLoadoutEditorPacket(data.getAll()));
+        PacketDistributor.sendToPlayer(player, new com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenLoadoutEditorPacket(data.getAll()));
         return 1;
     }
 
     private static int resetLoadouts(CommandSourceStack source) {
         var data = PvpLoadoutSavedData.get(source.getServer());
         data.resetToDefaults();
-        PacketDistributor.sendToAllPlayers(new com.ruskserver.moveearth_addtional.network.S2C_SyncLoadoutsPacket(data.getAll()));
+        PacketDistributor.sendToAllPlayers(new com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncLoadoutsPacket(data.getAll()));
         source.sendSuccess(() -> Component.literal("§aPvPロードアウトを初期プリセットにリセットしました。"), true);
         return 1;
     }
@@ -270,13 +270,13 @@ public final class PvpCommand {
 
     private static int setMapLocation(ServerPlayer player, String id, String target) {
         if (!player.level().dimension().equals(PvpMatchManager.ARENA)) {
-            player.sendSystemMessage(Component.literal("§cPvPアリーナディメンション内で実行してください。"));
+            player.sendSystemMessage(MoveEarthMessage.error("PvPアリーナディメンション内で実行してください。"));
             return 0;
         }
         var data = PvpMapSavedData.get(player.server);
         PvpMapDefinition map = data.getById(id).orElse(null);
         if (map == null) {
-            player.sendSystemMessage(Component.literal("§cマップID '" + id + "' が見つかりません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("マップID '" + id + "' が見つかりません。"));
             return 0;
         }
         switch (target) {
@@ -286,26 +286,26 @@ public final class PvpCommand {
             case "hill2" -> map = map.withHillMax(player.blockPosition());
         }
         data.addOrUpdate(map);
-        player.sendSystemMessage(Component.literal("§aマップ [" + map.displayName() + "] の " + target + " 地点を保存しました: " + player.blockPosition().toShortString()));
+        player.sendSystemMessage(MoveEarthMessage.success("マップ [" + map.displayName() + "] の " + target + " 地点を保存しました: " + player.blockPosition().toShortString()));
         return 1;
     }
 
     private static int addMapSpawn(ServerPlayer player, String id, boolean isRed) {
         if (!player.level().dimension().equals(PvpMatchManager.ARENA)) {
-            player.sendSystemMessage(Component.literal("§cPvPアリーナディメンション内で実行してください。"));
+            player.sendSystemMessage(MoveEarthMessage.error("PvPアリーナディメンション内で実行してください。"));
             return 0;
         }
         var data = PvpMapSavedData.get(player.server);
         PvpMapDefinition map = data.getById(id).orElse(null);
         if (map == null) {
-            player.sendSystemMessage(Component.literal("§cマップID '" + id + "' が見つかりません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("マップID '" + id + "' が見つかりません。"));
             return 0;
         }
         map = isRed ? map.withAddedRedSpawn(player.blockPosition()) : map.withAddedBlueSpawn(player.blockPosition());
         data.addOrUpdate(map);
         int total = isRed ? map.allRedSpawns().size() : map.allBlueSpawns().size();
         String teamName = isRed ? "§cRED" : "§9BLUE";
-        player.sendSystemMessage(Component.literal("§aマップ [" + map.displayName() + "] に " + teamName + " 追加スポーン地点を登録しました (計 " + total + "箇所): " + player.blockPosition().toShortString()));
+        player.sendSystemMessage(MoveEarthMessage.success("マップ [" + map.displayName() + "] に " + teamName + " 追加スポーン地点を登録しました (計 " + total + "箇所): " + player.blockPosition().toShortString()));
         return 1;
     }
 
@@ -343,12 +343,12 @@ public final class PvpCommand {
         var data = PvpMapSavedData.get(player.server);
         PvpMapDefinition map = data.getById(id).orElse(null);
         if (map == null) {
-            player.sendSystemMessage(Component.literal("§cマップID '" + id + "' が見つかりません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("マップID '" + id + "' が見つかりません。"));
             return 0;
         }
         var pos = map.redSpawn();
         player.teleportTo(arena, pos.getX() + .5, pos.getY(), pos.getZ() + .5, player.getYRot(), player.getXRot());
-        player.sendSystemMessage(Component.literal("§aマップ [" + map.displayName() + "] のREDスポーン地点へテレポートしました。"));
+        player.sendSystemMessage(MoveEarthMessage.success("マップ [" + map.displayName() + "] のREDスポーン地点へテレポートしました。"));
         return 1;
     }
 

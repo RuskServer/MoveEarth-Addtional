@@ -24,6 +24,21 @@ public final class TerritoryCoreBlockEntity extends BlockEntity {
     private TerritorySavedData.CoreType coreType = TerritorySavedData.CoreType.OUTPOST;
     private TerritorySavedData.CoreState coreState = TerritorySavedData.CoreState.CONFIGURING;
 
+    /**
+     * The saved record is authoritative. A fall settled or a core changed while this chunk was
+     * unloaded could not reach the block, and ownership checks read the block, so catch up here.
+     */
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (!(level instanceof net.minecraft.server.level.ServerLevel serverLevel)) return;
+        TerritorySavedData.get(serverLevel.getServer())
+                .core(serverLevel.dimension().location(), worldPosition)
+                .filter(record -> !record.nationId().equals(nationId) || !record.id().equals(coreId)
+                        || record.type() != coreType || record.state() != coreState)
+                .ifPresent(this::bind);
+    }
+
     public void bind(TerritorySavedData.CoreRecord record) {
         this.coreId = record.id();
         this.nationId = record.nationId();

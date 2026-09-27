@@ -33,7 +33,7 @@ public final class SiegeLootService {
         long now = OpenTimeService.now(server);
         SiegeLootSavedData loot = SiegeLootSavedData.get(server);
         loot.purgeExpired(now);
-        for (SiegeLootSavedData.LootGrant grant : loot.grants()) {
+        for (SiegeLootSavedData.LootGrant grant : newestFirst(loot)) {
             boolean inside = inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius());
             if (!inside) continue;
             boolean attacker = grant.individualAttacker() ? grant.attackerId().equals(player.getUUID())
@@ -48,7 +48,7 @@ public final class SiegeLootService {
     public static UUID formerOwnerAt(MinecraftServer server, ResourceLocation dimension, BlockPos pos) {
         for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords())
             if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius())) return fallen.defenderNation();
-        for (SiegeLootSavedData.LootGrant grant : SiegeLootSavedData.get(server).grants())
+        for (SiegeLootSavedData.LootGrant grant : newestFirst(SiegeLootSavedData.get(server)))
             if (inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius())) return grant.defenderNation();
         return TerritorySavedData.get(server).controllingNation(server, dimension, pos).orElse(null);
     }
@@ -57,16 +57,41 @@ public final class SiegeLootService {
         for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords())
             if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius()))
                 return new PositionAccess(fallen.defenderNation(), fallen.siegeId());
-        for (SiegeLootSavedData.LootGrant grant : SiegeLootSavedData.get(server).grants())
+        for (SiegeLootSavedData.LootGrant grant : newestFirst(SiegeLootSavedData.get(server)))
             if (inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius()))
                 return new PositionAccess(grant.defenderNation(), grant.siegeId());
         return new PositionAccess(TerritorySavedData.get(server)
                 .controllingNation(server, dimension, pos).orElse(null), null);
     }
 
+    /**
+     * Whether a loot window is open over this position right now. Expired grants still mark who
+     * owned the area (see {@link #formerOwnerAt}), but they no longer stop automation there;
+     * cross-nation extraction after the window is refused by the storage ownership rule instead.
+     */
     public static boolean isLootRestrictedPosition(MinecraftServer server, ResourceLocation dimension, BlockPos pos) {
-        if (accessForPosition(server, dimension, pos).siegeId() != null) return true;
+        for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords())
+            if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius())) return true;
+        long now = OpenTimeService.now(server);
+        for (SiegeLootSavedData.LootGrant grant : newestFirst(SiegeLootSavedData.get(server)))
+            if (inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius()))
+                return now < grant.expiresOpenTick();
         return false;
+    }
+
+    /** Whether an attacker's finalized loot window against this nation is still open. */
+    public static boolean lootWindowOpenAgainst(MinecraftServer server, UUID nationId) {
+        long now = OpenTimeService.now(server);
+        for (SiegeLootSavedData.LootGrant grant : SiegeLootSavedData.get(server).grants())
+            if (grant.defenderNation().equals(nationId) && now < grant.expiresOpenTick()) return true;
+        return false;
+    }
+
+    /** A later fall of the same area supersedes the earlier grant, expired or not. */
+    private static java.util.List<SiegeLootSavedData.LootGrant> newestFirst(SiegeLootSavedData loot) {
+        java.util.List<SiegeLootSavedData.LootGrant> grants = new java.util.ArrayList<>(loot.grants());
+        java.util.Collections.reverse(grants);
+        return grants;
     }
 
     private static boolean inside(ResourceLocation actualDimension, BlockPos pos,

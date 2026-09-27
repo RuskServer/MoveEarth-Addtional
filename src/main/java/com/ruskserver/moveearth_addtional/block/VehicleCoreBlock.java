@@ -7,7 +7,7 @@ import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
-import com.ruskserver.moveearth_addtional.network.S2C_OpenVehicleCoreScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.vehicle.S2C_OpenVehicleCoreScreenPacket;
 import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;

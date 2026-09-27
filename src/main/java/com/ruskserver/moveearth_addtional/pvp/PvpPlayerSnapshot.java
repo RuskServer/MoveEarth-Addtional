@@ -140,9 +140,11 @@ final class PvpPlayerSnapshot {
         return new PvpPlayerSnapshot(tag, registries);
     }
 
-    void enterIsolatedState(ServerPlayer player) {
-        // Only clear when capture succeeded; leaking equipment is safer than destroying uncaptured items.
-        if (curiosInventory != null) PvpCuriosInventoryCompat.clear(player);
+    boolean enterIsolatedState(ServerPlayer player) {
+        if (PvpCuriosInventoryCompat.isAvailable() && curiosInventory == null) return false;
+        if (PvpCuriosInventoryCompat.clear(player)) return true;
+        PvpCuriosInventoryCompat.restore(player, curiosInventory);
+        return false;
     }
 
     void restoreState(ServerPlayer player) {

@@ -184,6 +184,10 @@ public class AirshipRaiderEntity extends Zombie {
         return raidDifficulty;
     }
 
+    public float getShotSpreadMultiplier() {
+        return 1.0F;
+    }
+
     public int getRaidId() {
         return raidId;
     }

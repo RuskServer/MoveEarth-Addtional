@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementSnapshotPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_ReinforcementDeltaPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementDeltaPacket;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementGreedyMesher;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;

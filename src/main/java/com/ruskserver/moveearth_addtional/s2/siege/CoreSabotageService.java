@@ -110,10 +110,6 @@ public final class CoreSabotageService {
                 if (defender != null && friendly(defender, core) && capable(defender)
                         && defender.serverLevel() == level && nearAndLooking(defender, charge.pos, charge.defenderStart)) {
                     charge.defuseTicks++;
-                    defender.displayClientMessage(Component.translatable(
-                            "message.moveearth_addtional.sabotage.defuse_progress",
-                            CoreSabotageDisplayPolicy.remainingSeconds(charge.defuseTicks,
-                                    CoreSabotageDisplayPolicy.DEFUSE_TICKS)), true);
                     if (charge.defuseTicks >= CoreSabotageDisplayPolicy.DEFUSE_TICKS) {
                         com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(defender,
                                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.CORE_SABOTAGE_COMPLETED);
@@ -174,6 +170,34 @@ public final class CoreSabotageService {
     public static void stop(ServerStoppedEvent event) {
         CHARGES.values().forEach(charge -> charge.bar.removeAllPlayers());
         CHARGES.clear();
+    }
+
+    /** Crosshair guidance for {@code player} looking at {@code target}; NONE unless it is a territory core. */
+    public static CoreSabotagePrompt prompt(ServerPlayer player, BlockPos target) {
+        if (!S2TerritoryConfig.coreSabotageEnabled() || target == null) return CoreSabotagePrompt.NONE;
+        var core = TerritorySavedData.get(player.server).core(player.serverLevel().dimension().location(), target)
+                .orElse(null);
+        if (core == null) return CoreSabotagePrompt.NONE;
+        Charge existing = CHARGES.get(core.id());
+        CoreSabotagePrompt.Charge charge = existing == null ? null : new CoreSabotagePrompt.Charge(
+                existing.armed, existing.ticks, existing.attacker.equals(player.getUUID()),
+                existing.defender != null, player.getUUID().equals(existing.defender), existing.defuseTicks);
+        boolean friendly = friendly(player, core);
+        var offhand = player.getOffhandItem();
+        return CoreSabotagePrompt.decide(new CoreSabotagePrompt.Viewer(friendly, capable(player),
+                        player.getMainHandItem().is(ModItems.WELDING_TOOL.get()),
+                        player.distanceToSqr(core.pos().getCenter()) <= 16D,
+                        offhand.is(Items.TNT) ? offhand.getCount() : 0),
+                !friendly && open(player.serverLevel()) && validCore(player, core), charge);
+    }
+
+    /** Whether a charge is close enough that defenders without a welder still need guidance. */
+    public static boolean nearCharge(ServerPlayer player) {
+        for (Charge charge : CHARGES.values()) {
+            if (charge.dimension.equals(player.serverLevel().dimension())
+                    && player.distanceToSqr(charge.pos.getCenter()) <= 32 * 32) return true;
+        }
+        return false;
     }
 
     private static boolean open(ServerLevel level) {

@@ -15,4 +15,11 @@ final class BastionPolicy {
         boolean acceptedNation = controllingNation.get().equals(actorNation.get()) || allied;
         return !acceptedNation || !roleAccess;
     }
+
+    /** A machine has no player identity: it may not carry blocks into another nation's active Bastion. */
+    static boolean blocksMachineMovement(Optional<UUID> actuatorNation, Optional<UUID> targetNation,
+                                         boolean bastionEnabled) {
+        return bastionEnabled && targetNation.isPresent()
+                && !targetNation.equals(actuatorNation);
+    }
 }

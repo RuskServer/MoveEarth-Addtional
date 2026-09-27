@@ -6,6 +6,7 @@ import java.util.Set;
 public final class MekanismRuntimeRestrictionPolicy {
     private static final String CORE = "mekanism";
     private static final String GENERATORS = "mekanismgenerators";
+    private static final String TOOLS = "mekanismtools";
 
     private static final Set<String> CORE_BLOCKS = Set.of(
             "digital_miner",
@@ -20,7 +21,6 @@ public final class MekanismRuntimeRestrictionPolicy {
             "qio_redstone_adapter",
             "personal_barrel",
             "personal_chest",
-            "energized_smelter",
             "crusher",
             "combiner",
             "purification_chamber",
@@ -47,10 +47,6 @@ public final class MekanismRuntimeRestrictionPolicy {
             "robit",
             "atomic_disassembler",
             "meka_tool",
-            "mekasuit_helmet",
-            "mekasuit_bodyarmor",
-            "mekasuit_pants",
-            "mekasuit_boots",
             "jetpack",
             "jetpack_armored",
             "flamethrower",
@@ -59,12 +55,16 @@ public final class MekanismRuntimeRestrictionPolicy {
             "module_geothermal_generator_unit",
             "module_solar_recharging_unit",
             "module_jetpack_unit",
-            "module_teleportation_unit"
+            "module_teleportation_unit",
+            "module_gravitational_modulating_unit",
+            "module_elytra_unit",
+            "module_hydraulic_propulsion_unit",
+            "module_locomotive_boosting_unit",
+            "module_vision_enhancement_unit"
     );
 
     private static final Set<String> GENERATOR_BLOCKS = Set.of(
             "heat_generator",
-            "solar_generator",
             "advanced_solar_generator",
             "wind_generator",
             "bio_generator",
@@ -97,10 +97,18 @@ public final class MekanismRuntimeRestrictionPolicy {
                 || isTiered(path, "_energy_cube")
                 || isTiered(path, "_bin")
                 || isTiered(path, "_logistical_transporter")
+                || "diversion_transporter".equals(path)
+                || "restrictive_transporter".equals(path)
+                || isTiered(path, "_mechanical_pipe")
+                || isTiered(path, "_thermodynamic_conductor")
                 || isFactory(path);
     }
 
     public static boolean isRestrictedItem(String namespace, String path) {
+        if (TOOLS.equals(namespace)) {
+            // Refined obsidian gear out-armors the MekaSuit; see MekanismRecipePolicy.
+            return path.startsWith("refined_obsidian_");
+        }
         if (GENERATORS.equals(namespace)) {
             return GENERATOR_ITEMS.contains(path) || GENERATOR_BLOCKS.contains(path);
         }
@@ -121,8 +129,8 @@ public final class MekanismRuntimeRestrictionPolicy {
     }
 
     private static boolean isFactory(String path) {
-        return isTiered(path, "_smelting_factory")
-                || isTiered(path, "_enriching_factory")
+        // Smelting factories are allowed; see MekanismRecipePolicy.
+        return isTiered(path, "_enriching_factory")
                 || isTiered(path, "_crushing_factory")
                 || isTiered(path, "_compressing_factory")
                 || isTiered(path, "_combining_factory")

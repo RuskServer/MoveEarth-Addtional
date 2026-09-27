@@ -7,6 +7,9 @@ import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkCodeRegistry;
 import com.ruskserver.moveearth_addtional.s2.notification.DiscordLinkAccess;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NotificationCategory;
+import com.ruskserver.moveearth_addtional.s2.notification.NotificationPreference;
+import com.ruskserver.moveearth_addtional.s2.notification.NotificationPresentation;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.Permission;
@@ -16,6 +19,7 @@ import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.interaction.component.GenericComponentInteractionCreateEvent;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.minecraft.server.MinecraftServer;
@@ -25,6 +29,7 @@ import java.util.EnumSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 
@@ -38,6 +43,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
     private volatile MinecraftServer server;
     private volatile JDA jda;
     private int deliveryTicks;
+    private volatile BotState lifecycleState = BotState.DISABLED;
 
     private DiscordBotService() { }
 
@@ -48,15 +54,18 @@ public final class DiscordBotService implements DiscordLinkAccess {
     public synchronized void start(MinecraftServer minecraftServer) {
         stop();
         if (!DiscordBotConfig.enabled()) {
+            lifecycleState = BotState.DISABLED;
             Moveearth_addtional.LOGGER.info("[MoveEarth] Embedded Discord bot is disabled");
             return;
         }
         String token = DiscordBotConfig.botToken().trim();
         if (token.isEmpty()) {
+            lifecycleState = BotState.AUTHENTICATION_FAILED;
             Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord bot is enabled but botToken is empty");
             return;
         }
         server = minecraftServer;
+        lifecycleState = BotState.STARTING;
         try {
             jda = JDABuilder.createLight(token, Collections.<GatewayIntent>emptyList())
                     .setEnableShutdownHook(false)
@@ -67,6 +76,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
         } catch (RuntimeException exception) {
             server = null;
             jda = null;
+            lifecycleState = BotState.AUTHENTICATION_FAILED;
             Moveearth_addtional.LOGGER.error("[MoveEarth] Discord bot startup failed ({})",
                     exception.getClass().getSimpleName());
         }
@@ -84,6 +94,9 @@ public final class DiscordBotService implements DiscordLinkAccess {
             active.shutdownNow();
             Moveearth_addtional.LOGGER.info("[MoveEarth] Embedded Discord bot stopped");
         }
+        if (!DiscordBotConfig.enabled()) lifecycleState = BotState.DISABLED;
+        else if (DiscordBotConfig.botToken().trim().isEmpty()) lifecycleState = BotState.AUTHENTICATION_FAILED;
+        else lifecycleState = BotState.UNAVAILABLE;
     }
 
     public void tick(MinecraftServer minecraftServer) {
@@ -101,6 +114,43 @@ public final class DiscordBotService implements DiscordLinkAccess {
     public boolean isReady() {
         JDA active = jda;
         return active != null && active.getStatus() == JDA.Status.CONNECTED;
+    }
+
+    @Override public BotState state() { return isReady() ? BotState.READY : lifecycleState; }
+
+    @Override public String guildName(long guildId) {
+        JDA active = jda;
+        Guild guild = active == null ? null : active.getGuildById(guildId);
+        return guild == null ? "" : guild.getName();
+    }
+
+    @Override public String channelName(long guildId, long channelId) {
+        JDA active = jda;
+        Guild guild = active == null ? null : active.getGuildById(guildId);
+        GuildMessageChannel channel = guild == null ? null
+                : guild.getChannelById(GuildMessageChannel.class, channelId);
+        return channel == null ? "" : "#" + channel.getName();
+    }
+
+    @Override public String roleName(long guildId, long roleId) {
+        JDA active = jda;
+        Guild guild = active == null ? null : active.getGuildById(guildId);
+        Role role = guild == null ? null : guild.getRoleById(roleId);
+        return role == null ? "" : "@" + role.getName();
+    }
+
+    @Override public String inviteUrl() {
+        JDA active = jda;
+        if (active == null || active.getStatus() != JDA.Status.CONNECTED) return "";
+        return com.ruskserver.moveearth_addtional.s2.notification.DiscordInviteLink.url(
+                active.getSelfUser().getApplicationId());
+    }
+
+    @Override public synchronized boolean reconnect() {
+        MinecraftServer activeServer = server;
+        if (activeServer == null || !DiscordBotConfig.enabled()) return false;
+        start(activeServer);
+        return true;
     }
 
     public String createLinkCode(long guildId, long channelId, long discordUserId,
@@ -145,6 +195,68 @@ public final class DiscordBotService implements DiscordLinkAccess {
         }));
     }
 
+    void replySetup(SlashCommandInteractionEvent event) {
+        MinecraftServer activeServer = server;
+        if (activeServer == null || !isReady()) {
+            event.replyEmbeds(MoveEarthDiscordEmbeds.unavailable()).setEphemeral(true).queue();
+            return;
+        }
+        event.deferReply(true).queue(hook -> activeServer.execute(() -> {
+            NationNotificationSavedData data = NationNotificationSavedData.get(activeServer);
+            long guildId = event.getGuild().getIdLong();
+            long discordId = event.getUser().getIdLong();
+            UUID nationId = data.nationForGuild(guildId).orElse(null);
+            NationNotificationSavedData.Link link = nationId == null
+                    ? NationNotificationSavedData.Link.unlinked() : data.link(nationId);
+            hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.setup(
+                    data.minecraftForDiscord(discordId).isPresent(), nationId != null,
+                    channelName(guildId, link.channelId()), roleName(guildId, link.mentionRoleId())))
+                    .setComponents(DiscordCommandListener.setupComponents(event.getMember()
+                            .hasPermission(Permission.MANAGE_SERVER))).queue();
+        }));
+    }
+
+    void replyComponentUnlink(GenericComponentInteractionCreateEvent event, boolean account) {
+        MinecraftServer activeServer = server;
+        if (activeServer == null) {
+            event.replyEmbeds(MoveEarthDiscordEmbeds.unavailable()).setEphemeral(true).queue();
+            return;
+        }
+        if (account) {
+            long discordId = event.getUser().getIdLong();
+            event.deferReply(true).queue(hook -> activeServer.execute(() -> {
+                NationNotificationSavedData data = NationNotificationSavedData.get(activeServer);
+                UUID minecraft = data.minecraftForDiscord(discordId).orElse(null);
+                boolean success = minecraft != null && data.unlinkAccount(minecraft);
+                data.audit("account_unlink", null, minecraft, discordId, success,
+                        success ? "unlinked" : "not_linked");
+                hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation("アカウント連携を解除",
+                        success ? "Minecraftアカウントとの関連付けを解除しました。" : "関連付けはありません。",
+                        success)).setComponents(List.of()).queue();
+            }));
+        } else runAuthorizedComponent(event, "nation_unlink", (data, nationId, minecraftId) -> {
+            data.unlink(nationId);
+            return "Discordサーバーと国家の連携を解除しました。";
+        });
+    }
+
+    void replyComponentTarget(GenericComponentInteractionCreateEvent event,
+                              GuildMessageChannel target, Role role) {
+        runAuthorizedComponent(event, role == null ? "channel_update" : "mention_update",
+                (data, nationId, minecraftId) -> {
+                    NationNotificationSavedData.Link link = data.link(nationId);
+                    if (target != null) {
+                        if (!canEmbed(target.getGuild(), target)) throw new IllegalStateException(
+                                "通知先へ送信できません。Bot権限を確認してください。");
+                        data.updateDiscordTarget(nationId, target.getIdLong(), link.mentionRoleId());
+                        return "通知先を #" + target.getName() + " に変更しました。";
+                    }
+                    data.updateDiscordTarget(nationId, link.channelId(), role == null ? 0L : role.getIdLong());
+                    return role == null ? "Siegeメンションを解除しました。"
+                            : "Siegeメンションを @" + role.getName() + " に変更しました。";
+                });
+    }
+
     void replyAccountUnlink(SlashCommandInteractionEvent event) {
         MinecraftServer activeServer = server;
         if (activeServer == null) { event.replyEmbeds(MoveEarthDiscordEmbeds.unavailable()).setEphemeral(true).queue(); return; }
@@ -155,7 +267,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
             boolean success = minecraft != null && data.unlinkAccount(minecraft);
             data.audit("account_unlink", null, minecraft, discordId, success,
                     success ? "unlinked" : "not_linked");
-            hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation("本人確認を解除",
+            hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation("アカウント連携を解除",
                     success ? "Minecraftアカウントとの関連付けを解除しました。" : "関連付けはありません。", success)).queue();
         }));
     }
@@ -240,7 +352,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
                     && nations.nationIdFor(minecraftId).filter(nationId::equals).isPresent()
                     && nations.can(minecraftId, S2Permission.MANAGE_NOTIFICATIONS);
             if (!authorized) {
-                String detail = minecraftId == null ? "先に /moveearth account link で本人確認してください。"
+                String detail = minecraftId == null ? "先に /moveearth account link でアカウントを連携してください。"
                         : "国家が未連携か、ゲーム内の通知管理権限がありません。";
                 data.audit("test_delivery", nationId, minecraftId, discordId, false, detail);
                 hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation("操作できません", detail, false)).queue();
@@ -297,7 +409,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
             String detail;
             boolean success = false;
             if (!authorized) detail = minecraft == null
-                    ? "先に /moveearth account link で本人確認してください。"
+                    ? "先に /moveearth account link でアカウントを連携してください。"
                     : "国家が未連携か、ゲーム内の通知管理権限がありません。";
             else try {
                 detail = operation.run(data, nationId, minecraft);
@@ -308,6 +420,38 @@ public final class DiscordBotService implements DiscordLinkAccess {
             data.audit(action, nationId, minecraft, discordId, success, detail);
             hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation(
                     success ? "操作を完了しました" : "操作できません", detail, success)).queue();
+        }));
+    }
+
+    private void runAuthorizedComponent(GenericComponentInteractionCreateEvent event, String action,
+                                        AuthorizedOperation operation) {
+        MinecraftServer activeServer = server;
+        if (activeServer == null || event.getGuild() == null) {
+            event.replyEmbeds(MoveEarthDiscordEmbeds.unavailable()).setEphemeral(true).queue();
+            return;
+        }
+        long guildId = event.getGuild().getIdLong();
+        long discordId = event.getUser().getIdLong();
+        event.deferReply(true).queue(hook -> activeServer.execute(() -> {
+            NationNotificationSavedData data = NationNotificationSavedData.get(activeServer);
+            UUID minecraft = data.minecraftForDiscord(discordId).orElse(null);
+            UUID nationId = data.nationForGuild(guildId).orElse(null);
+            NationSavedData nations = NationSavedData.get(activeServer);
+            boolean authorized = minecraft != null && nationId != null
+                    && nations.nationIdFor(minecraft).filter(nationId::equals).isPresent()
+                    && nations.can(minecraft, S2Permission.MANAGE_NOTIFICATIONS);
+            boolean success = false;
+            String detail;
+            if (!authorized) detail = minecraft == null
+                    ? "先に個人アカウント連携を完了してください。"
+                    : "国家が未連携か、ゲーム内の通知管理権限がありません。";
+            else try { detail = operation.run(data, nationId, minecraft); success = true; }
+            catch (RuntimeException exception) { detail = exception.getMessage() == null
+                    ? "操作に失敗しました。" : exception.getMessage(); }
+            data.audit(action, nationId, minecraft, discordId, success, detail);
+            hook.editOriginalEmbeds(MoveEarthDiscordEmbeds.operation(
+                    success ? "操作を完了しました" : "操作できません", detail, success))
+                    .setComponents(List.of()).queue();
         }));
     }
 
@@ -342,10 +486,12 @@ public final class DiscordBotService implements DiscordLinkAccess {
     }
 
     void onCommandsRegistered() {
+        lifecycleState = BotState.READY;
         Moveearth_addtional.LOGGER.info("[MoveEarth] Discord slash commands registered");
     }
 
     void onCommandRegistrationFailed() {
+        lifecycleState = BotState.UNAVAILABLE;
         Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord slash command registration failed");
     }
 
@@ -375,6 +521,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
         GuildMessageChannel channel = channel(link);
         if (channel == null) {
             inFlight.remove(delivery.id());
+            data.recordDeliveryFailure(delivery.nationId(), "channel_unavailable", System.currentTimeMillis());
             data.fail(delivery.id(), System.currentTimeMillis());
             return;
         }
@@ -384,10 +531,17 @@ public final class DiscordBotService implements DiscordLinkAccess {
                 MoveEarthDiscordEmbeds.notification(nationName, delivery))
                 .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
         NationNotificationSavedData.Settings settings = data.settings(delivery.nationId());
-        if (settings.mentionOnSiege() && delivery.type() == NationNotificationSavedData.EventType.SIEGE_STARTED
+        NotificationCategory category = NotificationCategory.of(delivery.type());
+        NotificationPreference preference = data.preference(delivery.nationId(), category);
+        if (settings.mentionOnSiege()
+                && preference.mention() == NotificationPreference.MentionPolicy.URGENT_ONLY
+                && NotificationPresentation.severity(delivery.type())
+                == com.ruskserver.moveearth_addtional.s2.notification.NotificationSeverity.URGENT
                 && link.mentionRoleId() > 0L) {
             Role role = channel.getGuild().getRoleById(link.mentionRoleId());
-            if (role != null) action.setAllowedMentions(EnumSet.of(Message.MentionType.ROLE)).mention(role);
+            if (role != null && data.allowMention(delivery.nationId(), category, System.currentTimeMillis())) {
+                action.setAllowedMentions(EnumSet.of(Message.MentionType.ROLE)).mention(role);
+            }
         }
         action.queue(ignored -> finish(activeServer, delivery.id(), true),
                 failure -> finish(activeServer, delivery.id(), false));

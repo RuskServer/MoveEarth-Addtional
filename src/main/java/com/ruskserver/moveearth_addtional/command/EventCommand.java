@@ -103,6 +103,10 @@ public final class EventCommand {
     }
 
     private static int claim(ServerPlayer player) {
+        if (com.ruskserver.moveearth_addtional.pvp.PvpMatchManager.INSTANCE.isActive(player)) {
+            player.sendSystemMessage(MoveEarthMessage.warning("PvP試合終了後に報酬を受け取ってください。"));
+            return 0;
+        }
         int received = HarvestFestival.claim(player);
         player.sendSystemMessage(MoveEarthMessage.success("イベント: 現物報酬を" + received + "個受け取りました。"));
         return received > 0 ? 1 : 0;

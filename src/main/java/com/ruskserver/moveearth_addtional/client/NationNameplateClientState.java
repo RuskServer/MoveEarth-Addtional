@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_NationNameplatesPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationNameplatesPacket;
 import com.ruskserver.moveearth_addtional.s2.nation.NationNameplateRelation;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;

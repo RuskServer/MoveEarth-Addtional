@@ -24,6 +24,10 @@ public final class NationStorageOwnershipSavedData extends SavedData {
     public void remove(ResourceLocation dimension, BlockPos pos) {
         if (owners.remove(new Key(dimension, pos.asLong())) != null) setDirty();
     }
+    /** Drops every record of a disbanded nation so its former members are not locked out. */
+    public void removeNation(UUID nationId) {
+        if (nationId != null && owners.values().removeIf(nationId::equals)) setDirty();
+    }
 
     @Override public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
         ListTag list = new ListTag();

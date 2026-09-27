@@ -39,12 +39,42 @@ public final class CombatTagSavedData extends SavedData {
         return state != null && state.remainingTicks > 0L;
     }
 
+    /** Custody replaces combat tagging; retain an offline body's restore link without retaining its timer. */
+    public void clearTag(UUID player) {
+        CombatState old = states.get(player);
+        if (old == null) return;
+        if (!old.disconnected) {
+            states.remove(player);
+        } else {
+            if (old.remainingTicks == 0L) return;
+            states.put(player, new CombatState(player, old.opponent, 0L, old.dimension,
+                    old.position, old.health, true, old.downed, old.killed, old.bodyEntity));
+        }
+        setDirty();
+    }
+
     public void disconnect(UUID player, ResourceLocation dimension, BlockPos position,
                            float health, boolean downed, UUID bodyEntity) {
         CombatState old = states.get(player);
         if (old == null) return;
         states.put(player, new CombatState(player, old.opponent, old.remainingTicks, dimension,
                 position.immutable(), Math.max(0.0F, health), true, downed, false, bodyEntity));
+        setDirty();
+    }
+
+    /** Persist the logout penalty independently of the player's save and without an item-bearing proxy. */
+    public void recordLogoutDeath(UUID player) {
+        CombatState old = states.get(player);
+        if (old == null) return;
+        states.put(player, new CombatState(player, old.opponent, 0L, null, null,
+                0.0F, true, false, true, null));
+        setDirty();
+    }
+
+    public void disconnectCustody(UUID player, ResourceLocation dimension, BlockPos position,
+                                  float health, UUID bodyEntity) {
+        states.put(player, new CombatState(player, null, 0L, dimension,
+                position.immutable(), Math.max(1.0F, health), true, true, false, bodyEntity));
         setDirty();
     }
 

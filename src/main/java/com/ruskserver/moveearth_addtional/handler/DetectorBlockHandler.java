@@ -5,6 +5,7 @@ import com.ruskserver.moveearth_addtional.block.ModBlocks;
 import com.ruskserver.moveearth_addtional.block.entity.PlayerDetectorBlockEntity;
 import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
 import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -93,8 +94,8 @@ public class DetectorBlockHandler {
 
                     // プレイヤーに詳細な警告メッセージを表示
                     if (event.getEntity() instanceof Player player) {
-                        player.sendSystemMessage(Component.literal(String.format(
-                                "§c半径3チャンク以内に既にプレイヤー検知ブロックが設置されているため、設置できません。(重複元の位置: X=%d, Y=%d, Z=%d)",
+                        player.sendSystemMessage(MoveEarthMessage.error(String.format(
+                                "半径3チャンク以内に既にプレイヤー検知ブロックが設置されているため、設置できません。(重複元の位置: X=%d, Y=%d, Z=%d)",
                                 overlapPos.getX(), overlapPos.getY(), overlapPos.getZ()
                         )));
                     }

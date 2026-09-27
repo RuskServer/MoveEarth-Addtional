@@ -34,10 +34,35 @@ public final class MachineBreaking {
         if (level == null || pos == null) {
             return true;
         }
+        if (!mayBreakHeldGoods(level, pos)) {
+            return false;
+        }
         ReinforcementEntry entry = ReinforcementSavedData.get(level).get(pos).orElse(null);
         if (entry == null || !entry.enabled()) {
             return true;
         }
         return !SiegeDamageService.penaltyAt(level, pos).reinforcementProtectionEnabled();
+    }
+
+    /**
+     * Blocks whose removal by a machine would lose goods that belong to someone else.
+     *
+     * <p>A market station or storage wreckage holds other players' claims and items, and neither
+     * survives being broken, so no machine may take one. Nation storage inside a nation's land or a
+     * siege boundary is likewise off limits to drills and saws; a drill does not know whose side it
+     * is on, and players can still break their own storage by hand. Storage in unclaimed land keeps
+     * the old behaviour.
+     */
+    private static boolean mayBreakHeldGoods(ServerLevel level, BlockPos pos) {
+        var state = level.getBlockState(pos);
+        if (state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.MARKET_STATION.get())
+                || state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.STORAGE_WRECKAGE.get())) {
+            return false;
+        }
+        if (!state.is(com.ruskserver.moveearth_addtional.s2.nation.NationStorageEvents.STORAGE_BLOCKS)) {
+            return true;
+        }
+        return com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.formerOwnerAt(
+                level.getServer(), level.dimension().location(), pos) == null;
     }
 }

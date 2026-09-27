@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.oxygen;
 
 import com.ruskserver.moveearth_addtional.ModSounds;
-import com.ruskserver.moveearth_addtional.network.S2C_SyncOxygenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncOxygenPacket;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;

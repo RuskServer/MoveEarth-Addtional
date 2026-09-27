@@ -9,7 +9,8 @@
       "modid": "electroenergetics"
     }
   ],
-  "type": "minecraft:crafting_shaped",
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
   "category": "misc",
   "key": {
     "C": {
@@ -21,6 +22,9 @@
     "I": {
       "tag": "c:ingots/lead"
     },
+    "S": { "item": "create:sturdy_sheet" },
+    "P": { "item": "create:precision_mechanism" },
+    "W": { "item": "electroenergetics:transformer_core" },
     "T": {
       "item": "mekanism:basic_chemical_tank"
     },
@@ -29,9 +33,11 @@
     }
   },
   "pattern": [
-    "ICI",
-    "IXI",
-    "HTH"
+    "IHCHI",
+    "SPTPS",
+    "CXWXC",
+    "SPTPS",
+    "IHCHI"
   ],
   "result": {
     "count": 1,

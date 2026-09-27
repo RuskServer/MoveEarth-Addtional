@@ -1,0 +1,50 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    },
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "electroenergetics"
+    }
+  ],
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
+  "category": "equipment",
+  "key": {
+    "A": {
+      "tag": "c:pellets/polonium"
+    },
+    "C": {
+      "tag": "c:circuits/ultimate"
+    },
+    "E": {
+      "item": "mekanism:basic_induction_cell"
+    },
+    "H": {
+      "item": "mekanism:hdpe_sheet"
+    },
+    "M": {
+      "item": "moveearth_addtional:meka_armor_material"
+    },
+    "P": {
+      "item": "create:precision_mechanism"
+    },
+    "S": {
+      "item": "create:sturdy_sheet"
+    },
+    "W": {
+      "item": "electroenergetics:heavily_insulated_wire"
+    }
+  },
+  "pattern": [
+    "HSCSH",
+    "HAEAH",
+    "WPMPW"
+  ],
+  "result": {
+    "count": 1,
+    "id": "mekanism:mekasuit_boots"
+  }
+}

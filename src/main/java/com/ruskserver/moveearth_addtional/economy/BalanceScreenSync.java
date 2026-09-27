@@ -1,8 +1,8 @@
 package com.ruskserver.moveearth_addtional.economy;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.C2S_BalanceActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_BalanceSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.market.C2S_BalanceActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_BalanceSnapshotPacket;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;

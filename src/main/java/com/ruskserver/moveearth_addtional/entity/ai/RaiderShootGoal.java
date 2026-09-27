@@ -262,6 +262,7 @@ public final class RaiderShootGoal extends Goal {
             case LARGE -> 0.55F;
         };
         if (!raider.getNavigation().isDone()) spread *= 1.35F;
+        spread *= raider.getShotSpreadMultiplier();
         float pitch = basePitch + Mth.nextFloat(raider.getRandom(), -spread, spread);
         float yaw = baseYaw + Mth.nextFloat(raider.getRandom(), -spread, spread);
         ShootResult result = operator.shoot(() -> pitch, () -> yaw);

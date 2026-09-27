@@ -33,6 +33,7 @@ public final class CombatTagBossBar {
         active.event.setProgress(display.progress());
         active.event.setColor(display.urgent()
                 ? BossEvent.BossBarColor.RED : BossEvent.BossBarColor.YELLOW);
+        active.event.setOverlay(BossEvent.BossBarOverlay.NOTCHED_10);
         active.event.addPlayer(player);
     }
 
@@ -58,7 +59,7 @@ public final class CombatTagBossBar {
 
     private static final class ActiveBar {
         private final ServerBossEvent event = new ServerBossEvent(Component.empty(),
-                BossEvent.BossBarColor.YELLOW, BossEvent.BossBarOverlay.PROGRESS);
+                BossEvent.BossBarColor.YELLOW, BossEvent.BossBarOverlay.NOTCHED_10);
         private long maximumTicks;
         private long lastRemainingTicks;
     }

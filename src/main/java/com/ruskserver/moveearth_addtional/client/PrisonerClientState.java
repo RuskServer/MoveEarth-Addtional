@@ -3,7 +3,7 @@ package com.ruskserver.moveearth_addtional.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_PrisonerSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerSnapshotPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;

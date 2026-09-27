@@ -15,6 +15,9 @@ class S2HubNavigationTest {
         navigation.selectSection(S2HubNavigation.Section.WAR);
         navigation.selectPage(S2HubNavigation.Page.PRISONERS);
         assertEquals(S2HubTab.SIEGE, navigation.networkTab());
+        navigation.selectSection(S2HubNavigation.Section.DOMESTIC);
+        navigation.selectPage(S2HubNavigation.Page.FINANCE);
+        assertEquals(S2HubTab.OVERVIEW, navigation.networkTab());
     }
 
     @Test

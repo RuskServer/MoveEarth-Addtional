@@ -46,6 +46,17 @@ public class OcclusionEventHandler {
         }
     }
 
+    /**
+     * Explosions, pistons, fluids, commands and machines change blocks without a player break or
+     * place event. A stale mask would keep a blown-open wall "opaque" and hide the drops behind it.
+     */
+    @SubscribeEvent
+    public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
+        if (event.getLevel() instanceof ServerLevel serverLevel) {
+            SectionOcclusionStorage.invalidate(serverLevel, event.getPos());
+        }
+    }
+
     @SubscribeEvent
     public static void onChunkUnload(ChunkEvent.Unload event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {

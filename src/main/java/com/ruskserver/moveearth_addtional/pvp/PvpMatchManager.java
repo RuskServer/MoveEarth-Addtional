@@ -2,13 +2,14 @@ package com.ruskserver.moveearth_addtional.pvp;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.ModSounds;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpEntryStatePacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpHudPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpKillcamPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpResultPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpTeamPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpZonePacket;
-import com.ruskserver.moveearth_addtional.network.S2C_SyncLoadoutsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpEntryStatePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpHudPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpKillcamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpTeamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpZonePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncLoadoutsPacket;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
@@ -111,28 +112,27 @@ public final class PvpMatchManager {
 
     /** Registers for the next match, or immediately activates the player when a match is running. */
     public boolean join(ServerPlayer player, String loadoutId) {
-        if (com.ruskserver.moveearth_addtional.s2.combat.CombatTagService.isTagged(player)
-                || com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(player)) {
-            player.sendSystemMessage(Component.literal("§c戦闘中または拘束中はPvPアリーナへ移動できません。"));
+        if (!PvpAdmissionPolicy.canUpdateSelection(isActive(player), eligibleForAdmission(player))) {
+            player.sendSystemMessage(MoveEarthMessage.error("戦闘中・拘束中・ダウン中・死亡中・観戦中はPvPへ参加できません。"));
             return false;
         }
         PvpArenaSavedData arena = PvpArenaSavedData.get(player.server);
         if (!arena.hosting()) {
-            player.sendSystemMessage(Component.literal("§c現在PvPイベントは開催されていません。"));
+            player.sendSystemMessage(MoveEarthMessage.warning("現在PvPイベントは開催されていません。"));
             return false;
         }
         if (phase == PvpPhase.FINISHED) {
-            player.sendSystemMessage(Component.literal("§c現在はPvPへ参加できません。"));
+            player.sendSystemMessage(MoveEarthMessage.warning("現在はPvPへ参加できません。"));
             return false;
         }
         PvpLoadoutDefinition loadout = PvpLoadoutSavedData.get(player.server).getById(loadoutId).orElse(null);
         if (loadout == null) {
-            player.sendSystemMessage(Component.literal("§c選択されたPvPロードアウトは使用できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("選択されたPvPロードアウトは使用できません。"));
             return false;
         }
         if (isActive(player)) {
             loadoutSelections.put(player.getUUID(), loadout.id());
-            player.sendSystemMessage(Component.literal("§aロードアウトを「" + loadout.displayName() + "」に変更しました。（次のリスポーン時から反映されます）"));
+            player.sendSystemMessage(MoveEarthMessage.success("ロードアウトを「" + loadout.displayName() + "」に変更しました。（次のリスポーン時から反映されます）"));
             return true;
         }
         if (phase == PvpPhase.RUNNING && activeMap != null) {
@@ -197,12 +197,12 @@ public final class PvpMatchManager {
         if (availableMaps.size() >= 2) {
             phase = PvpPhase.VOTING;
             PvpMapVoteManager.INSTANCE.startVote(server, teams.keySet(), availableMaps, PvpMapVoteManager.VOTE_DURATION_SECONDS);
-            broadcastToParticipants(server, Component.literal("§6[PvP] マップ投票が開始されました！画面から好きなマップを選択してください（15秒）。"));
+            broadcastToParticipants(server, Component.literal("PvP: マップ投票が開始されました！画面から好きなマップを選択してください（15秒）。"));
             return true;
         } else {
             // 単一マップの場合は即開始
             onMapVoteFinished(server, availableMaps.get(0));
-            return true;
+            return phase == PvpPhase.RUNNING;
         }
     }
 
@@ -213,17 +213,49 @@ public final class PvpMatchManager {
             stop(server);
             return;
         }
+        removeOfflineQueueMembers(server);
+
+        // Registration is not an exemption from ordinary-world combat or custody.
+        // Recheck after voting, before taking snapshots or teleporting anyone.
+        for (ServerPlayer player : participants(server, false)) {
+            if (!eligibleForAdmission(player)) {
+                leave(player);
+                player.sendSystemMessage(MoveEarthMessage.warning("状態が変わったためPvPの参加登録を解除しました。"));
+            }
+        }
+        rebalanceTeams();
+        if (!PvpAdmissionPolicy.canStart(count(PvpTeam.RED, false), count(PvpTeam.BLUE, false))) {
+            rejectStart(server, "参加可能なプレイヤーが2人以上いないため試合を中止しました。");
+            stop(server);
+            return;
+        }
         this.activeMap = selectedMap;
 
         PvpSessionSavedData sessions = PvpSessionSavedData.get(server);
         matchStats.clear();
+        Map<UUID, PvpPlayerSnapshot> pendingSnapshots = new HashMap<>();
         for (ServerPlayer player : participants(server, false)) {
             PvpPlayerSnapshot snapshot = new PvpPlayerSnapshot(player);
+            if (PvpCuriosInventoryCompat.isAvailable() && snapshot.curiosInventory == null) {
+                rejectStart(server, "Curios装備を安全に退避できない参加者がいるため試合を開始できません。");
+                stop(server);
+                return;
+            }
+            pendingSnapshots.put(player.getUUID(), snapshot);
+        }
+        for (ServerPlayer player : participants(server, false)) {
+            PvpPlayerSnapshot snapshot = pendingSnapshots.get(player.getUUID());
             snapshots.put(player.getUUID(), snapshot);
             sessions.put(player.getUUID(), snapshot);
             matchStats.put(player.getUUID(), new MatchStats());
         }
-
+        for (ServerPlayer player : participants(server, true)) {
+            if (!snapshots.get(player.getUUID()).enterIsolatedState(player)) {
+                rejectStart(server, "Curios装備の隔離に失敗したため試合を中止しました。");
+                stop(server);
+                return;
+            }
+        }
         for (ServerPlayer player : participants(server, true)) activateParticipant(player, arena, activeMap);
         phase = PvpPhase.RUNNING;
         redScore = blueScore = 0;
@@ -239,25 +271,30 @@ public final class PvpMatchManager {
         syncZone(server, activeMap);
         syncEntryState(server);
         playToAllParticipants(server, ModSounds.WARLORD_START);
-        broadcastToParticipants(server, Component.literal("§ePvP試合開始！ マップ: §b" + activeMap.displayName() + " §e- 丘を占領して180ptを獲得してください。"));
+        broadcastToParticipants(server, Component.literal("PvP試合開始！ マップ: " + activeMap.displayName() + " - 丘を占領して180ptを獲得してください。"));
     }
 
     private boolean joinRunningMatch(ServerPlayer player, PvpLoadoutDefinition loadout) {
+        if (!eligibleForAdmission(player)) return false;
         MinecraftServer server = player.server;
         ServerLevel arena = server.getLevel(ARENA);
         if (arena == null || activeMap == null || !activeMap.isConfigured()) {
-            player.sendSystemMessage(Component.literal("§cPvPアリーナの設定を読み込めないため途中参加できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("PvPアリーナの設定を読み込めないため途中参加できません。"));
             return false;
         }
         String missingPreset = missingPresetContent(server);
         if (missingPreset != null) {
-            player.sendSystemMessage(Component.literal("§cPvPロードアウトの銃/アタッチメントデータが見つかりません: " + missingPreset));
+            player.sendSystemMessage(MoveEarthMessage.error("PvPロードアウトの銃/アタッチメントデータが見つかりません: " + missingPreset));
             return false;
         }
 
         UUID id = player.getUUID();
         PvpTeam assigned = count(PvpTeam.RED, true) <= count(PvpTeam.BLUE, true) ? PvpTeam.RED : PvpTeam.BLUE;
         PvpPlayerSnapshot snapshot = new PvpPlayerSnapshot(player);
+        if (!snapshot.enterIsolatedState(player)) {
+            player.sendSystemMessage(MoveEarthMessage.error("Curios装備を安全に退避できないため途中参加できません。"));
+            return false;
+        }
         teams.put(id, assigned);
         loadoutSelections.put(id, loadout.id());
         snapshots.put(id, snapshot);
@@ -275,10 +312,15 @@ public final class PvpMatchManager {
         return true;
     }
 
+    private static boolean eligibleForAdmission(ServerPlayer player) {
+        return PvpAdmissionPolicy.eligible(player.isAlive(), player.isSpectator(),
+                com.ruskserver.moveearth_addtional.CompatEventHandler.isPlayerDown(player),
+                com.ruskserver.moveearth_addtional.s2.combat.CombatTagService.isTagged(player),
+                com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(player));
+    }
+
     private void activateParticipant(ServerPlayer player, ServerLevel arena, PvpMapDefinition map) {
         player.closeContainer();
-        PvpPlayerSnapshot snapshot = snapshots.get(player.getUUID());
-        if (snapshot != null) snapshot.enterIsolatedState(player);
         player.getInventory().clearContent();
         player.getInventory().selected = 0;
         player.removeAllEffects();
@@ -414,7 +456,7 @@ public final class PvpMatchManager {
             ServerLevel overworld = player.server.overworld();
             BlockPos spawn = overworld.getSharedSpawnPos();
             teleport(player, overworld, spawn);
-            player.sendSystemMessage(Component.literal("§cPvPアリーナには試合参加者のみ入場できます。"));
+            player.sendSystemMessage(MoveEarthMessage.error("PvPアリーナには試合参加者のみ入場できます。"));
         }
     }
 
@@ -473,7 +515,7 @@ public final class PvpMatchManager {
             List<PvpReplayFrame> kFrames = PvpReplayTracker.INSTANCE.getHistory(killer.getUUID());
             List<PvpReplayFrame> vFrames = PvpReplayTracker.INSTANCE.getHistory(victim.getUUID());
 
-            PacketDistributor.sendToPlayer(victim, new com.ruskserver.moveearth_addtional.network.S2C_KillcamReplayPacket(
+            PacketDistributor.sendToPlayer(victim, new com.ruskserver.moveearth_addtional.network.s2c.other.S2C_KillcamReplayPacket(
                     killerId, killerName, victim.getUUID(), victim.getGameProfile().getName(),
                     kFrames, vFrames, killer.getHealth(), killer.getMaxHealth(),
                     weaponName, attachments, distance, false, streak, RESPAWN_TICKS));
@@ -503,7 +545,7 @@ public final class PvpMatchManager {
         loadoutSelections.remove(player.getUUID());
         restore(player);
         clearClientState(player);
-        player.sendSystemMessage(Component.literal("§a中断されたPvPセッションから所持品と状態を復旧しました。"));
+        player.sendSystemMessage(MoveEarthMessage.success("中断されたPvPセッションから所持品と状態を復旧しました。"));
     }
 
     public void serverStopped() {
@@ -654,8 +696,8 @@ public final class PvpMatchManager {
 
         Component separator = Component.literal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 .withStyle(ChatFormatting.DARK_GRAY);
-        Component header = Component.literal("  KOTH MATCH RESULT  ")
-                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        Component header = MoveEarthMessage.info(Component.literal("KOTH MATCH RESULT")
+                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
         Component score = Component.literal("RED  " + redScore).withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
                 .append(Component.literal("   -   ").withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(blueScore + "  BLUE").withStyle(ChatFormatting.BLUE, ChatFormatting.BOLD));
@@ -1000,9 +1042,9 @@ public final class PvpMatchManager {
     }
 
     private static Component loadoutMessage(PvpLoadoutDefinition loadout, boolean updated) {
-        return Component.literal(updated
-                ? "§aPvPロードアウトを [" + loadout.displayName() + "] に変更しました。"
-                : "§aロードアウト [" + loadout.displayName() + "] でPvPに参加登録しました。");
+        return MoveEarthMessage.success(updated
+                ? "PvPロードアウトを [" + loadout.displayName() + "] に変更しました。"
+                : "ロードアウト [" + loadout.displayName() + "] でPvPに参加登録しました。");
     }
 
     private void rebalanceTeams() {
@@ -1011,7 +1053,7 @@ public final class PvpMatchManager {
     }
 
     private boolean rejectStart(MinecraftServer server, String reason) {
-        server.getPlayerList().broadcastSystemMessage(Component.literal("§c[PvP] " + reason), false);
+        server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.error("PvP: " + reason), false);
         return false;
     }
 
@@ -1035,7 +1077,7 @@ public final class PvpMatchManager {
     }
 
     private static void broadcastToParticipants(MinecraftServer server, Component message) {
-        INSTANCE.forEachPlayer(server, true, player -> player.sendSystemMessage(message));
+        INSTANCE.forEachPlayer(server, true, player -> player.sendSystemMessage(MoveEarthMessage.info(message)));
     }
 
     private static void cleanupArenaMobs(ServerLevel arena) {

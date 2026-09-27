@@ -2,11 +2,11 @@ package com.ruskserver.moveearth_addtional.item;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.pvp.PvpMatchManager;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -33,13 +33,13 @@ public final class WeaponCrateItem extends Item {
         if (level.isClientSide) return InteractionResultHolder.sidedSuccess(crate, true);
         if (!(player instanceof ServerPlayer serverPlayer)) return InteractionResultHolder.pass(crate);
         if (PvpMatchManager.INSTANCE.isActive(serverPlayer)) {
-            player.sendSystemMessage(Component.literal("§c試合中は武器箱を開封できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("試合中は武器箱を開封できません。"));
             return InteractionResultHolder.fail(crate);
         }
 
         ItemStack reward = createReward(serverPlayer, player.getRandom());
         if (reward.isEmpty()) {
-            player.sendSystemMessage(Component.literal("§c武器箱を開封できませんでした。GunPackの読み込み状態を確認してください。"));
+            player.sendSystemMessage(MoveEarthMessage.error("武器箱を開封できませんでした。GunPackの読み込み状態を確認してください。"));
             return InteractionResultHolder.fail(crate);
         }
         if (!player.getAbilities().instabuild) crate.shrink(1);
@@ -48,7 +48,7 @@ public final class WeaponCrateItem extends Item {
         }
         serverPlayer.inventoryMenu.broadcastChanges();
         level.playSound(null, player.blockPosition(), SoundEvents.PLAYER_LEVELUP, SoundSource.PLAYERS, 0.8F, 1.2F);
-        player.sendSystemMessage(Component.literal("§a武器箱から「§e" + reward.getHoverName().getString() + "§a」を獲得しました！"));
+        player.sendSystemMessage(MoveEarthMessage.success("武器箱から「" + reward.getHoverName().getString() + "」を獲得しました！"));
         return InteractionResultHolder.consume(crate);
     }
 

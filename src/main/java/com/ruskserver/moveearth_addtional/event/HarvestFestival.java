@@ -113,6 +113,10 @@ public final class HarvestFestival {
     }
 
     public static int claim(ServerPlayer player) {
+        if (com.ruskserver.moveearth_addtional.pvp.PvpMatchManager.INSTANCE.isActive(player)) {
+            player.sendSystemMessage(MoveEarthMessage.warning("PvP試合中は現物報酬を受け取れません。試合終了後に受け取ってください。"));
+            return 0;
+        }
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.getServer());
         int received = 0;
         for (EconomyLedgerSavedData.EventReward reward : ledger.pendingEventRewards(player.getUUID())) {

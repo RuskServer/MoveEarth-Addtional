@@ -9,9 +9,14 @@ public final class LocalChatRules {
                 && distanceSquared <= (double) radiusBlocks * radiusBlocks;
     }
 
-    public static String distanceLabel(double distanceBlocks, boolean self) {
-        if (self) return "自分";
-        if (distanceBlocks < 1.0D) return "1ブロック未満";
-        return Math.round(distanceBlocks) + "ブロック先";
+    /** How far the sender is from one recipient; the wording comes from the recipient's language file. */
+    public record Distance(Kind kind, long blocks) {
+        public enum Kind { SELF, UNDER_ONE_BLOCK, BLOCKS }
+    }
+
+    public static Distance distance(double distanceBlocks, boolean self) {
+        if (self) return new Distance(Distance.Kind.SELF, 0L);
+        if (distanceBlocks < 1.0D) return new Distance(Distance.Kind.UNDER_ONE_BLOCK, 0L);
+        return new Distance(Distance.Kind.BLOCKS, Math.round(distanceBlocks));
     }
 }

@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_OpenStatsScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenStatsScreenPacket;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.server.level.ServerPlayer;

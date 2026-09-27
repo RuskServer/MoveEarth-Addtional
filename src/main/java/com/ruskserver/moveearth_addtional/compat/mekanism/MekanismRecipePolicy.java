@@ -10,10 +10,13 @@ import java.util.Set;
 public final class MekanismRecipePolicy {
     public static final String CORE_NAMESPACE = "mekanism";
     public static final String GENERATORS_NAMESPACE = "mekanismgenerators";
+    public static final String TOOLS_NAMESPACE = "mekanismtools";
 
     private static final Set<String> BLOCKED_GENERATORS = Set.of(
             "generator/heat",
-            "generator/solar",
+            // The basic solar generator is allowed: daylight-only and weak
+            // (about 680 W), it is a mid-game electric source that cannot
+            // rival steam. Advanced solar and wind stay out.
             "generator/advanced_solar",
             "generator/wind",
             "generator/bio",
@@ -84,37 +87,29 @@ public final class MekanismRecipePolicy {
     private static final Set<String> BLOCKED_EQUIPMENT = Set.of(
             "atomic_disassembler",
             "meka_tool",
-            "mekasuit_helmet",
-            "mekasuit_bodyarmor",
-            "mekasuit_pants",
-            "mekasuit_boots",
             "jetpack",
             "jetpack_armored",
             "flamethrower",
             "free_runners",
             "free_runners_armored",
             "module_jetpack_unit",
-            "module_teleportation_unit"
+            "module_teleportation_unit",
+            // The MekaSuit is allowed; flight, wall-clearing mobility and
+            // vanilla night vision are not.
+            "module_gravitational_modulating_unit",
+            "module_elytra_unit",
+            "module_hydraulic_propulsion_unit",
+            "module_locomotive_boosting_unit",
+            "module_vision_enhancement_unit"
     );
 
     private static final Set<String> BLOCKED_CREATE_REPLACEMENTS = Set.of(
-            "energized_smelter",
             "crusher",
             "combiner",
             "purification_chamber",
             "precision_sawmill",
             "formulaic_assemblicator",
             "fuelwood_heater"
-    );
-
-    private static final Set<String> SIMPLE_ORE_RESOURCES = Set.of(
-            "coal",
-            "diamond",
-            "emerald",
-            "fluorite",
-            "lapis_lazuli",
-            "quartz",
-            "redstone"
     );
 
     private MekanismRecipePolicy() {
@@ -135,12 +130,17 @@ public final class MekanismRecipePolicy {
                     ? RemovalCategory.COMBAT_EQUIPMENT
                     : RemovalCategory.NONE;
         }
+        if (TOOLS_NAMESPACE.equals(namespace)) {
+            return isBlockedToolsRecipe(path) ? RemovalCategory.COMBAT_EQUIPMENT : RemovalCategory.NONE;
+        }
         if (!CORE_NAMESPACE.equals(namespace)) {
             return RemovalCategory.NONE;
         }
         if (BLOCKED_LOGISTICS.contains(path)
                 || path.startsWith("bin/")
-                || path.startsWith("transmitter/logistical_transporter/")) {
+                || path.startsWith("transmitter/logistical_transporter/")
+                || "transmitter/diversion_transporter".equals(path)
+                || "transmitter/restrictive_transporter".equals(path)) {
             return RemovalCategory.LOGISTICS_BYPASS;
         }
         if (BLOCKED_EQUIPMENT.contains(path)) {
@@ -149,8 +149,13 @@ public final class MekanismRecipePolicy {
         if (BLOCKED_LASERS.contains(path)) {
             return RemovalCategory.DIRECTED_ENERGY_WEAPON;
         }
+        // Fluids travel through Create's pipes and pumps. Pressurized tubes
+        // stay: chemicals such as fissile fuel, nuclear waste and reactor steam
+        // have no fluid form a Create pipe could carry.
         if (BLOCKED_CREATE_REPLACEMENTS.contains(path)
-                || path.startsWith("factory/")
+                || path.startsWith("transmitter/mechanical_pipe/")
+                || path.startsWith("transmitter/thermodynamic_conductor/")
+                || isBlockedFactory(path)
                 || path.startsWith("tier_installer/")) {
             return RemovalCategory.CREATE_REPLACEMENT;
         }
@@ -176,6 +181,25 @@ public final class MekanismRecipePolicy {
         return CORE_NAMESPACE.equals(namespace) && BLOCKED_LASERS.contains(path);
     }
 
+    /**
+     * Smelting factories are the one factory line left in: ore smelting is
+     * slowed on Create's fans, so power is what buys faster smelting. Tier
+     * installers stay out because they upgrade any machine in place.
+     */
+    private static boolean isBlockedFactory(String path) {
+        return path.startsWith("factory/") && !path.endsWith("/smelting");
+    }
+
+    /**
+     * Mekanism Tools' refined obsidian gear (armor 31, toughness 5) out-armors
+     * the MekaSuit; bronze, steel and osmium fill the gap left by netherite.
+     */
+    private static boolean isBlockedToolsRecipe(String path) {
+        return path.startsWith("refined_obsidian/armor/")
+                || path.startsWith("refined_obsidian/tools/")
+                || "refined_obsidian/shield".equals(path);
+    }
+
     static boolean isOreMultiplicationPath(String path) {
         if (!path.startsWith("processing/")) {
             return false;
@@ -187,27 +211,14 @@ public final class MekanismRecipePolicy {
         }
 
         // Mekanism's x3-x5 chains consistently use these intermediate folders.
+        // The x2 tier (Enrichment Chamber: 3 raw ore -> 4 dust, gems from ore)
+        // is allowed; it lives below dust/ or directly under the resource.
         String stage = segments[2];
-        if ("slurry".equals(stage)
+        return "slurry".equals(stage)
                 || "crystal".equals(stage)
                 || "shard".equals(stage)
                 || "clump".equals(stage)
-                || "dirty_dust".equals(stage)) {
-            return true;
-        }
-
-        // x2 ore/raw-ore recipes live below dust/, while reversible ingot/dust
-        // recipes are intentionally retained for alloy and chemistry use.
-        if ("dust".equals(stage) && segments.length >= 4) {
-            String source = segments[3];
-            return "from_ore".equals(source)
-                    || "from_raw_ore".equals(source)
-                    || "from_raw_block".equals(source);
-        }
-
-        // Gems and similar resources use a flatter processing/<name>/from_ore id.
-        return SIMPLE_ORE_RESOURCES.contains(segments[1])
-                && ("from_ore".equals(stage) || "from_deepslate_ore".equals(stage));
+                || "dirty_dust".equals(stage);
     }
 
     public enum RemovalCategory {

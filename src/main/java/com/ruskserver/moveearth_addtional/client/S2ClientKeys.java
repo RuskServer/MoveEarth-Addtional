@@ -1,9 +1,9 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestReinforcementScanPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestS2HubPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_RequestReinforcementScanPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RequestPrisonerScreenPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.ruskserver.moveearth_addtional.item.ModItems;
@@ -54,6 +54,7 @@ public final class S2ClientKeys {
             ReinforcementClientState.clear();
             TerritoryMapClientState.clear();
             WeldingBrushClientState.clear();
+            WeldingTargetClientState.clear();
             wasHoldingWelder = false;
             lastReinforcementScanPos = null;
             lastReinforcementScanDimension = null;
@@ -81,7 +82,7 @@ public final class S2ClientKeys {
         boolean holdingWelder = minecraft.player != null
                 && minecraft.player.getMainHandItem().is(ModItems.WELDING_TOOL.get());
         if (holdingWelder && !wasHoldingWelder) {
-            PacketDistributor.sendToServer(new com.ruskserver.moveearth_addtional.network.C2S_SetWeldingBrushPacket(
+            PacketDistributor.sendToServer(new com.ruskserver.moveearth_addtional.network.c2s.other.C2S_SetWeldingBrushPacket(
                     WeldingBrushClientState.radius()));
             requestReinforcementScan(minecraft);
         }

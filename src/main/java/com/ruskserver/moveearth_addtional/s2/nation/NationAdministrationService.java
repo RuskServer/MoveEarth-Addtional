@@ -121,6 +121,8 @@ public final class NationAdministrationService {
         if (!result.success()) return result;
 
         ledger.removeEmptyNationAccount(nationId);
+        com.ruskserver.moveearth_addtional.s2.nation.NationStorageOwnershipSavedData.get(actor.server)
+                .removeNation(nationId);
 
         Map<net.minecraft.resources.ResourceLocation, Set<Long>> coveredChunks = coveredChunks(cores, vault);
         for (ServerLevel level : actor.server.getAllLevels()) {

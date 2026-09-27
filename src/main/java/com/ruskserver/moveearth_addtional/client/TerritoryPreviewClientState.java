@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.S2C_TerritoryPreviewPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryPreviewPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryClosurePacket;
 
 public final class TerritoryPreviewClientState {
     private static S2C_TerritoryPreviewPacket preview;

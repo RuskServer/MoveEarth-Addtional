@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.region;
 
 import com.ruskserver.moveearth_addtional.config.RegionResourceConfig;
-import com.ruskserver.moveearth_addtional.network.S2C_RegionSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_RegionSnapshotPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;

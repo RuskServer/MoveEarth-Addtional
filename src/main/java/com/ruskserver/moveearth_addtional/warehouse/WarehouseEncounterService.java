@@ -48,8 +48,8 @@ public final class WarehouseEncounterService {
     private static final String REGION_TAG = "MoveEarthWarehouseRegion";
     private static final String CYCLE_TAG = "MoveEarthWarehouseCycle";
     private static final String BOSS_TAG = "MoveEarthWarehouseBoss";
-    private static final int BOSS_HEALTH = 320;
-    private static final int GUARD_HEALTH = 64;
+    private static final int BOSS_HEALTH = 360;
+    private static final int GUARD_HEALTH = 72;
     private static final int INITIAL_GUARDS = 4;
     private static final int REINFORCEMENT_GUARDS = 2;
     private static final Map<Integer, ServerBossEvent> BARS = new HashMap<>();
@@ -73,7 +73,7 @@ public final class WarehouseEncounterService {
         if (boss == null) return false;
         boss.moveTo(spawn.getX() + 0.5D, spawn.getY(), spawn.getZ() + 0.5D, 0.0F, 0.0F);
         boss.getAttribute(Attributes.MAX_HEALTH).setBaseValue(BOSS_HEALTH);
-        boss.getAttribute(Attributes.ARMOR).setBaseValue(12.0D);
+        boss.getAttribute(Attributes.ARMOR).setBaseValue(14.0D);
         boss.getAttribute(Attributes.FOLLOW_RANGE).setBaseValue(40.0D);
         boss.setHealth(BOSS_HEALTH);
         boss.setCustomName(Component.literal("倉庫警備隊長"));
@@ -349,7 +349,7 @@ public final class WarehouseEncounterService {
             guard.setRole(spawned == count - 1 ? RaiderRole.FLANKER : RaiderRole.RIFLEMAN);
             guard.equipRaidLoadout(AirshipRaidDifficulty.NORMAL);
             guard.getAttribute(Attributes.MAX_HEALTH).setBaseValue(GUARD_HEALTH);
-            guard.getAttribute(Attributes.ARMOR).setBaseValue(6.0D);
+            guard.getAttribute(Attributes.ARMOR).setBaseValue(8.0D);
             guard.setHealth(GUARD_HEALTH);
             guard.setPersistenceRequired();
             mark(guard, region, cycle, false, candidate);

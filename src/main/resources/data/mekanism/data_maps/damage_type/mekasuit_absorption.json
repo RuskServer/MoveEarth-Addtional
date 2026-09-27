@@ -1,0 +1,8 @@
+{
+  "replace": true,
+  "values": {
+    "minecraft:explosion": { "absorption": 0.5 },
+    "minecraft:player_explosion": { "absorption": 0.5 },
+    "minecraft:player_attack": { "absorption": 0.5 }
+  }
+}

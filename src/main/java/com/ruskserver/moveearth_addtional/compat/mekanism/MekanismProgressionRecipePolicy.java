@@ -48,7 +48,12 @@ public final class MekanismProgressionRecipePolicy {
             entry("turbine/rotor", "mekanism/nuclear/turbine/rotor"),
             entry("electromagnetic_coil", "mekanism/nuclear/turbine/electromagnetic_coil"),
             entry("rotational_complex", "mekanism/nuclear/turbine/rotational_complex"),
-            entry("saturating_condenser", "mekanism/nuclear/turbine/saturating_condenser")
+            entry("saturating_condenser", "mekanism/nuclear/turbine/saturating_condenser"),
+            // No Nether, so no netherite armor: the suit is rebuilt around Meka armor material.
+            entry("mekasuit_helmet", "mekanism/gear/mekasuit_helmet"),
+            entry("mekasuit_bodyarmor", "mekanism/gear/mekasuit_bodyarmor"),
+            entry("mekasuit_pants", "mekanism/gear/mekasuit_pants"),
+            entry("mekasuit_boots", "mekanism/gear/mekasuit_boots")
     );
     private static final Set<String> GENERATOR_REPLACEMENTS = Set.of(
             "fission_reactor/casing",

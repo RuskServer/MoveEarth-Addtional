@@ -20,6 +20,7 @@ public abstract class HopperSiegeLootMixin {
         if (!(level instanceof ServerLevel serverLevel)) return;
         BlockPos source = BlockPos.containing(hopper.getLevelX(), hopper.getLevelY() + 1.0D, hopper.getLevelZ());
         if (level.getBlockState(source).is(NationStorageEvents.STORAGE_BLOCKS)
-                && NationStorageEvents.automationRestricted(serverLevel, source)) cir.setReturnValue(false);
+                && NationStorageEvents.automationRestricted(serverLevel, source,
+                BlockPos.containing(hopper.getLevelX(), hopper.getLevelY(), hopper.getLevelZ()))) cir.setReturnValue(false);
     }
 }

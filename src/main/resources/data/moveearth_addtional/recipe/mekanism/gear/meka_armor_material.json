@@ -1,0 +1,31 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
+  "type": "mekanism:reaction",
+  "item_input": {
+    "count": 4,
+    "tag": "c:ingots/refined_obsidian"
+  },
+  "fluid_input": {
+    "amount": 1000,
+    "tag": "minecraft:water"
+  },
+  "chemical_input": {
+    "amount": 500,
+    "chemical": "mekanism:polonium"
+  },
+  "duration": 576000,
+  "energy_required": 1000,
+  "item_output": {
+    "count": 1,
+    "id": "moveearth_addtional:meka_armor_material"
+  },
+  "chemical_output": {
+    "amount": 500,
+    "id": "mekanism:spent_nuclear_waste"
+  }
+}

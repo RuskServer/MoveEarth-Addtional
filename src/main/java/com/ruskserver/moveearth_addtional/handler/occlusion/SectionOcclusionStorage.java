@@ -41,6 +41,13 @@ public class SectionOcclusionStorage {
             }
         }
 
+        // Unloaded chunks and heights outside the world answer "open" without being cached:
+        // nothing would ever invalidate such an entry, so the map would only grow.
+        if (level.getChunkSource().getChunkNow(sectionPos.x(), sectionPos.z()) == null
+                || sectionPos.y() < level.getMinSection() || sectionPos.y() >= level.getMaxSection()) {
+            return SubChunkVisGraph.ALL_OPEN_MASK;
+        }
+
         long mask = computeMask(level, sectionPos);
 
         synchronized (cache) {

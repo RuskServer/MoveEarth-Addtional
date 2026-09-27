@@ -248,6 +248,8 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    // Sable armor mass tests use Minecraft's production math library without booting the game.
+    testImplementation 'org.joml:joml:1.10.5'
     // Minecraft supplies Gson in production. Standalone unit tests need it on the
     // compile classpath too, because the ore-feature scan is handed a parsed
     // JSON tree and is tested against the document shapes it will really meet.
@@ -325,6 +327,89 @@ classes.dependsOn copyDiscordRpcClasses
 // Keep JDA's public package stable for the mod classes, but relocate every transitive
 // package into a private namespace. A single explicitly named nested module can then
 // coexist with any Kotlin/Jackson/Gson/etc. versions supplied by NeoForge or other mods.
+def discordRuntimeLicenseIds = [
+        'net.dv8tion:JDA'                       : 'Apache-2.0',
+        'net.sf.trove4j:core'                   : 'LGPL-2.1',
+        'com.fasterxml.jackson.core:jackson-core': 'Apache-2.0',
+        'com.fasterxml.jackson.core:jackson-databind': 'Apache-2.0',
+        'com.fasterxml.jackson.core:jackson-annotations': 'Apache-2.0',
+        'com.google.crypto.tink:tink'           : 'Apache-2.0',
+        'com.google.code.findbugs:jsr305'       : 'Apache-2.0',
+        'com.google.code.gson:gson'             : 'Apache-2.0',
+        'com.google.errorprone:error_prone_annotations': 'Apache-2.0',
+        'com.google.protobuf:protobuf-java'     : 'BSD-3-Clause',
+        'com.neovisionaries:nv-websocket-client' : 'Apache-2.0',
+        'com.squareup.okhttp3:okhttp-jvm'       : 'Apache-2.0',
+        'org.jetbrains.kotlin:kotlin-stdlib'    : 'Apache-2.0',
+        'org.jetbrains:annotations'              : 'Apache-2.0',
+        'com.squareup.okio:okio-jvm'             : 'Apache-2.0',
+        'org.apache.commons:commons-collections4': 'Apache-2.0'
+]
+def discordRuntimeLicenseTexts = [
+        'Apache-2.0'  : file('LICENSES/Apache-2.0.txt'),
+        'LGPL-2.1'    : file('LICENSES/LGPL-2.1.txt'),
+        'BSD-3-Clause': file('LICENSES/BSD-3-Clause-Protobuf.txt')
+]
+def discordRuntimeArtifacts = project.configurations.discordBotRuntime.resolvedConfiguration.resolvedArtifacts
+        .collectEntries { artifact ->
+            def id = artifact.moduleVersion.id
+            [("${id.group}:${artifact.name}:${id.version}".toString()): artifact.file.absolutePath]
+        }
+def discordLegalOutput = layout.buildDirectory.dir('generated/discord-runtime-legal')
+var prepareDiscordRuntimeLegalFiles = tasks.register('prepareDiscordRuntimeLegalFiles') {
+    inputs.files(discordRuntimeArtifacts.values())
+    inputs.property('artifactCoordinates', discordRuntimeArtifacts.keySet().sort().join(','))
+    inputs.files(discordRuntimeLicenseTexts.values())
+    outputs.dir(discordLegalOutput)
+    doLast {
+        def output = discordLegalOutput.get().asFile
+        if (output.exists() && !output.deleteDir()) {
+            throw new GradleException("Could not clean generated Discord legal directory: ${output}")
+        }
+        def found = [] as Set
+        discordRuntimeArtifacts.keySet().sort().each { coordinates ->
+            def parts = coordinates.split(':')
+            def group = parts[0]
+            def module = parts[1]
+            def version = parts[2]
+            def artifactFile = new File(discordRuntimeArtifacts[coordinates])
+            def key = "${group}:${module}"
+            def licenseId = discordRuntimeLicenseIds[key]
+            if (licenseId == null) {
+                throw new GradleException("Discord runtime dependency ${coordinates} has no reviewed license entry")
+            }
+            found.add(key)
+            def destination = new File(output, "${group}/${module}/${version}")
+            destination.mkdirs()
+            new File(destination, 'ABOUT.txt').text =
+                    "Component: ${coordinates}\nLicense: ${licenseId}\n" +
+                    "Upstream legal files, when present, are preserved under upstream/.\n"
+            java.nio.file.Files.copy(discordRuntimeLicenseTexts[licenseId].toPath(),
+                    new File(destination, "LICENSE-${licenseId}.txt").toPath())
+            new java.util.zip.ZipFile(artifactFile).withCloseable { zip ->
+                zip.entries().each { entry ->
+                    if (entry.directory) return
+                    def name = entry.name
+                    def legalPath = !name.contains('/') || name.startsWith('META-INF/')
+                    def basename = name.substring(name.lastIndexOf('/') + 1)
+                    if (!legalPath || !(basename ==~ /(?i).*?(LICENSE|LICENCE|NOTICE|COPYING|THIRD[-_.]?PARTY).*?/)) return
+                    if (name.split('/').contains('..')) {
+                        throw new GradleException("Unsafe legal file path in ${artifactFile.name}: ${name}")
+                    }
+                    def target = new File(destination, "upstream/${name}")
+                    target.parentFile.mkdirs()
+                    zip.getInputStream(entry).withCloseable { stream ->
+                        java.nio.file.Files.copy(stream, target.toPath())
+                    }
+                }
+            }
+        }
+        if (found != discordRuntimeLicenseIds.keySet()) {
+            throw new GradleException("Discord license inventory differs from resolved runtime: " +
+                    "missing=${discordRuntimeLicenseIds.keySet() - found}, unexpected=${found - discordRuntimeLicenseIds.keySet()}")
+        }
+    }
+}
 var relocateDiscordBotRuntime = tasks.register('relocateDiscordBotRuntime',
         com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
     archiveFileName = 'moveearth-discord-runtime-6.6.0.jar'
@@ -336,6 +421,9 @@ var relocateDiscordBotRuntime = tasks.register('relocateDiscordBotRuntime',
     exclude 'META-INF/*.SF'
     exclude 'META-INF/*.DSA'
     exclude 'META-INF/*.RSA'
+    from(prepareDiscordRuntimeLegalFiles) {
+        into 'META-INF/licenses/discord-runtime'
+    }
 
     def privateRoot = 'com.ruskserver.moveearth_addtional.internal.discord'
     relocate 'gnu.trove', "${privateRoot}.trove"
@@ -368,6 +456,15 @@ var verifyDiscordRuntimeIsolation = tasks.register('verifyDiscordRuntimeIsolatio
     doLast {
         def runtimeJar = relocatedDiscordRuntimeFile.get().asFile
         new java.util.zip.ZipFile(runtimeJar).withCloseable { zip ->
+            discordRuntimeArtifacts.keySet().each { coordinates ->
+                def parts = coordinates.split(':')
+                def directory = "META-INF/licenses/discord-runtime/${parts[0]}/${parts[1]}/${parts[2]}"
+                def licenseId = discordRuntimeLicenseIds["${parts[0]}:${parts[1]}"]
+                if (zip.getEntry("${directory}/ABOUT.txt") == null ||
+                        zip.getEntry("${directory}/LICENSE-${licenseId}.txt") == null) {
+                    throw new GradleException("Discord runtime is missing license files for ${coordinates}")
+                }
+            }
             def leaking = zip.entries().findAll { entry ->
                 if (entry.directory || !entry.name.endsWith('.class')) return false
                 def classPath = entry.name.replaceFirst('^META-INF/versions/[0-9]+/', '')
@@ -488,7 +585,7 @@ var verifyPlayerDistribution = tasks.register('verifyPlayerDistribution') {
                 throw new GradleException("Player JAR ships server-only worldgen data: ${terrainData}")
             }
             ['C2S_LinkDiscordAccountPacket.class', 'C2S_LinkNationDiscordPacket.class'].each { className ->
-                def entry = zip.getEntry("com/ruskserver/moveearth_addtional/network/${className}")
+                def entry = zip.getEntry("com/ruskserver/moveearth_addtional/network/c2s/nation/${className}")
                 if (entry == null) throw new GradleException("Player JAR is missing ${className}")
                 def bytes = zip.getInputStream(entry).bytes
                 def constants = new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)

@@ -498,7 +498,7 @@ public final class SiegeSavedData extends SavedData {
                         value.getLong("HeldTicks"));
                 data.active.put(new SiegeKey(record.attackerNation(), record.individualAttacker(),
                         record.defenderNation(), record.coreId()), record);
-            } catch (IllegalArgumentException ignored) { }
+            } catch (RuntimeException ignored) { }
         }
         ListTag cooldownTag = tag.getList("RetryCooldowns", Tag.TAG_COMPOUND);
         for (int index = 0; index < cooldownTag.size(); index++) {
@@ -532,7 +532,7 @@ public final class SiegeSavedData extends SavedData {
                         Math.max(0L, value.getLong("Capture")), Math.max(0, value.getInt("Stage")),
                         value.getBoolean("Finalized"), value.getBoolean("IndividualAttacker"));
                 data.fallen.put(record.coreId(), record);
-            } catch (IllegalArgumentException ignored) { }
+            } catch (RuntimeException ignored) { }
         }
         ListTag offlineDamageTag = tag.getList("OfflineDamageCarry", Tag.TAG_COMPOUND);
         for (int index = 0; index < offlineDamageTag.size(); index++) {
@@ -543,7 +543,7 @@ public final class SiegeSavedData extends SavedData {
                 data.offlineDamageCarry.put(new OfflineDamageKey(
                         ResourceLocation.parse(value.getString("Dimension")), value.getLong("Pos")),
                         new DamageCarry(units, Math.max(1, value.getInt("Denominator"))));
-            } catch (IllegalArgumentException ignored) { }
+            } catch (RuntimeException ignored) { }
         }
         loadUuidCountdowns(tag, "NationTruces", data.nationTruces);
         loadUuidCountdowns(tag, "CoreTruces", data.coreTruces);

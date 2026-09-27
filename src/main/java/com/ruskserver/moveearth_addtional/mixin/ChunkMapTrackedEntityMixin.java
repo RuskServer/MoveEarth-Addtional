@@ -5,7 +5,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 
 /**
  * サーバー側エンティティトラッキング（ChunkMap.TrackedEntity）に介入し、
@@ -14,16 +15,19 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(targets = "net.minecraft.server.level.ChunkMap$TrackedEntity")
 public abstract class ChunkMapTrackedEntityMixin {
 
-    @Redirect(
+    // WrapOperation rather than Redirect: two redirects of the same call from different mods
+    // fail at startup, while wrappers chain.
+    @WrapOperation(
             method = "updatePlayer",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/world/entity/Entity;broadcastToPlayer(Lnet/minecraft/server/level/ServerPlayer;)Z"
             )
     )
-    private boolean moveearthAdditional$filterEntityVisibility(Entity entity, ServerPlayer player) {
+    private boolean moveearthAdditional$filterEntityVisibility(Entity entity, ServerPlayer player,
+                                                               Operation<Boolean> original) {
         // バニラの標準可視判定をチェック
-        if (!entity.broadcastToPlayer(player)) {
+        if (!original.call(entity, player)) {
             return false;
         }
 

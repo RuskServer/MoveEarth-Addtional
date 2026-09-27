@@ -29,6 +29,35 @@ public final class ReinforcementSavedData extends SavedData {
     private final java.util.Set<BlockPos> constructionEntries = new HashSet<>();
     private final ArrayDeque<BlockPos> cleanupQueue = new ArrayDeque<>();
     private int cleanupChunkCursor;
+    // Transient invalidation only. HP/activation changes do not change the installed armor's mass.
+    private final ReinforcementMassRevisions massRevisions = new ReinforcementMassRevisions();
+
+    public long massRevision() { return massRevisions.revision(); }
+
+    public long massRevisionInside(int minX, int minZ, int maxX, int maxZ) {
+        return massRevisions.inside(minX, minZ, maxX, maxZ);
+    }
+
+    private void massChanged(BlockPos pos) {
+        massRevisions.changed(pos.getX(), pos.getZ());
+    }
+
+    /** Physics/accounting scan: unlike the client overlay it must never truncate entries. */
+    public void forEachInside(int minX, int minY, int minZ, int maxX, int maxY, int maxZ,
+                             java.util.function.BiConsumer<BlockPos, ReinforcementEntry> consumer) {
+        for (int x = minX >> 4; x <= maxX >> 4; x++) {
+            for (int z = minZ >> 4; z <= maxZ >> 4; z++) {
+                Set<BlockPos> positions = entriesByChunk.get(net.minecraft.world.level.ChunkPos.asLong(x, z));
+                if (positions == null) continue;
+                for (BlockPos pos : positions) {
+                    if (pos.getX() >= minX && pos.getX() <= maxX && pos.getY() >= minY
+                            && pos.getY() <= maxY && pos.getZ() >= minZ && pos.getZ() <= maxZ) {
+                        consumer.accept(pos, entries.get(pos));
+                    }
+                }
+            }
+        }
+    }
     // Independent of the block entry: breaking/replacing a block must not erase battle damage history.
     private final RepairCooldowns repairBlockedUntil = new RepairCooldowns();
 
@@ -55,7 +84,8 @@ public final class ReinforcementSavedData extends SavedData {
     public void put(BlockPos pos, ReinforcementEntry entry) {
         BlockPos immutable = pos.immutable();
         if (!entries.containsKey(immutable)) index(immutable);
-        entries.put(immutable, entry);
+        ReinforcementEntry previous = entries.put(immutable, entry);
+        if (previous == null || previous.material() != entry.material()) massChanged(immutable);
         if (entry.activatesAt() > 0L) constructionEntries.add(immutable);
         else constructionEntries.remove(immutable);
         setDirty();
@@ -63,6 +93,7 @@ public final class ReinforcementSavedData extends SavedData {
 
     public void remove(BlockPos pos) {
         if (entries.remove(pos) != null) {
+            massChanged(pos);
             unindex(pos);
             constructionEntries.remove(pos);
             setDirty();
@@ -76,6 +107,7 @@ public final class ReinforcementSavedData extends SavedData {
             BlockPos pos = iterator.next().getKey();
             if (!predicate.test(pos)) continue;
             iterator.remove();
+            massChanged(pos);
             unindex(pos);
             constructionEntries.remove(pos);
             removed++;
@@ -168,6 +200,7 @@ public final class ReinforcementSavedData extends SavedData {
             if (!level.hasChunkAt(pos)) continue;
             if (level.getBlockState(pos).isAir()) {
                 entries.remove(pos);
+                massChanged(pos);
                 iterator.remove();
                 unindex(pos);
                 removed.add(pos.immutable());
@@ -276,6 +309,7 @@ public final class ReinforcementSavedData extends SavedData {
 
     private void removeInternal(BlockPos pos) {
         entries.remove(pos);
+        massChanged(pos);
         constructionEntries.remove(pos);
         unindex(pos);
     }

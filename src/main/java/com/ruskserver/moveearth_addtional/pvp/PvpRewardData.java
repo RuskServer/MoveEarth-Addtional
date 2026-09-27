@@ -1,7 +1,8 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
 import com.ruskserver.moveearth_addtional.item.ModItems;
-import com.ruskserver.moveearth_addtional.network.S2C_OpenPvpTasksPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenPvpTasksPacket;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -50,7 +51,7 @@ public final class PvpRewardData extends SavedData {
 
     public boolean claim(ServerPlayer player, String taskId) {
         if (PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal("§c試合中はタスク報酬を受け取れません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("試合中はタスク報酬を受け取れません。"));
             return false;
         }
         PvpTaskDefinition definition = PvpTaskDefinition.BY_ID.get(taskId);
@@ -61,7 +62,7 @@ public final class PvpRewardData extends SavedData {
 
         ItemStack itemReward = new ItemStack(definition.itemReward(), definition.itemRewardCount());
         if (!canFullyAdd(player, itemReward)) {
-            player.sendSystemMessage(Component.literal("§c素材報酬を受け取るためのインベントリ空きがありません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("素材報酬を受け取るためのインベントリ空きがありません。"));
             return false;
         }
 
@@ -72,8 +73,8 @@ public final class PvpRewardData extends SavedData {
         playerProgress.points += definition.pointReward();
         task.claimed = true;
         setDirty();
-        player.sendSystemMessage(Component.literal("§a" + definition.title() + " の報酬を受け取りました: §6+"
-                + definition.pointReward() + "pt §f＆ §b" + itemReward.getHoverName().getString()
+        player.sendSystemMessage(MoveEarthMessage.success(definition.title() + " の報酬を受け取りました: +"
+                + definition.pointReward() + "pt ＆ " + itemReward.getHoverName().getString()
                 + " ×" + definition.itemRewardCount()));
         return true;
     }
@@ -108,7 +109,7 @@ public final class PvpRewardData extends SavedData {
 
     public boolean exchangeCrate(ServerPlayer player) {
         if (PvpMatchManager.INSTANCE.isActive(player)) {
-            player.sendSystemMessage(Component.literal("§c試合中は武器箱を交換できません。"));
+            player.sendSystemMessage(MoveEarthMessage.error("試合中は武器箱を交換できません。"));
             return false;
         }
         PlayerProgress progress = progress(player.getUUID());
@@ -145,7 +146,7 @@ public final class PvpRewardData extends SavedData {
             task.value = Mth.clamp(task.value + amount, 0, definition.target());
             changed |= task.value != oldValue;
             if (oldValue < definition.target() && task.value >= definition.target()) {
-                player.sendSystemMessage(Component.literal("タスク達成：" + definition.title()
+                player.sendSystemMessage(MoveEarthMessage.success("タスク達成：" + definition.title()
                         + "（/pvp tasks から報酬を受け取れます）"));
             }
         }

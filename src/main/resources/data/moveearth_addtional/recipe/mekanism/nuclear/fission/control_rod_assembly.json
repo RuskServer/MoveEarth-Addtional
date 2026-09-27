@@ -6,8 +6,8 @@
     "L": { "tag": "c:ingots/lead" },
     "P": { "item": "create:precision_mechanism" },
     "R": { "item": "electroenergetics:redstone_relay" },
-    "S": { "tag": "c:ingots/steel" }
+    "S": { "item": "mekanism:block_steel" }
   },
-  "pattern": ["LCL", "SPS", "SRS"],
+  "pattern": ["LCL", "SPS", "PRP"],
   "result": { "count": 1, "id": "mekanismgenerators:control_rod_assembly" }
 }

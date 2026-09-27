@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_PvpZonePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpZonePacket;
 import com.ruskserver.moveearth_addtional.pvp.PvpZoneState;
 import net.minecraft.Util;
 import net.neoforged.api.distmarker.Dist;

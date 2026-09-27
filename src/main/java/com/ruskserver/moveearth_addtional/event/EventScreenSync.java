@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.event;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
-import com.ruskserver.moveearth_addtional.network.S2C_EventScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_EventScreenPacket;
 import com.ruskserver.moveearth_addtional.s2.time.OpenTimeService;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -49,6 +49,10 @@ public final class EventScreenSync {
         if ("refresh".equals(action)) {
             send(player, "", false);
         } else if ("claim".equals(action)) {
+            if (com.ruskserver.moveearth_addtional.pvp.PvpMatchManager.INSTANCE.isActive(player)) {
+                send(player, "PvP試合終了後に報酬を受け取ってください", false);
+                return;
+            }
             int received = HarvestFestival.claim(player);
             send(player, received > 0 ? received + "個受け取りました"
                     : "受取待ちがないか、所持品に空きがありません", false);

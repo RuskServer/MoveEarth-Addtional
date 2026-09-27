@@ -24,6 +24,9 @@ public final class SiegeActionService {
             return Result.NO_PERMISSION;
         }
         if (SiegeSavedData.get(player.server).isNationLocked(nationId)) return Result.SIEGE_LOCKED;
+        // The vault is excluded from looting, so moving it during an open window would take
+        // the attacker's loot back after the fall has settled.
+        if (SiegeLootService.lootWindowOpenAgainst(player.server, nationId)) return Result.SIEGE_LOCKED;
         return switch (TerritorySavedData.get(player.server).setVaultChunk(nationId,
                 player.level().dimension().location(), player.blockPosition())) {
             case UPDATED -> Result.VAULT_UPDATED;

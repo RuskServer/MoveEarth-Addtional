@@ -300,6 +300,8 @@ public final class NationSavedData extends SavedData {
             return membershipResult(MembershipStatus.NO_PERMISSION);
         }
         if (nation.ownerId.equals(targetId)) return membershipResult(MembershipStatus.OWNER_CANNOT_LEAVE);
+        // Leaving has its own path and checks; kicking oneself would sidestep them.
+        if (actorId.equals(targetId)) return membershipResult(MembershipStatus.NO_PERMISSION);
         if (!nation.members.containsKey(targetId)) return membershipResult(MembershipStatus.NOT_MEMBER);
         nation.members.remove(targetId);
         nationByMember.remove(targetId);
@@ -328,6 +330,11 @@ public final class NationSavedData extends SavedData {
                 .anyMatch(role -> role.displayName.equalsIgnoreCase(validation.name()));
         if (duplicate) return roleResult(RoleStatus.DUPLICATE);
         long allowedMask = permissionMask & ~(S2Permission.OWNER.mask());
+        long previousMask = creating ? 0L : nation.roles.get(normalizedId).permissionMask;
+        if (!RoleAuthorityPolicy.maySave(nation.ownerId.equals(actorId), heldMask(nation, actorId),
+                previousMask, allowedMask)) {
+            return roleResult(RoleStatus.NO_PERMISSION);
+        }
         String savedId = creating ? "custom_" + UUID.randomUUID() : normalizedId;
         nation.roles.put(savedId, new Role(savedId, validation.name(), allowedMask));
         changed();
@@ -344,6 +351,11 @@ public final class NationSavedData extends SavedData {
         Member member = nation.members.get(targetId);
         Role role = nation.roles.get(roleId);
         if (member == null || role == null || OWNER_ROLE.equals(role.id)) return roleResult(RoleStatus.NOT_FOUND);
+        Role current = nation.roles.get(member.roleId);
+        if (!RoleAuthorityPolicy.mayAssign(nation.ownerId.equals(actorId), targetId.equals(actorId),
+                heldMask(nation, actorId), current == null ? 0L : current.permissionMask, role.permissionMask)) {
+            return roleResult(RoleStatus.NO_PERMISSION);
+        }
         member.roleId = role.id;
         changed();
         return new RoleResult(RoleStatus.ASSIGNED, revision, role.id);
@@ -360,6 +372,10 @@ public final class NationSavedData extends SavedData {
             return roleResult(RoleStatus.BUILT_IN);
         }
         if (!nation.roles.containsKey(normalizedId)) return roleResult(RoleStatus.NOT_FOUND);
+        if (!RoleAuthorityPolicy.withinAuthority(nation.ownerId.equals(actorId), heldMask(nation, actorId),
+                nation.roles.get(normalizedId).permissionMask)) {
+            return roleResult(RoleStatus.NO_PERMISSION);
+        }
         nation.members.values().stream()
                 .filter(member -> normalizedId.equals(member.roleId))
                 .forEach(member -> member.roleId = MEMBER_ROLE);
@@ -449,6 +465,12 @@ public final class NationSavedData extends SavedData {
 
     private RoleResult roleResult(RoleStatus status) {
         return new RoleResult(status, revision, "");
+    }
+
+    private static long heldMask(Nation nation, UUID playerId) {
+        Member member = nation.members.get(playerId);
+        Role role = member == null ? null : nation.roles.get(member.roleId);
+        return role == null ? 0L : role.permissionMask;
     }
 
     private static boolean hasPermission(Nation nation, UUID playerId, S2Permission permission) {

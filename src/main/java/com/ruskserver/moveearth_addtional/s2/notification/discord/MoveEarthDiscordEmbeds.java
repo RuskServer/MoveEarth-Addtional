@@ -1,6 +1,8 @@
 package com.ruskserver.moveearth_addtional.s2.notification.discord;
 
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
+import com.ruskserver.moveearth_addtional.s2.notification.NotificationPresentation;
+import com.ruskserver.moveearth_addtional.s2.notification.NotificationSeverity;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 
@@ -37,11 +39,29 @@ public final class MoveEarthDiscordEmbeds {
     }
 
     public static MessageEmbed accountLinkCode(String code, long expiresAtMillis) {
-        return base("Minecraftアカウントを本人確認", ACCENT)
-                .setDescription("ゲーム内の「国家通知・Discord連携」画面で「本人確認」を選んでください。")
+        return base("Minecraftアカウントを連携", ACCENT)
+                .setDescription("ゲーム内の「国家通知・Discord連携」画面で「アカウント連携」を選んでください。")
                 .addField("One-time code", "`" + DiscordText.safe(code) + "`", false)
                 .addField("有効期限", "<t:" + Math.max(0L, expiresAtMillis / 1000L) + ":R>", false)
                 .setFooter("1つのMinecraft UUIDとDiscordアカウントを一対一で関連付けます")
+                .build();
+    }
+
+    public static MessageEmbed setup(boolean accountLinked, boolean nationLinked,
+                                     String channelName, String roleName) {
+        return base("MoveEarth Discord セットアップ", ACCENT)
+                .setDescription("下のボタンから必要な操作を選んでください。コードが必要な時だけ発行します。")
+                .addField("個人アカウント連携", accountLinked ? "連携済み" : "未連携", true)
+                .addField("国家リンク", nationLinked ? "接続済み" : "未接続", true)
+                .addField("通知先", channelName == null || channelName.isBlank() ? "未設定" : DiscordText.safe(channelName), true)
+                .addField("Siegeメンション", roleName == null || roleName.isBlank() ? "なし" : DiscordText.safe(roleName), true)
+                .setFooter("アカウント連携は個人操作、国家設定はゲーム内の通知管理権限が必要です")
+                .build();
+    }
+
+    public static MessageEmbed confirmation(String subject) {
+        return base("解除の確認", DANGER)
+                .setDescription(DiscordText.safe(subject) + "を解除します。通知やアカウント連携が利用できなくなります。")
                 .build();
     }
 
@@ -89,23 +109,38 @@ public final class MoveEarthDiscordEmbeds {
 
     public static MessageEmbed notification(String nationName,
                                              NationNotificationSavedData.Delivery delivery) {
-        EventPresentation presentation = presentation(delivery.type());
-        EmbedBuilder embed = base(presentation.title, presentation.color)
-                .setDescription("**" + DiscordText.safe(nationName) + "** への国家通知です。")
+        NotificationPresentation presentation = NotificationPresentation.from(delivery, nationName);
+        int color = switch (presentation.severity()) {
+            case URGENT -> DANGER;
+            case WARNING -> WARNING;
+            case NORMAL -> ACCENT;
+        };
+        EmbedBuilder embed = base(presentation.title(), color)
+                .setDescription(DiscordText.safe(presentation.description()))
                 .setTimestamp(Instant.ofEpochMilli(delivery.createdAtMillis()))
-                .setFooter("MoveEarth event • " + delivery.id());
-        if (delivery.dimension() != null) {
-            embed.addField("Dimension", DiscordText.safe(delivery.dimension().toString()), true);
-        }
-        if (delivery.pos() != null) {
-            embed.addField("Position", delivery.pos().getX() + ", " + delivery.pos().getY()
-                    + ", " + delivery.pos().getZ(), true);
-        }
-        List<String> arguments = delivery.arguments();
-        for (int index = 0; index < arguments.size() && index < 8; index++) {
-            embed.addField("Detail " + (index + 1), DiscordText.safe(arguments.get(index)), false);
+                .setFooter(categoryName(presentation) + " • " + severityName(presentation.severity()));
+        for (NotificationPresentation.Field field : presentation.fields()) {
+            embed.addField(DiscordText.safe(field.name()), DiscordText.safe(field.value()), true);
         }
         return embed.build();
+    }
+
+    private static String categoryName(NotificationPresentation presentation) {
+        return switch (presentation.category()) {
+            case DEFENSE -> "防衛・Siege";
+            case TERRITORY -> "領土・維持";
+            case CITIZENS -> "国民";
+            case RECOVERY -> "復興";
+            case DISPATCH -> "派遣契約";
+        };
+    }
+
+    private static String severityName(NotificationSeverity severity) {
+        return switch (severity) {
+            case URGENT -> "緊急";
+            case WARNING -> "警告";
+            case NORMAL -> "通常";
+        };
     }
 
     private static EmbedBuilder base(String title, int color) {
@@ -137,6 +172,7 @@ public final class MoveEarthDiscordEmbeds {
             case DISPATCH_COMPLETED -> new EventPresentation("派遣契約完了", SUCCESS);
             case DISPATCH_CANCELLED -> new EventPresentation("派遣契約終了", MUTED);
             case RIVAL_UPDATED -> new EventPresentation("宿敵設定更新", DANGER);
+            case DIGEST -> new EventPresentation("国家通知のまとめ", ACCENT);
             case SYSTEM -> new EventPresentation("システム通知", ACCENT);
         };
     }

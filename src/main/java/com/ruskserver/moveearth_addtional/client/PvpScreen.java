@@ -1,9 +1,9 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
-import com.ruskserver.moveearth_addtional.network.C2S_ExchangeWeaponCratePacket;
-import com.ruskserver.moveearth_addtional.network.C2S_PvpActionPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestPvpTasksPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_ExchangeWeaponCratePacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_PvpActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_RequestPvpTasksPacket;
 import com.ruskserver.moveearth_addtional.pvp.PvpLoadoutDefinition;
 import com.tacz.guns.api.item.IGun;
 import net.minecraft.client.gui.GuiGraphics;

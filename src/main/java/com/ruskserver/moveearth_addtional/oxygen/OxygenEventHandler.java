@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -21,13 +22,33 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public class OxygenEventHandler {
+    private record TorchInteraction(InteractionHand hand, int tick) {}
+    private static final Map<UUID, TorchInteraction> TORCH_INTERACTIONS = new ConcurrentHashMap<>();
+
+    @SubscribeEvent
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        ItemStack stack = player.getItemInHand(event.getHand());
+        if (stack.is(Items.TORCH) || stack.is(Items.SOUL_TORCH)) {
+            TORCH_INTERACTIONS.put(player.getUUID(), new TorchInteraction(event.getHand(), player.server.getTickCount()));
+        } else {
+            TORCH_INTERACTIONS.remove(player.getUUID());
+        }
+    }
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            TorchInteraction interaction = TORCH_INTERACTIONS.get(player.getUUID());
+            if (interaction != null && interaction.tick() != player.server.getTickCount()) {
+                TORCH_INTERACTIONS.remove(player.getUUID(), interaction);
+            }
             PlayerOxygenManager.tick(player);
         }
     }
@@ -56,6 +77,7 @@ public class OxygenEventHandler {
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
+            TORCH_INTERACTIONS.remove(player.getUUID());
             PlayerOxygenManager.remove(player.getUUID());
         }
     }
@@ -102,14 +124,10 @@ public class OxygenEventHandler {
                     level.sendParticles(ParticleTypes.SMOKE, px, py, pz, 10, 0.1, 0.2, 0.1, 0.02);
 
                     // 設置を試みた松明を1個消費する。
-                    ItemStack mainHand = player.getMainHandItem();
-                    ItemStack offHand = player.getOffhandItem();
-                    boolean isTorchInMain = mainHand.is(Items.TORCH) || mainHand.is(Items.SOUL_TORCH);
-
-                    if (isTorchInMain) {
-                        mainHand.shrink(1);
-                    } else if (offHand.is(Items.TORCH) || offHand.is(Items.SOUL_TORCH)) {
-                        offHand.shrink(1);
+                    TorchInteraction interaction = TORCH_INTERACTIONS.remove(player.getUUID());
+                    if (interaction != null && interaction.tick() == player.server.getTickCount()) {
+                        ItemStack used = player.getItemInHand(interaction.hand());
+                        if (used.is(Items.TORCH) || used.is(Items.SOUL_TORCH)) used.shrink(1);
                     }
 
                     // 警告メッセージ

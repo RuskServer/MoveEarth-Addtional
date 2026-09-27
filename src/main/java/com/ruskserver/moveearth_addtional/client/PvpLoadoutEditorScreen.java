@@ -1,9 +1,9 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
-import com.ruskserver.moveearth_addtional.network.C2S_DeleteLoadoutPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_ReorderLoadoutsPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_SaveLoadoutPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_DeleteLoadoutPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_ReorderLoadoutsPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_SaveLoadoutPacket;
 import com.ruskserver.moveearth_addtional.pvp.PvpLoadoutDefinition;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.attachment.AttachmentType;

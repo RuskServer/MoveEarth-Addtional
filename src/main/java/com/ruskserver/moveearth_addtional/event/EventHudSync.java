@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.event;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
-import com.ruskserver.moveearth_addtional.network.S2C_EventHudPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_EventHudPacket;
 import com.ruskserver.moveearth_addtional.s2.time.OpenTimeService;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;

@@ -24,7 +24,7 @@ class MekanismRuntimeRestrictionPolicyTest {
         assertBlock("mekanism", "ultimate_energy_cube");
         assertBlock("mekanism", "creative_bin");
         assertBlock("mekanism", "elite_logistical_transporter");
-        assertBlock("mekanism", "advanced_smelting_factory");
+        assertBlock("mekanism", "advanced_enriching_factory");
         assertBlock("mekanism", "sps_casing");
         assertBlock("mekanism", "antiprotonic_nucleosynthesizer");
     }
@@ -33,10 +33,61 @@ class MekanismRuntimeRestrictionPolicyTest {
     void blocksRemovedPortableCombatAndUpgradeItems() {
         assertItem("mekanism", "portable_teleporter");
         assertItem("mekanism", "atomic_disassembler");
-        assertItem("mekanism", "mekasuit_bodyarmor");
+        assertItem("mekanism", "module_gravitational_modulating_unit");
+        assertItem("mekanism", "module_elytra_unit");
+        assertItem("mekanism", "module_hydraulic_propulsion_unit");
+        assertItem("mekanism", "module_locomotive_boosting_unit");
+        assertItem("mekanism", "module_vision_enhancement_unit");
+        assertItem("mekanism", "meka_tool");
         assertItem("mekanism", "jetpack_armored");
         assertItem("mekanism", "ultimate_tier_installer");
         assertItem("mekanismgenerators", "hohlraum");
+    }
+
+    @Test
+    void blocksItemFluidAndHeatTransmitters() {
+        assertBlock("mekanism", "diversion_transporter");
+        assertBlock("mekanism", "restrictive_transporter");
+        assertBlock("mekanism", "basic_mechanical_pipe");
+        assertBlock("mekanism", "ultimate_mechanical_pipe");
+        assertBlock("mekanism", "elite_thermodynamic_conductor");
+        assertItem("mekanism", "advanced_mechanical_pipe");
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedBlock("mekanism", "ultimate_pressurized_tube"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedBlock("mekanism", "basic_universal_cable"));
+    }
+
+    @Test
+    void restrictsRefinedObsidianGearOnly() {
+        assertItem("mekanismtools", "refined_obsidian_chestplate");
+        assertItem("mekanismtools", "refined_obsidian_paxel");
+        assertItem("mekanismtools", "refined_obsidian_shield");
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanismtools", "osmium_chestplate"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanismtools", "steel_helmet"));
+    }
+
+    @Test
+    void allowsOnlyTheBasicSolarGenerator() {
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedBlock("mekanismgenerators", "solar_generator"));
+        assertBlock("mekanismgenerators", "advanced_solar_generator");
+        assertBlock("mekanismgenerators", "wind_generator");
+        assertBlock("mekanismgenerators", "heat_generator");
+    }
+
+    @Test
+    void keepsTheMekaSuitAndItsPermittedModulesUsable() {
+        for (String piece : new String[]{"mekasuit_helmet", "mekasuit_bodyarmor", "mekasuit_pants", "mekasuit_boots"}) {
+            assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanism", piece));
+        }
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedBlock("mekanism", "modification_station"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanism", "module_radiation_shielding_unit"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanism", "module_inhalation_purification_unit"));
+    }
+
+    @Test
+    void keepsEnergizedSmelterAndSmeltingFactoriesUsable() {
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedBlock("mekanism", "energized_smelter"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedBlock("mekanism", "ultimate_smelting_factory"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanism", "basic_smelting_factory"));
     }
 
     @Test

@@ -1,8 +1,8 @@
 package com.ruskserver.moveearth_addtional.economy;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_EconomyHudPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_WaypointPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_EconomyHudPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_WaypointPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;

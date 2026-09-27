@@ -39,4 +39,13 @@ class BastionPolicyTest {
     void allowsAdministrativeBypass() {
         assertFalse(BastionPolicy.isRestricted(Optional.of(OWNER), Optional.of(FOREIGNER), false, false, true));
     }
+
+    @Test
+    void machinesCannotCrossIntoAnotherActiveBastion() {
+        assertTrue(BastionPolicy.blocksMachineMovement(Optional.empty(), Optional.of(OWNER), true));
+        assertTrue(BastionPolicy.blocksMachineMovement(Optional.of(FOREIGNER), Optional.of(OWNER), true));
+        assertFalse(BastionPolicy.blocksMachineMovement(Optional.of(OWNER), Optional.of(OWNER), true));
+        assertFalse(BastionPolicy.blocksMachineMovement(Optional.empty(), Optional.empty(), true));
+        assertFalse(BastionPolicy.blocksMachineMovement(Optional.empty(), Optional.of(OWNER), false));
+    }
 }

@@ -4,10 +4,10 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.handler.RandomSpawnMappingService;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -60,9 +60,8 @@ public final class SpawnPoolCommand {
         RandomSpawnMappingService.Result result = RandomSpawnMappingService.start(
                 source.getServer(), generate, target);
         if (generate && result.success()) {
-            source.sendSuccess(() -> Component.literal(
-                    "注意: このモードは未生成チャンクを1件ずつ生成します。必要時以外は map start を使用してください。")
-                    .withStyle(ChatFormatting.YELLOW), true);
+            source.sendSuccess(() -> MoveEarthMessage.warning(
+                    "注意: このモードは未生成チャンクを1件ずつ生成します。必要時以外は map start を使用してください。"), true);
         }
         return reply(source, result);
     }
@@ -80,19 +79,18 @@ public final class SpawnPoolCommand {
                     + " / 検査 " + status.checked()
                     + " / 追加 " + status.accepted();
         }
-        source.sendSuccess(() -> Component.literal(
+        source.sendSuccess(() -> MoveEarthMessage.info(
                 "ランダムスポーンプール: " + status.poolSize() + "地点"
-                        + " / 推奨 " + status.recommendedTarget() + "地点 / マッピング: " + mapping)
-                .withStyle(ChatFormatting.AQUA), false);
+                        + " / 推奨 " + status.recommendedTarget() + "地点 / マッピング: " + mapping), false);
         return 1;
     }
 
     private static int reply(CommandSourceStack source, RandomSpawnMappingService.Result result) {
         if (result.success()) {
-            source.sendSuccess(() -> Component.literal(result.message()).withStyle(ChatFormatting.GREEN), true);
+            source.sendSuccess(() -> MoveEarthMessage.success(result.message()), true);
             return 1;
         }
-        source.sendFailure(Component.literal(result.message()));
+        source.sendFailure(MoveEarthMessage.error(result.message()));
         return 0;
     }
 }

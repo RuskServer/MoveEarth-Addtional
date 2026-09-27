@@ -2,10 +2,9 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
-import com.ruskserver.moveearth_addtional.network.C2S_NationSettingsPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestS2HubPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestNationNotificationsPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationSettingsPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestS2HubPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPacket;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
 import com.ruskserver.moveearth_addtional.s2.nation.NationNamePolicy;
@@ -169,7 +168,7 @@ public final class NationSettingsScreen extends Screen implements SuppressesChat
             return true;
         }
         if (notificationsBounds(panel).contains(mouseX, mouseY)) {
-            PacketDistributor.sendToServer(new C2S_RequestNationNotificationsPacket());
+            NationNotificationsScreen.request(null);
             return true;
         }
         NationNamePolicy.Validation validation = validation();

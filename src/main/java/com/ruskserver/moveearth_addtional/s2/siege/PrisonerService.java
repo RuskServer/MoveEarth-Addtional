@@ -12,9 +12,9 @@ import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
-import com.ruskserver.moveearth_addtional.network.C2S_PrisonerActionPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PrisonerSnapshotPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_PrisonerActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_PrisonerActionPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerActionResultPacket;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -218,8 +218,7 @@ public final class PrisonerService {
             captor.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
                     "message.moveearth_addtional.prisoner.revive_failed")));
         } else {
-            CombatTagSavedData.get(captor.server).tag(attempt.targetId, captor.getUUID(),
-                    S2TerritoryConfig.captivityMaxTicks());
+            CombatTagService.clearForCustody(captor.server, attempt.targetId);
             captor.getMainHandItem().hurtAndBreak(1, captor, EquipmentSlot.MAINHAND);
             captor.server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.prisoner.escorting", captiveName(target))), false);

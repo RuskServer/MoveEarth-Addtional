@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.territory;
 
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
-import com.ruskserver.moveearth_addtional.network.S2C_TerritoryClosurePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -30,6 +30,7 @@ public final class TerritoryClosureRecheckManager {
     private static final Map<CoreKey, TerritoryClosureScanner.Session> ACTIVE = new LinkedHashMap<>();
     private static final ArrayDeque<CoreKey> ACTIVE_ORDER = new ArrayDeque<>();
     private static final Map<CoreKey, List<ValidationRequest>> VALIDATION_REQUESTS = new LinkedHashMap<>();
+    private static final int MAX_REQUESTS_PER_CORE = 16;
 
     private TerritoryClosureRecheckManager() {
     }
@@ -39,8 +40,12 @@ public final class TerritoryClosureRecheckManager {
                                          BlockPos pos, int requestId) {
         CoreKey key = new CoreKey(player.level().dimension().location(), pos);
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
-        VALIDATION_REQUESTS.computeIfAbsent(key, ignored -> new java.util.ArrayList<>())
-                .add(new ValidationRequest(player.getUUID(), nationId, requestId));
+        List<ValidationRequest> requests = VALIDATION_REQUESTS.computeIfAbsent(key,
+                ignored -> new java.util.ArrayList<>());
+        // One pending request per player per core, and a hard cap, so a spammed packet cannot grow this.
+        requests.removeIf(request -> request.playerId().equals(player.getUUID()));
+        if (requests.size() >= MAX_REQUESTS_PER_CORE) requests.removeFirst();
+        requests.add(new ValidationRequest(player.getUUID(), nationId, requestId));
         if (!ACTIVE.containsKey(key)) {
             QUEUE.schedule(key, player.server.getTickCount());
         }

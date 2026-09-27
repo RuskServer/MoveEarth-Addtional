@@ -9,14 +9,15 @@
       "modid": "electroenergetics"
     }
   ],
-  "type": "minecraft:crafting_shaped",
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
   "category": "misc",
   "key": {
     "A": {
-      "tag": "mekanism:alloys/infused"
+      "tag": "mekanism:alloys/reinforced"
     },
     "C": {
-      "tag": "c:circuits/basic"
+      "tag": "c:circuits/advanced"
     },
     "H": {
       "item": "electroenergetics:heavily_insulated_wire"
@@ -24,6 +25,9 @@
     "R": {
       "item": "electroenergetics:relay"
     },
+    "S": { "item": "create:sturdy_sheet" },
+    "P": { "item": "create:precision_mechanism" },
+    "W": { "item": "electroenergetics:capacitor" },
     "T": {
       "item": "mekanism:basic_chemical_tank"
     },
@@ -32,9 +36,11 @@
     }
   },
   "pattern": [
-    "ACA",
-    "TXT",
-    "HRH"
+    "SHCHS",
+    "TPAPT",
+    "CWXWC",
+    "TPAPT",
+    "SHRHS"
   ],
   "result": {
     "count": 1,

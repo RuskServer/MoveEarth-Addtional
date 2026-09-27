@@ -147,7 +147,7 @@ public class PvpLoadoutDefinition {
         String attachmentSummary = buf.readUtf(MAX_TEXT_LENGTH);
         String bodyTtk = buf.readUtf(128);
         int color = buf.readInt();
-        List<WeaponDefinition> weapons = com.ruskserver.moveearth_addtional.network.NetworkDecodeLimits.readList(
+        List<WeaponDefinition> weapons = com.ruskserver.moveearth_addtional.network.common.NetworkDecodeLimits.readList(
                 buf.readVarInt(), MAX_WEAPONS, "weapon", () -> WeaponDefinition.read(buf));
         return new PvpLoadoutDefinition(id, displayName, description, weaponSummary, attachmentSummary, bodyTtk, color, weapons);
     }
@@ -216,7 +216,7 @@ public class PvpLoadoutDefinition {
         public static WeaponDefinition read(RegistryFriendlyByteBuf buf) {
             int slot = buf.readVarInt();
             ResourceLocation gunId = buf.readResourceLocation();
-            List<ResourceLocation> attachments = com.ruskserver.moveearth_addtional.network.NetworkDecodeLimits.readList(
+            List<ResourceLocation> attachments = com.ruskserver.moveearth_addtional.network.common.NetworkDecodeLimits.readList(
                     buf.readVarInt(), MAX_ATTACHMENTS_PER_WEAPON, "attachment", buf::readResourceLocation);
             return new WeaponDefinition(slot, gunId, attachments);
         }

@@ -26,6 +26,7 @@ public class ModCreativeModeTabs {
                         output.accept(ModItems.WEAPON_CRATE.get());
                         output.accept(ModItems.GAS_MASK.get());
                         output.accept(ModItems.CARBON_FILTER.get());
+                        output.accept(ModItems.MEKA_ARMOR_MATERIAL.get());
                         output.accept(ModItems.WELDING_TOOL.get());
                         output.accept(ModItems.PRECISION_FIRING_ASSEMBLY.get());
                     })

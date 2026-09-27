@@ -32,13 +32,14 @@ final class PvpCuriosInventoryCompat {
         }
     }
 
-    static void clear(ServerPlayer player) {
-        if (!isAvailable()) return;
+    static boolean clear(ServerPlayer player) {
+        if (!isAvailable()) return true;
         try {
-            CuriosIntegration.clear(player);
+            return CuriosIntegration.clear(player);
         } catch (RuntimeException | LinkageError error) {
             Moveearth_addtional.LOGGER.error("Failed to clear Curios inventory for PvP participant {}",
                     player.getGameProfile().getName(), error);
+            return false;
         }
     }
 
@@ -57,9 +58,9 @@ final class PvpCuriosInventoryCompat {
             return top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player)
                     .map(handler -> handler.saveInventory(false).copy()).orElse(null);
         }
-        private static void clear(ServerPlayer player) {
-            top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player)
-                    .ifPresent(handler -> handler.saveInventory(true));
+        private static boolean clear(ServerPlayer player) {
+            return top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player)
+                    .map(handler -> handler.saveInventory(true) != null).orElse(false);
         }
         private static void restore(ServerPlayer player, ListTag inventory) {
             top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(player).ifPresent(handler -> {

@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_WaypointPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_WaypointPacket;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;

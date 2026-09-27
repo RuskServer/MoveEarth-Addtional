@@ -18,11 +18,14 @@ class LocalChatRulesTest {
 
     @Test
     void distancesAreDisplayedToTheNearestBlock() {
-        assertEquals("自分", LocalChatRules.distanceLabel(0, true));
-        assertEquals("1ブロック未満", LocalChatRules.distanceLabel(0.75, false));
-        assertEquals("8ブロック先", LocalChatRules.distanceLabel(8.2, false));
-        assertEquals("12ブロック先", LocalChatRules.distanceLabel(12.4, false));
-        assertEquals("27ブロック先", LocalChatRules.distanceLabel(27.3, false));
-        assertEquals("100ブロック先", LocalChatRules.distanceLabel(99.6, false));
+        assertEquals(new LocalChatRules.Distance(LocalChatRules.Distance.Kind.SELF, 0L),
+                LocalChatRules.distance(0, true));
+        assertEquals(new LocalChatRules.Distance(LocalChatRules.Distance.Kind.UNDER_ONE_BLOCK, 0L),
+                LocalChatRules.distance(0.75, false));
+        assertEquals(8L, LocalChatRules.distance(8.2, false).blocks());
+        assertEquals(12L, LocalChatRules.distance(12.4, false).blocks());
+        assertEquals(27L, LocalChatRules.distance(27.3, false).blocks());
+        assertEquals(100L, LocalChatRules.distance(99.6, false).blocks());
+        assertEquals(LocalChatRules.Distance.Kind.BLOCKS, LocalChatRules.distance(99.6, false).kind());
     }
 }

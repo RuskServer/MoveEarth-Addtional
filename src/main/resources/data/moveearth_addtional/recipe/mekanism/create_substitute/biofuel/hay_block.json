@@ -1,0 +1,21 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
+  "type": "create:milling",
+  "ingredients": [
+    {
+      "item": "minecraft:hay_block"
+    }
+  ],
+  "processing_time": 100,
+  "results": [
+    {
+      "id": "mekanism:block_bio_fuel",
+      "count": 2
+    }
+  ]
+}

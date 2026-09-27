@@ -2,19 +2,21 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
-import com.ruskserver.moveearth_addtional.network.C2S_NationMembershipPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_NationApplicationActionPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_NationDiplomacyPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_NationTreasuryPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_S2HubActionPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_SiegeActionPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestRegionViewPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestPrisonerScreenPacket;
-import com.ruskserver.moveearth_addtional.network.C2S_RequestRecoveryDispatchPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_S2ActionResultPacket;
-import com.ruskserver.moveearth_addtional.network.S2C_S2HubSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestS2HubPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationMembershipPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationApplicationActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationDiplomacyPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationTreasuryPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_S2HubActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_SiegeActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_RequestRegionViewPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RequestPrisonerScreenPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RequestRecoveryDispatchPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_S2HubSnapshotPacket;
 import com.ruskserver.moveearth_addtional.region.RegionMaterialNames;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
+import com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention;
 import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -72,6 +74,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private String surrenderTargetName = "";
     private boolean vaultChangeConfirmation;
     private boolean leaveConfirmation;
+    /** The hub refreshes itself; a background reply must never reopen a hub the player has left. */
+    private static final int AUTO_REFRESH_TICKS = 200;
+    private static long backgroundRefreshSentAt;
+    private int ticksSinceRefresh;
     private boolean onlineMembersOnly;
     private EditBox memberSearch;
 
@@ -84,6 +90,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     public void update(S2C_S2HubSnapshotPacket packet) {
+        backgroundRefreshSentAt = 0L;
+        ticksSinceRefresh = 0;
         this.snapshot = packet.snapshot();
         this.tab = navigation.networkTab();
         lastTab = tab;
@@ -102,8 +110,21 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         toastTicks = 60;
     }
 
+    /** True once for a reply to a background refresh, which should only update data, not open the hub. */
+    static boolean consumeBackgroundRefresh() {
+        boolean recent = backgroundRefreshSentAt != 0L
+                && net.minecraft.Util.getMillis() - backgroundRefreshSentAt < 5_000L;
+        backgroundRefreshSentAt = 0L;
+        return recent;
+    }
+
     @Override
     public void tick() {
+        if (++ticksSinceRefresh >= AUTO_REFRESH_TICKS && pendingRequestId < 0 && backgroundRefreshSentAt == 0L) {
+            ticksSinceRefresh = 0;
+            backgroundRefreshSentAt = net.minecraft.Util.getMillis();
+            PacketDistributor.sendToServer(new C2S_RequestS2HubPacket(navigation.networkTab()));
+        }
         if (toastTicks > 0) toastTicks--;
         if (pendingRequestId >= 0 && ++pendingTicks >= 200) {
             pendingRequestId = -1;
@@ -145,18 +166,18 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
         Rect close = closeBounds(panel);
         drawClose(graphics, font, close, close.contains(mouseX, mouseY));
-        Rect refresh = refreshBounds(panel);
-        boolean refreshEnabled = pendingRequestId < 0;
-        drawButton(graphics, font, refresh,
-                Component.translatable("screen.moveearth_addtional.s2.refresh"), ACCENT,
-                refreshEnabled && refresh.contains(mouseX, mouseY), refreshEnabled);
         if (snapshot.member()) {
-            Rect settings = headerSettingsBounds(panel);
-            drawButton(graphics, font, settings,
-                    Component.translatable(isOwner()
-                            ? "screen.moveearth_addtional.nation.settings.open"
-                            : "screen.moveearth_addtional.nation.leave"), isOwner() ? GOLD : DANGER,
-                    pendingRequestId < 0 && settings.contains(mouseX, mouseY), pendingRequestId < 0);
+            if (isOwner()) {
+                Rect settings = headerSettingsBounds(panel);
+                drawButton(graphics, font, settings,
+                        Component.translatable("screen.moveearth_addtional.nation.settings.open"), GOLD,
+                        pendingRequestId < 0 && settings.contains(mouseX, mouseY), pendingRequestId < 0);
+            }
+            Rect notifications = headerNotificationsBounds(panel, isOwner());
+            drawButton(graphics, font, notifications,
+                    Component.translatable("screen.moveearth_addtional.s2.header.notifications"),
+                    snapshot.notificationAttention() == NotificationAttention.NONE ? ACCENT : GOLD,
+                    notifications.contains(mouseX, mouseY), true);
         }
 
         for (S2HubNavigation.Section candidate : S2HubNavigation.Section.values()) {
@@ -270,53 +291,104 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         }
         String nationTitle = snapshot.nationTag().isBlank()
                 ? snapshot.nationName() : "[" + snapshot.nationTag() + "] " + snapshot.nationName();
-        graphics.drawString(font, font.plainSubstrByWidth(nationTitle, Math.max(40, content.width() - 120)),
+        graphics.drawString(font, font.plainSubstrByWidth(nationTitle, content.width()),
                 content.x(), content.y(), ACCENT, false);
-        Component roleText = Component.translatable("screen.moveearth_addtional.s2.role", snapshot.roleName());
-        graphics.drawString(font, font.plainSubstrByWidth(roleText.getString(), Math.max(40, content.width() / 2)),
-                content.x(), content.y() + 15, MUTED, false);
-        Component ownerText = Component.translatable(
-                "screen.moveearth_addtional.s2.owner", snapshot.ownerName());
-        String owner = font.plainSubstrByWidth(ownerText.getString(), Math.max(40, content.width() / 2));
-        graphics.drawString(font, owner,
-                content.right() - font.width(owner), content.y() + 15, GOLD, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.s2.home.identity", snapshot.roleName(), snapshot.ownerName())
+                        .getString(), content.width()), content.x(), content.y() + 14, MUTED, false);
 
-        if (content.height() >= 210) {
-            int gap = 6;
-            int cardWidth = (content.width() - gap) / 2;
-            drawMetric(graphics, new Rect(content.x(), content.y() + 34, cardWidth, 44),
-                    "screen.moveearth_addtional.s2.members", snapshot.onlineMembers() + " / " + snapshot.totalMembers());
-            drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 34, cardWidth, 44),
-                    "screen.moveearth_addtional.s2.territory", Integer.toString(snapshot.territoryChunks()));
-            drawMetric(graphics, new Rect(content.x(), content.y() + 84, cardWidth, 44),
-                    "screen.moveearth_addtional.s2.cores", Integer.toString(snapshot.activeCores()));
-            drawMetric(graphics, new Rect(content.x() + cardWidth + gap, content.y() + 84, cardWidth, 44),
-                    "screen.moveearth_addtional.s2.upkeep", Component.translatable(
-                            "screen.moveearth_addtional.s2.upkeep_value", snapshot.upkeep()).getString());
+        Rect summary = homeSummaryBounds(content);
+        drawCard(graphics, summary, snapshot.home().upkeepOverdue() ? DANGER : ACCENT, false, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.s2.home.summary_people", snapshot.onlineMembers(),
+                        snapshot.totalMembers(), snapshot.territoryChunks(), snapshot.activeCores()).getString(),
+                summary.width() - 20), summary.x() + 10, summary.y() + 7, TEXT, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.s2.home.summary_money", formatAmount(snapshot.upkeep()),
+                        upkeepDue(), formatAmount(snapshot.home().treasury())).getString(),
+                summary.width() - 20), summary.x() + 10, summary.y() + 21,
+                snapshot.home().upkeepOverdue() ? DANGER : MUTED, false);
+
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.attention"),
+                content.x(), summary.bottom() + 10, MUTED, false);
+        List<HomeItem> items = homeItems();
+        int shown = Math.min(items.size(), homeRowCapacity(content));
+        for (int index = 0; index < shown; index++) {
+            HomeItem item = items.get(index);
+            Rect row = homeRowBounds(content, index);
+            Rect action = homeRowActionBounds(row);
+            boolean hovered = row.contains(mouseX, mouseY);
+            drawCard(graphics, row, item.color(), false, hovered);
+            graphics.drawString(font, font.plainSubstrByWidth(item.text().getString(),
+                    action.x() - row.x() - 20), row.x() + 10, row.y() + 9, TEXT, false);
+            drawButton(graphics, font, action, item.action(), item.color(), hovered, true);
         }
-        if (content.height() >= 100) {
-            Rect attention = homeAttentionBounds(content);
-            int attentionColor = !snapshot.peaceProposals().isEmpty() || !snapshot.sieges().isEmpty()
-                    ? DANGER : snapshot.invitations().isEmpty() ? SUCCESS : GOLD;
-            drawCard(graphics, attention, attentionColor, false, attention.contains(mouseX, mouseY));
-            graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.attention"),
-                    attention.x() + 13, attention.y() + 7, MUTED, false);
-            Component attentionText = !snapshot.peaceProposals().isEmpty()
-                    ? Component.translatable("screen.moveearth_addtional.s2.attention.peace", snapshot.peaceProposals().size())
-                    : !snapshot.sieges().isEmpty()
-                    ? Component.translatable("screen.moveearth_addtional.s2.attention.siege", snapshot.sieges().size())
-                    : Component.translatable("screen.moveearth_addtional.s2.attention.none");
-            graphics.drawString(font, attentionText, attention.x() + 13, attention.y() + 21, TEXT, false);
+        int after = shown == 0 ? homeRowBounds(content, 0).y() + 4 : homeRowBounds(content, shown - 1).bottom() + 5;
+        if (items.isEmpty()) {
+            graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.home.none"),
+                    content.x(), after, MUTED, false);
+        } else if (items.size() > shown) {
+            graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.home.more",
+                    items.size() - shown), content.x(), after, MUTED, false);
         }
-        Rect territory = homeQuickBounds(content, 0);
-        Rect finance = homeQuickBounds(content, 1);
-        Rect members = homeQuickBounds(content, 2);
-        drawButton(graphics, font, territory, pageLabel(S2HubNavigation.Page.TERRITORY), SUCCESS,
-                territory.contains(mouseX, mouseY), true);
-        drawButton(graphics, font, finance, pageLabel(S2HubNavigation.Page.FINANCE), GOLD,
-                finance.contains(mouseX, mouseY), true);
-        drawButton(graphics, font, members, pageLabel(S2HubNavigation.Page.MEMBERS), ACCENT,
-                members.contains(mouseX, mouseY), true);
+        if (!isOwner()) {
+            Rect leave = homeLeaveBounds(content);
+            boolean enabled = pendingRequestId < 0;
+            drawButton(graphics, font, leave, Component.translatable("screen.moveearth_addtional.nation.leave"),
+                    MUTED, enabled && leave.contains(mouseX, mouseY), enabled);
+        }
+    }
+
+    /** One row of the home "action required" list; {@code open} is what its button does. */
+    private record HomeItem(Component text, int color, Component action, Runnable open) { }
+
+    /** Most urgent first. Only things the viewer can act on, so the list stays short. */
+    private List<HomeItem> homeItems() {
+        List<HomeItem> items = new java.util.ArrayList<>();
+        Component view = Component.translatable("screen.moveearth_addtional.s2.home.action.view");
+        if (!snapshot.sieges().isEmpty()) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.siege", snapshot.sieges().size()), DANGER, view,
+                () -> selectPage(S2HubNavigation.Page.SIEGES)));
+        long incomingPeace = snapshot.peaceProposals().stream().filter(S2NationSnapshot.PeaceView::incoming).count();
+        if (incomingPeace > 0) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.peace", incomingPeace), GOLD, view,
+                () -> selectPage(S2HubNavigation.Page.PEACE)));
+        if (snapshot.home().upkeepOverdue()) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.upkeep_overdue"), DANGER,
+                Component.translatable("screen.moveearth_addtional.s2.home.action.finance"),
+                () -> selectPage(S2HubNavigation.Page.FINANCE)));
+        if (snapshot.home().pendingApplications() > 0) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.applications", snapshot.home().pendingApplications()),
+                GOLD, view, () -> PacketDistributor.sendToServer(new C2S_NationApplicationActionPacket(
+                        snapshot.revision(), C2S_NationApplicationActionPacket.Action.OPEN, null))));
+        if (!snapshot.vaultConfigured() && canManageTerritory()) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.vault"), GOLD,
+                Component.translatable("screen.moveearth_addtional.s2.home.action.finance"),
+                () -> selectPage(S2HubNavigation.Page.FINANCE)));
+        NotificationAttention discord = snapshot.notificationAttention();
+        if (discord == NotificationAttention.UNLINKED) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.discord_unlinked"), GOLD,
+                Component.translatable("screen.moveearth_addtional.s2.home.action.setup"),
+                () -> NationNotificationsScreen.request(NationNotificationsScreen.Page.LINK)));
+        if (discord == NotificationAttention.PROBLEM) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.discord_problem"), DANGER, view,
+                () -> NationNotificationsScreen.request(NationNotificationsScreen.Page.STATUS)));
+        return items;
+    }
+
+    private Component upkeepDue() {
+        S2NationSnapshot.HomeStatus home = snapshot.home();
+        if (home.upkeepOverdue()) return Component.translatable("screen.moveearth_addtional.s2.home.overdue");
+        long millis = home.upkeepDueInMillis();
+        if (millis <= 0L) return Component.translatable("screen.moveearth_addtional.s2.home.due_unscheduled");
+        long minutes = Math.max(1L, millis / 60_000L);
+        return minutes < 120L
+                ? Component.translatable("screen.moveearth_addtional.s2.home.due_minutes", minutes)
+                : Component.translatable("screen.moveearth_addtional.s2.home.due_hours", minutes / 60L);
+    }
+
+    private static String formatAmount(long amount) {
+        return String.format(java.util.Locale.ROOT, "%,d", amount);
     }
 
     private void drawMetric(GuiGraphics graphics, Rect bounds, String labelKey, String value) {
@@ -894,17 +966,13 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             onClose();
             return true;
         }
-        if (pendingRequestId < 0 && refreshBounds(panel).contains(mouseX, mouseY)) {
-            int requestId = ++nextRequestId;
-            pendingRequestId = requestId;
-            pendingTicks = 0;
-            PacketDistributor.sendToServer(new C2S_S2HubActionPacket(
-                    requestId, snapshot.revision(), navigation.networkTab(), C2S_S2HubActionPacket.Action.REFRESH));
+        if (snapshot.member() && headerNotificationsBounds(panel, isOwner()).contains(mouseX, mouseY)) {
+            NationNotificationsScreen.request(null);
             return true;
         }
-        if (snapshot.member() && pendingRequestId < 0 && headerSettingsBounds(panel).contains(mouseX, mouseY)) {
-            if (isOwner()) minecraft.setScreen(new NationSettingsScreen(snapshot));
-            else leaveConfirmation = true;
+        if (snapshot.member() && isOwner() && pendingRequestId < 0
+                && headerSettingsBounds(panel).contains(mouseX, mouseY)) {
+            minecraft.setScreen(new NationSettingsScreen(snapshot));
             return true;
         }
         for (S2HubNavigation.Section candidate : S2HubNavigation.Section.values()) {
@@ -961,14 +1029,16 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             }
         }
         if (snapshot.member() && navigation.page() == S2HubNavigation.Page.HOME) {
-            for (int index = 0; index < 3; index++) if (homeQuickBounds(content, index).contains(mouseX, mouseY)) {
-                selectPage(index == 0 ? S2HubNavigation.Page.TERRITORY
-                        : index == 1 ? S2HubNavigation.Page.FINANCE : S2HubNavigation.Page.MEMBERS);
-                return true;
+            List<HomeItem> items = homeItems();
+            int shown = Math.min(items.size(), homeRowCapacity(content));
+            for (int index = 0; index < shown; index++) {
+                if (homeRowBounds(content, index).contains(mouseX, mouseY)) {
+                    items.get(index).open().run();
+                    return true;
+                }
             }
-            if (content.height() >= 100 && homeAttentionBounds(content).contains(mouseX, mouseY)) {
-                selectPage(!snapshot.peaceProposals().isEmpty()
-                        ? S2HubNavigation.Page.PEACE : S2HubNavigation.Page.SIEGES);
+            if (!isOwner() && pendingRequestId < 0 && homeLeaveBounds(content).contains(mouseX, mouseY)) {
+                leaveConfirmation = true;
                 return true;
             }
         }
@@ -1180,6 +1250,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return hasNationPermission(S2Permission.MANAGE_DIPLOMACY);
     }
 
+
     private boolean canManageSiege() { return hasNationPermission(S2Permission.MANAGE_SIEGE); }
     private boolean canWithdraw(S2NationSnapshot.SiegeView siege) {
         return canManageSiege() || siege.individualAttacker() && siege.attacker();
@@ -1206,29 +1277,40 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return new Rect(panel.right() - 28, panel.y() + 8, 20, 20);
     }
 
-    private static Rect refreshBounds(Rect panel) {
-        return new Rect(panel.right() - 122, panel.y() + 10, 84, 20);
+    /** Notifications are one click away from every hub page; owners also get settings beside it. */
+    private static Rect headerNotificationsBounds(Rect panel, boolean owner) {
+        return new Rect(panel.right() - (owner ? 152 : 92), panel.y() + 10, 56, 20);
     }
 
     private static Rect headerSettingsBounds(Rect panel) {
-        return new Rect(panel.right() - 182, panel.y() + 10, 52, 20);
+        return new Rect(panel.right() - 92, panel.y() + 10, 56, 20);
     }
 
     private static Rect sectionBounds(S2HubLayout.Layout layout, S2HubNavigation.Section section) {
         return S2HubLayout.item(layout.sections(), section.ordinal(), S2HubNavigation.Section.values().length);
     }
 
-    private static Rect homeAttentionBounds(Rect content) {
-        int y = content.height() < 210 ? content.y() + 38 : Math.min(content.bottom() - 53, content.y() + 136);
-        return new Rect(content.x(), y, content.width(), 42);
+    private static Rect homeSummaryBounds(Rect content) {
+        return new Rect(content.x(), content.y() + 30, content.width(), 34);
     }
 
-    private static Rect homeQuickBounds(Rect content, int index) {
-        Rect row = new Rect(content.x(), content.bottom() - 23, content.width(), 22);
-        Rect raw = S2HubLayout.item(row, index, 3);
-        int inset = index == 0 ? 0 : 3;
-        int rightInset = index == 2 ? 0 : 3;
-        return new Rect(raw.x() + inset, raw.y(), Math.max(1, raw.width() - inset - rightInset), raw.height());
+    private static Rect homeRowBounds(Rect content, int index) {
+        return new Rect(content.x(), homeSummaryBounds(content).bottom() + 24 + index * 30, content.width(), 26);
+    }
+
+    private static Rect homeRowActionBounds(Rect row) {
+        return new Rect(row.right() - 76, row.y() + 4, 68, 18);
+    }
+
+    private static Rect homeLeaveBounds(Rect content) {
+        return new Rect(content.right() - 96, content.bottom() - 18, 96, 18);
+    }
+
+    /** Rows that fit above the leave button; at most three, so the home never scrolls. */
+    private static int homeRowCapacity(Rect content) {
+        int top = homeRowBounds(content, 0).y();
+        int limit = homeLeaveBounds(content).y() - 16;
+        return Math.max(0, Math.min(3, (limit - top + 4) / 30));
     }
 
     private static Rect territoryPreviewBounds(Rect content) {

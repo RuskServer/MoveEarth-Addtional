@@ -11,6 +11,8 @@ import com.ruskserver.moveearth_addtional.config.MarketConfig;
 import com.ruskserver.moveearth_addtional.config.LocalChatConfig;
 import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
 import com.ruskserver.moveearth_addtional.config.StartupClientConfig;
+import com.ruskserver.moveearth_addtional.config.CreateIndustryConfig;
+import com.ruskserver.moveearth_addtional.config.MekanismBalanceConfig;
 import com.ruskserver.moveearth_addtional.config.WaterWheelBalanceConfig;
 import com.ruskserver.moveearth_addtional.compat.cbc.CbcReinforcementCompat;
 import com.ruskserver.moveearth_addtional.compat.warnautics.WarnauticsReinforcementCompat;
@@ -37,6 +39,9 @@ public class Moveearth_addtional {
             );
         }
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            modContainer.registerConfig(ModConfig.Type.CLIENT,
+                    com.ruskserver.moveearth_addtional.client.scope.ScopePipConfig.SPEC,
+                    "moveearth_addtional-scope-pip.toml");
             modContainer.registerConfig(
                     ModConfig.Type.CLIENT,
                     StartupClientConfig.SPEC,
@@ -81,6 +86,16 @@ public class Moveearth_addtional {
                 ModConfig.Type.SERVER,
                 WaterWheelBalanceConfig.SPEC,
                 "moveearth_addtional-water-wheels.toml"
+        );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                CreateIndustryConfig.SPEC,
+                "moveearth_addtional-create-industry.toml"
+        );
+        modContainer.registerConfig(
+                ModConfig.Type.SERVER,
+                MekanismBalanceConfig.SPEC,
+                "moveearth_addtional-mekanism.toml"
         );
 
         CbcReinforcementCompat.registerIfPresent();

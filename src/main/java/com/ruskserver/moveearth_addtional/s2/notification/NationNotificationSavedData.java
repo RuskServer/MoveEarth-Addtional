@@ -15,6 +15,7 @@ import java.util.ArrayDeque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.EnumMap;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
@@ -26,11 +27,18 @@ public final class NationNotificationSavedData extends SavedData {
     private static final Settings DEFAULT_SETTINGS = new Settings(true, false, true, false);
 
     private final Map<UUID, Settings> settings = new LinkedHashMap<>();
+    private final Map<UUID, EnumMap<NotificationCategory, NotificationPreference>> categorySettings =
+            new LinkedHashMap<>();
     private final Map<UUID, Link> links = new LinkedHashMap<>();
     private final LinkedHashMap<UUID, Delivery> outbox = new LinkedHashMap<>();
+    /** Not persisted: only spam protection for the shared outbox. */
+    private final Map<UUID, Long> lastTestAt = new java.util.HashMap<>();
+    private static final long TEST_COOLDOWN_MILLIS = 30_000L;
     private final Map<UUID, Long> minecraftToDiscord = new LinkedHashMap<>();
     private final Map<Long, UUID> discordToMinecraft = new LinkedHashMap<>();
     private final Map<String, Long> recentDeliveries = new LinkedHashMap<>();
+    private final Map<String, Integer> incidentHealthBands = new LinkedHashMap<>();
+    private final Map<String, Long> recentMentions = new LinkedHashMap<>();
     private final ArrayDeque<AuditEntry> audit = new ArrayDeque<>();
     private long deliveredCount;
     private long failedAttemptCount;
@@ -38,9 +46,66 @@ public final class NationNotificationSavedData extends SavedData {
     private long expiredCount;
     private long deduplicatedCount;
     private long revision;
+    private long lastSuccessAtMillis;
+    private long lastFailureAtMillis;
+    private String lastFailureReason = "";
 
     public Settings settings(UUID nationId) {
         return settings.getOrDefault(nationId, DEFAULT_SETTINGS);
+    }
+
+    public Map<NotificationCategory, NotificationPreference> categorySettings(UUID nationId) {
+        EnumMap<NotificationCategory, NotificationPreference> existing = categorySettings.get(nationId);
+        if (existing != null) return Map.copyOf(existing);
+        Settings legacy = settings(nationId);
+        EnumMap<NotificationCategory, NotificationPreference> migrated = new EnumMap<>(NotificationCategory.class);
+        for (NotificationCategory category : NotificationCategory.values()) {
+            migrated.put(category, new NotificationPreference(
+                    legacy.inGame ? NotificationPreference.InGameMode.IMMEDIATE
+                            : NotificationPreference.InGameMode.OFF,
+                    legacy.discord ? NotificationPreference.DiscordMode.IMMEDIATE
+                            : NotificationPreference.DiscordMode.OFF,
+                    category == NotificationCategory.DEFENSE && legacy.mentionOnSiege
+                            ? NotificationPreference.MentionPolicy.URGENT_ONLY
+                            : NotificationPreference.MentionPolicy.NONE));
+        }
+        return Map.copyOf(migrated);
+    }
+
+    public NotificationPreference preference(UUID nationId, NotificationCategory category) {
+        return categorySettings(nationId).getOrDefault(category,
+                new NotificationPreference(NotificationPreference.InGameMode.IMMEDIATE,
+                        NotificationPreference.DiscordMode.OFF, NotificationPreference.MentionPolicy.NONE));
+    }
+
+    public NotificationPreset preset(UUID nationId) {
+        return NotificationPreset.detect(categorySettings(nationId), link(nationId).linked());
+    }
+
+    public void updateCategorySettings(UUID nationId,
+                                       Map<NotificationCategory, NotificationPreference> values,
+                                       boolean includeCoordinates, int digestMinutes, int mentionCooldownMinutes) {
+        EnumMap<NotificationCategory, NotificationPreference> safe = new EnumMap<>(NotificationCategory.class);
+        for (NotificationCategory category : NotificationCategory.values()) {
+            NotificationPreference value = values == null ? null : values.get(category);
+            if (value == null) value = preference(nationId, category);
+            if (!link(nationId).linked() && value.discord() != NotificationPreference.DiscordMode.OFF) {
+                value = new NotificationPreference(value.inGame(), NotificationPreference.DiscordMode.OFF,
+                        NotificationPreference.MentionPolicy.NONE);
+            }
+            safe.put(category, value);
+        }
+        categorySettings.put(nationId, safe);
+        boolean inGame = safe.values().stream().anyMatch(value ->
+                value.inGame() == NotificationPreference.InGameMode.IMMEDIATE);
+        boolean discord = safe.values().stream().anyMatch(value ->
+                value.discord() != NotificationPreference.DiscordMode.OFF);
+        boolean mention = safe.values().stream().anyMatch(value ->
+                value.mention() == NotificationPreference.MentionPolicy.URGENT_ONLY);
+        settings.put(nationId, new Settings(inGame, discord, includeCoordinates, mention,
+                Math.max(15, Math.min(30, digestMinutes)),
+                Math.max(5, Math.min(120, mentionCooldownMinutes))));
+        changed();
     }
 
     public Link link(UUID nationId) {
@@ -67,6 +132,25 @@ public final class NationNotificationSavedData extends SavedData {
         int count = 0;
         for (Delivery delivery : outbox.values()) if (delivery.nationId.equals(nationId)) count++;
         return count;
+    }
+
+    public int retryingCount(UUID nationId) {
+        int count = 0;
+        for (Delivery delivery : outbox.values()) {
+            if (delivery.nationId.equals(nationId) && delivery.attempts > 0) count++;
+        }
+        return count;
+    }
+
+    public List<Delivery> deliveries(UUID nationId, int limit) {
+        if (nationId == null || limit <= 0) return List.of();
+        return outbox.values().stream().filter(delivery -> delivery.nationId.equals(nationId))
+                .limit(Math.min(25, limit)).toList();
+    }
+
+    public DeliveryHealth deliveryHealth(UUID nationId) {
+        return new DeliveryHealth(pendingCount(nationId), retryingCount(nationId), droppedCount,
+                expiredCount, lastSuccessAtMillis, lastFailureAtMillis, lastFailureReason);
     }
 
     public Optional<UUID> minecraftForDiscord(long discordId) {
@@ -104,7 +188,8 @@ public final class NationNotificationSavedData extends SavedData {
     public void updateSettings(UUID nationId, Settings value) {
         Settings safe = value == null ? DEFAULT_SETTINGS : value;
         if (!link(nationId).linked()) safe = new Settings(
-                safe.inGame(), false, safe.includeCoordinates(), safe.mentionOnSiege());
+                safe.inGame(), false, safe.includeCoordinates(), safe.mentionOnSiege(),
+                safe.digestMinutes(), safe.mentionCooldownMinutes());
         if (safe.equals(settings(nationId))) return;
         settings.put(nationId, safe);
         changed();
@@ -140,7 +225,9 @@ public final class NationNotificationSavedData extends SavedData {
         Settings current = settings(nationId);
         if (current.discord()) {
             settings.put(nationId, new Settings(current.inGame(), false,
-                    current.includeCoordinates(), current.mentionOnSiege()));
+                    current.includeCoordinates(), current.mentionOnSiege(),
+                    current.digestMinutes(), current.mentionCooldownMinutes()));
+            categorySettings.remove(nationId);
             removed = true;
         }
         if (removed) changed();
@@ -164,18 +251,32 @@ public final class NationNotificationSavedData extends SavedData {
 
     public Optional<UUID> enqueue(UUID nationId, EventType type, ResourceLocation dimension,
                                   BlockPos pos, List<String> arguments, long nowMillis) {
-        Settings preference = settings(nationId);
+        Settings setting = settings(nationId);
         Link link = link(nationId);
-        if (!NotificationDeliveryPolicy.canQueue(link.linked, preference.discord, outbox.size())) {
+        EventType safeType = type == null ? EventType.SYSTEM : type;
+        NotificationCategory category = NotificationCategory.of(safeType);
+        NotificationPreference preference = preference(nationId, category);
+        if (!NotificationDeliveryPolicy.canQueue(link.linked,
+                setting.discord() && preference.discord() != NotificationPreference.DiscordMode.OFF,
+                outbox.size())) {
             return Optional.empty();
         }
-        EventType safeType = type == null ? EventType.SYSTEM : type;
+        if (safeType == EventType.SIEGE_STARTED && pos != null) {
+            incidentHealthBands.remove(healthBandKey(nationId, dimension, pos));
+        }
+        if (safeType == EventType.CORE_DAMAGED
+                && !crossedHealthBand(nationId, dimension, pos, arguments)) return Optional.empty();
+        if (preference.discord() == NotificationPreference.DiscordMode.DIGEST
+                && !NotificationPresentation.mandatory(safeType)) {
+            return enqueueDigest(nationId, category, nowMillis, setting.digestMinutes());
+        }
         String key = deliveryKey(nationId, safeType, dimension, pos);
         long window = com.ruskserver.moveearth_addtional.config.DiscordBotConfig
                 .deduplicationWindowSeconds() * 1_000L;
         Long recent = recentDeliveries.get(key);
         boolean queued = outbox.values().stream().anyMatch(delivery -> delivery.key.equals(key));
-        if (queued || (recent != null && NotificationDeliveryPolicy.duplicate(recent, nowMillis, window))) {
+        if (!NotificationPresentation.mandatory(safeType) && safeType != EventType.CORE_DAMAGED
+                && (queued || (recent != null && NotificationDeliveryPolicy.duplicate(recent, nowMillis, window)))) {
             deduplicatedCount++;
             setDirty();
             return Optional.empty();
@@ -186,10 +287,33 @@ public final class NationNotificationSavedData extends SavedData {
                 .map(value -> value.substring(0, Math.min(256, value.length())))
                 .limit(16)
                 .toList();
-        BlockPos safePos = preference.includeCoordinates ? pos : null;
+        BlockPos safePos = setting.includeCoordinates ? pos : null;
         outbox.put(id, new Delivery(id, nationId, safeType,
                 dimension, safePos, safeArguments, Math.max(0L, nowMillis), Math.max(0L, nowMillis), 0, key));
         setDirty();
+        return Optional.of(id);
+    }
+
+    /**
+     * One pending test per nation, and at most one every 30 seconds. The outbox is shared by every
+     * nation, so unthrottled tests could crowd out other nations' siege alerts.
+     */
+    public boolean testThrottled(UUID nationId, long nowMillis) {
+        Long last = lastTestAt.get(nationId);
+        if (last != null && nowMillis - last < TEST_COOLDOWN_MILLIS) return true;
+        return outbox.values().stream().anyMatch(delivery -> delivery.nationId().equals(nationId)
+                && delivery.key() != null && delivery.key().startsWith("test|"));
+    }
+
+    public Optional<UUID> enqueueTest(UUID nationId, long nowMillis) {
+        if (!link(nationId).linked() || outbox.size() >= MAX_OUTBOX
+                || testThrottled(nationId, nowMillis)) return Optional.empty();
+        lastTestAt.put(nationId, nowMillis);
+        UUID id = UUID.randomUUID();
+        outbox.put(id, new Delivery(id, nationId, EventType.SYSTEM, null, null,
+                List.of("Discord通知先・埋め込み権限は正常です"), nowMillis, nowMillis, 0,
+                "test|" + id));
+        audit("test_delivery", nationId, null, 0L, true, "queued");
         return Optional.of(id);
     }
 
@@ -207,6 +331,7 @@ public final class NationNotificationSavedData extends SavedData {
         if (delivery == null) return false;
         recentDeliveries.put(delivery.key, System.currentTimeMillis());
         deliveredCount++;
+        lastSuccessAtMillis = System.currentTimeMillis();
         audit("delivery", delivery.nationId, null, 0L, true, delivery.type.name());
         return true;
     }
@@ -216,15 +341,36 @@ public final class NationNotificationSavedData extends SavedData {
         if (delivery == null) return false;
         int attempts = delivery.attempts + 1;
         failedAttemptCount++;
+        lastFailureAtMillis = Math.max(0L, nowMillis);
         boolean dropped = NotificationDeliveryPolicy.shouldDrop(attempts);
         if (dropped) {
             outbox.remove(deliveryId);
             droppedCount++;
+            lastFailureReason = "retry_limit";
         }
-        else outbox.put(deliveryId, delivery.retryAt(
+        else {
+            lastFailureReason = "temporary_api_failure";
+            outbox.put(deliveryId, delivery.retryAt(
                 nowMillis + NotificationDeliveryPolicy.retryDelayMillis(attempts), attempts));
+        }
         audit("delivery", delivery.nationId, null, 0L, false,
                 dropped ? "retry_limit:" + delivery.type.name() : "retry:" + attempts);
+        return true;
+    }
+
+    public void recordDeliveryFailure(UUID nationId, String reason, long nowMillis) {
+        lastFailureAtMillis = Math.max(0L, nowMillis);
+        lastFailureReason = trim(reason, 64);
+        audit("delivery_health", nationId, null, 0L, false, lastFailureReason);
+    }
+
+    public boolean allowMention(UUID nationId, NotificationCategory category, long nowMillis) {
+        String key = nationId + "|" + category;
+        long cooldown = settings(nationId).mentionCooldownMinutes() * 60_000L;
+        Long previous = recentMentions.get(key);
+        if (previous != null && NotificationDeliveryPolicy.duplicate(previous, nowMillis, cooldown)) return false;
+        recentMentions.put(key, nowMillis);
+        setDirty();
         return true;
     }
 
@@ -286,6 +432,52 @@ public final class NationNotificationSavedData extends SavedData {
         return UUID.nameUUIDFromBytes(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
     }
 
+    private boolean crossedHealthBand(UUID nationId, ResourceLocation dimension, BlockPos pos,
+                                      List<String> arguments) {
+        if (pos == null || arguments == null || arguments.size() < 2) return true;
+        try {
+            int health = Integer.parseInt(arguments.get(0));
+            int maximum = Integer.parseInt(arguments.get(1));
+            if (maximum <= 0) return true;
+            int band = NotificationIncidentPolicy.healthBand(health, maximum);
+            String key = healthBandKey(nationId, dimension, pos);
+            Integer previous = incidentHealthBands.put(key, band);
+            setDirty();
+            return NotificationIncidentPolicy.crossed(previous, band);
+        } catch (NumberFormatException ignored) {
+            return true;
+        }
+    }
+
+    private static String healthBandKey(UUID nationId, ResourceLocation dimension, BlockPos pos) {
+        return nationId + "|" + (dimension == null ? "" : dimension) + "|" + pos.asLong();
+    }
+
+    private Optional<UUID> enqueueDigest(UUID nationId, NotificationCategory category,
+                                         long nowMillis, int digestMinutes) {
+        String key = "digest|" + nationId + "|" + category;
+        for (Map.Entry<UUID, Delivery> entry : outbox.entrySet()) {
+            Delivery delivery = entry.getValue();
+            if (!delivery.key.equals(key)) continue;
+            int count = 1;
+            if (delivery.arguments.size() > 1) {
+                try { count = Integer.parseInt(delivery.arguments.get(1)); }
+                catch (NumberFormatException ignored) { }
+            }
+            outbox.put(entry.getKey(), new Delivery(delivery.id, delivery.nationId, EventType.DIGEST,
+                    null, null, List.of(category.name(), Integer.toString(count + 1)),
+                    delivery.createdAtMillis, delivery.availableAtMillis, delivery.attempts, key));
+            setDirty();
+            return Optional.of(entry.getKey());
+        }
+        UUID id = UUID.randomUUID();
+        long availableAt = nowMillis + Math.max(15, Math.min(30, digestMinutes)) * 60_000L;
+        outbox.put(id, new Delivery(id, nationId, EventType.DIGEST, null, null,
+                List.of(category.name(), "1"), nowMillis, availableAt, 0, key));
+        setDirty();
+        return Optional.of(id);
+    }
+
     private void changed() {
         revision++;
         setDirty();
@@ -302,9 +494,22 @@ public final class NationNotificationSavedData extends SavedData {
             value.putBoolean("Discord", entry.getValue().discord);
             value.putBoolean("Coordinates", entry.getValue().includeCoordinates);
             value.putBoolean("MentionSiege", entry.getValue().mentionOnSiege);
+            value.putInt("DigestMinutes", entry.getValue().digestMinutes);
+            value.putInt("MentionCooldownMinutes", entry.getValue().mentionCooldownMinutes);
             preferenceList.add(value);
         }
         tag.put("Settings", preferenceList);
+        ListTag categoryList = new ListTag();
+        categorySettings.forEach((nationId, values) -> values.forEach((category, preference) -> {
+            CompoundTag value = new CompoundTag();
+            value.putUUID("Nation", nationId);
+            value.putString("Category", category.name());
+            value.putString("InGame", preference.inGame().name());
+            value.putString("Discord", preference.discord().name());
+            value.putString("Mention", preference.mention().name());
+            categoryList.add(value);
+        }));
+        tag.put("CategorySettings", categoryList);
         ListTag linkList = new ListTag();
         for (Map.Entry<UUID, Link> entry : links.entrySet()) {
             CompoundTag value = new CompoundTag();
@@ -349,6 +554,22 @@ public final class NationNotificationSavedData extends SavedData {
             recentList.add(value);
         });
         tag.put("RecentDeliveries", recentList);
+        ListTag bandList = new ListTag();
+        incidentHealthBands.forEach((key, band) -> {
+            CompoundTag value = new CompoundTag();
+            value.putString("Key", key);
+            value.putInt("Band", band);
+            bandList.add(value);
+        });
+        tag.put("IncidentHealthBands", bandList);
+        ListTag mentionList = new ListTag();
+        recentMentions.forEach((key, timestamp) -> {
+            CompoundTag value = new CompoundTag();
+            value.putString("Key", key);
+            value.putLong("At", timestamp);
+            mentionList.add(value);
+        });
+        tag.put("RecentMentions", mentionList);
         ListTag auditList = new ListTag();
         for (AuditEntry entry : audit) {
             CompoundTag value = new CompoundTag();
@@ -367,6 +588,9 @@ public final class NationNotificationSavedData extends SavedData {
         tag.putLong("Dropped", droppedCount);
         tag.putLong("Expired", expiredCount);
         tag.putLong("Deduplicated", deduplicatedCount);
+        tag.putLong("LastSuccessAt", lastSuccessAtMillis);
+        tag.putLong("LastFailureAt", lastFailureAtMillis);
+        tag.putString("LastFailureReason", lastFailureReason);
         return tag;
     }
 
@@ -379,7 +603,24 @@ public final class NationNotificationSavedData extends SavedData {
             if (!value.hasUUID("Nation")) continue;
             data.settings.put(value.getUUID("Nation"), new Settings(value.getBoolean("InGame"),
                     value.getBoolean("Discord"), value.getBoolean("Coordinates"),
-                    value.getBoolean("MentionSiege")));
+                    value.getBoolean("MentionSiege"),
+                    value.contains("DigestMinutes", Tag.TAG_INT) ? value.getInt("DigestMinutes") : 15,
+                    value.contains("MentionCooldownMinutes", Tag.TAG_INT)
+                            ? value.getInt("MentionCooldownMinutes") : 30));
+        }
+        ListTag categoryList = tag.getList("CategorySettings", Tag.TAG_COMPOUND);
+        for (int index = 0; index < categoryList.size(); index++) {
+            CompoundTag value = categoryList.getCompound(index);
+            if (!value.hasUUID("Nation")) continue;
+            try {
+                NotificationCategory category = NotificationCategory.valueOf(value.getString("Category"));
+                NotificationPreference preference = new NotificationPreference(
+                        NotificationPreference.InGameMode.valueOf(value.getString("InGame")),
+                        NotificationPreference.DiscordMode.valueOf(value.getString("Discord")),
+                        NotificationPreference.MentionPolicy.valueOf(value.getString("Mention")));
+                data.categorySettings.computeIfAbsent(value.getUUID("Nation"),
+                        ignored -> new EnumMap<>(NotificationCategory.class)).put(category, preference);
+            } catch (RuntimeException ignored) { }
         }
         ListTag linkList = tag.getList("Links", Tag.TAG_COMPOUND);
         for (int index = 0; index < linkList.size(); index++) {
@@ -419,7 +660,7 @@ public final class NationNotificationSavedData extends SavedData {
                         Math.max(0L, value.getLong("AvailableAt")),
                         Math.max(0, value.getInt("Attempts")), value.contains("Key", Tag.TAG_STRING)
                         ? value.getString("Key") : id.toString()));
-            } catch (IllegalArgumentException ignored) {
+            } catch (RuntimeException ignored) {
                 // Skip malformed or obsolete delivery types without preventing the world from loading.
             }
         }
@@ -427,6 +668,18 @@ public final class NationNotificationSavedData extends SavedData {
         for (int index = 0; index < recentList.size(); index++) {
             CompoundTag value = recentList.getCompound(index);
             if (!value.getString("Key").isBlank()) data.recentDeliveries.put(
+                    value.getString("Key"), Math.max(0L, value.getLong("At")));
+        }
+        ListTag bandList = tag.getList("IncidentHealthBands", Tag.TAG_COMPOUND);
+        for (int index = 0; index < bandList.size(); index++) {
+            CompoundTag value = bandList.getCompound(index);
+            if (!value.getString("Key").isBlank()) data.incidentHealthBands.put(
+                    value.getString("Key"), value.getInt("Band"));
+        }
+        ListTag mentionList = tag.getList("RecentMentions", Tag.TAG_COMPOUND);
+        for (int index = 0; index < mentionList.size(); index++) {
+            CompoundTag value = mentionList.getCompound(index);
+            if (!value.getString("Key").isBlank()) data.recentMentions.put(
                     value.getString("Key"), Math.max(0L, value.getLong("At")));
         }
         ListTag auditList = tag.getList("Audit", Tag.TAG_COMPOUND);
@@ -444,6 +697,9 @@ public final class NationNotificationSavedData extends SavedData {
         data.droppedCount = Math.max(0L, tag.getLong("Dropped"));
         data.expiredCount = Math.max(0L, tag.getLong("Expired"));
         data.deduplicatedCount = Math.max(0L, tag.getLong("Deduplicated"));
+        data.lastSuccessAtMillis = Math.max(0L, tag.getLong("LastSuccessAt"));
+        data.lastFailureAtMillis = Math.max(0L, tag.getLong("LastFailureAt"));
+        data.lastFailureReason = trim(tag.getString("LastFailureReason"), 64);
         return data;
     }
 
@@ -454,7 +710,16 @@ public final class NationNotificationSavedData extends SavedData {
     }
 
     public record Settings(boolean inGame, boolean discord, boolean includeCoordinates,
-                           boolean mentionOnSiege) { }
+                           boolean mentionOnSiege, int digestMinutes, int mentionCooldownMinutes) {
+        public Settings(boolean inGame, boolean discord, boolean includeCoordinates, boolean mentionOnSiege) {
+            this(inGame, discord, includeCoordinates, mentionOnSiege, 15, 30);
+        }
+
+        public Settings {
+            digestMinutes = Math.max(15, Math.min(30, digestMinutes));
+            mentionCooldownMinutes = Math.max(5, Math.min(120, mentionCooldownMinutes));
+        }
+    }
 
     public record Link(boolean linked, long guildId, long channelId, long mentionRoleId) {
         public static Link unlinked() { return new Link(false, 0L, 0L, 0L); }
@@ -484,7 +749,8 @@ public final class NationNotificationSavedData extends SavedData {
         DISPATCH_ACTIVATED,
         DISPATCH_COMPLETED,
         DISPATCH_CANCELLED,
-        RIVAL_UPDATED
+        RIVAL_UPDATED,
+        DIGEST
     }
 
     public record Delivery(UUID id, UUID nationId, EventType type, ResourceLocation dimension,
@@ -500,6 +766,10 @@ public final class NationNotificationSavedData extends SavedData {
 
     public record DeliveryStats(int pending, long delivered, long failedAttempts,
                                 long dropped, long expired, long deduplicated) { }
+
+    public record DeliveryHealth(int pending, int retrying, long dropped, long expired,
+                                 long lastSuccessAtMillis, long lastFailureAtMillis,
+                                 String lastFailureReason) { }
 
     public record AuditEntry(long atMillis, String action, UUID nationId, UUID minecraftId,
                              long discordId, boolean success, String detail) { }

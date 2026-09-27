@@ -1,8 +1,8 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
-import com.ruskserver.moveearth_addtional.network.S2C_StartMapVotePacket;
-import com.ruskserver.moveearth_addtional.network.S2C_UpdateMapVotePacket;
-import net.minecraft.network.chat.Component;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_StartMapVotePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_UpdateMapVotePacket;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -100,7 +100,7 @@ public final class PvpMapVoteManager {
 
         if (selected != null) {
             server.getPlayerList().broadcastSystemMessage(
-                    Component.literal("§6[PvP] マップ投票が終了しました: §b" + selected.displayName() + " §fが選ばれました！"), false);
+                    MoveEarthMessage.info("PvP: マップ投票が終了しました: " + selected.displayName() + " が選ばれました！"), false);
             PvpMatchManager.INSTANCE.onMapVoteFinished(server, selected);
         } else {
             PvpMatchManager.INSTANCE.stop(server);

@@ -4,10 +4,10 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.ruskserver.moveearth_addtional.ModSounds;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_AnnouncementPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_AnnouncementPacket;
+import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundSource;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -38,11 +38,11 @@ public final class NoticeCommand {
     private static int broadcast(CommandSourceStack source, String rawMessage) {
         String message = rawMessage.strip();
         if (message.isEmpty()) {
-            source.sendFailure(Component.literal("通知文を入力してください。"));
+            source.sendFailure(MoveEarthMessage.error("通知文を入力してください。"));
             return 0;
         }
         if (message.length() > MAX_MESSAGE_LENGTH) {
-            source.sendFailure(Component.literal("通知文は256文字以内にしてください。"));
+            source.sendFailure(MoveEarthMessage.error("通知文は256文字以内にしてください。"));
             return 0;
         }
 
@@ -50,7 +50,7 @@ public final class NoticeCommand {
         var players = source.getServer().getPlayerList().getPlayers();
         players.forEach(player -> player.playNotifySound(
                 ModSounds.SERVER_NOTICE.get(), SoundSource.MASTER, 1.0F, 1.0F));
-        source.sendSuccess(() -> Component.literal(players.size() + "人へ通知を送信しました。"), true);
+        source.sendSuccess(() -> MoveEarthMessage.success(players.size() + "人へ通知を送信しました。"), true);
         return players.size();
     }
 }

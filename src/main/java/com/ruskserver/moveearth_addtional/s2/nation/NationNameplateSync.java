@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.nation;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.network.S2C_NationNameplatesPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationNameplatesPacket;
 import com.ruskserver.moveearth_addtional.s2.dispatch.DispatchContractSavedData;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeParticipationSavedData;
 import net.minecraft.server.MinecraftServer;

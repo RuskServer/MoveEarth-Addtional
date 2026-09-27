@@ -97,7 +97,7 @@ public final class PeaceSavedData extends SavedData {
                         value.getUUID("Receiver"), gold, remaining,
                         value.getBoolean("ReturnPrisoners"));
                 data.proposals.put(proposal.id, proposal);
-            } catch (IllegalArgumentException ignored) { }
+            } catch (RuntimeException ignored) { }
         }
         return data;
     }

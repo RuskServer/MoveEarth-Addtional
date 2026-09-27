@@ -11,6 +11,7 @@ import net.minecraft.world.item.MinecartItem;
 import net.minecraft.world.level.block.LiquidBlockContainer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.EntityTeleportEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -24,7 +25,7 @@ public final class BastionEvents {
     private BastionEvents() {
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)
                 || !(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) return;
@@ -49,6 +50,14 @@ public final class BastionEvents {
         if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)
                 || !(player.level() instanceof net.minecraft.server.level.ServerLevel level)) return;
         ItemStack held = event.getItemStack();
+        if (held.getItem() instanceof com.simibubi.create.content.contraptions.glue.SuperGlueItem) {
+            if (BastionCreateProtection.denyGlueSelection(player, event.getPos(),
+                    event.getPos().relative(event.getFace()))) {
+                event.setCanceled(true);
+                event.setCancellationResult(InteractionResult.FAIL);
+            }
+            return;
+        }
         BastionService.Action action;
         BlockPos target;
 

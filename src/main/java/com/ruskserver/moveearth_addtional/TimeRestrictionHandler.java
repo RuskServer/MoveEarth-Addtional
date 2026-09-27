@@ -22,6 +22,18 @@ public class TimeRestrictionHandler {
     // 重複処理を防ぐための状態変数
     private static int lastNotifiedMinute = -1;
     private static boolean hasKickedAtClose = false;
+    private static final java.util.Set<ServerPlayer> SCHEDULED_DISCONNECTS =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    /** Only the exact connection being removed by the schedule is exempt from combat logout. */
+    public static boolean consumeScheduledDisconnect(ServerPlayer player) {
+        return SCHEDULED_DISCONNECTS.remove(player);
+    }
+
+    private static void disconnectForSchedule(ServerPlayer player) {
+        SCHEDULED_DISCONNECTS.add(player);
+        player.connection.disconnect(Component.literal(KICK_MESSAGE));
+    }
 
     /**
      * サーバーが現在「開放時間」かどうかを判定する (19:00 〜 22:59)
@@ -50,7 +62,7 @@ public class TimeRestrictionHandler {
             ZonedDateTime now = ZonedDateTime.now(JST);
             if (!isOpenTime(now)) {
                 // 時間外ならキック
-                player.connection.disconnect(Component.literal(KICK_MESSAGE));
+                disconnectForSchedule(player);
             }
         }
     }
@@ -83,7 +95,7 @@ public class TimeRestrictionHandler {
                 // a snapshot so the backing list is not modified while its iterator is active.
                 List<ServerPlayer> players = new ArrayList<>(server.getPlayerList().getPlayers());
                 for (ServerPlayer player : players) {
-                    player.connection.disconnect(Component.literal(KICK_MESSAGE));
+                    disconnectForSchedule(player);
                 }
             }
         } else {
@@ -113,7 +125,7 @@ public class TimeRestrictionHandler {
                 
                 // モダンな通知UIパケットを全プレイヤーに送信
                 net.neoforged.neoforge.network.PacketDistributor.sendToAllPlayers(
-                        new com.ruskserver.moveearth_addtional.network.S2C_AnnouncementPacket(message)
+                        new com.ruskserver.moveearth_addtional.network.s2c.other.S2C_AnnouncementPacket(message)
                 );
                 
                 // 全プレイヤーにカスタム通知音を鳴らす

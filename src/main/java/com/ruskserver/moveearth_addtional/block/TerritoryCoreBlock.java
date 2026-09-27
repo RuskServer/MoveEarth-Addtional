@@ -1,7 +1,7 @@
 package com.ruskserver.moveearth_addtional.block;
 
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
-import com.ruskserver.moveearth_addtional.network.S2C_OpenTerritoryCoreScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenTerritoryCoreScreenPacket;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;

@@ -92,7 +92,7 @@ final class BastionPlayerSavedData extends SavedData {
                             ResourceLocation.parse(value.getString("Dimension")),
                             value.getDouble("X"), value.getDouble("Y"), value.getDouble("Z"),
                             value.getFloat("Yaw"), value.getFloat("Pitch"));
-                } catch (IllegalArgumentException ignored) {
+                } catch (RuntimeException ignored) {
                 }
             }
             data.players.put(value.getUUID("Player"), state);

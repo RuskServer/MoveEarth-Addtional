@@ -29,6 +29,11 @@ public final class WarehouseRaiderEntity extends AirshipRaiderEntity {
     }
 
     @Override
+    public float getShotSpreadMultiplier() {
+        return 0.8F;
+    }
+
+    @Override
     public void tick() {
         super.tick();
         if (level().isClientSide() || tickCount % 20 != 0

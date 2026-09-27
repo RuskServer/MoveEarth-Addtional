@@ -1,0 +1,21 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "mekanism"
+    }
+  ],
+  "type": "create:milling",
+  "ingredients": [
+    {
+      "tag": "minecraft:leaves"
+    }
+  ],
+  "processing_time": 100,
+  "results": [
+    {
+      "id": "mekanism:bio_fuel",
+      "chance": 0.1
+    }
+  ]
+}

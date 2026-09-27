@@ -1,6 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.S2C_SyncOxygenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncOxygenPacket;
 
 public class OxygenClientState {
     public static float oxygenPercent = 1.0f;

@@ -54,6 +54,7 @@ final class BastionService {
         FLUID_PLACE("message.moveearth_addtional.bastion.fluid_place"),
         VEHICLE_PLACE("message.moveearth_addtional.bastion.vehicle_place"),
         ENDER_PEARL("message.moveearth_addtional.bastion.ender_pearl"),
+        GLUE("message.moveearth_addtional.bastion.glue"),
         DISMOUNT("message.moveearth_addtional.bastion.dismount"),
         NO_SAFE_RETURN("message.moveearth_addtional.bastion.no_safe_return");
 

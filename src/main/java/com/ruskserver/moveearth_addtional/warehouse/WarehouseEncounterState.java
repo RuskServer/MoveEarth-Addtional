@@ -146,7 +146,7 @@ public final class WarehouseEncounterState extends SavedData {
                 }
                 data.byRegion.put(region, new Encounter(phase,
                         Math.max(0, entry.getInt("Cycle")), boss, Math.max(0, entry.getLong("Deadline"))));
-            } catch (IllegalArgumentException ignored) {
+            } catch (RuntimeException ignored) {
                 // Unknown future phase must not accidentally enable a reward path.
             }
         }
