@@ -67,8 +67,7 @@ READMEでは有効機能として紹介しない。実装の残骸と利用者�
 
 - 現在の変更: `changelog.md`
 - 国家・領土・Siege仕様: `s2_system_plan.md`
-- 捕虜UI: `prisoner_experience_plan.md`
-- 復興・派遣: `recovery_dispatch_plan.md`
+- 完了済みの捕虜UI・復興派遣: `archive/plans/README.md`
 - 地形生成: `terrain_generation_plan.md`
 - 地方別資源: `resource_region_plan.md`
 
@@ -110,8 +109,8 @@ READMEでは有効機能として紹介しない。実装の残骸と利用者�
 - Cold Sweat 2.4+（client）
 - Create Big Cannons / Create Warnautics（導入時のみ補強・爆発連携）
 
-Lightman's Currencyは現在compile APIとして残り、国家金庫・維持費に関係するため、
-完全撤去または正式必須化の結論が出るまで「経済機能で使用中」と注記する。
+更新済み: 国家金庫・維持費はMoveEarth台帳へ移行し、Lightman's CurrencyのAPI・必須依存は撤去した。
+他Modに依存がなければModpackから外せることをREADMEに明記する。
 `discord-rpc`はクライアント用クラスをビルド時に取り込むローカル依存であり、
 サーバー管理者が別MODとして入れるものではないことを明記する。
 
@@ -198,7 +197,7 @@ tools/gradle-local.sh buildServerJar --offline
 
 - READMEの主要言語を日本語のみとするか、冒頭に短い英語説明を併記するか。
 - 公開READMEへMoveEarthのDiscord招待リンクを掲載するか。
-- Lightman's Currencyを正式依存として残すか、将来撤去予定と明示するか。
+- Lightman's Currencyは撤去済み。残る確認は他Modの依存有無のみ。
 - サーバーアドレスをREADMEへ掲載するか。コード内の値を無断で公開情報扱いしない。
 - スクリーンショットを今回追加するか。追加する場合は現在のUIを実機撮影し、古い画像を使わない。
 

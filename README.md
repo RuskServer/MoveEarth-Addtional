@@ -1,136 +1,197 @@
+<div align="center">
+
+<img src=".github/assets/me_logo.png" alt="MoveEarth Logo" width="160" />
+
 # MoveEarth-Addtional
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-62B47A)
-![NeoForge](https://img.shields.io/badge/NeoForge-21.1.238-E6A756)
-![Java](https://img.shields.io/badge/Java-21-ED8B00)
+**工業の鼓動、砲煙たなびく戦場、そして台頭する国家。**
 
-MoveEarth-Addtionalは、RuskServerの国家運営、領土戦、補強、移動体、プレイヤー導線を
-一つにまとめるMinecraft 1.21.1用NeoForge MODです。複数のCreate系MODやTaCZ、
-PlayerReviveなどを、MoveEarth独自のゲーム進行へ統合します。
+Createの機構美 × CBCの重砲撃 × TaCZの銃撃戦 を統合する、<br>本格国家運営・領土攻城戦・工業物流プラットフォーム
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-62B47A?logo=minecraft&logoColor=white)
+![NeoForge](https://img.shields.io/badge/NeoForge-21.1.238-E6A756)
+![Java](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
+![Version](https://img.shields.io/badge/Version-3.1.0-informational)
+[![Discord](https://img.shields.io/badge/Community-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/QNquTTTdZh)
+
+</div>
+
+---
 
 > [!NOTE]
-> プロジェクト名とMOD IDの`Addtional`という綴りは、既存環境との互換性維持のため変更していません。
+> プロジェクト名およびMOD IDの `Addtional` という綴りは、既存環境およびセーブデータとの互換性維持のため意図して保持しています。
 
-現在の宣言バージョンは`3.1.0`です。`main`には次期バージョン向けの開発中変更も含まれます。
-変更内容は[変更履歴](changelog.md)を参照してください。
+MoveEarth-Addtional は、Minecraft 1.21.1 (NeoForge) 上で稼働する大規模マルチプレイ国家戦略・工業戦争統合MODです。<br>
+Create の歯車と動力機構、Create Big Cannons の重砲撃、TaCZ の戦術銃撃戦、Sable / Create Aeronautics の物理移動体を一つのゲーム進行へとシームレスに結びつけ、プレイヤー主導の国家運営とリアルタイム攻城戦を実現します。
 
-## 主な機能
+現在の宣言バージョンは `3.1.0` です。最新の変更内容については [変更履歴](changelog.md) を参照してください。
 
-- **国家・領土** — 国家設立、役職と権限、外交、領土コア、維持費、国家金庫、領土地図、初回参加申請。
-- **補強・Siege・捕虜** — 溶接機による段階的な補強、閉鎖判定、攻城戦、陥落と復興、ダウンしたプレイヤーの護送・収監、Combat Timer。
-- **車両・兵器連携** — 車両コアと移動体補強、Sable、Create Aeronautics、Create Big Cannons、Warnauticsとの連携、移動体の安全対策。
-- **プレイヤー体験** — 独自メインメニューとローディング画面、バニラ進捗による初心者導線、定期Tips、Cold Sweat HUD、Jade・JEI連携。
-- **サーバー運用** — Discord Bot、プレイヤー行動分析、開放時間、ランダムスポーン、TPA、投票報酬、Anti-ESPと負荷対策。
+---
 
-仕様書には開発中・検討中の内容も含まれます。現在利用できる機能との差分は
-[変更履歴](changelog.md)と実装を基準にしてください。
+## 主なシステム
 
-- [国家・領土・Siege計画](s2_system_plan.md)
-- [捕虜体験改善計画](prisoner_experience_plan.md)
-- [復興・派遣計画](recovery_dispatch_plan.md)
-- [地形生成計画](terrain_generation_plan.md)
-- [地方別資源計画](resource_region_plan.md)
+```mermaid
+graph TD
+    subgraph Core ["MoveEarth-Addtional (Core Engine)"]
+        S2["国家・領土・維持費 (S2 Territory)"]
+        Siege["補強・攻城戦・捕虜 (Siege & Sabotage)"]
+        Econ["市場ステーション・TC通貨 (Market & Jobs)"]
+        Vehicles["車両コア・移動体保護 (Vehicle Cores)"]
+        Discord["JDA Discord Bot (防衛アラート・通知)"]
+    end
+
+    subgraph Industry ["工業・兵器連携"]
+        Create["Create 6.0+ (応力・回転機構)"]
+        CBC["Create Big Cannons (重砲撃・弾道計算)"]
+        Warn["Create Warnautics (爆発物・航空兵器)"]
+        TaCZ["TaCZ (戦術銃撃戦・弾薬)"]
+    end
+
+    subgraph Mobility ["移動体・物理演算"]
+        Sable["Sable (物理挙動・移動体)"]
+        Aero["Create Aeronautics (飛行船・航空機)"]
+    end
+
+    subgraph Survival ["過酷環境・戦闘"]
+        Cold["Cold Sweat (体温・極地適応)"]
+        Revive["PlayerRevive (ダウン・護送)"]
+        Jade["Jade / JEI (HUD・レシピ情報)"]
+    end
+
+    Industry --> Core
+    Mobility --> Vehicles
+    Survival --> Core
+    Core --> Discord
+```
+
+### 🏛️ 国家・領土システム (Nation & Territory)
+- **建国と組織運営**: プレイヤー自身による国家の創設、役職階層、権限設定、国民の招待・申請管理。
+- **領土コアと密閉保護 (Enclosure Seal)**: 各領土に領土コアを設置。コアの全周囲を防壁ブロック等で完全に密閉・防護することで「密閉保護（無敵）」状態が維持されます。
+- **24時間領土維持費**: 領土規模に応じた維持費が国庫から自動徴収されます。残高不足時は無防備化・放棄リスクが発生します。
+- **外交と戦争**: 宣戦布告、停戦条約、無条件降伏、賠償金交渉など、国家間の外交関係を包括的に管理。
+- **直感的な2ペインGUI**: `/s2` コマンドで呼び出せる統一デザイン（MoveEarthUi）のダッシュボードを搭載。
+
+### ⚔️ 攻城戦・防壁補強・捕虜 (Siege, Reinforcement & Prisoner)
+- **溶接機による段階的補強**: 専用の溶接機（Welding Tool）を使い、ブロックを木材から鉄、耐爆複合装甲へと段階的に強化。段階ごとに異なるHPと耐爆特性が付与されます。
+- **リアルタイム攻城戦**: Create Big Cannons の大砲による直撃弾・榴弾や、Create Warnautics の航空爆発物に対する耐性・破壊計算。
+- **コア破壊工作 (Sabotage) と陥落**: 防壁を破り敵コアへ侵入して工作を完了させることで、領土を制圧・陥落。
+- **ダウン・捕虜護送・身代金**: 戦闘でダウンした敵兵を護送・収監。国家間の保釈金（身代金）交渉や脱走阻止の駆け引きが発生。
+- **主権復興クエスト (Recovery Dispatch)**: 敗北国が主権を取り戻すための復興ミッション群を実装。
+- **交戦タイマー (Combat Tag)**: 戦闘中の安全地帯逃げ込みや切断を防止するボスコントロールバー付き交戦管理。
+
+### 🚢 移動体・車両コア・兵器連携 (Vehicles & Weaponry)
+- **車両コア (Vehicle Core)**: Sable や Create Aeronautics によって組み立てられた移動体（戦車、装甲車両、飛行船、水上艦）に車両コアを登録。領土外の荒野でも一定の防護と権限保護を付与。
+- **移動体兵器の統合**: 移動体上に搭載した Create Big Cannons や工業機構の安定動作をサポート。
+
+### 📈 リアル物流経済・市場ステーション・職業 (Market & Trade Credit)
+- **独自台帳通貨 Trade Credit (TC)**: 外部通貨MODに依存しない、完全自律型のインゲーム経済基盤。
+- **物理市場ステーション (Market Station)**: 各国家に物理的な市場ステーションを設置。注文自体は遠隔からでも可能ですが、商品の納品・代金の預託・現物の受け取りは「自国のステーション」で行うリアルな物流網を再現。
+- **職業システム (Jobs)**: 採掘・農業・軍事などの職業活動によって経験値と TC を獲得し、国家経済へ還元。
+
+### ❄️ 過酷環境・レイド・PvPアリーナ (Cold Sweat, Raids & PvP)
+- **Cold Sweat 極地サバイバル**: 極寒・極熱環境の温度HUDと、防寒対策を案内するバニラ進捗。
+- **物資集積所 (Warehouse) レイド**: 各地に点在するNPC守備隊の拠点を攻略し、高価値な工業資材を強奪するPvEコンテンツ。
+- **飛行船レイド (Airship Raid)**: 突如上空に来襲する敵飛行船部隊との迎撃戦闘。
+- **専用PvPアリーナ**: 領土戦とは独立した競技用アリーナ（`/pvp`）。ロードアウト選択、マップ投票、ELOレーティングシステムを完備。
+
+### 🤖 Discord Bot・サーバー運用統合 (Discord & Operations)
+- **JDA完全内蔵Bot**: 外部プラグイン不要で、国家チャンネルへの領土防衛アラート（開戦・コア被弾・陥落等）の配信、緊急メンション、アカウント連携、スラッシュコマンド（`/moveearth setup` 等）を完備。
+- **サーバー開館スケジュール管理**: 戦争可能時間や開館時間を制御するスケジューラー（DCC）。
+- **リアルタイム近接チャット**: 同一ディメンション内で距離減衰・所属国家プレフィックス付きのチャット配信。
+- **Web Analytics & Anti-ESP**: プレイヤー行動分析と負荷・不正対策。
+
+---
 
 ## 動作環境
 
 | 項目 | バージョン |
 |---|---|
 | Minecraft | 1.21.1 |
-| NeoForge | 21.1.238（依存定義は21以上） |
+| NeoForge | 21.1.238（依存定義: 21以上） |
 | Java | 21 |
 | MoveEarth-Addtional | 3.1.0 |
 
 ### 必須MOD
 
-クライアントとサーバーの両方で、同じMoveEarthバージョンと次の依存MODを使用してください。
+クライアントおよび専用サーバーの両方に、同一バージョンの MoveEarth-Addtional と以下の必須MODを導入してください。
 
-| MOD | 対応バージョン |
-|---|---|
-| TaCZ | 1.1.8以上 |
-| Create | 6.0.10以上 |
-| Sable | 2.0.3以上 |
-| Create Aeronautics | 1.3.0以上 |
-
-現行の国家金庫、維持費、検知ブロックの料金、投票報酬などの経済機能では
-**Lightman's Currencyを使用しています**。今後も正式依存として残すか、別方式へ置き換えるかは
-検討中ですが、現在の経済機能を使うサーバーでは導入してください。
-
-通常チャットはMoveEarthが同じディメンションの100ブロック以内へ配信し、受信者からの距離を1ブロック単位で四捨五入して、所属国家・役職とともに表示します。配信先はコンソールにも記録します。距離はサーバー設定`moveearth_addtional-chat.toml`の`radiusBlocks`で変更できます。Localized Chatは不要で、サーバーとクライアントのModpackから外してください。
-
-### 任意連携
-
-| MOD | 追加される連携 |
-|---|---|
-| TaCZ Tweaks | TaCZ関連の互換処理 |
-| Farmer's Delight 1.3.3以上 | 農業・収穫処理 |
-| Curios 9.5.1以上 | 装備スロット連携 |
-| Jade 15.1.0以上 | 補強状態やHPなどの表示 |
-| JEI 19.21.1.248以上 | Warehouse報酬とアイテム閲覧連携（クライアント） |
-| Cold Sweat 2.4以上 | 温度警告HUD（クライアント） |
-| PlayerRevive | ダウン、護送、捕虜体験の連携 |
-| Create Big Cannons | 砲撃と補強ダメージの連携 |
-| Create Warnautics | 爆発物・航空兵器と補強の連携 |
-
-## 導入
-
-### 配布物の選び方
-
-| 成果物 | 配置先 | 内容 |
+| MOD | 推奨バージョン | 役割 |
 |---|---|---|
-| `moveearth_addtional-<version>-player.jar` | 各プレイヤーの`mods/` | Discord Bot実装とサーバー専用地形データを除いたクライアント向けJAR |
-| `moveearth_addtional-<version>-server.jar` | 専用サーバーの`mods/` | Discord Botランタイムとサーバー用地形データを含むJAR |
+| **Create** | 6.0.10以上 | 工業・回転力・機構基盤 |
+| **TaCZ** | 1.1.8以上 | 銃火器・弾薬・戦術戦闘 |
+| **Sable** | 2.0.3以上 | 物理挙動・移動体基盤 |
+| **Create Aeronautics** | 1.3.0以上 | 航空機・飛行船建造 |
 
-player/server JARは同じバージョンへ同時に更新してください。JARの結合や内容の入れ替えは
-サポート対象外です。Discord Bot用のJDAとクライアント用Discord RPCは成果物側で処理されるため、
-サーバー管理者やプレイヤーがそれらを別MODとして追加する必要はありません。
+> [!TIP]
+> - **通貨**: 国家金庫、維持費、取引所には MoveEarth 独自の **Trade Credit (TC)** 台帳を使用します。Lightman's Currency への依存は完全に撤去されており、不要です。
+> - **チャット**: MoveEarth が距離減衰・国家表示付きの独自チャットを内包しているため、Localized Chat などの別MODは導入不要です。
 
-### プレイヤー
+### 任意連携MOD
 
-1. Java 21対応のMinecraft 1.21.1 / NeoForge環境を用意します。
-2. player JARと必須MODを`mods/`へ配置します。
-3. サーバー側とMoveEarthおよび依存MODのバージョンを合わせます。
-4. 初回起動時の音量・アクセシビリティ設定を確認します。
+| MOD | 追加される連携機能 |
+|---|---|
+| **Create Big Cannons** | 大砲の直撃・榴弾による装甲補強ブロックへの弾道ダメージ計算 |
+| **Create Warnautics** | 航空爆弾・特殊爆発物と防壁補強のダメージ連携 |
+| **PlayerRevive** | 戦闘不能時のダウン、救助、敵兵の護送・捕虜収監連携 |
+| **Cold Sweat** (2.4以上) | 極寒・極熱環境アラートHUD、防寒対策のバニラ進捗 |
+| **Jade** (15.1.0以上) | 補強ブロックの段階・現在HP・密閉状態のHUD表示 |
+| **JEI** (19.21.1.248以上) | Warehouseレイド報酬および独自アイテムのレシピ閲覧 |
+| **Farmer's Delight** (1.3.3以上) | 農業・調理行動のJobs経験値連携 |
+| **Curios** (9.5.1以上) | 特殊装備スロットの連携 |
 
-参加後は`L`キーのバニラ進捗画面にあるMoveEarthタブを確認してください。国家Hubを開くことを
-入口に、国家・産業・防衛・Siege・探索の目標が表示されます。進捗は案内と実績記録であり、
-未達成でもレシピやゲーム機能をロックしません。
+TaCZの一人称腕描画中は、Mekaスーツによる腕モデルの置換・ポーズ初期化を抑止します。
+銃を構えている間の腕はプレイヤースキン表示となり、Mekaスーツの腕装甲は表示しません。
+通常の手持ちアイテム・素手・三人称のMekaスーツ描画と、装備性能は変更しません。
+描画コンテキストの単体テストとビルドは実施済みですが、ゲーム内の見た目は未検証です。
 
-Jade、JEI、Cold Sweatを導入している場合は、それぞれ補強情報、Warehouse報酬、温度警告の追加表示が
-有効になります。旧版に存在したGunPack強制導入画面は現在使用していません。
+---
 
-### サーバー
+## 配布物と導入方法
 
-1. server JARと必須MODを専用サーバーの`mods/`へ配置します。
-2. 現行の経済機能を使う場合はLightman's Currencyを導入します。
-3. 地形タイルをワールドの`moveearth_terrain/`、または`config/moveearth_terrain/`へ配置します。
-4. サーバーを起動し、自動生成された設定を確認してから再起動します。
+### 配布JARの選び方
+
+ビルドによって生成される2種類の成果物を使い分けてください。
+
+| 成果物名 | 導入先 | 内容 |
+|---|---|---|
+| `moveearth_addtional-<version>-player.jar` | **プレイヤーの `mods/`** | クライアント用JAR。Discord Bot本体やサーバー専用地形データを除外した軽量構成。 |
+| `moveearth_addtional-<version>-server.jar` | **専用サーバーの `mods/`** | サーバー用JAR。内蔵 Discord Bot ランタイム（JDA）や地形生成データを含む完全版。 |
+
+- **同時更新**: クライアントとサーバーで必ず同一バージョンの JAR を使用してください。
+- Discord RPC（クライアント側）および JDA（サーバー側）は MOD 内部に組み込まれているため、外部ライブラリを追加導入する必要はありません。
+
+### 専用サーバーのセットアップ手順
+
+1. Java 21 対応の Minecraft 1.21.1 / NeoForge 専用サーバー環境を構築します。
+2. `moveearth_addtional-<version>-server.jar` および必須MODを `mods/` へ配置します。
+3. 専用の地形タイルをワールドの `moveearth_terrain/` または `config/moveearth_terrain/` へ配置します。
+4. サーバーを一度起動して設定ファイルを自動生成させ、必要に応じて編集後に再起動します。
 
 > [!IMPORTANT]
-> server JARは起動時にMoveEarth地形タイルを読み込みます。有効なタイルが1件もない場合は
-> 起動を中止するため、事前に[地形ツールの手順](tools/terrain/README.md)を確認してください。
-> 地形生成を既存ワールドへ途中導入すると新旧チャンクの境界が生じるため、新規テストワールドでの
-> 事前確認を推奨します。
+> server JAR は起動時に MoveEarth 地形タイルを検証します。有効なタイルが存在しない場合は起動が中断されるため、事前に [地形ツールの手順](tools/terrain/README.md) を確認してください。既存ワールドへの途中導入は境界の乱れが生じるため、新規ワールドでの事前検証を推奨します。
 
-Discord Botのトークンはサーバー側設定へ記入し、ログ、Issue、コミットへ含めないでください。
-Botの導入と運用は[Discord Bot運用ガイド](DISCORD_BOT_OPERATIONS.md)を参照してください。
-
-MoveEarthコミュニティへの参加: [Discord](https://discord.gg/QNquTTTdZh)
+---
 
 ## 主な設定ファイル
 
-設定ファイルは初回起動時に自動生成されます。全項目と既定値は生成されたファイルを基準にしてください。
+設定ファイルは初回起動時に `config/` ディレクトリへ自動生成されます。
 
-| ファイル | 用途 |
+| 設定ファイル名 | 主な管理対象 |
 |---|---|
-| `moveearth_addtional-s2-territory.toml` | 国家、領土、補強、Siege、維持費 |
-| `moveearth_addtional-tpa.toml` | TPAと利用制限 |
-| `moveearth_addtional-discord.toml` | Discord Bot、トークン、チャンネル連携 |
-| `moveearth_addtional-dcc.toml` | 開放時間などのサーバー制御 |
-| `moveearth_addtional-aeronautics.toml` | 移動体・Aeronautics連携 |
-| `moveearth_addtional-tips.toml` | 定期Tips |
-| `moveearth_addtional-recovery-dispatch.toml` | 復興・派遣システム |
-| `moveearth_addtional-startup.toml` | 初回起動とクライアント表示 |
+| `moveearth_addtional-s2-territory.toml` | 国家設立コスト、領土サイズ、防壁補強HP、維持費周期、Siegeルール |
+| `moveearth_addtional-discord.toml` | Discord Bot トークン、チャンネルID連携、通知設定 |
+| `moveearth_addtional-market.toml` | 市場ステーションの取引有効化・緊急停止設定 |
+| `moveearth_addtional-chat.toml` | 近接チャットの配信半径ブロック数（既定値: 100） |
+| `moveearth_addtional-dcc.toml` | サーバー開館・戦争可能スケジュール制御 |
+| `moveearth_addtional-aeronautics.toml` | 移動体・Aeronautics 連携パラメータ |
+| `moveearth_addtional-recovery-dispatch.toml` | 敗北国家の主権復興・派遣ミッション設定 |
+| `moveearth_addtional-tpa.toml` | テレポート要請機能の制限とクールダウン |
+| `moveearth_addtional-tips.toml` | 定期Tipsの配信間隔とメッセージ一覧 |
+
+> Discord Bot のトークンは必ずサーバー側設定に記入し、Git コミットや公開 Issue に含めないでください。運用の詳細は [Discord Bot 運用ガイド](DISCORD_BOT_OPERATIONS.md) を参照してください。
+
+---
 
 ## 開発環境
 
@@ -159,54 +220,63 @@ Pull Requestへ添付したりしないでください。
 
 ### ビルドとテスト
 
-このリポジトリでは、`.local-tools/jdk-21`と`.local-tools/gradle-home`を利用するスクリプトを
-標準手順としています。
-
-初回、または依存バージョンを変更した後は、`--offline`を付けずに一度実行して依存を
-`.local-tools/gradle-home`へ取得してください。以降はオフラインで実行できます。
+標準的なビルドには同梱の Gradle Wrapper（Linux/macOS: `./gradlew`、Windows: `gradlew.bat`）を使用します。
 
 ```shell
-tools/gradle-local.sh test --offline
-tools/gradle-local.sh assemble --offline
+# 単体テストの実行
+./gradlew test
+
+# 全体アセンブル
+./gradlew assemble
 ```
 
 個別の成果物だけを作る場合は次を使用します。
 
 ```shell
-tools/gradle-local.sh buildPlayerJar --offline
-tools/gradle-local.sh buildServerJar --offline
+./gradlew buildPlayerJar
+./gradlew buildServerJar
 ```
 
-成果物は`build/libs/`へ生成されます。自動テストには国家・領土、補強、Jade、UI、地形生成、
-サーバー機能などの単体テストが含まれます。
+成果物は `build/libs/` 配下に生成されます。自動テストには国家・領土、補強、Jade、UI、地形生成、サーバー機能などの単体テストが含まれます。
 
-code-serverが`127.0.0.1:8080`を使用している環境では、`AnalyticsWebServerTest`がテスト用HTTP
-サーバーを開始できず、環境由来で失敗する場合があります。既存サービスを停止せず、ポート占有を
-確認したうえで、対象テストと`assemble`を別途検証してください。
+> [!TIP]
+> リポジトリローカルの JDK / Gradle キャッシュ（`.local-tools/`）が構成されている開発環境では、オフライン実行に対応した `tools/gradle-local.sh`（例: `tools/gradle-local.sh assemble --offline`）も利用できます。
 
-## 貢献方法
+> [!NOTE]
+> code-server が `127.0.0.1:8080` を使用している環境では、`AnalyticsWebServerTest` がテスト用HTTPサーバーを開始できず、環境由来で失敗する場合があります。既存サービスを停止せず、ポート占有を確認したうえで、対象テストと `assemble` を別途検証してください。
 
-1. このリポジトリをForkします。
-2. 最新の`main`から作業ブランチを作成します。
-3. 変更範囲に対応するテストと`tools/gradle-local.sh assemble --offline`を実行します。
-4. `git diff --check`を通し、必要なゲーム内確認を行います。
-5. 変更理由、確認方法、影響するクライアント・サーバー範囲を記載してPull Requestを作成します。
+---
 
-実装時は次の方針を守ってください。
+## ドキュメントポータル
 
-- ゲーム進行や権限判定はサーバー側を正とし、クライアントからの値を信用しない。
-- プレイヤー向けメッセージを追加する場合は、原則として日本語と英語を用意する。
-- 生成JAR、`lib/`、ワールドデータ、ログ、秘密情報をコミットしない。
-- 外部コードや素材を取り込む場合は、出典、著作者、ライセンス、変更内容を記録する。
+詳細な設計書および運用ガイドは、以下のドキュメントを参照してください。
 
-不具合報告や大きな仕様提案は、実装を始める前にIssueを作成してください。
+- **運用・ゲームプレイガイド**:
+  - [Discord Bot 運用・設定ガイド](DISCORD_BOT_OPERATIONS.md)
+  - [攻城戦・防壁補強プレイガイド](siege_gameplay_guide.md)
+  - [市場・物流システム検証](market_logistics_verification.md)
+  - [地形生成ツール・タイル配置手順](tools/terrain/README.md)
+- **設計書・仕様詳細**:
+  - [S2 国家・領土・攻城戦計画書](s2_system_plan.md)
+  - [経済システム再構築計画](economy_rebuild_plan.md)
+  - [地形生成計画書](terrain_generation_plan.md)
+  - [地方別資源計画書](resource_region_plan.md)
+  - [変更履歴 (Changelog)](changelog.md)
+  - [アーカイブ・過去計画書](archive/plans/README.md)
 
-## ライセンス
+---
 
-このプロジェクトのオリジナルコードと素材は
-[GNU General Public License version 3 only](LICENSE)で提供されます。
-Pull Requestを提出することで、提出者は自身の貢献部分を`GPL-3.0-only`で
-提供することに同意するものとします。
+## コントリビューション・ライセンス
 
-一部のコード、ライブラリ、音声、画像には別のライセンスが適用されます。詳細は
-[第三者ライセンスと帰属表示](THIRD_PARTY_NOTICES.md)と[個別ライセンス](LICENSES/)を参照してください。
+### 貢献方針
+1. このリポジトリを Fork して作業ブランチを作成します。
+2. 変更範囲に対応するテストと `./gradlew assemble`（ローカルツール環境の場合は `tools/gradle-local.sh assemble --offline`）を通過させます。
+3. `git diff --check` を確認し、不要な一時ファイルや秘密情報が含まれていないことを確認します。
+4. ゲーム進行や権限判定は必ずサーバーオーソリテーティブ（Server-Authoritative）で実装してください。
+5. プレイヤー向けUI・チャット表示を追加する場合は、日本語と英語の両方のリソースを用意してください。
+
+### ライセンス
+
+MoveEarth-Addtional のオリジナルコードおよび素材は [GNU General Public License version 3 only (GPL-3.0-only)](LICENSE) の下で提供されています。
+
+一部のコンポーネント、ライブラリ、音声、画像素材には個別のライセンスが適用されます。詳細は [第三者ライセンスと帰属表示](THIRD_PARTY_NOTICES.md) および [LICENSES/](LICENSES/) を参照してください。

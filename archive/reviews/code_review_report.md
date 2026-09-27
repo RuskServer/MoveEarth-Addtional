@@ -1,5 +1,7 @@
 # MoveEarth-Addtional 国家システム コードレビューレポート
 
+> アーカイブ: 2026-09-12 時点の静的レビュー。現在の実装状況はコードとテストを参照。
+
 - **対象**: `s2/nation`, `s2/territory`, `s2/reinforcement`, `s2/siege` + 関連クライアント / ネットワーク層
 - **ブランチ**: `feat/tpu-feasibility-v5e8` (作業ツリー、未コミット分を含む)
 - **基点コミット**: `29b753a feat(s2): complete siege and peace systems`

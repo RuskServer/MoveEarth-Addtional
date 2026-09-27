@@ -1,5 +1,7 @@
 # MoveEarth-Addtional 国家システム コードレビューレポート #2
 
+> アーカイブ: 2026-09-14 時点の静的レビュー。現在の実装状況はコードとテストを参照。
+
 - **対象**: 前回レビュー基点 `29b753a` 以降の全差分 (4 コミット + 作業ツリー、103 ファイル / +7,609 行)
 - **ブランチ**: `feat/tpu-feasibility-v5e8`
 - **HEAD**: `14ec1ec feat: add solo sieges and territory map overlays`
