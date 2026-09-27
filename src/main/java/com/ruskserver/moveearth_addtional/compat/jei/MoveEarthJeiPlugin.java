@@ -18,7 +18,7 @@ import java.util.List;
 @JeiPlugin
 public final class MoveEarthJeiPlugin implements IModPlugin {
     private static final ResourceLocation UID = ResourceLocation.fromNamespaceAndPath(
-            Moveearth_addtional.MODID, "technology");
+            Moveearth_addtional.MODID, "warehouse");
 
     @Override public ResourceLocation getPluginUid() { return UID; }
 

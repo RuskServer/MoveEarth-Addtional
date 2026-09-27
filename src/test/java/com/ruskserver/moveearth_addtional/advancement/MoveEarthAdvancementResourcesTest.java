@@ -14,9 +14,26 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MoveEarthAdvancementResourcesTest {
+    @Test
+    void legacyTechnologyResourcesAreRemovedButVanillaAdvancementsRemain() {
+        assertNull(getClass().getResource("/data/moveearth_addtional/technology/personal_guide.json"));
+        assertNull(getClass().getResource("/data/moveearth_addtional/technology/personal/create_introduction.json"));
+        assertNotNull(getClass().getResource("/data/moveearth_addtional/advancement/root.json"));
+        for (String locale : List.of("ja_jp", "en_us")) {
+            JsonObject translations = read("/assets/moveearth_addtional/lang/" + locale + ".json");
+            assertFalse(translations.keySet().stream().anyMatch(key ->
+                    key.startsWith("technology.moveearth_addtional.")
+                            || key.startsWith("screen.moveearth_addtional.technology.")
+                            || key.startsWith("tooltip.moveearth_addtional.technology.")
+                            || key.equals("screen.moveearth_addtional.nation.permission.manage_technology")
+                            || key.startsWith("message.moveearth_addtional.technology.")));
+        }
+    }
+
     private static final List<String> ADVANCEMENTS = List.of(
             "root", "getting_started/open_nation_hub", "getting_started/check_recipe",
             "getting_started/cold_protection", "getting_started/rest", "nation/view_territory",

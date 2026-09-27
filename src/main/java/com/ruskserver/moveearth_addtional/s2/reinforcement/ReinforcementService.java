@@ -135,13 +135,6 @@ public final class ReinforcementService {
                         "message.moveearth_addtional.welding.batch_result",
                         ReinforcementBrushPattern.size(brushRadius), ReinforcementBrushPattern.size(brushRadius),
                         reinforced, repaired, skipped)));
-        if (reinforced > 0) {
-            com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(player.server)
-                    .recordObjective(player,
-                            com.ruskserver.moveearth_addtional.s2.technology.TechnologyDefinition.ObjectiveType.REINFORCE_BLOCKS,
-                            ResourceLocation.fromNamespaceAndPath("moveearth_addtional", "reinforced_block"),
-                            reinforced, pos);
-        }
         if (siegeRepair) {
             com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                     com.ruskserver.moveearth_addtional.advancement.ModCriteria.SIEGE_REINFORCEMENT_REPAIRED);

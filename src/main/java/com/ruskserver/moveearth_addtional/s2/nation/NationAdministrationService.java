@@ -7,7 +7,6 @@ import com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
-import com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
@@ -140,7 +139,6 @@ public final class NationAdministrationService {
         com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData
                 .get(actor.server).closeNation(nationId);
         NationUpkeepSavedData.get(actor.server).removeNation(nationId);
-        NationTechnologySavedData.get(actor.server).removeNation(nationId);
         com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(actor.server).removeNation(nationId);
         NationUpkeepService.removeNation(nationId);
         PeaceSavedData.get(actor.server).removeNation(nationId);

@@ -196,8 +196,6 @@ public final class NationStorageEvents {
     }
 
     private static void notify(ServerPlayer player) {
-        com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData.get(player.server)
-                .recordAction(player, "storage_rules_viewed");
         long now = player.level().getGameTime();
         long previous = LAST_NOTICE.getOrDefault(player.getUUID(), Long.MIN_VALUE / 2);
         if (now - previous < 20L) return;

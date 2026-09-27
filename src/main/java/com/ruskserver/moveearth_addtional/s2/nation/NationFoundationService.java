@@ -3,8 +3,6 @@ package com.ruskserver.moveearth_addtional.s2.nation;
 import com.ruskserver.moveearth_addtional.block.ModBlocks;
 import com.ruskserver.moveearth_addtional.block.entity.TerritoryCoreBlockEntity;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
-import com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData;
-import com.ruskserver.moveearth_addtional.s2.technology.TechnologyDefinition;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
@@ -75,11 +73,6 @@ public final class NationFoundationService {
             return new Result(Status.PLACEMENT_FAILED, nations.revision(), null);
         }
         core.bind(registered.core());
-        NationTechnologySavedData technology = NationTechnologySavedData.get(player.server);
-        technology.recordObjective(player, TechnologyDefinition.ObjectiveType.JOIN_OR_FOUND_NATION,
-                null, 1L, corePos);
-        technology.recordObjective(player, TechnologyDefinition.ObjectiveType.TERRITORY_ACTION,
-                ResourceLocation.fromNamespaceAndPath("moveearth_addtional", "found_capital"), 1L, corePos);
         com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_CITIZEN);
         com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,

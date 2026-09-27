@@ -15,7 +15,7 @@ public enum S2Permission {
     MANAGE_REINFORCEMENT(7),
     BASTION_ACCESS(8),
     MANAGE_NOTIFICATIONS(9),
-    MANAGE_TECHNOLOGY(10),
+    // Bit 10 belonged to the removed technology guide; never reuse it for another permission.
     MANAGE_PRISONERS(11),
     MANAGE_DISPATCH(12);
 

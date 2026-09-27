@@ -5,7 +5,6 @@ import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
-import com.ruskserver.moveearth_addtional.s2.technology.NationTechnologySavedData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -40,7 +39,6 @@ import java.util.UUID;
 /** Bridges successful gameplay that vanilla criteria cannot describe cleanly. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class AdvancementEvents {
-    private static final String MIGRATED = "MoveEarthVanillaAdvancementsV1";
     private static final String PENDING_REINFORCEMENTS = "MoveEarthPendingReinforcementAdvancements";
     private static final Map<UUID, Travel> FREIGHT = new HashMap<>();
     private static final Set<UUID> RESTORING = new HashSet<>();
@@ -64,7 +62,6 @@ public final class AdvancementEvents {
             var harvestScore = ledger.harvestScores().get(player.getUUID());
             if ("HARVEST".equals(ledger.eventKind()) && harvestScore != null && harvestScore.points() > 0)
                 ModCriteria.trigger(player, ModCriteria.HARVEST_EVENT_PARTICIPATED);
-            migrate(player);
         } finally {
             RESTORING.remove(player.getUUID());
         }
@@ -186,30 +183,6 @@ public final class AdvancementEvents {
         }
         if (retained.isEmpty()) persisted.remove(PENDING_REINFORCEMENTS);
         else persisted.put(PENDING_REINFORCEMENTS, retained);
-    }
-
-    private static void migrate(ServerPlayer player) {
-        CompoundTag persisted = persisted(player);
-        if (persisted.getBoolean(MIGRATED)) return;
-        UUID nation = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
-        Set<ResourceLocation> completed = NationTechnologySavedData.get(player.server)
-                .completedFor(player.getUUID(), nation);
-        migrate(player, completed, "personal/territory_basics", "nation/view_territory", "done");
-        migrate(player, completed, "personal/nation_membership", "nation/citizen", "done");
-        migrate(player, completed, "personal/create_introduction", "industry/andesite_alloy", "obtained");
-        migrate(player, completed, "personal/rotation", "industry/rotation", "placed");
-        migrate(player, completed, "personal/basic_processing", "industry/iron_sheet", "obtained");
-        migrate(player, completed, "personal/temperature_readiness", "getting_started/cold_protection", "done");
-        persisted.putBoolean(MIGRATED, true);
-    }
-
-    private static void migrate(ServerPlayer player, Set<ResourceLocation> completed, String oldPath,
-                                String newPath, String criterion) {
-        ResourceLocation oldId = ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, oldPath);
-        if (!completed.contains(oldId)) return;
-        var advancement = player.server.getAdvancements().get(
-                ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, newPath));
-        if (advancement != null) player.getAdvancements().award(advancement, criterion);
     }
 
     private static CompoundTag persisted(ServerPlayer player) {
