@@ -1,0 +1,22 @@
+{
+  "vertex": "moveearth_addtional:upscale_fullscreen",
+  "fragment": "moveearth_addtional:upscale_fsr_rcas",
+  "samplers": [
+    {
+      "name": "InputTex"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "Con",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

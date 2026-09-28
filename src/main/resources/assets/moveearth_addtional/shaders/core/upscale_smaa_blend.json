@@ -1,0 +1,25 @@
+{
+  "vertex": "moveearth_addtional:upscale_smaa_blend",
+  "fragment": "moveearth_addtional:upscale_smaa_blend",
+  "samplers": [
+    {
+      "name": "ColorTex"
+    },
+    {
+      "name": "BlendTex"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "RtMetrics",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

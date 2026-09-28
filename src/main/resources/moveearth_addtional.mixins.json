@@ -59,6 +59,8 @@
     "client.IrisScopePipPipelineMixin",
     "client.IrisScopePipHandMixin",
     "client.ScopePipGameRendererMixin",
+    "client.UpscaleGameRendererMixin",
+    "client.UpscaleMainTargetMixin",
     "client.ScopePipTargetMixin",
     "client.TaczScopePipZoomMixin",
     "client.TaczScopePipLensMixin",

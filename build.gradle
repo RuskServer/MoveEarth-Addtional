@@ -12,6 +12,11 @@ group = mod_group_id
 repositories {
     mavenLocal()
     mavenCentral()
+    maven {
+        name = "CaffeineMC"
+        url = "https://maven.caffeinemc.net/releases"
+        content { includeGroup "net.caffeinemc" }
+    }
     exclusiveContent {
         forRepository {
             maven {
@@ -230,6 +235,7 @@ dependencies {
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1:api'
     // Optional Jade integration. The target modpack supplies Jade at runtime.
     compileOnly 'maven.modrinth:jade:15.10.6+neoforge'
+    compileOnly 'net.caffeinemc:sodium-neoforge-api:0.8.12+mc1.21.1'
     // Optional Create: Rock & Stone integration (LGPL-3.0). Its ore deposits are
     // ordinary Minecraft structures, so a region can be enforced by declining to
     // generate one, which is the vanilla contract rather than a reach into

@@ -1,0 +1,23 @@
+{
+  "vertex": "moveearth_addtional:upscale_fullscreen",
+  "fragment": "moveearth_addtional:upscale_smaa_depth_edges",
+  "samplers": [
+    {
+      "name": "DepthTex"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "DepthParams",
+      "type": "float",
+      "count": 2,
+      "values": [0, 0]
+    },
+    {
+      "name": "Threshold",
+      "type": "float",
+      "count": 1,
+      "values": [0.01]
+    }
+  ]
+}

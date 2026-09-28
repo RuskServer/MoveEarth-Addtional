@@ -1,0 +1,55 @@
+{
+  "vertex": "moveearth_addtional:upscale_fullscreen",
+  "fragment": "moveearth_addtional:upscale_fsr_easu",
+  "samplers": [
+    {
+      "name": "InputTex"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "Con0",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Con1",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Con2",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "Con3",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

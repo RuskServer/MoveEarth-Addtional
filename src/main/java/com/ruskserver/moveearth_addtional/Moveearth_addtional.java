@@ -40,6 +40,9 @@ public class Moveearth_addtional {
         }
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT,
+                    com.ruskserver.moveearth_addtional.client.upscale.UpscaleClientConfig.SPEC,
+                    "moveearth_addtional-upscale.toml");
+            modContainer.registerConfig(ModConfig.Type.CLIENT,
                     com.ruskserver.moveearth_addtional.client.scope.ScopePipConfig.SPEC,
                     "moveearth_addtional-scope-pip.toml");
             modContainer.registerConfig(

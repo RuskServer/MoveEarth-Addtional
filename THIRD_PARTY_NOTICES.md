@@ -53,6 +53,38 @@ into release JARs. FirstDark Discord RPC is licensed under the MIT License.
 See `META-INF/NOTICE-FIRSTDARK-DISCORD-RPC.txt` for provenance and
 `LICENSES/MIT-FirstDark-Discord-RPC.txt` for the applicable license terms.
 
+## SMAA (Enhanced Subpixel Morphological Antialiasing)
+
+The anti-aliasing shaders include the SMAA reference implementation and its
+precomputed lookup textures, licensed under the MIT License.
+
+- Files: `assets/moveearth_addtional/shaders/include/smaa.glsl` (from
+  `SMAA.hlsl`), `assets/moveearth_addtional/textures/upscale/smaa_area.png` and
+  `smaa_search.png` (converted from `AreaTex.h` and `SearchTex.h`)
+- Source: https://github.com/iryoku/smaa
+- Copyright: Copyright (C) 2013 Jorge Jimenez, Jose I. Echevarria, Belen Masia,
+  Fernando Navarro and Diego Gutierrez
+- Changes: line endings normalized and trailing whitespace removed; one
+  non-ASCII diagram character and the ASCII-art logo removed from comments;
+  lookup tables stored as PNG images.
+
+See `LICENSES/MIT-SMAA.txt` for the license terms.
+
+## AMD FidelityFX Super Resolution 1.0
+
+The upscaling shaders include the EASU and RCAS passes of AMD FidelityFX Super
+Resolution 1.0 and the subset of `ffx_a.h` they use, licensed under the MIT
+License.
+
+- File: `assets/moveearth_addtional/shaders/include/ffx_fsr1.glsl`
+- Source: https://github.com/GPUOpen-Effects/FidelityFX-FSR
+- Copyright: Copyright (c) 2021 Advanced Micro Devices, Inc.
+- Changes: only the 32-bit GLSL helper definitions needed by EASU and RCAS are
+  kept, so the shaders compile as GLSL 3.30; the FSR passes are verbatim apart
+  from trailing whitespace.
+
+See `LICENSES/MIT-AMD-FidelityFX-FSR.txt` for the license terms.
+
 ## NotEnoughBandwidth delayed chunk cache design
 
 The Delayed Chunk Cache tracking-view design was adapted from
