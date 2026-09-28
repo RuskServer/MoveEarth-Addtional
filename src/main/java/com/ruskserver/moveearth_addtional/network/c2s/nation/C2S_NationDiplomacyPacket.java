@@ -5,6 +5,7 @@ import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPa
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.S2NationViewService;
+import com.ruskserver.moveearth_addtional.s2.nation.AllianceTerminationService;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -40,8 +41,15 @@ public record C2S_NationDiplomacyPacket(int requestId, long expectedRevision,
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) return;
             NationSavedData data = NationSavedData.get(player.server);
+            long openNow = com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server);
+            java.util.UUID actorNation = data.nationIdFor(player.getUUID()).orElse(null);
             NationSavedData.DiplomacyResult result = data.changeDiplomacy(
-                    player.getUUID(), targetNationId, action.savedAction, expectedRevision);
+                    player.getUUID(), targetNationId, action.savedAction, expectedRevision, openNow);
+            if (result.status() == NationSavedData.DiplomacyStatus.ALLIANCE_END_DECLARED) {
+                AllianceTerminationService.declared(player.server, actorNation, targetNationId, openNow);
+            } else if (result.status() == NationSavedData.DiplomacyStatus.ALLIANCE_END_CANCELLED) {
+                AllianceTerminationService.cancelled(player.server, actorNation, targetNationId);
+            }
             if (result.success()) S2NationViewService.INSTANCE.sendHub(player, S2HubTab.DIPLOMACY);
             PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(
                     requestId, result.success(), result.revision(),
@@ -57,6 +65,7 @@ public record C2S_NationDiplomacyPacket(int requestId, long expectedRevision,
         END_ALLIANCE(3, NationSavedData.DiplomacyAction.END_ALLIANCE),
         DECLARE_HOSTILE(4, NationSavedData.DiplomacyAction.DECLARE_HOSTILE),
         SET_NEUTRAL(5, NationSavedData.DiplomacyAction.SET_NEUTRAL),
+        CANCEL_ALLIANCE_END(6, NationSavedData.DiplomacyAction.CANCEL_ALLIANCE_END),
         UNKNOWN(255, NationSavedData.DiplomacyAction.UNKNOWN);
 
         private final int networkId;

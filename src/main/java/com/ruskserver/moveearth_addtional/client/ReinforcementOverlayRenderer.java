@@ -220,7 +220,9 @@ public final class ReinforcementOverlayRenderer {
         // The crosshair sabotage prompt owns the screen while aiming at a core.
         if (target == null || WeldingTargetClientState.hasPrompt(target)) return;
         var entry = ReinforcementClientState.at(target);
-        boolean unavailable = !ReinforcementClientState.allowed();
+        // Without the role permission nothing is reinforceable; with it, only own land is.
+        boolean noPermission = !ReinforcementClientState.allowed();
+        boolean unavailable = noPermission;
         if (!unavailable && entry == null) {
             // No local entry is either unreinforced own land or land we may not reinforce; wait for the server.
             Boolean reinforceable = WeldingTargetClientState.reinforceable(target);
@@ -252,7 +254,9 @@ public final class ReinforcementOverlayRenderer {
                         : "overlay.moveearth_addtional.reinforcement.reinforced"),
                 x + 11, y + 8, accent, false);
         Component detail = unavailable
-                ? Component.translatable("overlay.moveearth_addtional.reinforcement.unavailable.detail")
+                ? Component.translatable(noPermission
+                        ? "overlay.moveearth_addtional.reinforcement.unavailable.no_permission"
+                        : "overlay.moveearth_addtional.reinforcement.unavailable.outside")
                 : entry == null
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.material_hint")
                 : entry.siegeDisabled()

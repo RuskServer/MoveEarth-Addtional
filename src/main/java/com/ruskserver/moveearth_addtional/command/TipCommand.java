@@ -95,22 +95,27 @@ public final class TipCommand {
                 .forEach(tip -> player.sendSystemMessage(Component.literal("  • ")
                         .append(Component.translatable(tip.titleKey()).withStyle(ChatFormatting.GREEN))
                         .append(Component.literal(" — ").withStyle(ChatFormatting.DARK_GRAY))
-                        .append(Component.translatable(tip.bodyKey()).withStyle(ChatFormatting.GRAY))));
+                        .append(Component.translatable(tip.bodyKey()).withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal(" "))
+                        .append(TipService.wikiButton(tip))));
         return ids.size();
     }
 
     private static int list(ServerPlayer player, int requestedPage) {
-        int pages = Math.max(1, (TipCatalog.ALL.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+        List<TipCatalog.Tip> tips = TipCatalog.available(TipConfig.wikiConfigured());
+        int pages = Math.max(1, (tips.size() + PAGE_SIZE - 1) / PAGE_SIZE);
         int page = Math.min(requestedPage, pages);
         int start = (page - 1) * PAGE_SIZE;
-        int end = Math.min(start + PAGE_SIZE, TipCatalog.ALL.size());
+        int end = Math.min(start + PAGE_SIZE, tips.size());
         player.sendSystemMessage(MoveEarthMessage.tip(Component.translatable(
                 "tip.moveearth_addtional.list.header", page, pages)));
-        for (TipCatalog.Tip tip : TipCatalog.ALL.subList(start, end)) {
+        for (TipCatalog.Tip tip : tips.subList(start, end)) {
             player.sendSystemMessage(Component.literal("  • ")
                     .append(Component.translatable(tip.titleKey()).withStyle(ChatFormatting.GREEN))
                     .append(Component.literal(" — ").withStyle(ChatFormatting.DARK_GRAY))
-                    .append(Component.translatable(tip.bodyKey()).withStyle(ChatFormatting.GRAY)));
+                    .append(Component.translatable(tip.bodyKey()).withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal(" "))
+                    .append(TipService.wikiButton(tip)));
         }
         if (page < pages) player.sendSystemMessage(Component.literal("  ").append(
                 TipService.commandButton("tip.moveearth_addtional.action.next",

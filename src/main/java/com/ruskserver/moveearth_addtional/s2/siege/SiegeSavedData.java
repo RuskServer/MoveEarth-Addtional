@@ -25,6 +25,8 @@ import java.util.function.Function;
 public final class SiegeSavedData extends SavedData {
     private final Map<SiegeKey, SiegeRecord> active = new LinkedHashMap<>();
     private final Map<AttackerPair, Long> retryCooldowns = new LinkedHashMap<>();
+    /** Per attacker and core, after a siege ran out without the core falling. Blocks damage too. */
+    private final Map<CoreAttacker, Long> failedCooldowns = new LinkedHashMap<>();
     private final Map<UUID, FallenRecord> fallen = new LinkedHashMap<>();
     private final Map<UUID, Long> nationTruces = new LinkedHashMap<>();
     private final Map<UUID, Long> coreTruces = new LinkedHashMap<>();
@@ -62,6 +64,9 @@ public final class SiegeSavedData extends SavedData {
                     ? AttemptStatus.ROLLING_STARTED : AttemptStatus.ROLLING_EXTENDED, updated);
         }
 
+        if (failedCooldowns.getOrDefault(new CoreAttacker(attackerId, individualAttacker, core.id()), 0L) > 0L) {
+            return new AttemptResult(AttemptStatus.FAILED_COOLDOWN, null);
+        }
         AttackerPair pair = new AttackerPair(attackerId, individualAttacker, core.nationId());
         if (!effectiveDamage && retryCooldowns.getOrDefault(pair, 0L) > 0L) {
             return new AttemptResult(AttemptStatus.RETRY_COOLDOWN, null);
@@ -91,6 +96,13 @@ public final class SiegeSavedData extends SavedData {
             if (remaining == 0L) cooldownIterator.remove(); else entry.setValue(remaining);
             changed = true;
         }
+        var failedIterator = failedCooldowns.entrySet().iterator();
+        while (failedIterator.hasNext()) {
+            var entry = failedIterator.next();
+            long remaining = Math.max(0L, entry.getValue() - elapsedTicks);
+            if (remaining == 0L) failedIterator.remove(); else entry.setValue(remaining);
+            changed = true;
+        }
         changed |= advanceCountdowns(nationTruces, elapsedTicks);
         changed |= advanceCountdowns(coreTruces, elapsedTicks);
         changed |= advancePairCountdowns(peaceTruces, elapsedTicks);
@@ -117,6 +129,9 @@ public final class SiegeSavedData extends SavedData {
                             S2TerritoryConfig.siegeRetryCooldownTicks());
                 } else {
                     rollingExpired.add(current);
+                    long failedTicks = S2TerritoryConfig.siegeFailedCooldownTicks();
+                    if (failedTicks > 0L) failedCooldowns.merge(new CoreAttacker(current.attackerNation(),
+                            current.individualAttacker(), current.coreId()), failedTicks, Math::max);
                 }
             } else {
                 entry.setValue(current.withTimer(advanced.phase(), advanced.remainingTicks()));
@@ -305,6 +320,12 @@ public final class SiegeSavedData extends SavedData {
         setDirty();
     }
 
+    /** Open-time ticks before this attacker may attack this core again; 0 when free to attack. */
+    public long failedAttackCooldownTicks(UUID attackerId, boolean individualAttacker, UUID coreId) {
+        if (attackerId == null || coreId == null) return 0L;
+        return failedCooldowns.getOrDefault(new CoreAttacker(attackerId, individualAttacker, coreId), 0L);
+    }
+
     public void removeNationState(UUID nationId) {
         boolean changed = active.values().removeIf(record -> !record.individualAttacker && record.attackerNation.equals(nationId)
                 || record.defenderNation.equals(nationId));
@@ -312,6 +333,7 @@ public final class SiegeSavedData extends SavedData {
                 || record.defenderNation.equals(nationId));
         changed |= retryCooldowns.entrySet().removeIf(entry -> (!entry.getKey().individual && entry.getKey().attacker.equals(nationId))
                 || entry.getKey().defender.equals(nationId));
+        changed |= failedCooldowns.keySet().removeIf(key -> !key.individual() && key.attacker().equals(nationId));
         changed |= peaceTruces.entrySet().removeIf(entry -> entry.getKey().first.equals(nationId)
                 || entry.getKey().second.equals(nationId));
         changed |= nationTruces.remove(nationId) != null;
@@ -440,6 +462,16 @@ public final class SiegeSavedData extends SavedData {
             cooldownTag.add(value);
         }
         tag.put("RetryCooldowns", cooldownTag);
+        ListTag failedTag = new ListTag();
+        for (var entry : failedCooldowns.entrySet()) {
+            CompoundTag value = new CompoundTag();
+            value.putUUID("Attacker", entry.getKey().attacker());
+            value.putBoolean("IndividualAttacker", entry.getKey().individual());
+            value.putUUID("Core", entry.getKey().core());
+            value.putLong("Remaining", entry.getValue());
+            failedTag.add(value);
+        }
+        tag.put("FailedCooldowns", failedTag);
         ListTag fallenTag = new ListTag();
         for (FallenRecord record : fallen.values()) {
             CompoundTag value = new CompoundTag();
@@ -520,6 +552,17 @@ public final class SiegeSavedData extends SavedData {
                 warnSkippedRecord("RetryCooldowns", index, exception.getMessage());
             }
         }
+        ListTag failedTag = tag.getList("FailedCooldowns", Tag.TAG_COMPOUND);
+        for (int index = 0; index < failedTag.size(); index++) {
+            CompoundTag value = failedTag.getCompound(index);
+            long remaining = value.getLong("Remaining");
+            if (!value.hasUUID("Attacker") || !value.hasUUID("Core") || remaining <= 0L) {
+                warnSkippedRecord("FailedCooldowns", index, "missing or invalid UUID");
+                continue;
+            }
+            data.failedCooldowns.put(new CoreAttacker(value.getUUID("Attacker"),
+                    value.getBoolean("IndividualAttacker"), value.getUUID("Core")), remaining);
+        }
         ListTag fallenTag = tag.getList("Fallen", Tag.TAG_COMPOUND);
         for (int index = 0; index < fallenTag.size(); index++) {
             CompoundTag value = fallenTag.getCompound(index);
@@ -576,7 +619,7 @@ public final class SiegeSavedData extends SavedData {
     }
 
     public enum AttemptStatus {
-        INITIAL_STARTED, ROLLING_STARTED, ROLLING_EXTENDED, ACTIVE_UNCHANGED, RETRY_COOLDOWN,
+        INITIAL_STARTED, ROLLING_STARTED, ROLLING_EXTENDED, ACTIVE_UNCHANGED, RETRY_COOLDOWN, FAILED_COOLDOWN,
         SETTLEMENT_TRUCE, PEACE_TRUCE, RECOVERY_PROTECTED, IGNORED
     }
 
@@ -633,6 +676,7 @@ public final class SiegeSavedData extends SavedData {
     }
     private record SiegeKey(UUID attacker, boolean individual, UUID defender, UUID core) { }
     private record AttackerPair(UUID attacker, boolean individual, UUID defender) { }
+    private record CoreAttacker(UUID attacker, boolean individual, UUID core) { }
     private record OfflineDamageKey(ResourceLocation dimension, long pos) { }
     private record DamageCarry(int units, int denominator) { }
     private record DiplomaticPair(UUID first, UUID second) {

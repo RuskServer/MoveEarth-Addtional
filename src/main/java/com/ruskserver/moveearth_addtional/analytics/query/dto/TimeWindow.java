@@ -4,6 +4,7 @@ package com.ruskserver.moveearth_addtional.analytics.query.dto;
  * 集計対象の窓期間（時間枠）
  */
 public enum TimeWindow {
+    DAY_1("1day", 86400L),
     DAYS_7("7days", 7 * 86400L),
     DAYS_30("30days", 30 * 86400L),
     ALL_TIME("all_time", Long.MAX_VALUE);

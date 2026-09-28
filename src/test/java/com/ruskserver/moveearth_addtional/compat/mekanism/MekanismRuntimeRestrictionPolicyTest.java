@@ -57,12 +57,17 @@ class MekanismRuntimeRestrictionPolicyTest {
     }
 
     @Test
-    void restrictsRefinedObsidianGearOnly() {
+    void restrictsRefinedObsidianGearAndEveryPaxel() {
         assertItem("mekanismtools", "refined_obsidian_chestplate");
         assertItem("mekanismtools", "refined_obsidian_paxel");
         assertItem("mekanismtools", "refined_obsidian_shield");
+        for (String material : new String[]{"wood", "stone", "iron", "gold", "diamond", "netherite",
+                "bronze", "lapis_lazuli", "osmium", "refined_glowstone", "steel"}) {
+            assertItem("mekanismtools", material + "_paxel");
+        }
         assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanismtools", "osmium_chestplate"));
         assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanismtools", "steel_helmet"));
+        assertFalse(MekanismRuntimeRestrictionPolicy.isRestrictedItem("mekanismtools", "steel_pickaxe"));
     }
 
     @Test

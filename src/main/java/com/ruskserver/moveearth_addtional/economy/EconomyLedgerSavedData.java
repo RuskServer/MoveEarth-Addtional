@@ -51,6 +51,9 @@ public final class EconomyLedgerSavedData extends SavedData {
     }
 
     /** Called only after disband validation; never discard a non-empty national treasury. */
+    /** Every account balance, for the operators' money supply figures. */
+    public Map<Account, Long> balances() { return Map.copyOf(balances); }
+
     public boolean removeEmptyNationAccount(UUID nationId) {
         if (nationId == null) return false;
         Account account = Account.nation(nationId);
@@ -100,6 +103,7 @@ public final class EconomyLedgerSavedData extends SavedData {
         trimJournal();
         indexRecent(transaction);
         setDirty();
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.ledger(from, to, amount, reason);
         return Result.APPLIED;
     }
 
@@ -171,7 +175,8 @@ public final class EconomyLedgerSavedData extends SavedData {
         int points = previous == null ? 0 : previous.points();
         if (points >= HarvestFestivalRules.MAX_POINTS) return false;
         boolean bonus = previous == null ? matchingJob : previous.farmer();
-        harvestScores.put(playerId, new HarvestScore(name, HarvestFestivalRules.addHarvest(points, bonus), bonus));
+        // Record when the score was reached: equal scores rank by who got there first.
+        harvestScores.put(playerId, new HarvestScore(name, HarvestFestivalRules.addHarvest(points, bonus), bonus, nowTick));
         setDirty();
         return true;
     }
@@ -566,6 +571,7 @@ public final class EconomyLedgerSavedData extends SavedData {
             entry.putString("Name", score.name());
             entry.putInt("Points", score.points());
             entry.putBoolean("Farmer", score.farmer());
+            entry.putLong("ReachedTick", score.reachedTick());
             harvestList.add(entry);
         });
         tag.put("HarvestScores", harvestList);
@@ -693,7 +699,7 @@ public final class EconomyLedgerSavedData extends SavedData {
             CompoundTag entry = harvestList.getCompound(i);
             if (entry.hasUUID("Player")) data.harvestScores.put(entry.getUUID("Player"),
                     new HarvestScore(entry.getString("Name"), Math.max(0, Math.min(HarvestFestivalRules.MAX_POINTS, entry.getInt("Points"))),
-                            entry.getBoolean("Farmer")));
+                            entry.getBoolean("Farmer"), entry.getLong("ReachedTick")));
         }
         ListTag eventRewardList = tag.getList("EventRewards", Tag.TAG_COMPOUND);
         for (int i = 0; i < eventRewardList.size(); i++) {
@@ -803,7 +809,8 @@ public final class EconomyLedgerSavedData extends SavedData {
     public enum MarketStatus { APPLIED, INVALID, PAYMENT_FAILED }
     public record MarketResult(MarketStatus status, UUID orderId) { }
     public record EventReward(UUID eventId, UUID playerId, int currency, List<ItemStack> items) { }
-    public record HarvestScore(String name, int points, boolean farmer) { }
+    /** reachedTick: open-time tick of the last scoring harvest (0 for scores saved before it existed). */
+    public record HarvestScore(String name, int points, boolean farmer, long reachedTick) { }
     private static final class EventIncome {
         private long day;
         private int paid;

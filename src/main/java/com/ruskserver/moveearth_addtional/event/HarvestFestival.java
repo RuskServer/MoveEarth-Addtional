@@ -21,7 +21,6 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,7 +39,8 @@ public final class HarvestFestival {
     public static void harvest(ServerPlayer player, BlockState state) {
         if (!state.is(CROPS)) return;
         MinecraftServer server = player.getServer();
-        if (!OpenTimeService.isOpen(server)) return;
+        if (!OpenTimeService.isOpen(server)
+                || !com.ruskserver.moveearth_addtional.economy.EarningEligibility.mayEarn(player)) return;
         if (EconomyLedgerSavedData.get(server).scoreHarvest(player.getUUID(), player.getGameProfile().getName(),
                 JobProgressSavedData.get(server).isActive(player.getUUID(), FARMER), OpenTimeService.now(server)))
             ModCriteria.trigger(player, ModCriteria.HARVEST_EVENT_PARTICIPATED);
@@ -49,9 +49,9 @@ public final class HarvestFestival {
     public static List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> ranking(
             EconomyLedgerSavedData ledger) {
         return ledger.harvestScores().entrySet().stream()
-                .sorted(Comparator.<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>>
-                        comparingInt(entry -> entry.getValue().points()).reversed()
-                        .thenComparing(entry -> entry.getKey().toString()))
+                .sorted((a, b) -> HarvestFestivalRules.compare(
+                        a.getValue().points(), a.getValue().reachedTick(), a.getKey().toString(),
+                        b.getValue().points(), b.getValue().reachedTick(), b.getKey().toString()))
                 .toList();
     }
 
@@ -61,8 +61,11 @@ public final class HarvestFestival {
                 || !force && OpenTimeService.now(server) < ledger.harvestEndTick()) return false;
         UUID eventId = ledger.harvestId();
         boolean resource = "RESOURCE".equals(ledger.eventKind());
+        // Rewards go to players who belong to a nation at settlement; others do not take a rank.
+        var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(server);
         List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> eligible = ranking(ledger).stream()
-                .filter(entry -> entry.getValue().points() >= MINIMUM_POINTS).toList();
+                .filter(entry -> entry.getValue().points() >= MINIMUM_POINTS)
+                .filter(entry -> nations.nationIdFor(entry.getKey()).isPresent()).toList();
         for (int index = 0; index < eligible.size(); index++) {
             UUID playerId = eligible.get(index).getKey();
             if (ledger.eventReward(eventId, playerId) != null) continue;
@@ -75,7 +78,7 @@ public final class HarvestFestival {
         }
         ledger.finishHarvest();
         server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info(eventName(ledger)
-                + ": 終了しました。/event claim で報酬を受け取れます。"), false);
+                + ": 終了しました。/event claim で報酬を受け取れます（国家所属者のみ）。"), false);
         return true;
     }
 
@@ -96,8 +99,9 @@ public final class HarvestFestival {
         ResourceEvent.Target target = ResourceEvent.chooseTarget(ledger.eventSequence());
         if (target == null || !ledger.startResource(target.region(), target.material(),
                 OpenTimeService.now(server), ResourceEvent.DURATION_TICKS)) return false;
-        server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info("資源発見: 地方" + target.region()
-                + "の天然" + target.material() + "鉱石を採掘！45分（開放時間）。"), false);
+        server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info(Component.translatable(
+                "message.moveearth_addtional.event.resource_started", target.region(),
+                Component.translatable("material.moveearth_addtional." + target.material()))), false);
         return true;
     }
 
@@ -109,7 +113,7 @@ public final class HarvestFestival {
                 && startResource(server)) return;
         if (ledger.startHarvest(OpenTimeService.now(server), DURATION_TICKS))
             server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info(
-                    "収穫祭: 開催！成熟作物を収穫して得点を集めよう。30分（開放時間）。"), false);
+                    Component.translatable("message.moveearth_addtional.event.harvest_started")), false);
     }
 
     public static int claim(ServerPlayer player) {

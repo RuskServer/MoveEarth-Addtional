@@ -6,10 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class TerritoryFallSettlementPolicyTest {
     @Test
-    void capitalAlwaysKeepsOnlyItsNonTransferableCenterChunk() {
+    void capitalLosesTwoRadiusPerFallAndKeepsItsCenterChunk() {
         var decision = TerritoryFallSettlementPolicy.decide(true, 4, ignored -> true);
         assertEquals(TerritoryFallSettlementPolicy.Outcome.CAPITAL_REBUILDING, decision.outcome());
-        assertEquals(0, decision.radius());
+        assertEquals(2, decision.radius());
+        assertEquals(0, TerritoryFallSettlementPolicy.decide(true, 2, ignored -> true).radius());
+        assertEquals(0, TerritoryFallSettlementPolicy.decide(true, 1, ignored -> true).radius());
+        assertEquals(0, TerritoryFallSettlementPolicy.decide(true, 0, ignored -> true).radius());
+        assertEquals(1, TerritoryFallSettlementPolicy.decideIndividual(true, 3).radius());
     }
 
     @Test
@@ -29,8 +33,17 @@ class TerritoryFallSettlementPolicyTest {
     @Test
     void individualAttackerNeverOccupiesAnOutpost() {
         assertEquals(TerritoryFallSettlementPolicy.Outcome.OUTPOST_NEUTRALIZED,
-                TerritoryFallSettlementPolicy.decideIndividual(false).outcome());
+                TerritoryFallSettlementPolicy.decideIndividual(false, 4).outcome());
         assertEquals(TerritoryFallSettlementPolicy.Outcome.CAPITAL_REBUILDING,
-                TerritoryFallSettlementPolicy.decideIndividual(true).outcome());
+                TerritoryFallSettlementPolicy.decideIndividual(true, 4).outcome());
+    }
+
+    @Test
+    void fallenCapitalCannotRegrowWhileTruceOrRecoveryRuns() {
+        assertEquals(true, TerritoryFallSettlementPolicy.enlargementLocked(true, 2, 4, true, false));
+        assertEquals(true, TerritoryFallSettlementPolicy.enlargementLocked(true, 2, 3, false, true));
+        assertEquals(false, TerritoryFallSettlementPolicy.enlargementLocked(true, 2, 1, true, true));
+        assertEquals(false, TerritoryFallSettlementPolicy.enlargementLocked(true, 2, 4, false, false));
+        assertEquals(false, TerritoryFallSettlementPolicy.enlargementLocked(false, 1, 4, true, true));
     }
 }

@@ -855,7 +855,7 @@ Phase 2 で「主産物で判定する」（出力量最大、あるいは drill
 |---|---|
 | `RegionSurvey` | タイルから地方の面積・形・隣接を起動時に算出（テスト6件） |
 | `RegionProfiles` | 割り当ての不変スナップショット。タイル読込直後・最初のチャンク生成前に構築 |
-| `RegionResourceConfig` | 排他素材・共通素材・上書きマップ・応力（`moveearth_addtional-regions.toml`） |
+| `RegionResourceConfig` | 排他素材・共通素材・上書きマップ・応力（`serverconfig/moveearth/regions.toml`） |
 | `RnsDepositGate` | 鉱床→素材の解決、地方判定、重複抑止 |
 | `RnsDepositStructureMixin` | `findGenerationPoint`のHEADで`Optional.empty()` |
 | `RnsMinerStress` + 応力mixin2本 | 資源と規模に応じた応力、`networkDirty`での再計算 |

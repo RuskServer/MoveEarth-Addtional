@@ -106,8 +106,9 @@ public final class MekanismRuntimeRestrictionPolicy {
 
     public static boolean isRestrictedItem(String namespace, String path) {
         if (TOOLS.equals(namespace)) {
-            // Refined obsidian gear out-armors the MekaSuit; see MekanismRecipePolicy.
-            return path.startsWith("refined_obsidian_");
+            // Refined obsidian gear out-armors the MekaSuit, and paxels of every
+            // material are removed; see MekanismRecipePolicy.
+            return path.startsWith("refined_obsidian_") || path.endsWith("_paxel");
         }
         if (GENERATORS.equals(namespace)) {
             return GENERATOR_ITEMS.contains(path) || GENERATOR_BLOCKS.contains(path);

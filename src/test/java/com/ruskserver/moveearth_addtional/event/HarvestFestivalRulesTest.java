@@ -23,4 +23,15 @@ class HarvestFestivalRulesTest {
         assertEquals(3, HarvestFestivalRules.diamonds(2));
         assertEquals(0, HarvestFestivalRules.diamonds(3));
     }
+
+    @org.junit.jupiter.api.Test
+    void equalCappedScoresRankByWhoReachedThemFirstNotByUuid() {
+        String early = "ffffffff-0000-0000-0000-000000000000", late = "00000000-0000-0000-0000-000000000000";
+        org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.compare(
+                HarvestFestivalRules.MAX_POINTS, 100L, early, HarvestFestivalRules.MAX_POINTS, 200L, late) < 0);
+        org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.compare(
+                2000, 100L, early, 2100, 900L, late) > 0);
+        org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.compare(
+                500, 100L, late, 500, 100L, early) < 0);
+    }
 }

@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.config.ClientDisplayConfig;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -36,9 +37,11 @@ public final class MekaSuitShieldFlash {
             if (elapsed >= duration) startedAt = -1L;
             return;
         }
+        float setting = ClientDisplayConfig.SHIELD_FLASH_STRENGTH.get().floatValue();
+        if (setting <= 0.0F) return;
         // Fades out quickly after a sharp start.
         float strength = 1.0F - (float) elapsed / duration;
-        strength *= strength;
+        strength *= strength * setting;
         int rgb = depleted ? DEPLETED_GREEN : GREEN;
         GuiGraphics graphics = event.getGuiGraphics();
         int width = graphics.guiWidth();

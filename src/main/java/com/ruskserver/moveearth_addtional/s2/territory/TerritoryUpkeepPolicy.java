@@ -10,6 +10,15 @@ public final class TerritoryUpkeepPolicy {
     private TerritoryUpkeepPolicy() {
     }
 
+    /**
+     * Whether "pay now" may charge. Only a due or overdue charge: paying early
+     * would restart the cycle from now and lose the time already paid for, and a
+     * second press right after a payment would charge a whole cycle again.
+     */
+    public static boolean canPayNow(long now, long nextDueAt) {
+        return now >= nextDueAt;
+    }
+
     public static long calculate(int uniqueControlledChunks, int activeOutposts) {
         return calculate(uniqueControlledChunks, activeOutposts, CHUNKS_PER_COIN, OUTPOST_BASE_COST);
     }

@@ -118,6 +118,25 @@ public class AnalyticsEventQueue {
         }
     }
 
+    /** Periodic Season 2 state: nation figures and the money supply. */
+    public record StateSnapshotEvent(com.ruskserver.moveearth_addtional.analytics.state.S2StateSnapshot snapshot)
+            implements AnalyticsEvent {
+        @Override
+        public EventPriority getPriority() {
+            return EventPriority.HIGH;
+        }
+    }
+
+    /** Season 2 game event log entry ({@link com.ruskserver.moveearth_addtional.analytics.event.GameEvents}). */
+    public record GameEventLogEvent(
+            com.ruskserver.moveearth_addtional.analytics.event.GameEventRecord record
+    ) implements AnalyticsEvent {
+        @Override
+        public EventPriority getPriority() {
+            return EventPriority.HIGH;
+        }
+    }
+
     /** Completed bounded CPU profiling session, aggregated per chunk. */
     public record ChunkProfileEvent(List<ChunkProfileRecord> records) implements AnalyticsEvent {
         public ChunkProfileEvent {

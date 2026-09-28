@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.model.ChunkLoadSample;
 import com.ruskserver.moveearth_addtional.analytics.model.ServerPerformanceSample;
 import com.ruskserver.moveearth_addtional.analytics.model.ChunkProfileRecord;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventDto;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.PlayerSummaryDto;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import net.minecraft.server.MinecraftServer;
@@ -95,6 +96,13 @@ public class AnalyticsExportService {
                         writer -> writeChunkProfiles(writer, records, format)));
     }
 
+    public CompletableFuture<Path> exportGameEventsToDirAsync(
+            Path exportDir, ExportFormat format, TimeWindow window, String typePrefix) {
+        return AnalyticsQueryService.INSTANCE.getGameEventsAsync(typePrefix, null, null, window, 200_000)
+                .thenApplyAsync(events -> writeExport(exportDir, format, window, "game_events",
+                        writer -> writeGameEvents(writer, events, format)));
+    }
+
     private Path writeExport(Path exportDir, ExportFormat format, TimeWindow window,
                              String prefix, ExportWriter exportWriter) {
         try {
@@ -172,6 +180,28 @@ public class AnalyticsExportService {
         }
     }
 
+    private void writeGameEvents(BufferedWriter writer, List<GameEventDto> events,
+                                 ExportFormat format) throws Exception {
+        if (format == ExportFormat.JSONL) {
+            for (GameEventDto event : events) {
+                writer.write(GSON.toJson(event));
+                writer.newLine();
+            }
+            return;
+        }
+        writer.write("occurred_at,type,player_uuid,player_name,nation_uuid,dimension,x,y,z,value,detail");
+        writer.newLine();
+        for (GameEventDto event : events) {
+            writer.write(String.join(",",
+                    Long.toString(event.occurredAt()), escapeCsv(event.type()), escapeCsv(event.playerUuid()),
+                    escapeCsv(event.playerName()), escapeCsv(event.nationUuid()), escapeCsv(event.dimension()),
+                    event.x() == null ? "" : event.x().toString(), event.y() == null ? "" : event.y().toString(),
+                    event.z() == null ? "" : event.z().toString(), Long.toString(event.value()),
+                    escapeCsv(event.detail())));
+            writer.newLine();
+        }
+    }
+
     @FunctionalInterface
     private interface ExportWriter {
         void write(BufferedWriter writer) throws Exception;
@@ -216,7 +246,7 @@ public class AnalyticsExportService {
 
     private String escapeCsv(String str) {
         if (str == null) return "";
-        if (str.contains(",") || str.contains("\"") || str.contains("\n")) {
+        if (str.contains(",") || str.contains("\"") || str.contains("\n") || str.contains("\r")) {
             return "\"" + str.replace("\"", "\"\"") + "\"";
         }
         return str;

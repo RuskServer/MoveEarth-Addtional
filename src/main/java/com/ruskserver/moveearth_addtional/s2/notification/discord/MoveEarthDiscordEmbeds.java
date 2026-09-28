@@ -173,6 +173,7 @@ public final class MoveEarthDiscordEmbeds {
             case DISPATCH_CANCELLED -> new EventPresentation("派遣契約終了", MUTED);
             case RIVAL_UPDATED -> new EventPresentation("宿敵設定更新", DANGER);
             case DIGEST -> new EventPresentation("国家通知のまとめ", ACCENT);
+            case TERRITORY_INTRUSION -> new EventPresentation("領土内での破壊", WARNING);
             case SYSTEM -> new EventPresentation("システム通知", ACCENT);
         };
     }

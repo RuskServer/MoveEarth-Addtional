@@ -50,8 +50,20 @@ public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int 
             boolean allowed = core != null && playerNation.equals(core.nationId());
             boolean siegeLocked = core != null && core.coreId() != null
                     && SiegeSavedData.get(player.server).isCoreLocked(core.coreId());
+            TerritorySavedData.CoreRecord record = core == null ? null : TerritorySavedData.get(player.server)
+                    .core(player.level().dimension().location(), pos).orElse(null);
+            boolean recoveryLocked = allowed && record != null
+                    && com.ruskserver.moveearth_addtional.s2.territory.TerritoryFallSettlementPolicy.enlargementLocked(
+                    record.type() == TerritorySavedData.CoreType.CAPITAL, record.radius(), radius,
+                    SiegeSavedData.get(player.server).isNationSettlementProtected(playerNation),
+                    com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData.get(player.server)
+                            .eligibleForNation(playerNation,
+                                    com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server))
+                            .filter(episode -> episode.state()
+                                    == com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData.State.ACTIVE)
+                            .isPresent());
             TerritorySavedData.UpdateResult update = null;
-            if (validRadius && closeEnough && allowed && !siegeLocked) {
+            if (validRadius && closeEnough && allowed && !siegeLocked && !recoveryLocked) {
                 TerritorySavedData territories = TerritorySavedData.get(player.server);
                 if (territories.core(player.level().dimension().location(), pos).isEmpty()) {
                     TerritorySavedData.RegistrationResult repaired = territories.register(
@@ -64,11 +76,17 @@ public record C2S_SetTerritoryCoreRadiusPacket(int requestId, BlockPos pos, int 
             }
             boolean success = update != null && update.success();
             if (success) core.bind(update.core());
+            if (success && player.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                // A changed radius keeps the core's state; the closure recheck decides whether it still seals.
+                com.ruskserver.moveearth_addtional.s2.territory.TerritoryClosureRecheckManager
+                        .markPotentialSeal(serverLevel, java.util.List.of(pos));
+            }
             String key = success ? "message.moveearth_addtional.territory_core.saved"
                     : !validRadius ? "message.moveearth_addtional.territory_core.invalid_radius"
                     : !closeEnough ? "message.moveearth_addtional.territory_core.too_far"
                     : !allowed ? "message.moveearth_addtional.territory_core.no_permission"
                     : siegeLocked ? "message.moveearth_addtional.territory_core.siege_locked"
+                    : recoveryLocked ? "message.moveearth_addtional.territory.radius_locked_recovery"
                     : update != null && update.status() == TerritorySavedData.Status.FOREIGN_TERRITORY_CONFLICT
                     ? "message.moveearth_addtional.territory_core.foreign_conflict"
                     : "message.moveearth_addtional.territory_core.not_registered";

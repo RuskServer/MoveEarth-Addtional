@@ -51,7 +51,12 @@ public record C2S_CreateNationPacket(int requestId, long expectedRevision, Strin
                         : result.verdict().messageKey();
                 case TERRITORY_CONFLICT -> "screen.moveearth_addtional.nation.territory_conflict";
                 case PLACEMENT_FAILED -> "screen.moveearth_addtional.nation.placement_failed";
+                case MEMBERSHIP_COOLDOWN -> "screen.moveearth_addtional.nation.membership_cooldown";
             };
+            if (result.status() == com.ruskserver.moveearth_addtional.s2.nation.NationFoundationService
+                    .Status.MEMBERSHIP_COOLDOWN) {
+                com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.notifyRefused(player);
+            }
             if (success && result.core() != null) {
                 PacketDistributor.sendToPlayer(player, new S2C_OpenTerritoryCoreScreenPacket(
                         result.core().pos(), result.core().radius(), result.core().state(),

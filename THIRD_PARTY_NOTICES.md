@@ -162,6 +162,7 @@ relicense them.
 | Mekanism / Mekanism Generators | MIT | https://github.com/mekanism/Mekanism/blob/1.21.x/LICENSE |
 | TaCZ | GPL-3.0 for code; CC BY-NC-ND 4.0 for assets | https://modrinth.com/mod/timeless-and-classics-zero |
 | PlayerRevive | LGPL-3.0-only (as declared by the supplied NeoForge JAR) | https://modrinth.com/mod/playerrevive |
+| YetAnotherConfigLib (optional, client settings screen) | LGPL-3.0-or-later (as declared by the supplied NeoForge JAR) | https://github.com/isXander/YetAnotherConfigLib |
 
 Sable's PolyForm Shield terms are especially distinct from Sable Companion's
 MIT terms. Integration with Sable is not permission to redistribute Sable or

@@ -139,6 +139,29 @@ public final class WarehouseEncounterService {
         return true;
     }
 
+    /**
+     * Damage counts only from attackers inside the fight zone. Damage whose origin cannot be placed
+     * (an ownerless shell, explosion or projectile) is refused, so artillery cannot farm the boss
+     * either. Environmental damage with no entity at all still applies.
+     */
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onIncomingDamage(net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent event) {
+        if (!(event.getEntity() instanceof WarehouseRaiderEntity raider) || taggedRegion(raider) <= 0
+                || !(raider.level() instanceof ServerLevel level)) return;
+        Entity attacker = event.getSource().getEntity();
+        if (attacker == null && event.getSource().getDirectEntity() == null) return;
+        WarehouseSites.Site site = site(level.getServer(), taggedRegion(raider));
+        boolean inside = attacker != null && site != null
+                && attacker.level().dimension().location().equals(site.dimension())
+                && WarehouseSitePolicy.insideFightZone(site.min().getX(), site.min().getY(), site.min().getZ(),
+                attacker.getBlockX(), attacker.getBlockY(), attacker.getBlockZ());
+        if (inside) return;
+        event.setCanceled(true);
+        if (attacker instanceof ServerPlayer player) {
+            player.displayClientMessage(Component.literal("倉庫から離れすぎています。敷地の近くから攻撃してください"), true);
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onDamage(LivingDamageEvent.Post event) {
         if (!(event.getEntity() instanceof WarehouseRaiderEntity boss)
@@ -183,6 +206,13 @@ public final class WarehouseEncounterService {
                         + "の倉庫警備隊長が倒されました。建物内の輸送コンテナから戦利品を回収できます"), false);
         Moveearth_addtional.LOGGER.info("Warehouse encounter defeated: region={} cycle={}", region,
                 WarehouseEncounterState.get(level.getServer()).get(region).cycle());
+        int participants = PARTICIPANTS.getOrDefault(region, Set.of()).size();
+        if (event.getSource().getEntity() instanceof ServerPlayer killer) {
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.WAREHOUSE_BOSS, killer, participants, "region=" + region);
+        } else {
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.place(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.WAREHOUSE_BOSS, null, level.dimension().location(), boss.blockPosition(),
+                    participants, "region=" + region);
+        }
         for (UUID participantId : PARTICIPANTS.getOrDefault(region, Set.of())) {
             ServerPlayer participant = level.getServer().getPlayerList().getPlayer(participantId);
             if (participant != null) {

@@ -21,6 +21,9 @@ public final class JobService {
         if (!data.isActive(player.getUUID(), definition.id())) {
             return;
         }
+        if (!com.ruskserver.moveearth_addtional.economy.EarningEligibility.mayEarnWithNotice(player)) {
+            return;
+        }
         double xp = rateLimiter.apply(player.getUUID(), definition.id(), baseXp, player.serverLevel().getGameTime());
         JobProgressSavedData.AwardResult result = data.award(player.getUUID(), definition, xp,
                 player.getServer().overworld().getGameTime());

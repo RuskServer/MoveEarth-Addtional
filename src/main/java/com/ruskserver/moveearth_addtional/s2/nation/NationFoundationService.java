@@ -29,7 +29,9 @@ public final class NationFoundationService {
     public static Result establish(ServerPlayer player, String name, String tag, long expectedRevision,
                                    ResourceLocation dimension, BlockPos corePos) {
         NationSavedData nations = NationSavedData.get(player.server);
-        NationSavedData.Status nationStatus = nations.validateCreate(player.getUUID(), name, tag, expectedRevision);
+        long openNow = com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server);
+        NationSavedData.Status nationStatus = nations.validateCreate(player.getUUID(), name, tag,
+                expectedRevision, openNow);
         if (nationStatus != NationSavedData.Status.CREATED) {
             return new Result(map(nationStatus), nations.revision(), null);
         }
@@ -50,7 +52,7 @@ public final class NationFoundationService {
         }
 
         NationSavedData.CreateResult created = nations.create(player.getUUID(),
-                player.getGameProfile().getName(), name, tag, expectedRevision);
+                player.getGameProfile().getName(), name, tag, expectedRevision, openNow);
         if (created.status() != NationSavedData.Status.CREATED || created.nation() == null) {
             return new Result(map(created.status()), created.revision(), null);
         }
@@ -77,6 +79,7 @@ public final class NationFoundationService {
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_CITIZEN);
         com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_FOUNDED);
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_FOUNDED, player, nationId, 0L, name);
         return new Result(Status.CREATED, nations.revision(), registered.core());
     }
 
@@ -125,6 +128,7 @@ public final class NationFoundationService {
             case DUPLICATE -> Status.DUPLICATE;
             case ALREADY_MEMBER -> Status.ALREADY_MEMBER;
             case STALE -> Status.STALE;
+            case MEMBERSHIP_COOLDOWN -> Status.MEMBERSHIP_COOLDOWN;
         };
     }
 
@@ -134,7 +138,7 @@ public final class NationFoundationService {
 
     public enum Status {
         CREATED, INVALID, DUPLICATE, ALREADY_MEMBER, STALE,
-        INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED
+        INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED, MEMBERSHIP_COOLDOWN
     }
 
     /**

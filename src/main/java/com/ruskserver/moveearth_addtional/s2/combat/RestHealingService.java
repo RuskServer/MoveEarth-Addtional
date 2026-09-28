@@ -94,9 +94,18 @@ public final class RestHealingService {
         RestHealingSavedData data = RestHealingSavedData.get(player.server);
         float maximum = S2TerritoryConfig.restHealingMaxHealth();
         float allowance = data.remaining(player.getUUID(), maximum);
-        if (player.tickCount % 20 == 0) showStatus(player, mode, allowance, maximum,
+        boolean hurt = player.getHealth() < player.getMaxHealth();
+        if (hurt && player.tickCount % 20 == 0) showStatus(player, mode, allowance, maximum,
                 Math.max(0, startDelay - state.restTicks));
-        if (allowance <= 0.0F || state.healTicks < interval) return;
+        if (state.healTicks < interval) return;
+        if (!hurt) {
+            // Resting at full health still teaches the mechanic; the tutorial used to stall here.
+            state.healTicks = 0;
+            com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.REST_HEALED);
+            return;
+        }
+        if (allowance <= 0.0F) return;
 
         float amount = RestHealingPolicy.healAmount(player.getMaxHealth() - player.getHealth(), allowance, HEAL_STEP);
         state.healTicks = 0;
@@ -134,7 +143,6 @@ public final class RestHealingService {
         return player.isAlive()
                 && !player.isCreative()
                 && !player.isSpectator()
-                && player.getHealth() < player.getMaxHealth()
                 && !CombatTagService.isTagged(player)
                 && !CompatEventHandler.isPlayerDown(player)
                 && !PrisonerService.isMovementRestricted(player);

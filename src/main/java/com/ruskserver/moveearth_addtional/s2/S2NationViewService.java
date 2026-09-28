@@ -34,8 +34,8 @@ public final class S2NationViewService {
             TerritorySavedData territories = TerritorySavedData.get(player.server);
             SiegeSavedData siegeData = SiegeSavedData.get(player.server);
             var soloSieges = individualSieges(player, data, territories, siegeData);
-            String siegeStatus = soloSieges.isEmpty() ? "NO ACTIVE SIEGE"
-                    : "SOLO " + soloSieges.getFirst().phase().name().replace('_', ' ')
+            String siegeStatus = soloSieges.isEmpty() ? "進行中のSiegeなし"
+                    : "単独Siege " + soloSieges.getFirst().phase().name().replace('_', ' ')
                     + " • " + formatRemaining(soloSieges.getFirst().remainingTicks());
             return new S2NationSnapshot(data.revision(), player.getGameProfile().getName(),
                     serverAdmin, false, "", "", "", 0L, 0, 0, 0, 0, 0L,
@@ -71,12 +71,11 @@ public final class S2NationViewService {
                 .sorted(Comparator.comparing(S2NationSnapshot.CandidateView::name,
                         String.CASE_INSENSITIVE_ORDER)).toList() : java.util.List.<S2NationSnapshot.CandidateView>of();
         TerritorySavedData territories = TerritorySavedData.get(player.server);
+        long openNow = com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server);
+        boolean canManageDiplomacy = data.can(player.getUUID(), S2Permission.MANAGE_DIPLOMACY);
         var diplomacy = data.nations().values().stream()
                 .filter(other -> !other.id().equals(nation.id()))
-                .map(other -> new S2NationSnapshot.DiplomacyView(other.id(), other.name(), other.tag(),
-                        S2NationSnapshot.DiplomacyState.valueOf(
-                                data.relation(nation.id(), other.id()).name()),
-                        data.isHostileFrom(nation.id(), other.id())))
+                .map(other -> diplomacyView(data, nation.id(), other, openNow, canManageDiplomacy))
                 .sorted(Comparator.comparing(S2NationSnapshot.DiplomacyView::nationName,
                         String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -179,12 +178,12 @@ public final class S2NationViewService {
                 .mapToLong(other -> siegeData.peaceTruceRemaining(nation.id(), other))
                 .max().orElse(0L);
         String siegeStatus = sieges.isEmpty() && settlementTruce > 0L
-                ? "REBUILDING TRUCE • " + formatRemaining(settlementTruce)
+                ? "再建停戦中 • " + formatRemaining(settlementTruce)
                 : sieges.isEmpty() && peaceTruce > 0L
-                ? "PEACE TRUCE • " + formatRemaining(peaceTruce)
-                : sieges.isEmpty() ? "NO ACTIVE SIEGE"
-                : (sieges.getFirst().phase() == S2NationSnapshot.SiegePhase.ROLLING ? "ROLLING"
-                : sieges.getFirst().phase() == S2NationSnapshot.SiegePhase.FALLEN ? "CORE FALLEN" : "INITIAL LOCK")
+                ? "講和停戦中 • " + formatRemaining(peaceTruce)
+                : sieges.isEmpty() ? "進行中のSiegeなし"
+                : (sieges.getFirst().phase() == S2NationSnapshot.SiegePhase.ROLLING ? "ローリングSiege"
+                : sieges.getFirst().phase() == S2NationSnapshot.SiegePhase.FALLEN ? "コア陥落" : "初動ロック")
                 + " • " + formatRemaining(sieges.getFirst().remainingTicks());
         return new S2NationSnapshot(data.revision(), player.getGameProfile().getName(), serverAdmin,
                 true, nation.name(), nation.tag(), ownRole == null ? "Member" : ownRole.displayName(),
@@ -198,6 +197,31 @@ public final class S2NationViewService {
                 members, roles, diplomacy,
                 java.util.List.of(), candidates, notificationAttention(player, data, nation.id()),
                 homeStatus(player, data, nation.id()));
+    }
+
+    private static S2NationSnapshot.DiplomacyView diplomacyView(NationSavedData data, UUID viewerNation,
+                                                                NationSavedData.Nation other, long openNow,
+                                                                boolean canManageDiplomacy) {
+        var state = S2NationSnapshot.DiplomacyState.valueOf(data.relation(viewerNation, other.id()).name());
+        boolean hostileByViewer = data.isHostileFrom(viewerNation, other.id());
+        if (state != S2NationSnapshot.DiplomacyState.ALLIED) {
+            return new S2NationSnapshot.DiplomacyView(other.id(), other.name(), other.tag(), state, hostileByViewer);
+        }
+        var end = data.allianceEnd(viewerNation, other.id()).orElse(null);
+        long remaining = end == null ? 0L
+                : Math.max(1L, com.ruskserver.moveearth_addtional.s2.nation.AllianceTerminationPolicy
+                .remaining(end.endsAt(), openNow));
+        // Per-member grants are only needed by those who can edit them.
+        var allyMembers = !canManageDiplomacy ? java.util.List.<S2NationSnapshot.AllyMemberView>of()
+                : other.members().values().stream()
+                .map(member -> new S2NationSnapshot.AllyMemberView(member.id(), member.lastKnownName(),
+                        data.allyPlayerGrant(viewerNation, other.id(), member.id())))
+                .sorted(Comparator.comparing(S2NationSnapshot.AllyMemberView::name, String.CASE_INSENSITIVE_ORDER))
+                .limit(256)
+                .toList();
+        return new S2NationSnapshot.DiplomacyView(other.id(), other.name(), other.tag(), state, hostileByViewer,
+                remaining, end != null && viewerNation.equals(end.declaringNation()),
+                data.allyNationGrant(viewerNation, other.id()), allyMembers);
     }
 
     private static S2NationSnapshot.HomeStatus homeStatus(ServerPlayer player, NationSavedData nations,

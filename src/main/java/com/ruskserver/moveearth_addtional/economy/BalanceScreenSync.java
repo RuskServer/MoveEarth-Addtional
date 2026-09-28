@@ -52,6 +52,14 @@ public final class BalanceScreenSync {
             send(player, false, "連続送金は少し待ってから行ってください", false);
             return;
         }
+        var newAccountTransfers = NewAccountTransferSavedData.get(player.server);
+        long remaining = newAccountTransfers.remaining(player, System.currentTimeMillis());
+        if (packet.amount() > remaining) {
+            send(player, false, "プレイ時間が短いアカウントの送金は1日合計 "
+                    + com.ruskserver.moveearth_addtional.config.EconomyGuardConfig.newAccountDailyTransfer()
+                    + " TC までです（今日の残り " + remaining + " TC）", false);
+            return;
+        }
         LAST_PAY_TICK.put(senderId, now);
         var ledger = EconomyLedgerSavedData.get(player.server);
         ledger.rememberPlayer(senderId, player.getScoreboardName());
@@ -64,6 +72,7 @@ public final class BalanceScreenSync {
                     ? "残高が足りません" : "送金できませんでした", false);
             return;
         }
+        newAccountTransfers.record(player, packet.amount(), System.currentTimeMillis());
         EconomyWaypointSync.syncBalance(player);
         EconomyWaypointSync.syncBalance(recipient);
         recipient.sendSystemMessage(MoveEarthMessage.success(

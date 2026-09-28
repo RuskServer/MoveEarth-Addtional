@@ -11,6 +11,7 @@ import com.ruskserver.moveearth_addtional.config.MarketConfig;
 import com.ruskserver.moveearth_addtional.config.LocalChatConfig;
 import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
 import com.ruskserver.moveearth_addtional.config.StartupClientConfig;
+import com.ruskserver.moveearth_addtional.config.ConfigFileLayout;
 import com.ruskserver.moveearth_addtional.config.CreateIndustryConfig;
 import com.ruskserver.moveearth_addtional.config.MekanismBalanceConfig;
 import com.ruskserver.moveearth_addtional.config.WaterWheelBalanceConfig;
@@ -22,6 +23,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -31,74 +33,84 @@ public class Moveearth_addtional {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public Moveearth_addtional(IEventBus modEventBus, ModContainer modContainer) {
+        // Before any registerConfig: startup configs are read the moment they are registered.
+        ConfigFileLayout.migrateGameDirectories(FMLPaths.CONFIGDIR.get(),
+                        FMLPaths.GAMEDIR.get().resolve("defaultconfigs"))
+                .forEach(line -> LOGGER.info("[MoveEarth] Config layout: {}", line));
         if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
             modContainer.registerConfig(
                     ModConfig.Type.STARTUP,
                     DiscordBotConfig.SPEC,
-                    "moveearth_addtional-discord.toml"
+                    ConfigFileLayout.SERVER_OPS + "discord.toml"
             );
         }
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modContainer.registerConfig(ModConfig.Type.CLIENT,
                     com.ruskserver.moveearth_addtional.client.upscale.UpscaleClientConfig.SPEC,
-                    "moveearth_addtional-upscale.toml");
+                    ConfigFileLayout.CLIENT + "upscale.toml");
+            modContainer.registerConfig(ModConfig.Type.CLIENT,
+                    com.ruskserver.moveearth_addtional.client.particles.CbcParticleConfig.SPEC,
+                    ConfigFileLayout.CLIENT + "particles.toml");
             modContainer.registerConfig(ModConfig.Type.CLIENT,
                     com.ruskserver.moveearth_addtional.client.scope.ScopePipConfig.SPEC,
-                    "moveearth_addtional-scope-pip.toml");
+                    ConfigFileLayout.CLIENT + "scope-pip.toml");
             modContainer.registerConfig(
                     ModConfig.Type.CLIENT,
                     StartupClientConfig.SPEC,
-                    "moveearth_addtional-startup.toml"
+                    ConfigFileLayout.CLIENT + "startup.toml"
             );
         }
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 DelayedChunkCacheConfig.SPEC,
-                "moveearth_addtional-dcc.toml"
+                ConfigFileLayout.WORLD + "dcc.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 RegionResourceConfig.SPEC,
-                "moveearth_addtional-regions.toml"
+                ConfigFileLayout.WORLD + "regions.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 AeronauticsSwivelConfig.SPEC,
-                "moveearth_addtional-aeronautics.toml"
+                ConfigFileLayout.WORLD + "aeronautics.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 S2TerritoryConfig.SPEC,
-                "moveearth_addtional-s2-territory.toml"
+                ConfigFileLayout.WORLD + "s2-territory.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 TipConfig.SPEC,
-                "moveearth_addtional-tips.toml"
+                ConfigFileLayout.WORLD + "tips.toml"
         );
         modContainer.registerConfig(ModConfig.Type.SERVER, MarketConfig.SPEC,
-                "moveearth_addtional-market.toml");
+                ConfigFileLayout.WORLD + "market.toml");
+        modContainer.registerConfig(ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.config.EconomyGuardConfig.SPEC,
+                ConfigFileLayout.WORLD + "economy-guard.toml");
         modContainer.registerConfig(ModConfig.Type.SERVER, LocalChatConfig.SPEC,
-                "moveearth_addtional-chat.toml");
+                ConfigFileLayout.WORLD + "chat.toml");
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 RecoveryDispatchConfig.SPEC,
-                "moveearth_addtional-recovery-dispatch.toml"
+                ConfigFileLayout.WORLD + "recovery-dispatch.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 WaterWheelBalanceConfig.SPEC,
-                "moveearth_addtional-water-wheels.toml"
+                ConfigFileLayout.WORLD + "water-wheels.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 CreateIndustryConfig.SPEC,
-                "moveearth_addtional-create-industry.toml"
+                ConfigFileLayout.WORLD + "create-industry.toml"
         );
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 MekanismBalanceConfig.SPEC,
-                "moveearth_addtional-mekanism.toml"
+                ConfigFileLayout.WORLD + "mekanism.toml"
         );
 
         CbcReinforcementCompat.registerIfPresent();
@@ -129,6 +141,7 @@ public class Moveearth_addtional {
         com.ruskserver.moveearth_addtional.terrain.TerrainEvents.register();
 
         // Register Config
-        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.ruskserver.moveearth_addtional.oxygen.OxygenConfig.SPEC);
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER, com.ruskserver.moveearth_addtional.oxygen.OxygenConfig.SPEC,
+                ConfigFileLayout.WORLD + "oxygen.toml");
     }
 }

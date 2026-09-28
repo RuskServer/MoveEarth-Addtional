@@ -40,7 +40,8 @@ public final class ResourceEvent {
         String material = material(state);
         if (material == null) return;
         MinecraftServer server = player.getServer();
-        if (!OpenTimeService.isOpen(server)) return;
+        if (!OpenTimeService.isOpen(server)
+                || !com.ruskserver.moveearth_addtional.economy.EarningEligibility.mayEarn(player)) return;
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(server);
         if (!"RESOURCE".equals(ledger.eventKind()) || ledger.harvestSettled()
                 || !material.equals(ledger.targetMaterial())) return;

@@ -16,6 +16,13 @@ class NationStoragePolicyTest {
         assertTrue(NationStoragePolicy.canUseStorage(false, false, true));
     }
 
+    @Test void alliesNeedTheHostGrantOnHostLandForHostStorage() {
+        assertTrue(NationStoragePolicy.canUseAllyStorage(true, true, true));
+        assertFalse(NationStoragePolicy.canUseAllyStorage(false, true, true));
+        assertFalse(NationStoragePolicy.canUseAllyStorage(true, false, true));
+        assertFalse(NationStoragePolicy.canUseAllyStorage(true, true, false));
+    }
+
     @Test void onlyKnownStorageMenusAreRestricted() {
         assertTrue(NationStoragePolicy.isRestrictedMenuId("minecraft", "generic_9x6"));
         assertTrue(NationStoragePolicy.isRestrictedMenuId("minecraft", "hopper"));

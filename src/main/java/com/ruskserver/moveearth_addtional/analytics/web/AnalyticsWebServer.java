@@ -3,7 +3,12 @@ package com.ruskserver.moveearth_addtional.analytics.web;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
+import com.ruskserver.moveearth_addtional.analytics.event.GameEventType;
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
+import com.ruskserver.moveearth_addtional.analytics.query.OnboardingFunnel;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventGroupBy;
+import com.ruskserver.moveearth_addtional.analytics.state.S2StateSnapshot;
+import com.ruskserver.moveearth_addtional.analytics.state.S2StateSnapshotStore;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.query.export.AnalyticsExportService;
 import com.ruskserver.moveearth_addtional.analytics.profiler.ChunkProfilerService;
@@ -88,6 +93,13 @@ public class AnalyticsWebServer {
             server.createContext("/api/chunks", new ChunkLoadApiHandler());
             server.createContext("/api/profiles", new ChunkProfilesApiHandler());
             server.createContext("/api/export", new ExportApiHandler());
+            server.createContext("/api/s2", new JsonApiHandler(AnalyticsWebServer::s2State));
+            server.createContext("/api/events", new JsonApiHandler(AnalyticsWebServer::events));
+            server.createContext("/api/events/aggregate", new JsonApiHandler(AnalyticsWebServer::eventAggregate));
+            server.createContext("/api/nations/history", new JsonApiHandler(AnalyticsWebServer::nationHistory));
+            server.createContext("/api/economy", new JsonApiHandler(AnalyticsWebServer::economy));
+            server.createContext("/api/onboarding", new JsonApiHandler(AnalyticsWebServer::onboarding));
+            server.createContext("/api/wars", new JsonApiHandler(AnalyticsWebServer::wars));
 
             executor = Executors.newFixedThreadPool(4, r -> {
                 Thread t = new Thread(r, "MoveEarth-Analytics-Web-Worker");
@@ -440,6 +452,8 @@ public class AnalyticsWebServer {
                             .exportChunkLoadsToDirAsync(tempExportDir, format, window, dimension).get();
                     case "profiles", "chunk_profiles" -> AnalyticsExportService.INSTANCE
                             .exportChunkProfilesToDirAsync(tempExportDir, format, window).get();
+                    case "events", "game_events" -> AnalyticsExportService.INSTANCE
+                            .exportGameEventsToDirAsync(tempExportDir, format, window, params.get("type_prefix")).get();
                     default -> AnalyticsExportService.INSTANCE
                             .exportPlayersToDirAsync(tempExportDir, format, window).get();
                 };
@@ -462,6 +476,119 @@ public class AnalyticsWebServer {
                     }
                 }
             }
+        }
+    }
+
+    // --- Season 2 ---
+
+    /** A GET endpoint whose body is one object serialized as JSON. */
+    private static final class JsonApiHandler implements HttpHandler {
+        interface Body {
+            Object build(Map<String, String> params) throws Exception;
+        }
+
+        private final Body body;
+
+        JsonApiHandler(Body body) { this.body = body; }
+
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (!checkAuthAndRateLimit(exchange)) return;
+            try {
+                Object response = body.build(parseQueryParams(exchange.getRequestURI()));
+                sendResponse(exchange, 200, GSON.toJson(response), "application/json; charset=UTF-8");
+            } catch (IllegalArgumentException e) {
+                sendResponse(exchange, 400, GSON.toJson(Map.of("error", String.valueOf(e.getMessage()))),
+                        "application/json; charset=UTF-8");
+            } catch (Exception e) {
+                sendResponse(exchange, 500, GSON.toJson(Map.of("error", String.valueOf(e.getMessage()))),
+                        "application/json; charset=UTF-8");
+            }
+        }
+    }
+
+    private static Object s2State(Map<String, String> params) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("snapshot", S2StateSnapshotStore.latest());
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (GameEventType type : GameEventType.values()) labels.put(type.id(), type.label());
+        response.put("eventTypes", labels);
+        return response;
+    }
+
+    private static Object events(Map<String, String> params) throws Exception {
+        return AnalyticsQueryService.INSTANCE.getGameEventsAsync(params.get("type"), parseUuid(params.get("nation")),
+                parseUuid(params.get("player")), parseWindow(params.get("window")),
+                clampInt(params.get("limit"), 200, 1, 2000)).get();
+    }
+
+    private static Object eventAggregate(Map<String, String> params) throws Exception {
+        return AnalyticsQueryService.INSTANCE.aggregateGameEventsAsync(params.get("type"),
+                parseUuid(params.get("nation")), GameEventGroupBy.parse(params.get("group_by")),
+                parseWindow(params.get("window")), clampInt(params.get("limit"), 100, 1, 1000)).get();
+    }
+
+    private static Object nationHistory(Map<String, String> params) throws Exception {
+        return AnalyticsQueryService.INSTANCE.getNationHistoryAsync(parseUuid(params.get("nation")),
+                parseWindow(params.get("window"))).get();
+    }
+
+    private static Object economy(Map<String, String> params) throws Exception {
+        TimeWindow window = parseWindow(params.get("window"));
+        AnalyticsQueryService queries = AnalyticsQueryService.INSTANCE;
+        var history = queries.getEconomyHistoryAsync(window);
+        var ledger = queries.aggregateGameEventsAsync(GameEventType.LEDGER.id(), null, GameEventGroupBy.DETAIL,
+                window, 200);
+        var trades = queries.aggregateGameEventsAsync(GameEventType.MARKET_TRADE.id(), null,
+                GameEventGroupBy.DETAIL, window, 50);
+        var tradeDays = queries.aggregateGameEventsAsync(GameEventType.MARKET_TRADE.id(), null,
+                GameEventGroupBy.DAY, window, 400);
+        var upkeep = queries.aggregateGameEventsAsync("economy.upkeep", null, GameEventGroupBy.TYPE, window, 10);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("current", S2StateSnapshotStore.latest().economy());
+        response.put("history", history.get());
+        response.put("ledger", ledger.get());
+        response.put("trades", trades.get());
+        response.put("tradeDays", tradeDays.get());
+        response.put("upkeep", upkeep.get());
+        return response;
+    }
+
+    private static Object onboarding(Map<String, String> params) throws Exception {
+        TimeWindow window = parseWindow(params.get("window"));
+        AnalyticsQueryService queries = AnalyticsQueryService.INSTANCE;
+        var newPlayers = queries.countNewPlayersAsync(window);
+        var byType = queries.aggregateGameEventsAsync(null, null, GameEventGroupBy.TYPE, window, 100);
+        var steps = queries.aggregateGameEventsAsync(GameEventType.TUTORIAL_STEP.id(), null,
+                GameEventGroupBy.DETAIL, window, 100);
+        var skipped = queries.aggregateGameEventsAsync(GameEventType.TUTORIAL_SKIPPED.id(), null,
+                GameEventGroupBy.DETAIL, window, 100);
+        return OnboardingFunnel.build(newPlayers.get(), byType.get(), steps.get(), skipped.get());
+    }
+
+    private static Object wars(Map<String, String> params) throws Exception {
+        TimeWindow window = parseWindow(params.get("window"));
+        S2StateSnapshot snapshot = S2StateSnapshotStore.latest();
+        var recent = AnalyticsQueryService.INSTANCE.getGameEventsAsync("siege.", null, null, window, 500);
+        var combat = AnalyticsQueryService.INSTANCE.aggregateGameEventsAsync("combat.", null,
+                GameEventGroupBy.TYPE, window, 20);
+        var byNation = AnalyticsQueryService.INSTANCE.aggregateGameEventsAsync(GameEventType.CORE_FALLEN.id(), null,
+                GameEventGroupBy.NATION, window, 100);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sieges", snapshot.sieges());
+        response.put("fallen", snapshot.fallen());
+        response.put("events", recent.get());
+        response.put("combat", combat.get());
+        response.put("fallsByDefender", byNation.get());
+        return response;
+    }
+
+    private static UUID parseUuid(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid UUID: " + value);
         }
     }
 
@@ -515,6 +642,7 @@ public class AnalyticsWebServer {
     private static TimeWindow parseWindow(String val) {
         if (val == null) return TimeWindow.DAYS_7;
         return switch (val.toLowerCase()) {
+            case "1d", "1day", "24h" -> TimeWindow.DAY_1;
             case "30d", "30days" -> TimeWindow.DAYS_30;
             case "all", "all_time" -> TimeWindow.ALL_TIME;
             default -> TimeWindow.DAYS_7;

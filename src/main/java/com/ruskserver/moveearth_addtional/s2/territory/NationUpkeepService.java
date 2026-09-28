@@ -66,12 +66,23 @@ public final class NationUpkeepService {
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
         if (nationId == null) return false;
         if (!intoNation && !canManage(player)) return false;
+        // Deposits share the new-account limit: otherwise deposit-then-withdraw bypasses it.
+        var newAccountTransfers = com.ruskserver.moveearth_addtional.economy.NewAccountTransferSavedData.get(player.server);
+        long remaining = intoNation ? newAccountTransfers.remaining(player, System.currentTimeMillis()) : Long.MAX_VALUE;
+        if (amount > remaining) {
+            player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning(
+                    "プレイ時間が短いアカウントの国家金庫への入金は、送金と合わせて1日合計 "
+                            + com.ruskserver.moveearth_addtional.config.EconomyGuardConfig.newAccountDailyTransfer()
+                            + " TC までです（今日の残り " + remaining + " TC）"));
+            return false;
+        }
         Account nation = Account.nation(nationId);
         Account personal = Account.player(player.getUUID());
         EconomyLedgerSavedData.Result result = EconomyLedgerSavedData.get(player.server).transfer(
                 UUID.randomUUID(), intoNation ? personal : nation, intoNation ? nation : personal,
                 amount, intoNation ? "treasury_deposit" : "treasury_withdrawal");
         if (result == EconomyLedgerSavedData.Result.APPLIED && intoNation) {
+            newAccountTransfers.record(player, amount, System.currentTimeMillis());
             com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                     com.ruskserver.moveearth_addtional.advancement.ModCriteria.TREASURY_CONFIGURED);
         }
@@ -81,7 +92,14 @@ public final class NationUpkeepService {
     public static boolean payNow(ServerPlayer player) {
         if (!canManage(player)) return false;
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
-        boolean paid = nationId != null && charge(player.server, nationId, System.currentTimeMillis());
+        if (nationId == null) return false;
+        long now = System.currentTimeMillis();
+        if (!TerritoryUpkeepPolicy.canPayNow(now, NationUpkeepSavedData.get(player.server).state(nationId).nextDueAt())) {
+            player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.info(
+                    net.minecraft.network.chat.Component.translatable("screen.moveearth_addtional.treasury.not_due")));
+            return false;
+        }
+        boolean paid = charge(player.server, nationId, now);
         if (paid) com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.UPKEEP_PAID);
         return paid;
@@ -252,6 +270,8 @@ public final class NationUpkeepService {
                 data.paymentSucceeded(nationId, now);
                 invalidatePenalty(nationId);
                 RecoveryService.onUpkeepPaid(server, nationId, amount);
+                com.ruskserver.moveearth_addtional.analytics.event.GameEvents.place(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.UPKEEP_PAID, nationId, null, null, amount,
+                        subsidy > 0L ? "subsidy=" + subsidy : null);
                 return true;
             }
         } catch (RuntimeException exception) {
@@ -259,6 +279,7 @@ public final class NationUpkeepService {
         }
         if (aidTransaction != null) RecoveryFundService.refundAid(server, episodeId, aidTransaction);
         data.paymentFailed(nationId, now);
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.place(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.UPKEEP_FAILED, nationId, null, null, amount, null);
         invalidatePenalty(nationId);
         return false;
     }

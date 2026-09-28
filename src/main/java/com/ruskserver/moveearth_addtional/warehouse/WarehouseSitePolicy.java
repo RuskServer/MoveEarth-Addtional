@@ -7,12 +7,24 @@ public final class WarehouseSitePolicy {
     public static final int LENGTH = 17;
     public static final int BUILD_MARGIN = 64;
     public static final int CLAIM_MARGIN = 128;
+    /**
+     * Attackers must stand this close to the building for their damage to count. Inside the raiders'
+     * 32-block firing range, so nobody can shoot them from where they cannot answer; the 48-block
+     * leash otherwise let a player kill the captain from ~80 blocks away untouched.
+     */
+    public static final int FIGHT_MARGIN = 24;
+    public static final int FIGHT_VERTICAL_MARGIN = 16;
 
     private WarehouseSitePolicy() { }
 
     public static boolean within(int minX, int minZ, int x, int z, int margin) {
         return x >= (long) minX - margin && x <= (long) minX + WIDTH - 1 + margin
                 && z >= (long) minZ - margin && z <= (long) minZ + LENGTH - 1 + margin;
+    }
+
+    public static boolean insideFightZone(int minX, int minY, int minZ, int x, int y, int z) {
+        return within(minX, minZ, x, z, FIGHT_MARGIN)
+                && y >= (long) minY - FIGHT_VERTICAL_MARGIN && y < (long) minY + HEIGHT + FIGHT_VERTICAL_MARGIN;
     }
 
     public static boolean insideStructure(int minX, int minY, int minZ, int x, int y, int z) {

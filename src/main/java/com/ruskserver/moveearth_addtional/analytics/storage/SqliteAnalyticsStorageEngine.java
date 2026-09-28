@@ -84,6 +84,54 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
 
     private void applySchemaBase(Statement stmt) throws SQLException {
         stmt.execute("""
+            CREATE TABLE IF NOT EXISTS game_event (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                occurred_at INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                player_uuid TEXT,
+                nation_uuid TEXT,
+                dimension TEXT,
+                x INTEGER,
+                y INTEGER,
+                z INTEGER,
+                value INTEGER NOT NULL DEFAULT 0,
+                detail TEXT
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_game_event_time ON game_event(occurred_at);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_game_event_type ON game_event(type, occurred_at);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_game_event_nation ON game_event(nation_uuid, occurred_at);");
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_game_event_player ON game_event(player_uuid, occurred_at);");
+
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS nation_snapshot (
+                recorded_at INTEGER NOT NULL,
+                nation_uuid TEXT NOT NULL,
+                name TEXT,
+                members INTEGER NOT NULL,
+                online INTEGER NOT NULL,
+                treasury INTEGER NOT NULL,
+                chunks INTEGER NOT NULL,
+                cores INTEGER NOT NULL,
+                vehicles INTEGER NOT NULL,
+                PRIMARY KEY (nation_uuid, recorded_at)
+            );
+        """);
+        stmt.execute("CREATE INDEX IF NOT EXISTS idx_nation_snapshot_time ON nation_snapshot(recorded_at);");
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS economy_snapshot (
+                recorded_at INTEGER PRIMARY KEY,
+                player_balances INTEGER NOT NULL,
+                nation_balances INTEGER NOT NULL,
+                escrow_balances INTEGER NOT NULL,
+                nations INTEGER NOT NULL,
+                players_in_nations INTEGER NOT NULL,
+                online_players INTEGER NOT NULL,
+                open_orders INTEGER NOT NULL
+            );
+        """);
+
+        stmt.execute("""
             CREATE TABLE IF NOT EXISTS player_identity (
                 player_uuid TEXT PRIMARY KEY,
                 last_known_name TEXT NOT NULL,
@@ -373,7 +421,7 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             stmt.execute("ALTER TABLE detector_activity_5m ADD COLUMN detector_name TEXT NOT NULL DEFAULT '名称未設定';");
         }
 
-        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (6, " + (System.currentTimeMillis() / 1000L) + ");");
+        stmt.execute("INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES (7, " + (System.currentTimeMillis() / 1000L) + ");");
     }
 
     @Override
@@ -467,7 +515,20 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """;
 
-        try (PreparedStatement psIdentity = connection.prepareStatement(sqlIdentityUpsert);
+        String sqlGameEvent = """
+            INSERT INTO game_event (occurred_at, type, player_uuid, nation_uuid, dimension, x, y, z, value, detail)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        """;
+
+        try (PreparedStatement psGameEvent = connection.prepareStatement(sqlGameEvent);
+             PreparedStatement psNationSnapshot = connection.prepareStatement(
+                     "INSERT OR REPLACE INTO nation_snapshot (recorded_at, nation_uuid, name, members, online, "
+                             + "treasury, chunks, cores, vehicles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+             PreparedStatement psEconomySnapshot = connection.prepareStatement(
+                     "INSERT OR REPLACE INTO economy_snapshot (recorded_at, player_balances, nation_balances, "
+                             + "escrow_balances, nations, players_in_nations, online_players, open_orders) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+             PreparedStatement psIdentity = connection.prepareStatement(sqlIdentityUpsert);
              PreparedStatement psSession = connection.prepareStatement(sqlSessionInsert);
              PreparedStatement psPlayer = connection.prepareStatement(sqlPlayerActivity);
              PreparedStatement psSpatial = connection.prepareStatement(sqlSpatialActivity);
@@ -571,6 +632,43 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
                         psChunkLoad.setDouble(7, chunk.loadScore());
                         psChunkLoad.addBatch();
                     }
+                } else if (event instanceof AnalyticsEventQueue.StateSnapshotEvent s) {
+                    var snapshot = s.snapshot();
+                    for (var nation : snapshot.nations()) {
+                        psNationSnapshot.setLong(1, snapshot.capturedAt());
+                        psNationSnapshot.setString(2, nation.id());
+                        psNationSnapshot.setString(3, nation.name());
+                        psNationSnapshot.setInt(4, nation.members());
+                        psNationSnapshot.setInt(5, nation.online());
+                        psNationSnapshot.setLong(6, nation.treasury());
+                        psNationSnapshot.setInt(7, nation.chunks());
+                        psNationSnapshot.setInt(8, nation.cores());
+                        psNationSnapshot.setInt(9, nation.vehicles());
+                        psNationSnapshot.addBatch();
+                    }
+                    var economy = snapshot.economy();
+                    psEconomySnapshot.setLong(1, snapshot.capturedAt());
+                    psEconomySnapshot.setLong(2, economy.playerBalances());
+                    psEconomySnapshot.setLong(3, economy.nationBalances());
+                    psEconomySnapshot.setLong(4, economy.escrowBalances());
+                    psEconomySnapshot.setInt(5, economy.nations());
+                    psEconomySnapshot.setInt(6, economy.playersInNations());
+                    psEconomySnapshot.setInt(7, economy.onlinePlayers());
+                    psEconomySnapshot.setInt(8, economy.openOrders());
+                    psEconomySnapshot.addBatch();
+                } else if (event instanceof AnalyticsEventQueue.GameEventLogEvent g) {
+                    var record = g.record();
+                    psGameEvent.setLong(1, record.occurredAtEpochSec());
+                    psGameEvent.setString(2, record.type());
+                    psGameEvent.setString(3, record.playerUuid() == null ? null : record.playerUuid().toString());
+                    psGameEvent.setString(4, record.nationUuid() == null ? null : record.nationUuid().toString());
+                    psGameEvent.setString(5, record.dimension());
+                    setNullableInt(psGameEvent, 6, record.x());
+                    setNullableInt(psGameEvent, 7, record.y());
+                    setNullableInt(psGameEvent, 8, record.z());
+                    psGameEvent.setLong(9, record.value());
+                    psGameEvent.setString(10, record.detail());
+                    psGameEvent.addBatch();
                 } else if (event instanceof AnalyticsEventQueue.ChunkProfileEvent p) {
                     for (ChunkProfileRecord record : p.records()) {
                         psChunkProfile.setString(1, record.sessionId().toString());
@@ -596,6 +694,9 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             }
 
             psIdentity.executeBatch();
+            psGameEvent.executeBatch();
+            psNationSnapshot.executeBatch();
+            psEconomySnapshot.executeBatch();
             psSession.executeBatch();
             psPlayer.executeBatch();
             psSpatial.executeBatch();
@@ -663,6 +764,22 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
     @Override
     public synchronized void purgeOldRecords(long cutoff5mEpochSec, long cutoffDailyEpochSec, long cutoffSessionEpochSec) throws SQLException {
         if (connection == null || connection.isClosed()) return;
+
+        if (cutoffSessionEpochSec > 0) {
+            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM game_event WHERE occurred_at < ?")) {
+                ps.setLong(1, cutoffSessionEpochSec);
+                ps.executeUpdate();
+            }
+        }
+        if (cutoffDailyEpochSec > 0) {
+            for (String table : List.of("nation_snapshot", "economy_snapshot")) {
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "DELETE FROM " + table + " WHERE recorded_at < ?")) {
+                    ps.setLong(1, cutoffDailyEpochSec);
+                    ps.executeUpdate();
+                }
+            }
+        }
 
         if (cutoff5mEpochSec > 0) {
             try (PreparedStatement ps1 = connection.prepareStatement("DELETE FROM player_activity_5m WHERE bucket_at < ?");
@@ -1519,5 +1636,157 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         if (connection != null && !connection.isClosed()) {
             connection.close();
         }
+    }
+
+    private static void setNullableInt(PreparedStatement statement, int index, Integer value) throws SQLException {
+        if (value == null) statement.setNull(index, java.sql.Types.INTEGER); else statement.setInt(index, value);
+    }
+
+    @Override
+    public synchronized List<com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventDto> queryGameEvents(
+            String typePrefix, java.util.UUID nationUuid, java.util.UUID playerUuid,
+            long fromEpochSec, long toEpochSec, int limit) throws SQLException {
+        List<com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventDto> result = new ArrayList<>();
+        if (connection == null || connection.isClosed()) return result;
+        StringBuilder sql = new StringBuilder("""
+            SELECT e.occurred_at, e.type, e.player_uuid, i.last_known_name, e.nation_uuid, e.dimension,
+                   e.x, e.y, e.z, e.value, e.detail
+            FROM game_event e LEFT JOIN player_identity i ON i.player_uuid = e.player_uuid
+            WHERE e.occurred_at >= ? AND e.occurred_at <= ?
+        """);
+        List<Object> parameters = new ArrayList<>(List.of(fromEpochSec, toEpochSec));
+        appendEventFilters(sql, parameters, "e.", typePrefix, nationUuid, playerUuid);
+        sql.append(" ORDER BY e.occurred_at DESC, e.id DESC LIMIT ?");
+        parameters.add(Math.max(1, limit));
+        try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+            bind(ps, parameters);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventDto(
+                            rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5),
+                            rs.getString(6), nullableInt(rs, 7), nullableInt(rs, 8), nullableInt(rs, 9),
+                            rs.getLong(10), rs.getString(11)));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized List<com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventAggregateDto> aggregateGameEvents(
+            String typePrefix, java.util.UUID nationUuid,
+            com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventGroupBy groupBy,
+            long fromEpochSec, long toEpochSec, int limit) throws SQLException {
+        List<com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventAggregateDto> result = new ArrayList<>();
+        if (connection == null || connection.isClosed()) return result;
+        String key = groupBy.sql();
+        StringBuilder sql = new StringBuilder("SELECT " + key + " AS k, COUNT(*), COALESCE(SUM(value), 0), "
+                + "COUNT(DISTINCT player_uuid) FROM game_event WHERE occurred_at >= ? AND occurred_at <= ?");
+        List<Object> parameters = new ArrayList<>(List.of(fromEpochSec, toEpochSec));
+        appendEventFilters(sql, parameters, "", typePrefix, nationUuid, null);
+        sql.append(" GROUP BY k ORDER BY ");
+        sql.append(groupBy == com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventGroupBy.DAY
+                ? "k ASC" : "COUNT(*) DESC");
+        sql.append(" LIMIT ?");
+        parameters.add(Math.max(1, limit));
+        try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {
+            bind(ps, parameters);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventAggregateDto(
+                            rs.getString(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized List<com.ruskserver.moveearth_addtional.analytics.query.dto.NationHistoryPointDto> queryNationHistory(
+            java.util.UUID nationUuid, long fromEpochSec, long toEpochSec) throws SQLException {
+        List<com.ruskserver.moveearth_addtional.analytics.query.dto.NationHistoryPointDto> result = new ArrayList<>();
+        if (connection == null || connection.isClosed()) return result;
+        String sql = "SELECT recorded_at, nation_uuid, name, members, online, treasury, chunks, cores, vehicles "
+                + "FROM nation_snapshot WHERE recorded_at >= ? AND recorded_at <= ?"
+                + (nationUuid == null ? "" : " AND nation_uuid = ?") + " ORDER BY recorded_at ASC LIMIT 50000";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, fromEpochSec);
+            ps.setLong(2, toEpochSec);
+            if (nationUuid != null) ps.setString(3, nationUuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new com.ruskserver.moveearth_addtional.analytics.query.dto.NationHistoryPointDto(
+                            rs.getLong(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getInt(5),
+                            rs.getLong(6), rs.getInt(7), rs.getInt(8), rs.getInt(9)));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized List<com.ruskserver.moveearth_addtional.analytics.query.dto.EconomyHistoryPointDto> queryEconomyHistory(
+            long fromEpochSec, long toEpochSec) throws SQLException {
+        List<com.ruskserver.moveearth_addtional.analytics.query.dto.EconomyHistoryPointDto> result = new ArrayList<>();
+        if (connection == null || connection.isClosed()) return result;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT recorded_at, player_balances, nation_balances, escrow_balances, nations, "
+                        + "players_in_nations, online_players, open_orders FROM economy_snapshot "
+                        + "WHERE recorded_at >= ? AND recorded_at <= ? ORDER BY recorded_at ASC LIMIT 20000")) {
+            ps.setLong(1, fromEpochSec);
+            ps.setLong(2, toEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new com.ruskserver.moveearth_addtional.analytics.query.dto.EconomyHistoryPointDto(
+                            rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getInt(5),
+                            rs.getInt(6), rs.getInt(7), rs.getInt(8)));
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized long countNewPlayers(long fromEpochSec, long toEpochSec) throws SQLException {
+        if (connection == null || connection.isClosed()) return 0L;
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT COUNT(*) FROM player_identity WHERE first_seen_at >= ? AND first_seen_at <= ?")) {
+            ps.setLong(1, fromEpochSec);
+            ps.setLong(2, toEpochSec);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            }
+        }
+    }
+
+    private static void appendEventFilters(StringBuilder sql, List<Object> parameters, String alias,
+                                           String typePrefix, java.util.UUID nationUuid, java.util.UUID playerUuid) {
+        if (typePrefix != null && !typePrefix.isBlank()) {
+            sql.append(" AND substr(").append(alias).append("type, 1, ?) = ?");
+            parameters.add(typePrefix.length());
+            parameters.add(typePrefix);
+        }
+        if (nationUuid != null) {
+            sql.append(" AND ").append(alias).append("nation_uuid = ?");
+            parameters.add(nationUuid.toString());
+        }
+        if (playerUuid != null) {
+            sql.append(" AND ").append(alias).append("player_uuid = ?");
+            parameters.add(playerUuid.toString());
+        }
+    }
+
+    private static void bind(PreparedStatement ps, List<Object> parameters) throws SQLException {
+        for (int index = 0; index < parameters.size(); index++) {
+            Object value = parameters.get(index);
+            if (value instanceof Long number) ps.setLong(index + 1, number);
+            else if (value instanceof Integer number) ps.setInt(index + 1, number);
+            else ps.setString(index + 1, String.valueOf(value));
+        }
+    }
+
+    private static Integer nullableInt(ResultSet rs, int column) throws SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
     }
 }

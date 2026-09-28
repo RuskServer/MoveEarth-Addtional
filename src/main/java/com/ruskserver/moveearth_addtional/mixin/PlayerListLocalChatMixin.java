@@ -60,5 +60,9 @@ public abstract class PlayerListLocalChatMixin {
                 .toList();
         Moveearth_addtional.LOGGER.info("[LocalChat] recipients for <{}>: [{}]",
                 sender.getGameProfile().getName(), String.join(", ", recipients));
+        String senderName = sender.getGameProfile().getName();
+        if (recipients.stream().noneMatch(name -> !name.equals(senderName))) {
+            com.ruskserver.moveearth_addtional.chat.LocalChatNotice.nobodyHeard(sender, radius);
+        }
     }
 }

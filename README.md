@@ -78,7 +78,7 @@ graph TD
 - **コア破壊工作 (Sabotage) と陥落**: 防壁を破り敵コアへ侵入して工作を完了させることで、領土を制圧・陥落。
 - **ダウン・捕虜護送・身代金**: 戦闘でダウンした敵兵を護送・収監。国家間の保釈金（身代金）交渉や脱走阻止の駆け引きが発生。
 - **主権復興クエスト (Recovery Dispatch)**: 敗北国が主権を取り戻すための復興ミッション群を実装。
-- **交戦タイマー (Combat Tag)**: 戦闘中の安全地帯逃げ込みや切断を防止するボスコントロールバー付き交戦管理。
+- **交戦タイマー (Combat Tag)**: Bossbar付きの交戦管理。タイマー中にログアウトするとその場で即死し、所持品をドロップします。
 
 ### 🚢 移動体・車両コア・兵器連携 (Vehicles & Weaponry)
 - **車両コア (Vehicle Core)**: Sable や Create Aeronautics によって組み立てられた移動体（戦車、装甲車両、飛行船、水上艦）に車両コアを登録。領土外の荒野でも一定の防護と権限保護を付与。
@@ -87,7 +87,7 @@ graph TD
 ### 📈 リアル物流経済・市場ステーション・職業 (Market & Trade Credit)
 - **独自台帳通貨 Trade Credit (TC)**: 外部通貨MODに依存しない、完全自律型のインゲーム経済基盤。
 - **物理市場ステーション (Market Station)**: 各国家に物理的な市場ステーションを設置。注文自体は遠隔からでも可能ですが、商品の納品・代金の預託・現物の受け取りは「自国のステーション」で行うリアルな物流網を再現。
-- **職業システム (Jobs)**: 採掘・農業・軍事などの職業活動によって経験値と TC を獲得し、国家経済へ還元。
+- **職業システム (Jobs)**: 採掘・農業・軍事などの職業活動によって経験値と TC を獲得し、国家経済へ還元。職業収入と収穫祭・資源発見の報酬は、国家に所属し放置していないプレイヤーだけが対象です。
 
 ### ❄️ 過酷環境・レイド・PvPアリーナ (Cold Sweat, Raids & PvP)
 - **Cold Sweat 極地サバイバル**: 極寒・極熱環境の温度HUDと、防寒対策を案内するバニラ進捗。
@@ -97,8 +97,8 @@ graph TD
 
 ### 🤖 Discord Bot・サーバー運用統合 (Discord & Operations)
 - **JDA完全内蔵Bot**: 外部プラグイン不要で、国家チャンネルへの領土防衛アラート（開戦・コア被弾・陥落等）の配信、緊急メンション、アカウント連携、スラッシュコマンド（`/moveearth setup` 等）を完備。
-- **サーバー開館スケジュール管理**: 戦争可能時間や開館時間を制御するスケジューラー（DCC）。
-- **リアルタイム近接チャット**: 同一ディメンション内で距離減衰・所属国家プレフィックス付きのチャット配信。
+- **サーバー開放時間**: 毎日 19:00〜23:00（日本時間）だけ開放。時間外はログインできず、23:00 になると全員が切断されます。Siege・停戦・捕虜などのタイマーは開放時間中だけ進みます。
+- **近接チャット**: 同じディメンションの100ブロック以内にだけ届く、所属国家表示付きのチャット。国家チャットはなく、個別の相手には `/msg` を使います。
 - **Web Analytics & Anti-ESP**: プレイヤー行動分析と負荷・不正対策。
 
 ---
@@ -124,7 +124,7 @@ graph TD
 | **Create Aeronautics** | 1.3.0以上 | 航空機・飛行船建造 |
 
 > [!TIP]
-> - **通貨**: 国家金庫、維持費、取引所には MoveEarth 独自の **Trade Credit (TC)** 台帳を使用します。Lightman's Currency への依存は完全に撤去されており、不要です。
+> - **通貨**: 国庫、維持費、取引所には MoveEarth 独自の **Trade Credit (TC)** 台帳を使用します。Lightman's Currency への依存は完全に撤去されており、不要です。
 > - **チャット**: MoveEarth が距離減衰・国家表示付きの独自チャットを内包しているため、Localized Chat などの別MODは導入不要です。
 
 ### 任意連携MOD
@@ -144,6 +144,16 @@ TaCZの一人称腕描画中は、Mekaスーツによる腕モデルの置換・
 銃を構えている間の腕はプレイヤースキン表示となり、Mekaスーツの腕装甲は表示しません。
 通常の手持ちアイテム・素手・三人称のMekaスーツ描画と、装備性能は変更しません。
 描画コンテキストの単体テストとビルドは実施済みですが、ゲーム内の見た目は未検証です。
+
+### 併用できないMOD
+
+PvPの公平性のため、地図・ミニマップはmodpackに含まれる **Map Atlases** だけを使います。
+次のMODと同時に導入するとゲームが起動しません（`neoforge.mods.toml` の `incompatible` 宣言）。
+
+Xaero's Minimap（Fair-Play版を含む）、Xaero's World Map、JourneyMap、VoxelMap、FTB Chunks、
+Antique Atlas、Immersive Minimaps、Oaks Minimap、Project Minimap HUD
+
+クライアント側の宣言なので、jarを改変されると防げません。うっかり導入の防止と意思表示のためのものです。
 
 ---
 
@@ -175,19 +185,48 @@ TaCZの一人称腕描画中は、Mekaスーツによる腕モデルの置換・
 
 ## 主な設定ファイル
 
-設定ファイルは初回起動時に `config/` ディレクトリへ自動生成されます。
+設定ファイルは、誰が持つものかでフォルダを分けています。modpack では **`config/moveearth/` を配布しない** のが原則です。既定値はコードに入っています。
 
-| 設定ファイル名 | 主な管理対象 |
+| 置き場所 | 持ち主 | modpack での扱い |
+|---|---|---|
+| `config/moveearth/client/` | 各プレイヤーの個人設定（MOD一覧の「設定」画面で変更） | 配布しない |
+| `config/moveearth/server/` | 専用サーバーの運用設定。秘密情報を含む | 配布しない |
+| `<ワールド>/serverconfig/moveearth/` | ゲームのルールとバランス。サーバーから全員に同期される | 既定値を変える場合だけ `defaultconfigs/moveearth/` に置く |
+
+旧版のファイル名（`moveearth_addtional-*.toml`、`moveearth_analytics.properties`）が残っている場合は、起動時に上の場所へ自動で移動します。新しい場所に同名のファイルがある場合は移動せず、旧ファイルをそのまま残します。
+
+**個人設定**（`config/moveearth/client/`）
+
+| ファイル | 内容 |
 |---|---|
-| `moveearth_addtional-s2-territory.toml` | 国家設立コスト、領土サイズ、防壁補強HP、維持費周期、Siegeルール |
-| `moveearth_addtional-discord.toml` | Discord Bot トークン、チャンネルID連携、通知設定 |
-| `moveearth_addtional-market.toml` | 市場ステーションの取引有効化・緊急停止設定 |
-| `moveearth_addtional-chat.toml` | 近接チャットの配信半径ブロック数（既定値: 100） |
-| `moveearth_addtional-dcc.toml` | サーバー開館・戦争可能スケジュール制御 |
-| `moveearth_addtional-aeronautics.toml` | 移動体・Aeronautics 連携パラメータ |
-| `moveearth_addtional-recovery-dispatch.toml` | 敗北国家の主権復興・派遣ミッション設定 |
-| `moveearth_addtional-tpa.toml` | テレポート要請機能の制限とクールダウン |
-| `moveearth_addtional-tips.toml` | 定期Tipsの配信間隔とメッセージ一覧 |
+| `startup.toml` | 初回セットアップの完了状態、動きを減らす |
+| `display.toml` | HUDの表示、重撃シールドのフラッシュ、死亡画面、実況・通知の音量 |
+| `scope-pip.toml` | PiPスコープの有効化、レンズ解像度・補間・更新頻度、最低倍率 |
+| `particles.toml` | CBCパーティクルの計測と装飾砲煙の上限 |
+
+**専用サーバーの運用**（`config/moveearth/server/`）
+
+| ファイル | 内容 |
+|---|---|
+| `discord.toml` | Discord Bot のトークン、チャンネルID連携、通知設定 |
+| `analytics.properties` | 分析システムの設定と Web API の認証 |
+
+**ルールとバランス**（`serverconfig/moveearth/`）
+
+| ファイル | 内容 |
+|---|---|
+| `s2-territory.toml` | 国家設立コスト、領土サイズ、防壁補強HP、維持費周期、Siegeルール |
+| `recovery-dispatch.toml` | 敗北国家の主権復興・派遣ミッション |
+| `market.toml` | 市場取引の緊急停止 |
+| `chat.toml` | 近接チャットの配信半径（既定値: 100） |
+| `tips.toml` | 定期Tipsの配信間隔、Wiki案内TIPが開くURL（`wikiUrl`、既定は [MoveEarth ガイド](https://rusklabo.github.io/moveearth-web/guide/start/)。空にするとWiki案内は出さない） |
+| `regions.toml` | 地域ごとの排他素材・共通素材と採掘の応力 |
+| `oxygen.toml` | 酸素欠乏・有害ガスが始まる高度とフィルター消費 |
+| `create-industry.toml` | 蒸気機関の負荷比例燃費、ファンの鉱石処理時間 |
+| `mekanism.toml` | 放射線の領土ルール、MekaSuit の吸収率と重撃シールド |
+| `water-wheels.toml` | 水車の応力容量と密集ルール |
+| `aeronautics.toml` | Create: Simulated / Aeronautics との互換とバランス |
+| `dcc.toml` | Delayed Chunk Cache（離れたチャンクをクライアントに保持して再送信を減らす） |
 
 > Discord Bot のトークンは必ずサーバー側設定に記入し、Git コミットや公開 Issue に含めないでください。運用の詳細は [Discord Bot 運用ガイド](DISCORD_BOT_OPERATIONS.md) を参照してください。
 

@@ -44,6 +44,30 @@ public final class MarketService {
         return station;
     }
 
+    /**
+     * The registered, loaded station for collecting goods already bought or
+     * returned. Unlike {@link #activeStation} it does not ask whether the nation
+     * still holds the land: a station left outside shrunken territory stops new
+     * trade but must still hand back what it holds.
+     */
+    public static MarketStationSavedData.Station pickupStation(MinecraftServer server, UUID stationId) {
+        if (stationId == null) return null;
+        MarketStationSavedData.Station station = MarketStationSavedData.get(server).byId(stationId).orElse(null);
+        if (station == null) return null;
+        ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, station.dimension()));
+        if (level == null || !level.hasChunkAt(station.pos())
+                || !(level.getBlockEntity(station.pos()) instanceof MarketStationBlockEntity entity)
+                || !station.id().equals(entity.stationId())) return null;
+        return station;
+    }
+
+    private static boolean inPickupReach(ServerPlayer player, UUID stationId) {
+        MarketStationSavedData.Station station = pickupStation(player.server, stationId);
+        return station != null && player.level().dimension().location().equals(station.dimension())
+                && MarketOrderRules.inReach(player.distanceToSqr(station.pos().getX() + 0.5,
+                        station.pos().getY() + 0.5, station.pos().getZ() + 0.5));
+    }
+
     private static boolean local(ServerPlayer player, UUID stationId) {
         MarketStationSavedData.Station station = activeStation(player.server, stationId, true);
         return station != null && player.level().dimension().location().equals(station.dimension())
@@ -88,6 +112,7 @@ public final class MarketService {
         EconomyLedgerSavedData.MarketStatus result = ledger.purchase(player.getUUID(), orderId,
                 quantity, System.currentTimeMillis());
         if (result == EconomyLedgerSavedData.MarketStatus.APPLIED) {
+            recordTrade(player, order, quantity);
             ModCriteria.trigger(player, ModCriteria.MARKET_TRADE_COMPLETED);
             ServerPlayer seller = player.server.getPlayerList().getPlayer(order.owner());
             if (seller != null) ModCriteria.trigger(seller, ModCriteria.MARKET_TRADE_COMPLETED);
@@ -109,6 +134,7 @@ public final class MarketService {
                     net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(
                             Moveearth_addtional.MODID, "market_crops")));
             held.shrink(quantity);
+            recordTrade(player, order, quantity);
             ModCriteria.trigger(player, ModCriteria.MARKET_TRADE_COMPLETED);
             if (farmGoods) ModCriteria.trigger(player, ModCriteria.FARM_GOODS_DELIVERED);
             ServerPlayer buyer = player.server.getPlayerList().getPlayer(order.owner());
@@ -117,8 +143,15 @@ public final class MarketService {
         return result;
     }
 
+    /** Reported under the player who completed the trade; the value is the TC that changed hands. */
+    private static void recordTrade(ServerPlayer player, MarketOrder order, int quantity) {
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.MARKET_TRADE, player,
+                order.unitPrice() * quantity, net.minecraft.core.registries.BuiltInRegistries.ITEM
+                        .getKey(order.item().getItem()).toString());
+    }
+
     public static int claim(ServerPlayer player, UUID stationId, UUID claimId) {
-        if (!local(player, stationId)) return 0;
+        if (!inPickupReach(player, stationId)) return 0;
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
         EconomyLedgerSavedData.MarketClaim claim = ledger.claimsAt(player.getUUID(), stationId).stream()
                 .filter(c -> c.id().equals(claimId)).findFirst().orElse(null);
@@ -129,6 +162,13 @@ public final class MarketService {
         int received = requested - stack.getCount();
         if (received > 0) ledger.reduceClaim(player.getUUID(), claimId, received);
         return received;
+    }
+
+    /** Whether anything at the station still belongs to someone: open orders or goods awaiting pickup. */
+    public static boolean holdsGoods(MinecraftServer server, UUID stationId) {
+        EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(server);
+        return ledger.outstanding(stationId) > 0
+                || ledger.marketOrders().stream().anyMatch(order -> order.stationId().equals(stationId));
     }
 
     /** Called before ordinary break/explosion handling so virtual inventory has a physical recovery point. */
@@ -193,8 +233,13 @@ public final class MarketService {
                 : "条件を満たしていません")));
     }
 
+    @SubscribeEvent public static void onLogout(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) {
+        MarketScreenSync.forget(event.getEntity().getUUID());
+    }
+
     @SubscribeEvent public static void onTick(ServerTickEvent.Post event) {
         MinecraftServer server = event.getServer();
+        MarketScreenSync.tick(server);
         if (server.getTickCount() % 1200 == 0)
             EconomyLedgerSavedData.get(server).expireMarketOrders(System.currentTimeMillis());
     }

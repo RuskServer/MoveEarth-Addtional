@@ -17,7 +17,20 @@ import java.util.UUID;
 /** Bounded market snapshots and server validation for all client actions. */
 public final class MarketScreenSync {
     public static final UUID NONE = new UUID(0L, 0L);
+    private static final MarketBrowseThrottle BROWSE = new MarketBrowseThrottle();
     private MarketScreenSync() { }
+
+    /** Sends browse refreshes deferred by the cooldown; called every server tick. */
+    public static void tick(net.minecraft.server.MinecraftServer server) {
+        for (var entry : BROWSE.due(server.getTickCount())) {
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            if (player != null) send(player, entry.getValue(), "");
+        }
+    }
+
+    public static void forget(UUID player) {
+        BROWSE.forget(player);
+    }
 
     public static void open(ServerPlayer player, UUID selectedStation) {
         send(player, selectedStation, "");
@@ -46,7 +59,10 @@ public final class MarketScreenSync {
         UUID selected = NONE;
         String result = "";
         switch (packet.action()) {
-            case "REFRESH", "SELECT" -> selected = target;
+            case "REFRESH", "SELECT" -> {
+                if (!BROWSE.request(player.getUUID(), target, player.server.getTickCount())) return;
+                selected = target;
+            }
             case "SELL" -> {
                 selected = target;
                 result = message(MarketService.listSell(player, target, packet.quantity(), packet.unitPrice()).status());

@@ -50,6 +50,7 @@ import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorPaym
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncLoadoutsPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncOxygenPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_MekaSuitShieldPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TutorialPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncWhitelistPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryCoreHealthPacket;
@@ -119,5 +120,6 @@ public final class OtherPayloads {
         registrar.playToClient(S2C_KillcamReplayPacket.TYPE, S2C_KillcamReplayPacket.STREAM_CODEC, S2C_KillcamReplayPacket::handle);
         registrar.playToClient(S2C_SyncOxygenPacket.TYPE, S2C_SyncOxygenPacket.STREAM_CODEC, S2C_SyncOxygenPacket::handle);
         registrar.playToClient(S2C_MekaSuitShieldPacket.TYPE, S2C_MekaSuitShieldPacket.STREAM_CODEC, S2C_MekaSuitShieldPacket::handle);
+        registrar.playToClient(S2C_TutorialPacket.TYPE, S2C_TutorialPacket.STREAM_CODEC, S2C_TutorialPacket::handle);
     }
 }

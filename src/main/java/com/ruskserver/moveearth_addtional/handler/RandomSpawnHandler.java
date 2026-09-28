@@ -121,6 +121,15 @@ public final class RandomSpawnHandler {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         CompoundTag data = persistedData(player);
         if (data.getBoolean(NBT_KEY_SPAWNED)) return;
+        if (com.ruskserver.moveearth_addtional.TimeRestrictionHandler.rejectsLogin(player)) {
+            // Closed hours: the player is about to be disconnected, which saves their
+            // file. Mark a first join as still pending so the next login starts the
+            // flow instead of reading that file as a returning player.
+            if (!NationOnboardingService.pending(player) && !hasPriorPlayerHistory(player)) {
+                NationOnboardingService.markPending(player);
+            }
+            return;
+        }
         if (NationOnboardingService.pending(player)) {
             NationOnboardingService.begin(player);
             return;
@@ -145,6 +154,8 @@ public final class RandomSpawnHandler {
 
         LOGGER.info("Player {} respawned without a bed or anchor. Starting a non-blocking random-spawn search.",
                 player.getName().getString());
+        player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.tip(
+                Component.translatable("message.moveearth_addtional.spawn.bed_hint")));
         beginRandomSpawnSearch(player, false);
     }
 
@@ -582,8 +593,8 @@ public final class RandomSpawnHandler {
                 SPAWN_PROTECTION_TICKS, 4, false, true, true));
         player.addEffect(new MobEffectInstance(MobEffects.FIRE_RESISTANCE,
                 SPAWN_PROTECTION_TICKS, 0, false, true, true));
-        player.displayClientMessage(Component.literal(
-                "ランダム地点へリスポーンしました。10秒間の保護が付与されています。"), true);
+        // Also used for the first spawn, so it must not say "respawned".
+        player.displayClientMessage(Component.translatable("message.moveearth_addtional.spawn.arrived"), true);
 
         CompoundTag data = persistedData(player);
         data.putLong(NBT_KEY_LAST_POS, spawn.asLong());

@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.config.ClientDisplayConfig;
 import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_WaypointPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -42,10 +43,11 @@ public final class EconomyWaypointHud {
         GuiGraphics g = event.getGuiGraphics();
         int right = g.guiWidth() - 8;
         int y = mc.player.getActiveEffects().isEmpty() ? 8 : 58;
-        if (balance != null) {
+        if (balance != null && ClientDisplayConfig.SHOW_BALANCE.get()) {
             g.drawString(mc.font, balanceText, right - mc.font.width(balanceText), y, 0xFFFFCF72, true);
             y += 16;
         }
+        y = TutorialHud.render(g, mc, right, y);
         if (!waypoint.active()) return;
         if (mc.level.dimension().location().equals(waypoint.dimension())) {
             // The scalable in-world marker is the primary navigation display.

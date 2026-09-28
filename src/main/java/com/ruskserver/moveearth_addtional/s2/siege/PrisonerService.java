@@ -327,6 +327,9 @@ public final class PrisonerService {
             return false;
         }
         String name = captiveName(captive);
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.record(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.PRISONER_TAKEN, custody.playerId(), custody.homeNation(),
+                captor.level().dimension().location(), intake, custody.remainingTicks() / 20L,
+                "holder=" + owner);
         if (captive instanceof ServerPlayer player) {
             teleport(player, new Destination(captor.serverLevel(), intake.above()));
             player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
@@ -473,6 +476,7 @@ public final class PrisonerService {
         }
         UUID home = custody != null ? custody.homeNation() : prisoner.homeNation();
         if (custody != null) data.releaseCustodyToHome(targetId); else data.release(targetId);
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.PRISONER_FREED, targetId, home, 0L, custody != null ? "escort_released" : "released");
         CombatTagService.releaseBody(actor.server, targetId, true);
         CombatTagSavedData.get(actor.server).consume(targetId);
         ServerPlayer captive = actor.server.getPlayerList().getPlayer(targetId);
@@ -526,6 +530,7 @@ public final class PrisonerService {
         for (PrisonerSavedData.Prisoner prisoner : data.prisoners()) {
             if (level.dimension().location().equals(prisoner.jailDimension()) && pos.equals(prisoner.jailPos())) {
                 data.release(prisoner.playerId());
+                com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.PRISONER_FREED, prisoner.playerId(), prisoner.homeNation(), 0L, "intake_removed");
                 ServerPlayer online = serverLevel.getServer().getPlayerList().getPlayer(prisoner.playerId());
                 if (online != null) {
                     releaseDestination(serverLevel.getServer(), prisoner.homeNation())
@@ -545,6 +550,7 @@ public final class PrisonerService {
         for (PrisonerSavedData.TimedRelease release : data.advanceCaptivity(20L)) {
             CombatTagService.releaseBody(server, release.playerId(), true);
             CombatTagSavedData.get(server).consume(release.playerId());
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.PRISONER_FREED, release.playerId(), release.homeNation(), 0L, "sentence_served");
             ServerPlayer player = server.getPlayerList().getPlayer(release.playerId());
             if (player != null) {
                 releaseDestination(server, release.homeNation()).ifPresent(dest -> teleport(player, dest));
@@ -577,6 +583,18 @@ public final class PrisonerService {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onOutgoingDamage(LivingIncomingDamageEvent event) {
         if (event.getSource().getEntity() instanceof ServerPlayer player && isMovementRestricted(player)) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * A captive cannot fight back, so any damage to one is abuse: killing a prisoner in the cell to
+     * strip their gear, or lava and drowning traps. Only /kill and the void still apply.
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onCaptiveDamaged(LivingIncomingDamageEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player && isCaptive(player)
+                && !event.getSource().is(net.minecraft.tags.DamageTypeTags.BYPASSES_INVULNERABILITY)) {
             event.setCanceled(true);
         }
     }
@@ -671,6 +689,7 @@ public final class PrisonerService {
         List<PrisonerSavedData.Prisoner> released = data.releaseBetween(firstNation, secondNation);
         int custodyReleased = 0;
         for (PrisonerSavedData.Prisoner prisoner : released) {
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.PRISONER_FREED, prisoner.playerId(), prisoner.homeNation(), 0L, "returned");
             ServerPlayer online = server.getPlayerList().getPlayer(prisoner.playerId());
             if (online != null) {
                 releaseDestination(server, prisoner.homeNation()).ifPresent(destination -> teleport(online, destination));
@@ -680,6 +699,7 @@ public final class PrisonerService {
         for (PrisonerSavedData.Custody custody : data.custodyRecords()) {
             if (sameConflictPair(custody, firstNation, secondNation)) {
                 data.releaseCustodyToHome(custody.playerId());
+                com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.PRISONER_FREED, custody.playerId(), custody.homeNation(), 0L, "returned");
                 CombatTagService.releaseBody(server, custody.playerId(), true);
                 CombatTagSavedData.get(server).consume(custody.playerId());
                 ServerPlayer online = server.getPlayerList().getPlayer(custody.playerId());

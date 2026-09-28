@@ -54,6 +54,12 @@ public final class TerritoryClosureService {
         TerritorySavedData.CoreRecord current = territories
                 .core(level.dimension().location(), corePos).orElse(null);
         if (current == null) return;
+        if (result.sealed() && current.state() == TerritorySavedData.CoreState.CONFIGURING
+                && territories.overlapsForeignClaim(current)) {
+            // Its reservation lapsed and another nation claimed part of the area meanwhile.
+            notifyBlockedActivation(level, current);
+            return;
+        }
         TerritorySavedData.CoreState next = result.sealed()
                 ? TerritorySavedData.CoreState.ACTIVE
                 : current.state() == TerritorySavedData.CoreState.ACTIVE
@@ -62,6 +68,19 @@ public final class TerritoryClosureService {
         TerritorySavedData.CoreRecord updated = territories.updateState(
                 current.nationId(), current.dimension(), current.pos(), next).orElse(current);
         if (level.getBlockEntity(corePos) instanceof TerritoryCoreBlockEntity core) core.bind(updated);
+    }
+
+    private static void notifyBlockedActivation(ServerLevel level, TerritorySavedData.CoreRecord core) {
+        var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer());
+        for (var player : level.getServer().getPlayerList().getPlayers()) {
+            if (!nations.nationIdFor(player.getUUID()).filter(core.nationId()::equals).isPresent()
+                    || !nations.can(player.getUUID(), com.ruskserver.moveearth_addtional.s2.S2Permission.MANAGE_TERRITORY))
+                continue;
+            player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning(
+                    net.minecraft.network.chat.Component.translatable(
+                            "message.moveearth_addtional.territory_core.activation_overlap",
+                            core.pos().getX(), core.pos().getY(), core.pos().getZ())));
+        }
     }
 
     /** Returns solid wall candidates on the escape route which have never been reinforced. */

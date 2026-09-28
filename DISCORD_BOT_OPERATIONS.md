@@ -1,6 +1,6 @@
 # MoveEarth Discord Bot 運用手順
 
-Botは専用サーバー起動時に `config/moveearth_addtional-discord.toml` を自動生成します。`enabled = true` と
+Botは専用サーバー起動時に `config/moveearth/server/discord.toml` を自動生成します。`enabled = true` と
 `botToken` を設定し、サーバーを再起動してください。このファイルはリポジトリへコミットせず、OS上では
 サーバープロセスの実行ユーザーだけが読める権限にします。
 
@@ -27,7 +27,7 @@ BotがDiscordサーバーから削除された場合や通知チャンネルが�
 
 1. Minecraftサーバーを停止する。
 2. Discord Developer Portalで新しいBotトークンを発行し、旧トークンを無効化する。
-3. `moveearth_addtional-discord.toml` の `botToken` だけを新しい値へ置換する。
+3. `config/moveearth/server/discord.toml` の `botToken` だけを新しい値へ置換する。
 4. 設定ファイルの所有者・読み取り権限を再確認してサーバーを起動する。
 5. `/moveearth status` と `/moveearth test` で接続・配送を確認する。
 

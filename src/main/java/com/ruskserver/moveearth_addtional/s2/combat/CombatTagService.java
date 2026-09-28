@@ -139,6 +139,7 @@ public final class CombatTagService {
             // NeoForge fires this event before PlayerList saves the player. Death loot is therefore
             // removed from the saved inventory, and the persistent marker covers interrupted saves.
             data.recordLogoutDeath(player.getUUID());
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.COMBAT_LOGOUT, player, 0L, null);
             forceLogoutDeath(player);
             return;
         }

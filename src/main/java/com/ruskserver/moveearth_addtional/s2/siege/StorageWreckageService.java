@@ -165,16 +165,28 @@ public final class StorageWreckageService {
                         .get(marketLevel.getServer());
                 boolean pending = ledger.outstanding(station.stationId()) > 0
                         || ledger.marketOrders().stream().anyMatch(order -> order.stationId().equals(station.stationId()));
-                if (pending && event.getPlayer() instanceof ServerPlayer player
+                // The owning nation's territory managers may still take the station down to
+                // move it: goods others bought would otherwise pin it in place for good. Its
+                // orders are cancelled and everything held becomes a wreck the owners collect.
+                boolean ownManager = event.getPlayer() instanceof ServerPlayer manager
+                        && station.nationId() != null
+                        && station.nationId().equals(NationSavedData.get(marketLevel.getServer())
+                                .nationIdFor(manager.getUUID()).orElse(null))
+                        && NationSavedData.get(marketLevel.getServer())
+                                .can(manager.getUUID(), com.ruskserver.moveearth_addtional.s2.S2Permission.MANAGE_TERRITORY);
+                if (pending && event.getPlayer() instanceof ServerPlayer player && !ownManager
                         && !SiegeLootService.access(player, event.getPos()).allowed()) {
                     event.setCanceled(true);
                     player.sendSystemMessage(MoveEarthMessage.warning(Component.literal(
-                            "市場在庫または注文が残っています。取消・受取を済ませてください")));
+                            "市場在庫または注文が残っています。取消・受取を済ませるか、領土管理権限者が撤去してください")));
                     return;
                 }
                 if (pending && com.ruskserver.moveearth_addtional.economy.MarketService
                         .wreckStation(marketLevel, event.getPos())) {
                     event.setCanceled(true);
+                    if (ownManager && ledger.marketWreckage(marketLevel.dimension().location(), event.getPos()) != null)
+                        event.getPlayer().sendSystemMessage(MoveEarthMessage.info(Component.literal(
+                                "注文を取り消し、預かり品と受取待ちを残骸に移しました。持ち主は残骸から回収できます")));
                     return;
                 }
             }

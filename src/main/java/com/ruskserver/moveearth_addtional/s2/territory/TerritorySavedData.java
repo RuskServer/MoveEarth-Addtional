@@ -77,12 +77,16 @@ public final class TerritorySavedData extends SavedData {
         if (current == null || !current.nationId.equals(nationId)) {
             return new UpdateResult(Status.NOT_FOUND, null);
         }
+        // Saving the same radius changes nothing. A new radius keeps the core's state
+        // and is revalidated by the closure recheck: dropping back to configuring would
+        // strip reinforcement protection and let defenders slip out of siege range.
+        if (current.radius == radius) return new UpdateResult(Status.UPDATED, current);
         TerritoryPreviewArea proposed = area(pos, radius);
         if (conflicts(nationId, dimension, proposed, key)) {
             return new UpdateResult(Status.FOREIGN_TERRITORY_CONFLICT, current);
         }
         CoreRecord updated = new CoreRecord(current.id, current.nationId, current.placedBy,
-                current.dimension, current.pos, current.type, radius, CoreState.CONFIGURING,
+                current.dimension, current.pos, current.type, radius, current.state,
                 current.health, current.maximumHealth, current.regenDelayTicks, current.regenProgressTicks);
         cores.put(key, updated);
         rebuildIndexes();
@@ -196,7 +200,7 @@ public final class TerritorySavedData extends SavedData {
         if (current != null && (current.state == CoreState.FALLEN || current.state == CoreState.DEFEATED)) {
             TerritoryFallSettlementPolicy.Decision decision = attackerNation == null
                     ? TerritoryFallSettlementPolicy.decideIndividual(
-                            current.type == CoreType.CAPITAL)
+                            current.type == CoreType.CAPITAL, current.radius)
                     : TerritoryFallSettlementPolicy.decide(current.type == CoreType.CAPITAL, current.radius,
                             radius -> conflicts(attackerNation, current.dimension,
                                     area(current.pos, radius), key));
@@ -291,7 +295,7 @@ public final class TerritorySavedData extends SavedData {
         for (CoreKey key : indexed(reservedChunkIndex, dimension, chunk.x, chunk.z)) {
             CoreRecord core = cores.get(key);
             if (core != null && core.nationId.equals(nationId)
-                    && core.state == CoreState.CONFIGURING) {
+                    && core.state == CoreState.CONFIGURING && configuringReservationLive(core)) {
                 configuringReservation = true;
                 break;
             }
@@ -308,7 +312,7 @@ public final class TerritorySavedData extends SavedData {
         for (CoreKey key : indexed(reservedChunkIndex, dimension, chunk.x, chunk.z)) {
             CoreRecord core = cores.get(key);
             if (core != null && core.nationId.equals(nationId)
-                    && core.state == CoreState.CONFIGURING) return true;
+                    && core.state == CoreState.CONFIGURING && configuringReservationLive(core)) return true;
         }
         return false;
     }
@@ -462,6 +466,20 @@ public final class TerritorySavedData extends SavedData {
                 || core.state == CoreState.FALLEN;
     }
 
+    /** A configuring core holds its land only for {@link ConfiguringReservationPolicy#LIMIT_OPEN_TICKS}. */
+    private boolean configuringReservationLive(CoreRecord core) {
+        return attachedServer == null || ConfiguringReservationSavedData.live(attachedServer, core.id);
+    }
+
+    /**
+     * Whether the core's area now overlaps another nation's claim. A configuring core
+     * whose reservation lapsed may have been built around; it must not activate on top.
+     */
+    public boolean overlapsForeignClaim(CoreRecord core) {
+        return conflicts(core.nationId, core.dimension, area(core.pos, core.radius),
+                new CoreKey(core.dimension, core.pos));
+    }
+
     private boolean conflicts(UUID nationId, ResourceLocation dimension,
                               TerritoryPreviewArea proposed, CoreKey ignored) {
         if (attachedServer != null && com.ruskserver.moveearth_addtional.warehouse.WarehouseSites
@@ -471,6 +489,7 @@ public final class TerritorySavedData extends SavedData {
                 .map(Map.Entry::getValue)
                 .filter(core -> !core.nationId.equals(nationId) && core.dimension.equals(dimension))
                 .filter(core -> core.state != CoreState.DEFEATED)
+                .filter(core -> core.state != CoreState.CONFIGURING || configuringReservationLive(core))
                 .map(core -> area(core.pos, core.radius))
                 .anyMatch(proposed::overlaps);
         if (coreConflict) return true;

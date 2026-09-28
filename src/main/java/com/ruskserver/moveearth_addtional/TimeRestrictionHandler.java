@@ -3,6 +3,7 @@ package com.ruskserver.moveearth_addtional;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -44,26 +45,32 @@ public class TimeRestrictionHandler {
     }
 
     /**
-     * プレイヤーログイン時の判定
+     * このログインが開放時間外として切断されるかどうか。
+     * シングルプレイとOP（パーミッションレベル2以上）は常に許可する。
      */
-    @SubscribeEvent
+    public static boolean rejectsLogin(ServerPlayer player) {
+        MinecraftServer server = player.getServer();
+        if (server == null || !server.isDedicatedServer()) return false;
+        if (player.hasPermissions(2)) return false;
+        return !isOpenTime(ZonedDateTime.now(JST));
+    }
+
+    /**
+     * プレイヤーログイン時の判定。
+     *
+     * <p>切断はプレイヤーファイルをその場で保存するため、他のログイン処理が
+     * 書いた印（初回スポーン待ちなど）を先に保存させるよう最後に実行する。
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
-            MinecraftServer server = player.getServer();
-            if (server == null || !server.isDedicatedServer()) {
-                return; // シングルプレイ環境では時間制限を行わない
-            }
-
-            // OP判定 (パーミッションレベル2以上)
-            if (player.hasPermissions(2)) {
-                return; // OPは無条件で許可
-            }
-
-            ZonedDateTime now = ZonedDateTime.now(JST);
-            if (!isOpenTime(now)) {
-                // 時間外ならキック
-                disconnectForSchedule(player);
-            }
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (rejectsLogin(player)) {
+            disconnectForSchedule(player);
+        } else if (player.server.isDedicatedServer()) {
+            // New players otherwise learned the schedule only from the 22:30 closing countdown.
+            player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.info(
+                    net.minecraft.network.chat.Component.translatable("message.moveearth_addtional.server.open_hours",
+                            ServerSchedule.OPEN_HOUR, ServerSchedule.CLOSE_HOUR, ServerSchedule.CLOSE_HOUR)));
         }
     }
 

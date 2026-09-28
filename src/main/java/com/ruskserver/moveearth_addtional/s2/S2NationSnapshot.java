@@ -154,13 +154,39 @@ public record S2NationSnapshot(
         }
     }
 
+    /**
+     * One other nation as the viewer's nation sees it. For an alliance, {@code allianceEndRemainingTicks}
+     * is the open time left on a termination notice (0 when none is pending), {@code grantMask} is
+     * what the viewer's nation grants all of that ally's members in its territory, and
+     * {@code allyMembers} (only sent to diplomacy managers) carries per-member grants.
+     */
     public record DiplomacyView(UUID nationId, String nationName, String nationTag,
-                                DiplomacyState state, boolean hostileByViewer) {
+                                DiplomacyState state, boolean hostileByViewer,
+                                long allianceEndRemainingTicks, boolean allianceEndByViewer,
+                                int grantMask, List<AllyMemberView> allyMembers) {
         public DiplomacyView {
             if (nationId == null) nationId = new UUID(0L, 0L);
             nationName = safe(nationName);
             nationTag = safe(nationTag);
             if (state == null) state = DiplomacyState.NEUTRAL;
+            allianceEndRemainingTicks = Math.max(0L, allianceEndRemainingTicks);
+            allyMembers = allyMembers == null ? List.of() : List.copyOf(allyMembers);
+        }
+
+        public DiplomacyView(UUID nationId, String nationName, String nationTag,
+                             DiplomacyState state, boolean hostileByViewer) {
+            this(nationId, nationName, nationTag, state, hostileByViewer, 0L, false, 0, List.of());
+        }
+
+        public boolean allianceEnding() {
+            return state == DiplomacyState.ALLIED && allianceEndRemainingTicks > 0L;
+        }
+    }
+
+    public record AllyMemberView(UUID id, String name, int grantMask) {
+        public AllyMemberView {
+            if (id == null) id = new UUID(0L, 0L);
+            name = safe(name);
         }
     }
 

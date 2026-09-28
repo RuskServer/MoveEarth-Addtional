@@ -63,9 +63,43 @@ public final class MarketStationBlock extends Block implements EntityBlock {
         if (!state.is(replacement.getBlock()) && level instanceof ServerLevel serverLevel
                 && level.getBlockEntity(pos) instanceof MarketStationBlockEntity entity
                 && entity.nationId() != null && entity.stationId() != null) {
+            keepGoodsRecoverable(serverLevel, pos, entity);
             MarketStationSavedData.get(serverLevel.getServer()).remove(entity.nationId(), entity.stationId());
         }
         super.onRemove(state, level, pos, replacement, moving);
+    }
+
+    /**
+     * Breaking, Siege and nation dissolution already turn held goods into a wreck
+     * before the station goes. Anything else that removes it (a command, another
+     * mod) must not orphan them: move them to a wreck here, and put the wreck
+     * block down once the space is free.
+     */
+    private static void keepGoodsRecoverable(ServerLevel level, BlockPos pos, MarketStationBlockEntity entity) {
+        var ledger = com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.get(level.getServer());
+        var dimension = level.dimension().location();
+        if (ledger.marketWreckage(dimension, pos) != null
+                || !com.ruskserver.moveearth_addtional.economy.MarketService.holdsGoods(level.getServer(),
+                entity.stationId())) return;
+        var result = ledger.wreckMarketStation(entity.stationId(), entity.nationId(), dimension, pos);
+        if (result != com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData.MarketStatus.APPLIED) {
+            com.ruskserver.moveearth_addtional.Moveearth_addtional.LOGGER.error(
+                    "Market station {} at {} was removed with goods that could not be moved to a wreck: {}",
+                    entity.stationId(), pos, result);
+            return;
+        }
+        if (ledger.marketWreckage(dimension, pos) == null) return;
+        level.getServer().execute(() -> {
+            if (level.getBlockState(pos).canBeReplaced()) {
+                level.setBlock(pos, com.ruskserver.moveearth_addtional.block.ModBlocks.STORAGE_WRECKAGE.get()
+                        .defaultBlockState(), 3);
+            } else {
+                com.ruskserver.moveearth_addtional.Moveearth_addtional.LOGGER.warn(
+                        "Market goods from station {} are held as a wreck at {} {}, but the block there is {}; "
+                                + "an operator must clear it for the owners to collect",
+                        entity.stationId(), dimension, pos, level.getBlockState(pos));
+            }
+        });
     }
 
     @Override protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos,

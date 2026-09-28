@@ -37,7 +37,8 @@ public class AnalyticsStorageService {
                 // 単体テスト等でのフォールバック
                 configDir = server.getServerDirectory().resolve("config");
             }
-            AnalyticsConfig.loadConfig(configDir);
+            AnalyticsConfig.loadConfig(configDir.resolve(
+                    com.ruskserver.moveearth_addtional.config.ConfigFileLayout.SERVER_OPS));
 
             // 2. 専用サーバー限定チェック
             if (AnalyticsConfig.isDedicatedServerOnly() && !server.isDedicatedServer()) {

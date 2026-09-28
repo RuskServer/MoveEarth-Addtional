@@ -27,6 +27,8 @@ public record C2S_RequestRegionViewPacket() implements CustomPacketPayload {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer player) {
                 RegionViewService.send(player);
+                com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                        com.ruskserver.moveearth_addtional.advancement.ModCriteria.REGION_VIEWED);
             }
         });
     }

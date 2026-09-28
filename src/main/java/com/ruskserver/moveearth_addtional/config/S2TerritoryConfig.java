@@ -59,6 +59,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue SIEGE_CONTEST_HOLD_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_CONTEST_ACTIVITY_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_RETRY_COOLDOWN_SECONDS;
+    private static final ModConfigSpec.IntValue SIEGE_FAILED_COOLDOWN_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_DUPLICATE_LOG_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_POST_FALL_SECONDS;
     private static final ModConfigSpec.IntValue SIEGE_FALL_STAGE_SECONDS;
@@ -232,6 +233,10 @@ public final class S2TerritoryConfig {
                 "attacker does too. Someone standing still does not.")
                 .defineInRange("contestActivitySeconds", 120, 0, 3600);
         SIEGE_RETRY_COOLDOWN_SECONDS = BUILDER.defineInRange("retryCooldownSeconds", 3600, 0, 604800);
+        SIEGE_FAILED_COOLDOWN_SECONDS = BUILDER.comment(
+                "Open-time seconds an attacker may not attack the same core again after their siege",
+                "ran out without it falling. A failed siege otherwise cost only ammunition.")
+                .defineInRange("failedSiegeCooldownSeconds", 3600, 0, 604800);
         SIEGE_DUPLICATE_LOG_SECONDS = BUILDER.defineInRange("duplicateLogCooldownSeconds", 60, 0, 3600);
         SIEGE_POST_FALL_SECONDS = BUILDER.defineInRange("postFallSeconds", 1800, 60, 604800);
         SIEGE_FALL_STAGE_SECONDS = BUILDER.defineInRange("fallStageSeconds", 600, 1, 604800);
@@ -366,6 +371,7 @@ public final class S2TerritoryConfig {
     }
 
     public static long siegeRetryCooldownTicks() { return SIEGE_RETRY_COOLDOWN_SECONDS.getAsInt() * 20L; }
+    public static long siegeFailedCooldownTicks() { return SIEGE_FAILED_COOLDOWN_SECONDS.getAsInt() * 20L; }
     public static long siegeDuplicateLogTicks() { return SIEGE_DUPLICATE_LOG_SECONDS.getAsInt() * 20L; }
     public static long siegePostFallTicks() { return SIEGE_POST_FALL_SECONDS.getAsInt() * 20L; }
     public static long siegeFallStageTicks() { return SIEGE_FALL_STAGE_SECONDS.getAsInt() * 20L; }

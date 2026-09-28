@@ -67,6 +67,28 @@ public final class SableVehicleTopology {
         return new Placement(plotPos.immutable(), null);
     }
 
+    /**
+     * Whether a core placed at {@code plotPos} may bind its craft; false when a live
+     * core already governs any connected body (see {@link
+     * com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCorePlacementPolicy}).
+     * Placement outside a Sable body always may.
+     */
+    public static boolean mayBindPlacedCore(ServerLevel level, BlockPos plotPos) {
+        SubLevel containing = Sable.HELPER.getContaining(level, plotPos);
+        if (!(containing instanceof ServerSubLevel serverSubLevel)) return true;
+        Set<UUID> bodies = new LinkedHashSet<>();
+        java.util.Map<UUID, UUID> bound = new java.util.HashMap<>();
+        for (SubLevel body : SubLevelHelper.getConnectedChain(serverSubLevel)) {
+            if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
+            bodies.add(body.getUniqueId());
+            CompoundTag userData = serverBody.getUserDataTag();
+            if (userData != null && userData.hasUUID(VEHICLE_ID)) bound.put(body.getUniqueId(), userData.getUUID(VEHICLE_ID));
+        }
+        VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
+        return com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCorePlacementPolicy.mayBind(bodies, bound,
+                vehicle -> vehicles.vehicle(vehicle).map(VehicleSavedData.VehicleRecord::subLevelId).orElse(null));
+    }
+
     /** Attaches a core placed directly onto an already assembled Sable body. */
     public static VehicleSavedData.VehicleRecord bindPlacedCore(ServerLevel level, BlockPos plotPos,
                                                                  VehicleSavedData.VehicleRecord record) {

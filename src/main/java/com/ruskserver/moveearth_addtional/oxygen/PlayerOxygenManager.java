@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PlayerOxygenManager {
     private static final String TAG_OXYGEN_TICKS = "moveearth_addtional.OxygenTicks";
     private static final Map<UUID, PlayerOxygenState> PLAYER_STATES = new ConcurrentHashMap<>();
+    /** Last chat warning per player: the O2 bar alone never told anyone this depth kills in seconds. */
+    private static final Map<UUID, Long> LAST_DEPTH_WARNING = new ConcurrentHashMap<>();
+    private static final long DEPTH_WARNING_INTERVAL_MILLIS = 300_000L;
 
     public static class PlayerOxygenState {
         public int oxygenTicks;
@@ -46,6 +49,7 @@ public class PlayerOxygenManager {
 
     public static void remove(UUID uuid) {
         PLAYER_STATES.remove(uuid);
+        LAST_DEPTH_WARNING.remove(uuid);
     }
 
     public static void reset(ServerPlayer player) {
@@ -149,6 +153,7 @@ public class PlayerOxygenManager {
                             ModSounds.FILTER_WARNING.get(), SoundSource.PLAYERS, 1.0f, 0.8f);
                 }
 
+                if (!hasGasMask) warnDangerDepth(player);
                 state.oxygenTicks = Math.max(0, state.oxygenTicks - 1);
 
                 // 酸素ゼロ時の窒息ダメージ
@@ -191,5 +196,14 @@ public class PlayerOxygenManager {
                     isCombat
             ));
         }
+    }
+
+    private static void warnDangerDepth(ServerPlayer player) {
+        long now = System.currentTimeMillis();
+        Long last = LAST_DEPTH_WARNING.get(player.getUUID());
+        if (last != null && now - last < DEPTH_WARNING_INTERVAL_MILLIS) return;
+        LAST_DEPTH_WARNING.put(player.getUUID(), now);
+        player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning(
+                Component.translatable("message.moveearth_addtional.oxygen.danger_depth")));
     }
 }

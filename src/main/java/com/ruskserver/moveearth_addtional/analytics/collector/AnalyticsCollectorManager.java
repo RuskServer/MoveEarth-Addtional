@@ -3,7 +3,7 @@ package com.ruskserver.moveearth_addtional.analytics.collector;
 import com.ruskserver.moveearth_addtional.analytics.activity.ActivityCategory;
 import com.ruskserver.moveearth_addtional.analytics.activity.PlayerActivityTracker;
 import com.ruskserver.moveearth_addtional.analytics.config.AnalyticsConfig;
-import com.ruskserver.moveearth_addtional.analytics.group.DetectorGroupService;
+import com.ruskserver.moveearth_addtional.analytics.group.TerritoryGroupService;
 import com.ruskserver.moveearth_addtional.analytics.group.GroupRelation;
 import com.ruskserver.moveearth_addtional.analytics.model.*;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
@@ -194,10 +194,11 @@ public class AnalyticsCollectorManager {
         // AFK判定
         boolean isAfk = PlayerActivityTracker.INSTANCE.isAfk(uuid, currentTimeMs);
 
-        // 検知グループおよび立場の解決
+        // 滞在中の領土の国家と、その国家に対する立場
         BlockPos blockPos = player.blockPosition();
-        UUID groupOwner = DetectorGroupService.INSTANCE.findCoveringGroupOwner(player.serverLevel(), blockPos);
-        GroupRelation relation = DetectorGroupService.INSTANCE.getGroupRelation(player.serverLevel(), blockPos, uuid);
+        TerritoryGroupService.Placement placement = TerritoryGroupService.resolve(player, blockPos);
+        UUID groupOwner = placement.nation();
+        GroupRelation relation = placement.relation();
 
         // プレイヤーバケットの更新
         PlayerBucketKey pKey = new PlayerBucketKey(uuid, effectiveDimension, groupOwner);
@@ -315,7 +316,7 @@ public class AnalyticsCollectorManager {
         String rawDim = player.serverLevel().dimension().location().toString();
         String effectiveDim = inPvpArena ? "pvp_arena" : rawDim;
 
-        UUID groupOwner = DetectorGroupService.INSTANCE.findCoveringGroupOwner(player.serverLevel(), player.blockPosition());
+        UUID groupOwner = TerritoryGroupService.resolve(player, player.blockPosition()).nation();
         PlayerBucketKey key = new PlayerBucketKey(uuid, effectiveDim, groupOwner);
 
         return playerBuckets.computeIfAbsent(key, k -> new PlayerBucketAccumulator(uuid, effectiveDim, groupOwner));

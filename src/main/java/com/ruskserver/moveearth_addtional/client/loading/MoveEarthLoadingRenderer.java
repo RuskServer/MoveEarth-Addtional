@@ -93,8 +93,8 @@ public final class MoveEarthLoadingRenderer {
 
     private static TipCatalog.Tip currentTip(long nowMillis) {
         int index = LoadingTipRotation.index(sessionSeed, nowMillis - sessionStartedAt,
-                TipCatalog.ALL.size());
-        return TipCatalog.ALL.get(index);
+                TipCatalog.LOADING.size());
+        return TipCatalog.LOADING.get(index);
     }
 
     private static void drawStatus(GuiGraphics graphics, Font font, MoveEarthUi.Rect panel,

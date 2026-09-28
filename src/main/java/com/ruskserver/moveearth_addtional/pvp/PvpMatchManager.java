@@ -249,6 +249,8 @@ public final class PvpMatchManager {
             sessions.put(player.getUUID(), snapshot);
             matchStats.put(player.getUUID(), new MatchStats());
         }
+        // On disk before any inventory is replaced; see PvpSessionSavedData.persistNow.
+        PvpSessionSavedData.persistNow(server);
         for (ServerPlayer player : participants(server, true)) {
             if (!snapshots.get(player.getUUID()).enterIsolatedState(player)) {
                 rejectStart(server, "Curios装備の隔離に失敗したため試合を中止しました。");
@@ -300,6 +302,7 @@ public final class PvpMatchManager {
         snapshots.put(id, snapshot);
         matchStats.put(id, new MatchStats());
         PvpSessionSavedData.get(server).put(id, snapshot);
+        PvpSessionSavedData.persistNow(server);
 
         activateParticipant(player, arena, activeMap);
         syncTeams(server);
@@ -540,7 +543,13 @@ public final class PvpMatchManager {
         PacketDistributor.sendToPlayer(player, new S2C_SyncLoadoutsPacket(PvpLoadoutSavedData.get(player.server).getAll()));
 
         if (isActive(player)) return;
-        if (!PvpSessionSavedData.get(player.server).contains(player.getUUID())) return;
+        PvpSessionSavedData stored = PvpSessionSavedData.get(player.server);
+        if (!stored.contains(player.getUUID())) return;
+        if (PvpRestoreMarker.restored(player, stored.token(player.getUUID()))) {
+            // The player file already holds the restored inventory; only the stash's removal was lost.
+            stored.remove(player.getUUID());
+            return;
+        }
         teams.remove(player.getUUID());
         loadoutSelections.remove(player.getUUID());
         restore(player);
@@ -926,6 +935,12 @@ public final class PvpMatchManager {
     private void restore(ServerPlayer player) {
         UUID id = player.getUUID();
         PvpSessionSavedData sessions = PvpSessionSavedData.get(player.server);
+        UUID token = sessions.token(id);
+        if (PvpRestoreMarker.restored(player, token)) {
+            // Already applied; applying again would undo whatever happened since.
+            snapshots.remove(id);
+            return;
+        }
         PvpPlayerSnapshot snapshot = snapshots.remove(id);
         if (snapshot == null) snapshot = sessions.get(id);
         if (snapshot == null) return;
@@ -939,7 +954,12 @@ public final class PvpMatchManager {
         ServerLevel target = player.server.getLevel(snapshot.dimension);
         if (target == null) target = player.server.overworld();
         player.teleportTo(target, snapshot.x, snapshot.y, snapshot.z, snapshot.yaw, snapshot.pitch);
-        sessions.remove(id);
+        if (token == null) {
+            sessions.remove(id);
+        } else {
+            // Kept until this player's file is saved with the restored inventory (PvpRestoreMarker).
+            PvpRestoreMarker.mark(player, token);
+        }
     }
 
     private void syncHud(MinecraftServer server, String hillStatus) {

@@ -2,10 +2,12 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_OnboardingActionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestS2HubPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationMembershipPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationApplicationActionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationDiplomacyPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationAllyPermissionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationTreasuryPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_S2HubActionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_SiegeActionPacket;
@@ -19,6 +21,9 @@ import com.ruskserver.moveearth_addtional.s2.S2HubTab;
 import com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention;
 import com.ruskserver.moveearth_addtional.s2.S2NationSnapshot;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
+import com.ruskserver.moveearth_addtional.s2.nation.AllyPermission;
+import com.ruskserver.moveearth_addtional.s2.nation.AllyPermissionPolicy;
+import com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownPolicy;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -74,6 +79,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private String surrenderTargetName = "";
     private boolean vaultChangeConfirmation;
     private boolean leaveConfirmation;
+    /** Allied nation whose territory grants are being edited in the overlay; null when closed. */
+    private UUID allyPermissionsNationId;
+    private int allyPermissionsScroll;
+    private static final int ALLY_ROW_HEIGHT = 26;
     /** The hub refreshes itself; a background reply must never reopen a hub the player has left. */
     private static final int AUTO_REFRESH_TICKS = 200;
     private static long backgroundRefreshSentAt;
@@ -97,6 +106,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         lastTab = tab;
         clampScroll();
         invitationIndex = Math.min(invitationIndex, Math.max(0, snapshot.invitations().size() - 1));
+        if (allyPermissionsNationId != null && allyRelation() == null) allyPermissionsNationId = null;
+        clampAllyScroll();
     }
 
     public void handleResult(S2C_S2ActionResultPacket packet) {
@@ -232,7 +243,13 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         if (surrenderTargetId != null) drawSurrenderConfirmation(graphics, mouseX, mouseY);
         if (vaultChangeConfirmation) drawVaultConfirmation(graphics, mouseX, mouseY);
         if (leaveConfirmation) drawLeaveConfirmation(graphics, mouseX, mouseY);
+        if (allyPermissionsNationId != null) drawAllyPermissions(graphics, mouseX, mouseY);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
+    }
+
+    /** Top right of the unaffiliated card, clear of its title and bottom buttons at any width. */
+    private static Rect unaffiliatedJoinBounds(Rect content) {
+        return new Rect(content.right() - 136, content.y() + 10, 120, 22);
     }
 
     private void drawUnaffiliated(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
@@ -250,6 +267,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         drawButton(graphics, font, preview,
                 Component.translatable("screen.moveearth_addtional.territory.preview"), SUCCESS,
                 preview.contains(mouseX, mouseY), true);
+        Rect join = unaffiliatedJoinBounds(content);
+        drawButton(graphics, font, join,
+                Component.translatable("screen.moveearth_addtional.s2.join"), SUCCESS,
+                join.contains(mouseX, mouseY), true);
         if (!snapshot.invitations().isEmpty()) {
             S2NationSnapshot.InvitationView invitation = snapshot.invitations().get(invitationIndex);
             Rect invitationCard = invitationBounds(content);
@@ -502,8 +523,15 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             String nation = relation.nationTag().isBlank() ? relation.nationName()
                     : "[" + relation.nationTag() + "] " + relation.nationName();
             graphics.drawString(font, nation, card.x() + 13, card.y() + 8, TEXT, false);
-            graphics.drawString(font, Component.translatable(diplomacyStateKey(relation.state())),
-                    card.x() + 13, card.y() + 23, color, false);
+            Component stateText = relation.allianceEnding()
+                    ? Component.translatable(relation.allianceEndByViewer()
+                            ? "screen.moveearth_addtional.diplomacy.alliance_ending_own"
+                            : "screen.moveearth_addtional.diplomacy.alliance_ending_other",
+                    openDuration(relation.allianceEndRemainingTicks()))
+                    : Component.translatable(diplomacyStateKey(relation.state()));
+            graphics.drawString(font, font.plainSubstrByWidth(stateText.getString(),
+                            Math.max(40, card.width() - 13 - (canManageDiplomacy() ? 196 : 12))),
+                    card.x() + 13, card.y() + 23, relation.allianceEnding() ? GOLD : color, false);
             drawDiplomacyActions(graphics, card, relation, mouseX, mouseY);
         }
         graphics.disableScissor();
@@ -601,9 +629,21 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case OUTGOING_REQUEST -> drawButton(graphics, font, primary,
                     Component.translatable("screen.moveearth_addtional.diplomacy.hostile"), DANGER,
                     enabled && primary.contains(mouseX, mouseY), enabled);
-            case ALLIED -> drawButton(graphics, font, primary,
-                    Component.translatable("screen.moveearth_addtional.diplomacy.end_alliance"), DANGER,
-                    enabled && primary.contains(mouseX, mouseY), enabled);
+            case ALLIED -> {
+                drawButton(graphics, font, secondary,
+                        Component.translatable("screen.moveearth_addtional.diplomacy.permissions"), ACCENT,
+                        enabled && secondary.contains(mouseX, mouseY), enabled);
+                // Notice given by the other nation can only be withdrawn by that nation.
+                boolean actionable = !relation.allianceEnding() || relation.allianceEndByViewer();
+                drawButton(graphics, font, primary,
+                        Component.translatable(!relation.allianceEnding()
+                                ? "screen.moveearth_addtional.diplomacy.end_alliance"
+                                : relation.allianceEndByViewer()
+                                ? "screen.moveearth_addtional.diplomacy.cancel_end"
+                                : "screen.moveearth_addtional.diplomacy.ending"),
+                        relation.allianceEnding() ? SUCCESS : DANGER,
+                        enabled && actionable && primary.contains(mouseX, mouseY), enabled && actionable);
+            }
             case HOSTILE -> drawButton(graphics, font, primary,
                     Component.translatable(relation.hostileByViewer()
                             ? "screen.moveearth_addtional.diplomacy.neutral"
@@ -916,6 +956,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+        if (allyPermissionsNationId != null) {
+            clickAllyPermissions(mouseX, mouseY);
+            return true;
+        }
         if (leaveConfirmation) {
             Rect modal = kickModalBounds();
             if (modalCancelBounds(modal).contains(mouseX, mouseY)) {
@@ -996,6 +1040,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         content.y() + Math.min(118, content.height()) - 34, 138, 22);
                 if (create.contains(mouseX, mouseY)) {
                     minecraft.setScreen(new NationCreateScreen(snapshot.revision()));
+                    return true;
+                }
+                if (unaffiliatedJoinBounds(content).contains(mouseX, mouseY)) {
+                    // The server answers with the nation list, opened in its in-world mode.
+                    PacketDistributor.sendToServer(new C2S_OnboardingActionPacket(
+                            0L, C2S_OnboardingActionPacket.Action.REFRESH, null));
                     return true;
                 }
                 if (!snapshot.invitations().isEmpty() && pendingRequestId < 0) {
@@ -1127,6 +1177,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 for (int index = 0; index < snapshot.diplomacy().size(); index++) {
                     S2NationSnapshot.DiplomacyView relation = snapshot.diplomacy().get(index);
                     Rect card = diplomacyCard(list, index);
+                    if (relation.state() == S2NationSnapshot.DiplomacyState.ALLIED
+                            && diplomacySecondaryBounds(card).contains(mouseX, mouseY)) {
+                        allyPermissionsNationId = relation.nationId();
+                        allyPermissionsScroll = 0;
+                        return true;
+                    }
                     C2S_NationDiplomacyPacket.Action action = diplomacyActionAt(
                             relation, card, mouseX, mouseY);
                     if (action != null) {
@@ -1198,6 +1254,15 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (allyPermissionsNationId != null) {
+            S2NationSnapshot.DiplomacyView relation = allyRelation();
+            Rect list = allyMemberListBounds(allyModalBounds());
+            if (relation != null) {
+                allyPermissionsScroll = MoveEarthUi.scroll(allyPermissionsScroll, scrollY, ALLY_ROW_HEIGHT,
+                        relation.allyMembers().size() * ALLY_ROW_HEIGHT, list.height());
+            }
+            return true;
+        }
         Rect content = hubLayout().content();
         if (content.contains(mouseX, mouseY)
                 && (snapshot.member() || navigation.section() == S2HubNavigation.Section.WAR)
@@ -1568,10 +1633,177 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case INCOMING_REQUEST -> primary ? C2S_NationDiplomacyPacket.Action.ACCEPT_ALLIANCE
                     : secondary ? C2S_NationDiplomacyPacket.Action.DECLINE_ALLIANCE : null;
             case OUTGOING_REQUEST -> primary ? C2S_NationDiplomacyPacket.Action.DECLARE_HOSTILE : null;
-            case ALLIED -> primary ? C2S_NationDiplomacyPacket.Action.END_ALLIANCE : null;
+            case ALLIED -> !primary ? null
+                    : !relation.allianceEnding() ? C2S_NationDiplomacyPacket.Action.END_ALLIANCE
+                    : relation.allianceEndByViewer() ? C2S_NationDiplomacyPacket.Action.CANCEL_ALLIANCE_END : null;
             case HOSTILE -> primary && relation.hostileByViewer()
                     ? C2S_NationDiplomacyPacket.Action.SET_NEUTRAL : null;
         };
+    }
+
+    private S2NationSnapshot.DiplomacyView allyRelation() {
+        if (allyPermissionsNationId == null || !canManageDiplomacy()) return null;
+        for (S2NationSnapshot.DiplomacyView relation : snapshot.diplomacy()) {
+            if (relation.nationId().equals(allyPermissionsNationId)
+                    && relation.state() == S2NationSnapshot.DiplomacyState.ALLIED) return relation;
+        }
+        return null;
+    }
+
+    private Rect allyModalBounds() {
+        int modalWidth = Math.min(480, Math.max(0, width - 24));
+        int modalHeight = Math.min(300, Math.max(0, height - 24));
+        return new Rect((width - modalWidth) / 2, (height - modalHeight) / 2, modalWidth, modalHeight);
+    }
+
+    private static Rect allyCloseBounds(Rect modal) {
+        return new Rect(modal.right() - 28, modal.y() + 8, 20, 20);
+    }
+
+    private static Rect allyNationRowBounds(Rect modal) {
+        return new Rect(modal.x() + 12, modal.y() + 50, Math.max(0, modal.width() - 24), 28);
+    }
+
+    private static Rect allyMemberListBounds(Rect modal) {
+        int top = modal.y() + 100;
+        return new Rect(modal.x() + 12, top, Math.max(0, modal.width() - 24), Math.max(0, modal.bottom() - 10 - top));
+    }
+
+    private Rect allyMemberRowBounds(Rect list, int index) {
+        return new Rect(list.x(), list.y() + index * ALLY_ROW_HEIGHT - allyPermissionsScroll,
+                Math.max(0, list.width() - 8), ALLY_ROW_HEIGHT - 3);
+    }
+
+    /** Toggle {@code index} of the three permission toggles, right-aligned in {@code row}. */
+    private static Rect allyToggleBounds(Rect row, int index) {
+        int toggleWidth = 70;
+        int gap = 4;
+        int count = AllyPermission.values().length;
+        int left = row.right() - 6 - count * toggleWidth - (count - 1) * gap;
+        return new Rect(left + index * (toggleWidth + gap), row.y() + 3, toggleWidth, Math.max(0, row.height() - 6));
+    }
+
+    private static Component allyPermissionLabel(AllyPermission permission) {
+        return Component.translatable("screen.moveearth_addtional.diplomacy.permission."
+                + permission.name().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private void drawAllyToggles(GuiGraphics graphics, Rect row, int mask, int mouseX, int mouseY) {
+        boolean enabled = pendingRequestId < 0;
+        AllyPermission[] permissions = AllyPermission.values();
+        for (int index = 0; index < permissions.length; index++) {
+            Rect toggle = allyToggleBounds(row, index);
+            drawChoice(graphics, font, toggle, allyPermissionLabel(permissions[index]), SUCCESS,
+                    AllyPermissionPolicy.has(mask, permissions[index]), toggle.contains(mouseX, mouseY), enabled);
+        }
+    }
+
+    private void drawAllyPermissions(GuiGraphics graphics, int mouseX, int mouseY) {
+        S2NationSnapshot.DiplomacyView relation = allyRelation();
+        if (relation == null) {
+            allyPermissionsNationId = null;
+            return;
+        }
+        drawModalBackdrop(graphics, width, height);
+        Rect modal = allyModalBounds();
+        drawPanel(graphics, modal);
+        String nation = relation.nationTag().isBlank() ? relation.nationName()
+                : "[" + relation.nationTag() + "] " + relation.nationName();
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.diplomacy.permissions.title", nation).getString(),
+                modal.width() - 52), modal.x() + 14, modal.y() + 14, ACCENT, false);
+        Rect close = allyCloseBounds(modal);
+        drawClose(graphics, font, close, close.contains(mouseX, mouseY));
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.diplomacy.permissions.detail").getString(), modal.width() - 28),
+                modal.x() + 14, modal.y() + 32, MUTED, false);
+
+        Rect nationRow = allyNationRowBounds(modal);
+        drawCard(graphics, nationRow, SUCCESS, relation.grantMask() != 0, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.diplomacy.permissions.all_members").getString(),
+                        Math.max(20, allyToggleBounds(nationRow, 0).x() - nationRow.x() - 16)),
+                nationRow.x() + 10, nationRow.y() + 10, TEXT, false);
+        drawAllyToggles(graphics, nationRow, relation.grantMask(), mouseX, mouseY);
+
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.diplomacy.permissions.members"),
+                modal.x() + 14, modal.y() + 86, MUTED, false);
+        Rect list = allyMemberListBounds(modal);
+        if (relation.allyMembers().isEmpty()) {
+            graphics.drawCenteredString(font, Component.translatable(
+                            "screen.moveearth_addtional.diplomacy.permissions.no_members"),
+                    list.x() + list.width() / 2, list.y() + 12, MUTED);
+            return;
+        }
+        graphics.enableScissor(list.x(), list.y(), list.right(), list.bottom());
+        for (int index = 0; index < relation.allyMembers().size(); index++) {
+            S2NationSnapshot.AllyMemberView member = relation.allyMembers().get(index);
+            Rect row = allyMemberRowBounds(list, index);
+            if (row.bottom() <= list.y() || row.y() >= list.bottom()) continue;
+            boolean hovered = list.contains(mouseX, mouseY) && row.contains(mouseX, mouseY);
+            drawCard(graphics, row, SUCCESS, false, hovered);
+            graphics.drawString(font, font.plainSubstrByWidth(member.name(),
+                            Math.max(20, allyToggleBounds(row, 0).x() - row.x() - 16)),
+                    row.x() + 10, row.y() + 7, TEXT, false);
+            int effectiveMouseY = list.contains(mouseX, mouseY) ? mouseY : Integer.MIN_VALUE;
+            drawAllyToggles(graphics, row, member.grantMask(), mouseX, effectiveMouseY);
+        }
+        graphics.disableScissor();
+        drawScrollbar(graphics, new Rect(list.right() - 4, list.y(), 4, list.height()),
+                list.height(), relation.allyMembers().size() * ALLY_ROW_HEIGHT, allyPermissionsScroll);
+    }
+
+    private void clickAllyPermissions(double mouseX, double mouseY) {
+        S2NationSnapshot.DiplomacyView relation = allyRelation();
+        Rect modal = allyModalBounds();
+        if (relation == null || allyCloseBounds(modal).contains(mouseX, mouseY)) {
+            allyPermissionsNationId = null;
+            return;
+        }
+        if (pendingRequestId >= 0) return;
+        AllyPermission[] permissions = AllyPermission.values();
+        Rect nationRow = allyNationRowBounds(modal);
+        for (int index = 0; index < permissions.length; index++) {
+            if (allyToggleBounds(nationRow, index).contains(mouseX, mouseY)) {
+                sendAllyPermission(relation.nationId(), null, permissions[index],
+                        !AllyPermissionPolicy.has(relation.grantMask(), permissions[index]));
+                return;
+            }
+        }
+        Rect list = allyMemberListBounds(modal);
+        if (!list.contains(mouseX, mouseY)) return;
+        for (int row = 0; row < relation.allyMembers().size(); row++) {
+            S2NationSnapshot.AllyMemberView member = relation.allyMembers().get(row);
+            Rect bounds = allyMemberRowBounds(list, row);
+            for (int index = 0; index < permissions.length; index++) {
+                if (allyToggleBounds(bounds, index).contains(mouseX, mouseY)) {
+                    sendAllyPermission(relation.nationId(), member.id(), permissions[index],
+                            !AllyPermissionPolicy.has(member.grantMask(), permissions[index]));
+                    return;
+                }
+            }
+        }
+    }
+
+    private void clampAllyScroll() {
+        S2NationSnapshot.DiplomacyView relation = allyRelation();
+        int rows = relation == null ? 0 : relation.allyMembers().size();
+        allyPermissionsScroll = Math.max(0, Math.min(allyPermissionsScroll,
+                rows * ALLY_ROW_HEIGHT - allyMemberListBounds(allyModalBounds()).height()));
+    }
+
+    private void sendAllyPermission(UUID allyNationId, UUID playerId, AllyPermission permission, boolean enabled) {
+        pendingRequestId = ++nextRequestId;
+        pendingTicks = 0;
+        PacketDistributor.sendToServer(new C2S_NationAllyPermissionPacket(pendingRequestId, snapshot.revision(),
+                allyNationId, playerId == null ? C2S_NationAllyPermissionPacket.NATION_WIDE : playerId,
+                permission.networkId(), enabled));
+    }
+
+    /** Open-time duration as "Xh Ym", rounded up to the minute. */
+    private static Component openDuration(long ticks) {
+        long minutes = MembershipCooldownPolicy.remainingMinutes(ticks);
+        return Component.translatable("screen.moveearth_addtional.open_time.duration", minutes / 60L, minutes % 60L);
     }
 
     private static String diplomacyStateKey(S2NationSnapshot.DiplomacyState state) {
@@ -1594,6 +1826,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && allyPermissionsNationId != null) {
+            allyPermissionsNationId = null;
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE
                 && (kickTargetId != null || surrenderTargetId != null
                 || vaultChangeConfirmation || leaveConfirmation)) {

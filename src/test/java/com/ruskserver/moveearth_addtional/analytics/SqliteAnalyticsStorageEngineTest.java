@@ -1,9 +1,16 @@
 package com.ruskserver.moveearth_addtional.analytics;
 
+import com.ruskserver.moveearth_addtional.analytics.event.GameEventRecord;
 import com.ruskserver.moveearth_addtional.analytics.group.GroupRelation;
 import com.ruskserver.moveearth_addtional.analytics.model.*;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.EconomyHistoryPointDto;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventAggregateDto;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventDto;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventGroupBy;
+import com.ruskserver.moveearth_addtional.analytics.query.dto.NationHistoryPointDto;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
+import com.ruskserver.moveearth_addtional.analytics.state.S2StateSnapshot;
 import com.ruskserver.moveearth_addtional.analytics.storage.SqliteAnalyticsStorageEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,8 +60,81 @@ public class SqliteAnalyticsStorageEngineTest {
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT version FROM schema_version")) {
             assertTrue(rs.next());
-            assertEquals(6, rs.getInt("version"));
+            assertEquals(7, rs.getInt("version"));
         }
+    }
+
+    @Test
+    public void storesQueriesAggregatesAndPurgesGameEvents() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        UUID alice = UUID.randomUUID();
+        UUID bob = UUID.randomUUID();
+        UUID nation = UUID.randomUUID();
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(now - 30L, "tutorial.step",
+                        alice, nation, "minecraft:overworld", 1, 64, -2, 1L, "open_hub")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(now - 20L, "tutorial.step",
+                        bob, null, null, null, null, null, 1L, "open_hub")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(now - 10L, "tutorial.step",
+                        alice, nation, null, null, null, null, 2L, "nation")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(now - 5L, "economy.ledger",
+                        alice, nation, null, null, null, null, 250L, "nation_upkeep|NATION>BURN")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(now - 86400L * 400L, "tutorial.step",
+                        bob, null, null, null, null, null, 1L, "open_hub"))));
+
+        List<GameEventDto> tutorial = engine.queryGameEvents("tutorial.", null, null, now - 3600L, now, 10);
+        assertEquals(3, tutorial.size());
+        assertEquals("nation", tutorial.get(0).detail(), "newest first");
+        assertEquals(64, tutorial.get(2).y());
+        assertNull(tutorial.get(1).x());
+        assertEquals(3, engine.queryGameEvents("", nation, null, now - 3600L, now, 10).size());
+        assertEquals(1, engine.queryGameEvents("tutorial.", null, bob, now - 3600L, now, 10).size());
+
+        List<GameEventAggregateDto> steps = engine.aggregateGameEvents("tutorial.step", null,
+                GameEventGroupBy.DETAIL, now - 3600L, now, 10);
+        GameEventAggregateDto openHub = steps.stream().filter(row -> "open_hub".equals(row.key())).findFirst()
+                .orElseThrow();
+        assertEquals(2L, openHub.count());
+        assertEquals(2L, openHub.players());
+        List<GameEventAggregateDto> ledger = engine.aggregateGameEvents("economy.", null,
+                GameEventGroupBy.TYPE, now - 3600L, now, 10);
+        assertEquals(250L, ledger.get(0).total());
+
+        engine.purgeOldRecords(0L, 0L, now - 86400L * 365L);
+        assertEquals(3, engine.queryGameEvents("tutorial.", null, null, 0L, now, 10).size());
+    }
+
+    @Test
+    public void storesStateSnapshotHistory() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        UUID nation = UUID.randomUUID();
+        S2StateSnapshot snapshot = new S2StateSnapshot(now - 60L,
+                List.of(new S2StateSnapshot.NationRow(nation.toString(), "Aoi", "AOI", "alice", 3, 1, 1200L,
+                        40, 2, 1, 0, 1, "CURRENT", 0)),
+                new S2StateSnapshot.EconomyRow(5000L, 1200L, 300L, 1, 3, 2, 7), List.of(), List.of());
+        engine.writeBatch(List.of(new AnalyticsEventQueue.StateSnapshotEvent(snapshot)));
+
+        List<NationHistoryPointDto> history = engine.queryNationHistory(nation, now - 3600L, now);
+        assertEquals(1, history.size());
+        assertEquals(40, history.get(0).chunks());
+        assertEquals(1200L, history.get(0).treasury());
+        assertTrue(engine.queryNationHistory(UUID.randomUUID(), now - 3600L, now).isEmpty());
+        List<EconomyHistoryPointDto> economy = engine.queryEconomyHistory(now - 3600L, now);
+        assertEquals(1, economy.size());
+        assertEquals(6500L, economy.get(0).playerBalances() + economy.get(0).nationBalances()
+                + economy.get(0).escrowBalances());
+
+        engine.purgeOldRecords(0L, now, 0L);
+        assertTrue(engine.queryEconomyHistory(0L, now).isEmpty());
+    }
+
+    @Test
+    public void countsNewPlayersByFirstSeen() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        engine.writeBatch(List.of(new AnalyticsEventQueue.SessionStartEvent(UUID.randomUUID(), UUID.randomUUID(),
+                "Newcomer", now - 100L)));
+        assertEquals(1L, engine.countNewPlayers(now - 3600L, now));
+        assertEquals(0L, engine.countNewPlayers(now - 7200L, now - 3600L));
     }
 
     @Test

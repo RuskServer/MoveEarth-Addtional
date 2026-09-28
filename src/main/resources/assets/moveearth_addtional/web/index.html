@@ -130,15 +130,19 @@
             border-bottom: 1px solid var(--border-color);
             padding: 0 2rem;
             display: flex;
-            gap: 0.5rem;
+            gap: 0.25rem;
+            overflow-x: auto;
+            scrollbar-width: thin;
         }
 
         .tab-btn {
             background: none;
             border: none;
             color: var(--text-muted);
-            padding: 0.85rem 1.25rem;
-            font-size: 0.95rem;
+            padding: 0.85rem 0.9rem;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            flex-shrink: 0;
             font-weight: 600;
             cursor: pointer;
             position: relative;
@@ -591,6 +595,61 @@
             gap: 0.75rem;
             align-items: center;
         }
+
+        .badge-warn {
+            background: rgba(251, 113, 133, 0.15);
+            color: var(--accent-rose);
+            border: 1px solid rgba(251, 113, 133, 0.3);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+            gap: 1.5rem;
+        }
+
+        .funnel {
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+        }
+
+        .funnel-row {
+            display: grid;
+            grid-template-columns: minmax(8rem, 14rem) 1fr 5.5rem;
+            gap: 0.75rem;
+            align-items: center;
+            font-size: 0.85rem;
+        }
+
+        .funnel-label {
+            color: var(--text-muted);
+            overflow-wrap: anywhere;
+        }
+
+        .funnel-track {
+            background: rgba(148, 163, 184, 0.1);
+            border-radius: 9999px;
+            height: 0.8rem;
+            overflow: hidden;
+        }
+
+        .funnel-bar {
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-emerald));
+            height: 100%;
+            border-radius: 9999px;
+        }
+
+        .funnel-value {
+            text-align: right;
+            font-weight: 600;
+        }
+
+        .funnel-note {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin: -0.25rem 0 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -602,6 +661,7 @@
         </div>
         <div class="header-controls">
             <select id="windowSelector" class="window-selector" onchange="onWindowChange()">
+                <option value="1d">過去24時間</option>
                 <option value="7d" selected>過去7日間</option>
                 <option value="30d">過去30日間</option>
                 <option value="all">全期間</option>
@@ -612,8 +672,13 @@
 
     <nav>
         <button class="tab-btn active" onclick="switchTab('overview')">📊 概要</button>
+        <button class="tab-btn" onclick="switchTab('nations')">🏛️ 国家</button>
+        <button class="tab-btn" onclick="switchTab('wars')">⚔️ 戦争</button>
+        <button class="tab-btn" onclick="switchTab('economy')">💰 経済</button>
+        <button class="tab-btn" onclick="switchTab('onboarding')">🚪 新規導線</button>
+        <button class="tab-btn" onclick="switchTab('events')">📜 イベントログ</button>
         <button class="tab-btn" onclick="switchTab('players')">👤 プレイヤー</button>
-        <button class="tab-btn" onclick="switchTab('bases')">🏰 拠点・防犯</button>
+        <button class="tab-btn" onclick="switchTab('bases')">🛡️ 検知器</button>
         <button class="tab-btn" onclick="switchTab('heatmap')">🗺️ 空間ヒートマップ</button>
         <button class="tab-btn" onclick="switchTab('performance')">📈 TPS・負荷</button>
         <button class="tab-btn" onclick="switchTab('system')">⚙️ システムヘルス</button>
@@ -670,6 +735,218 @@
             </div>
         </div>
 
+        <!-- S2-1. 国家タブ -->
+        <div id="tab-nations" class="tab-pane">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">国家数</div>
+                    <div id="na-count" class="kpi-value">0</div>
+                    <div id="na-captured" class="kpi-sub">取得: -</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">国家所属プレイヤー</div>
+                    <div id="na-members" class="kpi-value">0</div>
+                    <div id="na-online" class="kpi-sub">オンライン: 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">支配チャンク合計</div>
+                    <div id="na-chunks" class="kpi-value">0</div>
+                    <div id="na-cores" class="kpi-sub">コア: 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">国庫合計</div>
+                    <div id="na-treasury" class="kpi-value">0 TC</div>
+                    <div id="na-upkeep" class="kpi-sub">維持費滞納: 0国</div>
+                </div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>🏛️ 国家一覧 (1分ごとのスナップショット)</span></div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>国家</th>
+                                <th>代表</th>
+                                <th>メンバー</th>
+                                <th>国庫</th>
+                                <th>支配チャンク</th>
+                                <th>コア (前哨)</th>
+                                <th>陥落中</th>
+                                <th>車両</th>
+                                <th>維持費</th>
+                                <th>攻防</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nations-table-body">
+                            <tr><td colspan="10" style="text-align:center;">データを読み込み中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="section-card">
+                <div class="section-title">
+                    <span>📈 国家の推移 (10分ごとに記録)</span>
+                    <select id="nationMetricSelector" class="window-selector" onchange="fetchNations()">
+                        <option value="chunks" selected>支配チャンク</option>
+                        <option value="treasury">国庫</option>
+                        <option value="members">メンバー</option>
+                        <option value="online">オンライン</option>
+                        <option value="vehicles">車両</option>
+                    </select>
+                </div>
+                <div class="chart-wrap"><canvas id="nationHistoryChart" class="chart-canvas"></canvas></div>
+            </div>
+        </div>
+
+        <!-- S2-2. 戦争タブ -->
+        <div id="tab-wars" class="tab-pane">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">進行中のSiege</div>
+                    <div id="wa-active" class="kpi-value">0</div>
+                    <div class="kpi-sub">初動ロック + ローリング</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">陥落中のコア</div>
+                    <div id="wa-fallen" class="kpi-value">0</div>
+                    <div class="kpi-sub">反攻・確定待ち</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">期間内の陥落</div>
+                    <div id="wa-falls" class="kpi-value">0</div>
+                    <div id="wa-counters" class="kpi-sub">反攻成功: 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">捕虜・戦闘ログアウト</div>
+                    <div id="wa-prisoners" class="kpi-value">0</div>
+                    <div id="wa-logouts" class="kpi-sub">戦闘ログアウト死: 0</div>
+                </div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>⚔️ 進行中のSiege</span></div>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr><th>攻撃側</th><th>防衛側</th><th>フェーズ</th><th>残り</th><th>コア座標</th></tr></thead>
+                        <tbody id="wars-active-body"><tr><td colspan="5" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>🏚️ 陥落中のコア</span></div>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr><th>攻撃側</th><th>防衛側</th><th>種類</th><th>段階</th><th>確定まで</th><th>反攻進捗</th><th>コア座標</th></tr></thead>
+                        <tbody id="wars-fallen-body"><tr><td colspan="7" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>📜 戦争の記録</span></div>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr><th>日時</th><th>出来事</th><th>攻撃側</th><th>防衛側</th><th>結果</th><th>座標</th></tr></thead>
+                        <tbody id="wars-events-body"><tr><td colspan="6" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- S2-3. 経済タブ -->
+        <div id="tab-economy" class="tab-pane">
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">流通TC総量</div>
+                    <div id="ec-supply" class="kpi-value">0</div>
+                    <div id="ec-split" class="kpi-sub">個人 0 | 国庫 0 | 預かり 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">期間内の発行 / 消滅</div>
+                    <div id="ec-net" class="kpi-value">0</div>
+                    <div id="ec-mint-burn" class="kpi-sub">発行 0 | 消滅 0</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">市場の約定</div>
+                    <div id="ec-trades" class="kpi-value">0</div>
+                    <div id="ec-trade-volume" class="kpi-sub">取引額 0 TC | 注文 0件</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">維持費</div>
+                    <div id="ec-upkeep" class="kpi-value">0 TC</div>
+                    <div id="ec-upkeep-sub" class="kpi-sub">支払い 0回 | 失敗 0回</div>
+                </div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>📈 TC残高の推移 (10分ごとに記録)</span></div>
+                <div class="chart-wrap"><canvas id="moneySupplyChart" class="chart-canvas"></canvas></div>
+            </div>
+            <div class="grid-2">
+                <div class="section-card">
+                    <div class="section-title"><span>💸 TCの流れ (理由別)</span></div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead><tr><th>理由</th><th>方向</th><th>件数</th><th>合計</th><th>人数</th></tr></thead>
+                            <tbody id="economy-ledger-body"><tr><td colspan="5" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="section-title"><span>🛒 市場の取引品目</span></div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead><tr><th>アイテム</th><th>約定</th><th>取引額</th><th>人数</th></tr></thead>
+                            <tbody id="economy-trades-body"><tr><td colspan="4" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- S2-4. 新規導線タブ -->
+        <div id="tab-onboarding" class="tab-pane">
+            <div class="section-card">
+                <div class="section-title"><span>🚪 初回参加から国家所属まで</span></div>
+                <p class="funnel-note">各段階は期間内にその段階へ到達したユニークプレイヤー数です（同じ新規コホートの追跡ではありません）。</p>
+                <div id="onboarding-entry" class="funnel"></div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>🎯 チュートリアルの到達</span></div>
+                <div id="onboarding-tutorial" class="funnel"></div>
+            </div>
+            <div class="section-card">
+                <div class="section-title"><span>⏭️ スキップされた手順</span></div>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr><th>スキップ時の手順</th><th>人数</th></tr></thead>
+                        <tbody id="onboarding-skips-body"><tr><td colspan="2" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- S2-5. イベントログタブ -->
+        <div id="tab-events" class="tab-pane">
+            <div class="section-card">
+                <div class="section-title">
+                    <span>📜 ゲームイベントログ</span>
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                        <select id="eventTypeFilter" class="window-selector" onchange="fetchEvents()">
+                            <option value="">種類: 全て</option>
+                        </select>
+                        <select id="eventNationFilter" class="window-selector" onchange="fetchEvents()">
+                            <option value="">国家: 全て</option>
+                        </select>
+                        <button class="export-btn" style="padding:0.4rem 0.9rem; font-size:0.85rem;" onclick="exportData('csv', 'events', document.getElementById('eventTypeFilter').value)">📄 CSV</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead><tr><th>日時</th><th>種類</th><th>プレイヤー</th><th>国家</th><th>値</th><th>詳細</th><th>座標</th></tr></thead>
+                        <tbody id="events-table-body"><tr><td colspan="7" style="text-align:center;">データを読み込み中...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- 2. プレイヤー分析タブ -->
         <div id="tab-players" class="tab-pane">
             <div class="section-card">
@@ -703,7 +980,7 @@
         <div id="tab-bases" class="tab-pane">
             <div class="section-card">
                 <div class="section-title">
-                    <span>🏰 拠点（検知ブロック）活動・防犯サマリー</span>
+                    <span>🛡️ プレイヤー検知ブロックの活動・防犯サマリー</span>
                 </div>
                 <div class="table-responsive">
                     <table>
@@ -756,10 +1033,10 @@
                             </select>
                             <select id="mapRelationFilter" class="window-selector" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onchange="onMapFilterChange()">
                                 <option value="ALL" selected>立場: 全て</option>
-                                <option value="WILDERNESS">荒野 (WILDERNESS)</option>
-                                <option value="OWN_TERRITORY">自領 (OWN)</option>
-                                <option value="FRIENDLY">友好訪問 (FRIENDLY)</option>
-                                <option value="INTRUSION">侵入 (INTRUSION)</option>
+                                <option value="WILDERNESS">荒野</option>
+                                <option value="MEMBER">自国領</option>
+                                <option value="ALLIED">同盟国領</option>
+                                <option value="OUTSIDER">他国領</option>
                             </select>
                         </div>
                         <div class="map-btn-group">
@@ -1055,6 +1332,16 @@
             const windowVal = document.getElementById('windowSelector').value;
             if (currentTab === 'overview') {
                 fetchOverview(windowVal);
+            } else if (currentTab === 'nations') {
+                fetchNations();
+            } else if (currentTab === 'wars') {
+                fetchWars();
+            } else if (currentTab === 'economy') {
+                fetchEconomy();
+            } else if (currentTab === 'onboarding') {
+                fetchOnboarding();
+            } else if (currentTab === 'events') {
+                fetchEvents();
             } else if (currentTab === 'players') {
                 fetchPlayers(windowVal);
             } else if (currentTab === 'bases') {
@@ -1575,7 +1862,8 @@
                         <div class="map-tooltip-title">📍 セル [${cell.cellX}, ${cell.cellZ}]</div>
                         <div class="map-tooltip-row"><span>座標範囲:</span><span style="color:#fff;">X: ${startX}〜${endX}, Z: ${startZ}〜${endZ}</span></div>
                         <div class="map-tooltip-row"><span>高度帯:</span><span style="color:var(--accent-purple);">${cell.yBand}</span></div>
-                        <div class="map-tooltip-row"><span>立場:</span><span style="color:var(--accent-amber);">${cell.relation}</span></div>
+                        <div class="map-tooltip-row"><span>立場:</span><span style="color:var(--accent-amber);">${escapeHtml(relationLabel(cell.relation))}</span></div>
+                        <div class="map-tooltip-row"><span>領土:</span><span style="color:#fff;">${escapeHtml(cell.groupOwnerUuid ? nationName(cell.groupOwnerUuid) : '-')}</span></div>
                         <div class="map-tooltip-row"><span>滞在サンプル:</span><span class="map-tooltip-val">${formatNumber(cell.totalActiveSamples)}</span></div>
                         <div class="map-tooltip-row"><span>ユニーク人数:</span><span style="color:var(--accent-blue);">${cell.maxUniquePlayers} 人</span></div>
                     `;
@@ -1673,7 +1961,7 @@
                     <tr id="row-cell-${c.cellX}-${c.cellZ}" class="heatmap-row" data-key="${key}">
                         <td><strong>[X: ${c.cellX * 32} ~, Z: ${c.cellZ * 32} ~]</strong></td>
                         <td>${c.yBand}</td>
-                        <td><span class="badge badge-active">${c.relation}</span></td>
+                        <td><span class="badge badge-active">${escapeHtml(relationLabel(c.relation))}</span>${c.groupOwnerUuid ? ' ' + escapeHtml(nationName(c.groupOwnerUuid)) : ''}</td>
                         <td style="color:var(--accent-emerald); font-weight:600;">${formatNumber(c.totalActiveSamples)}</td>
                         <td>${c.maxUniquePlayers} 人</td>
                         <td>
@@ -1861,10 +2149,11 @@
             } catch (e) { console.error(e); }
         }
 
-        async function exportData(format, type = 'players') {
+        async function exportData(format, type = 'players', typePrefix = '') {
             const windowVal = document.getElementById('windowSelector').value;
             const dim = document.getElementById('performanceDimSelector')?.value || 'all';
-            const response = await apiFetch(`/api/export?format=${format}&type=${type}&dimension=${encodeURIComponent(dim)}&window=${windowVal}`);
+            const prefix = typePrefix ? `&type_prefix=${encodeURIComponent(typePrefix)}` : '';
+            const response = await apiFetch(`/api/export?format=${format}&type=${type}&dimension=${encodeURIComponent(dim)}&window=${windowVal}${prefix}`);
             if (!response.ok) {
                 alert(response.status === 401 ? 'API認証に失敗しました。' : 'エクスポートに失敗しました。');
                 return;
@@ -1914,7 +2203,309 @@
             document.getElementById('playerModal').classList.remove('show');
         }
 
+        // ---- Season 2: 国家・戦争・経済・新規導線・イベントログ ----
+        let s2State = { snapshot: null, eventTypes: {} };
+        const CHART_COLORS = ['#38bdf8', '#34d399', '#fbbf24', '#fb7185', '#818cf8', '#f472b6', '#a3e635', '#fb923c'];
+        const LEDGER_REASONS = {
+            jobs_action: 'Jobs報酬', event_reward: 'イベント報酬', vote_reward: '投票報酬', admin_grant: '管理者付与',
+            nation_upkeep: '国家維持費', detector_upkeep: '検知器維持費', detector_activation: '検知器起動',
+            treasury_deposit: '国庫へ入金', treasury_withdrawal: '国庫から出金', player_pay: 'プレイヤー間送金',
+            market_buy_escrow: '買い注文の預け入れ', market_buy_filled: '買い注文の約定',
+            market_buy_refund: '買い注文の返金', market_sell_filled: '売り注文の約定',
+            peace_compensation: '講和の賠償', recovery_fund_contribution: '復興基金への拠出',
+            dispatch_escrow_funding: '派遣契約の預け入れ', dispatch_provider_payment: '派遣契約の支払い',
+            dispatch_employer_refund: '派遣契約の返金'
+        };
+
+        async function loadS2State() {
+            const res = await apiFetch('/api/s2');
+            if (!res.ok) return s2State;
+            s2State = await res.json();
+            populateEventFilters();
+            return s2State;
+        }
+
+        function nations() {
+            return (s2State.snapshot && s2State.snapshot.nations) || [];
+        }
+
+        function nationName(uuid) {
+            if (!uuid) return '-';
+            const nation = nations().find(n => n.id === uuid);
+            return nation ? nation.name : uuid.substring(0, 8);
+        }
+
+        function eventLabel(type) {
+            return (s2State.eventTypes && s2State.eventTypes[type]) || type;
+        }
+
+        function formatTime(sec) {
+            return sec ? new Date(sec * 1000).toLocaleString('ja-JP') : '-';
+        }
+
+        function formatTc(value) {
+            return formatNumber(value) + ' TC';
+        }
+
+        function formatCoords(x, y, z) {
+            return x === null || x === undefined ? '-' : `${x}, ${y}, ${z}`;
+        }
+
+        // "attacker=<uuid>;individual=true;core=CAPITAL" -> {attacker, individual, core}
+        function parseDetail(detail) {
+            const result = {};
+            (detail || '').split(';').forEach(part => {
+                const index = part.indexOf('=');
+                if (index > 0) result[part.substring(0, index)] = part.substring(index + 1);
+            });
+            return result;
+        }
+
+        function emptyRow(columns, text) {
+            return `<tr><td colspan="${columns}" style="text-align:center;">${text}</td></tr>`;
+        }
+
+        function populateEventFilters() {
+            const typeSelect = document.getElementById('eventTypeFilter');
+            if (typeSelect && typeSelect.options.length <= 1) {
+                const prefixes = { 'onboarding.': '新規導線', 'nation.': '国家', 'tutorial.': 'チュートリアル',
+                    'siege.': '戦争', 'combat.': '戦闘', 'economy.': '経済', 'pve.': 'PvE', 'vehicle.': '車両' };
+                Object.entries(prefixes).forEach(([value, label]) =>
+                    typeSelect.add(new Option(`[${label}] すべて`, value)));
+                Object.entries(s2State.eventTypes || {}).forEach(([value, label]) =>
+                    typeSelect.add(new Option(`${label} (${value})`, value)));
+            }
+            const nationSelect = document.getElementById('eventNationFilter');
+            if (nationSelect) {
+                const selected = nationSelect.value;
+                nationSelect.length = 1;
+                nations().forEach(n => nationSelect.add(new Option(n.name, n.id)));
+                nationSelect.value = selected;
+            }
+        }
+
+        async function fetchNations() {
+            const windowVal = document.getElementById('windowSelector').value;
+            try {
+                const [, historyRes] = await Promise.all([
+                    loadS2State(), apiFetch(`/api/nations/history?window=${windowVal}`)]);
+                const snapshot = s2State.snapshot || {};
+                const list = snapshot.nations || [];
+                document.getElementById('na-count').innerText = list.length;
+                document.getElementById('na-captured').innerText = '取得: ' + formatTime(snapshot.capturedAt);
+                document.getElementById('na-members').innerText = formatNumber(list.reduce((s, n) => s + n.members, 0));
+                document.getElementById('na-online').innerText = 'オンライン: ' + list.reduce((s, n) => s + n.online, 0);
+                document.getElementById('na-chunks').innerText = formatNumber(list.reduce((s, n) => s + n.chunks, 0));
+                document.getElementById('na-cores').innerText = 'コア: ' + list.reduce((s, n) => s + n.cores, 0);
+                document.getElementById('na-treasury').innerText = formatTc(list.reduce((s, n) => s + n.treasury, 0));
+                document.getElementById('na-upkeep').innerText = '維持費滞納: '
+                    + list.filter(n => n.upkeep !== 'CURRENT').length + '国';
+                document.getElementById('nations-table-body').innerHTML = list.length ? list.map(n => `
+                    <tr>
+                        <td><strong style="color:var(--accent-amber);">${escapeHtml(n.name)}</strong> <span class="badge badge-dim">${escapeHtml(n.tag)}</span></td>
+                        <td>${escapeHtml(n.ownerName)}</td>
+                        <td>${n.members} <span style="color:var(--text-muted);">(${n.online} オンライン)</span></td>
+                        <td style="color:var(--accent-emerald); font-weight:600;">${formatTc(n.treasury)}</td>
+                        <td>${formatNumber(n.chunks)}</td>
+                        <td>${n.cores} (${n.outposts})</td>
+                        <td style="color:${n.fallenCores ? 'var(--accent-rose)' : 'inherit'};">${n.fallenCores}</td>
+                        <td>${n.vehicles}</td>
+                        <td><span class="badge ${n.upkeep === 'CURRENT' ? 'badge-active' : 'badge-warn'}">${escapeHtml(n.upkeep)}</span></td>
+                        <td>${n.activeSieges ? `<span class="badge badge-warn">${n.activeSieges}件</span>` : '-'}</td>
+                    </tr>`).join('') : emptyRow(10, '国家がありません（分析開始から1分以内は未取得です）');
+
+                const metric = document.getElementById('nationMetricSelector').value;
+                const history = historyRes.ok ? await historyRes.json() : [];
+                const byNation = new Map();
+                history.forEach(p => {
+                    if (!byNation.has(p.nationUuid)) byNation.set(p.nationUuid, { label: p.name, values: [] });
+                    const entry = byNation.get(p.nationUuid);
+                    entry.label = p.name || entry.label;
+                    entry.values.push({ x: p.recordedAt, y: p[metric] || 0 });
+                });
+                const series = [...byNation.values()]
+                    .sort((a, b) => (b.values.at(-1)?.y || 0) - (a.values.at(-1)?.y || 0))
+                    .slice(0, CHART_COLORS.length)
+                    .map((s, i) => ({ ...s, color: CHART_COLORS[i] }));
+                drawTimeSeries('nationHistoryChart', series, { decimals: 0 });
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchWars() {
+            const windowVal = document.getElementById('windowSelector').value;
+            try {
+                await loadS2State();
+                const res = await apiFetch(`/api/wars?window=${windowVal}`);
+                if (!res.ok) return;
+                const wars = await res.json();
+                const events = wars.events || [];
+                const combat = Object.fromEntries((wars.combat || []).map(r => [r.key, r]));
+                document.getElementById('wa-active').innerText = wars.sieges.length;
+                document.getElementById('wa-fallen').innerText = wars.fallen.length;
+                document.getElementById('wa-falls').innerText = events.filter(e => e.type === 'siege.core_fallen').length;
+                document.getElementById('wa-counters').innerText = '反攻成功: '
+                    + events.filter(e => e.type === 'siege.counter_captured').length;
+                document.getElementById('wa-prisoners').innerText = combat['combat.prisoner_taken']?.count || 0;
+                document.getElementById('wa-logouts').innerText = '戦闘ログアウト死: '
+                    + (combat['combat.logout_death']?.count || 0);
+
+                document.getElementById('wars-active-body').innerHTML = wars.sieges.length ? wars.sieges.map(s => `
+                    <tr>
+                        <td style="color:var(--accent-rose);">${escapeHtml(s.attackerName)}${s.individual ? ' <span class="badge badge-dim">個人</span>' : ''}</td>
+                        <td style="color:var(--accent-blue);">${escapeHtml(s.defenderName)}</td>
+                        <td><span class="badge badge-warn">${escapeHtml(s.phase)}</span></td>
+                        <td>${formatDuration(s.remainingSeconds)}</td>
+                        <td>${escapeHtml(s.dimension)} ${formatCoords(s.x, s.y, s.z)}</td>
+                    </tr>`).join('') : emptyRow(5, '進行中のSiegeはありません');
+
+                document.getElementById('wars-fallen-body').innerHTML = wars.fallen.length ? wars.fallen.map(f => `
+                    <tr>
+                        <td style="color:var(--accent-rose);">${escapeHtml(f.attackerName)}</td>
+                        <td style="color:var(--accent-blue);">${escapeHtml(f.defenderName)}</td>
+                        <td>${escapeHtml(f.coreType)}</td>
+                        <td>${f.stage}</td>
+                        <td>${formatDuration(f.remainingSeconds)}</td>
+                        <td>${formatDuration(f.captureSeconds)}</td>
+                        <td>${escapeHtml(f.dimension)} ${formatCoords(f.x, f.y, f.z)}</td>
+                    </tr>`).join('') : emptyRow(7, '陥落中のコアはありません');
+
+                document.getElementById('wars-events-body').innerHTML = events.length ? events.map(e => {
+                    const detail = parseDetail(e.detail);
+                    const attacker = detail.individual ? '個人: ' + (detail.attacker || '').substring(0, 8)
+                        : nationName(detail.attacker);
+                    const result = [detail.core, detail.outcome].filter(Boolean).join(' / ');
+                    return `
+                    <tr>
+                        <td>${formatTime(e.occurredAt)}</td>
+                        <td>${escapeHtml(eventLabel(e.type))}</td>
+                        <td style="color:var(--accent-rose);">${escapeHtml(attacker)}</td>
+                        <td style="color:var(--accent-blue);">${escapeHtml(nationName(e.nationUuid))}</td>
+                        <td>${escapeHtml(result || '-')}</td>
+                        <td>${formatCoords(e.x, e.y, e.z)}</td>
+                    </tr>`;
+                }).join('') : emptyRow(6, '期間内の戦争記録はありません');
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchEconomy() {
+            const windowVal = document.getElementById('windowSelector').value;
+            try {
+                const res = await apiFetch(`/api/economy?window=${windowVal}`);
+                if (!res.ok) return;
+                const economy = await res.json();
+                const current = economy.current || {};
+                const supply = (current.playerBalances || 0) + (current.nationBalances || 0) + (current.escrowBalances || 0);
+                document.getElementById('ec-supply').innerText = formatTc(supply);
+                document.getElementById('ec-split').innerText = `個人 ${formatNumber(current.playerBalances)} | 国庫 `
+                    + `${formatNumber(current.nationBalances)} | 預かり ${formatNumber(current.escrowBalances)}`;
+
+                const flows = (economy.ledger || []).map(row => {
+                    const [reason, direction] = (row.key || '').split('|');
+                    return { ...row, reason, direction: direction || '' };
+                });
+                const minted = flows.filter(f => f.direction.startsWith('MINT')).reduce((s, f) => s + f.total, 0);
+                const burned = flows.filter(f => f.direction.endsWith('BURN')).reduce((s, f) => s + f.total, 0);
+                document.getElementById('ec-net').innerText = (minted - burned >= 0 ? '+' : '') + formatTc(minted - burned);
+                document.getElementById('ec-mint-burn').innerText = `発行 ${formatNumber(minted)} | 消滅 ${formatNumber(burned)}`;
+
+                const trades = economy.trades || [];
+                document.getElementById('ec-trades').innerText = formatNumber(trades.reduce((s, t) => s + t.count, 0));
+                document.getElementById('ec-trade-volume').innerText = `取引額 ${formatTc(trades.reduce((s, t) => s + t.total, 0))}`
+                    + ` | 注文 ${formatNumber(current.openOrders)}件`;
+                const upkeep = Object.fromEntries((economy.upkeep || []).map(r => [r.key, r]));
+                document.getElementById('ec-upkeep').innerText = formatTc(upkeep['economy.upkeep_paid']?.total || 0);
+                document.getElementById('ec-upkeep-sub').innerText = `支払い ${upkeep['economy.upkeep_paid']?.count || 0}回`
+                    + ` | 失敗 ${upkeep['economy.upkeep_failed']?.count || 0}回`;
+
+                const history = economy.history || [];
+                drawTimeSeries('moneySupplyChart', [
+                    { label: '総量', color: CHART_COLORS[0], values: history.map(p => ({ x: p.recordedAt,
+                        y: p.playerBalances + p.nationBalances + p.escrowBalances })) },
+                    { label: '個人', color: CHART_COLORS[1], values: history.map(p => ({ x: p.recordedAt, y: p.playerBalances })) },
+                    { label: '国庫', color: CHART_COLORS[2], values: history.map(p => ({ x: p.recordedAt, y: p.nationBalances })) },
+                    { label: '預かり', color: CHART_COLORS[4], values: history.map(p => ({ x: p.recordedAt, y: p.escrowBalances })) }
+                ], { decimals: 0 });
+
+                const directionLabel = d => d.startsWith('MINT') ? '発行 → ' + d.split('>')[1]
+                    : d.endsWith('BURN') ? d.split('>')[0] + ' → 消滅' : d.replace('>', ' → ');
+                document.getElementById('economy-ledger-body').innerHTML = flows.length ? flows
+                    .sort((a, b) => b.total - a.total).map(f => `
+                    <tr>
+                        <td>${escapeHtml(LEDGER_REASONS[f.reason] || f.reason)}</td>
+                        <td><span class="badge ${f.direction.startsWith('MINT') ? 'badge-active' : f.direction.endsWith('BURN') ? 'badge-warn' : 'badge-dim'}">${escapeHtml(directionLabel(f.direction))}</span></td>
+                        <td>${formatNumber(f.count)}</td>
+                        <td style="font-weight:600;">${formatTc(f.total)}</td>
+                        <td>${formatNumber(f.players)}</td>
+                    </tr>`).join('') : emptyRow(5, '期間内のTC移動はありません');
+
+                document.getElementById('economy-trades-body').innerHTML = trades.length ? trades
+                    .sort((a, b) => b.total - a.total).map(t => `
+                    <tr>
+                        <td>${escapeHtml(t.key)}</td>
+                        <td>${formatNumber(t.count)}</td>
+                        <td style="font-weight:600;">${formatTc(t.total)}</td>
+                        <td>${formatNumber(t.players)}</td>
+                    </tr>`).join('') : emptyRow(4, '期間内の約定はありません');
+            } catch (e) { console.error(e); }
+        }
+
+        function renderFunnel(elementId, stages) {
+            const element = document.getElementById(elementId);
+            const max = Math.max(1, ...stages.map(s => s.players));
+            element.innerHTML = stages.map(s => `
+                <div class="funnel-row">
+                    <div class="funnel-label">${escapeHtml(s.label)}</div>
+                    <div class="funnel-track"><div class="funnel-bar" style="width:${(s.players / max * 100).toFixed(1)}%;"></div></div>
+                    <div class="funnel-value">${formatNumber(s.players)} 人</div>
+                </div>`).join('');
+        }
+
+        async function fetchOnboarding() {
+            const windowVal = document.getElementById('windowSelector').value;
+            try {
+                const res = await apiFetch(`/api/onboarding?window=${windowVal}`);
+                if (!res.ok) return;
+                const funnel = await res.json();
+                renderFunnel('onboarding-entry', funnel.entry || []);
+                renderFunnel('onboarding-tutorial', funnel.tutorial || []);
+                const skips = funnel.skippedAt || [];
+                document.getElementById('onboarding-skips-body').innerHTML = skips.length ? skips.map(s => `
+                    <tr><td>${escapeHtml(s.label)}</td><td>${formatNumber(s.players)} 人</td></tr>`).join('')
+                    : emptyRow(2, '期間内のスキップはありません');
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchEvents() {
+            const windowVal = document.getElementById('windowSelector').value;
+            try {
+                if (!s2State.snapshot) await loadS2State();
+                const type = document.getElementById('eventTypeFilter').value;
+                const nation = document.getElementById('eventNationFilter').value;
+                const params = new URLSearchParams({ window: windowVal, limit: '500' });
+                if (type) params.set('type', type);
+                if (nation) params.set('nation', nation);
+                const res = await apiFetch(`/api/events?${params}`);
+                if (!res.ok) return;
+                const events = await res.json();
+                document.getElementById('events-table-body').innerHTML = events.length ? events.map(e => `
+                    <tr>
+                        <td>${formatTime(e.occurredAt)}</td>
+                        <td><span class="badge badge-dim">${escapeHtml(eventLabel(e.type))}</span></td>
+                        <td>${escapeHtml(e.playerName || (e.playerUuid ? e.playerUuid.substring(0, 8) : '-'))}</td>
+                        <td>${escapeHtml(nationName(e.nationUuid))}</td>
+                        <td>${e.value ? formatNumber(e.value) : '-'}</td>
+                        <td style="max-width:22rem; overflow-wrap:anywhere;">${escapeHtml(e.detail || '-')}</td>
+                        <td>${formatCoords(e.x, e.y, e.z)}</td>
+                    </tr>`).join('') : emptyRow(7, '該当するイベントはありません');
+            } catch (e) { console.error(e); }
+        }
+
+        function relationLabel(relation) {
+            return { MEMBER: '自国領', ALLIED: '同盟国領', OUTSIDER: '他国領', WILDERNESS: '荒野' }[relation] || relation;
+        }
+
         // 初期化
+        loadS2State().catch(console.error);
         fetchOverview('7d');
     </script>
 </body>

@@ -18,7 +18,7 @@ public final class AnalyticsConfig {
     }
 
     /** 設定ファイル名 */
-    public static final String CONFIG_FILE_NAME = "moveearth_analytics.properties";
+    public static final String CONFIG_FILE_NAME = "analytics.properties";
 
     /** 位置サンプリング間隔 (30秒 = 600 ticks) */
     public static final int POSITION_SAMPLE_INTERVAL_TICKS = 20 * 30;
@@ -38,9 +38,6 @@ public final class AnalyticsConfig {
     /** 2乗移動閾値 (4.0) */
     public static final double MOVEMENT_THRESHOLD_SQR = MOVEMENT_THRESHOLD_BLOCKS * MOVEMENT_THRESHOLD_BLOCKS;
 
-    /** 検知グループの拠点範囲 (半径100ブロック) */
-    public static final double DETECTOR_GROUP_RADIUS_BLOCKS = 100.0D;
-
     /** 5分粒度データの保持期間 (90日) */
     public static final int RETENTION_5M_DAYS = 90;
 
@@ -53,7 +50,7 @@ public final class AnalyticsConfig {
     /** 収集処理の非同期キュー上限 */
     public static final int MAX_QUEUE_CAPACITY = 10_000;
 
-    // --- 外部設定項目 (moveearth_analytics.properties で変更可能) ---
+    // --- 外部設定項目 (config/moveearth/server/analytics.properties で変更可能) ---
 
     /** 専用サーバー限定動作フラグ (falseにするとシングルプレイでも動作) */
     private static volatile boolean dedicatedServerOnly = true;
@@ -149,7 +146,7 @@ public final class AnalyticsConfig {
     }
 
     /**
-     * 設定ファイル（config/moveearth_analytics.properties）をロード。存在しない場合はデフォルト生成。
+     * 設定ファイル（config/moveearth/server/analytics.properties）をロード。存在しない場合はデフォルト生成。
      */
     public static synchronized void loadConfig(Path configDir) {
         if (configDir == null) {
@@ -205,7 +202,7 @@ public final class AnalyticsConfig {
     }
 
     /**
-     * 現在の設定値を設定ファイル（config/moveearth_analytics.properties）へ保存
+     * 現在の設定値を設定ファイル（config/moveearth/server/analytics.properties）へ保存
      */
     public static synchronized void saveConfig(Path configDir) {
         if (configDir == null) {

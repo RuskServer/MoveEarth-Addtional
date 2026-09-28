@@ -1,0 +1,1 @@
+{"criteria":{"viewed":{"trigger":"moveearth_addtional:event","conditions":{"event":"region_viewed"}}}}

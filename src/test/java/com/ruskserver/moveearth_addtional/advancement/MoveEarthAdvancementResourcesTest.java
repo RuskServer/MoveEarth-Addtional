@@ -49,7 +49,7 @@ class MoveEarthAdvancementResourcesTest {
     private static final List<String> NEW_ADVANCEMENTS = List.of(
             "nation/market_trade", "agriculture/harvest", "agriculture/farm_delivery",
             "agriculture/harvest_event", "industry/uranium", "industry/fissile_fuel",
-            "industry/fission", "industry/turbine");
+            "industry/fission", "industry/turbine", "industry/brass");
 
     @Test
     void rootUsesVanillaJoinCriterion() {
@@ -80,7 +80,7 @@ class MoveEarthAdvancementResourcesTest {
     void allAdvancementsHaveResolvableParentsTranslationsAndCriteria() {
         assertEquals(37, ADVANCEMENTS.size());
         List<String> all = java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList();
-        assertEquals(45, all.size());
+        assertEquals(46, all.size());
         Set<String> ids = Set.copyOf(all);
         JsonObject ja = read("/assets/moveearth_addtional/lang/ja_jp.json");
         JsonObject en = read("/assets/moveearth_addtional/lang/en_us.json");

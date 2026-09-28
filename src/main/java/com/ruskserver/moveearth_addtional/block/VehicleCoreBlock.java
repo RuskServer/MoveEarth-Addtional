@@ -60,10 +60,17 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
             serverLevel.destroyBlock(pos, true);
             return;
         }
+        if (!SableVehicleTopology.mayBindPlacedCore(serverLevel, pos)) {
+            player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
+                    "message.moveearth_addtional.vehicle_core.already_bound")));
+            serverLevel.destroyBlock(pos, true);
+            return;
+        }
         VehicleSavedData.VehicleRecord record = VehicleSavedData.get(player.server).register(
                 nationId, player.getUUID(), level.dimension().location(), pos);
         record = SableVehicleTopology.bindPlacedCore(serverLevel, pos, record);
         core.bind(record);
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.VEHICLE_REGISTERED, player, nationId, 0L, null);
         player.sendSystemMessage(MoveEarthMessage.success(Component.translatable(
                 "message.moveearth_addtional.vehicle_core.registered")));
         com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,

@@ -11,9 +11,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * The nation list with the player's application. {@code inWorld} is false during
+ * first-join onboarding, when the player is held until they choose a start, and
+ * true when a nationless player applies from the S2 hub while playing.
+ */
 public record S2C_OnboardingPacket(long revision, UUID appliedNationId, String appliedNationName,
                                    long requestedAt, boolean searching, List<NationEntry> nations, String messageKey,
-                                   boolean success) implements CustomPacketPayload {
+                                   boolean success, boolean inWorld) implements CustomPacketPayload {
     private static final UUID NONE = new UUID(0L, 0L);
     private static final int MAX_NATIONS = 512;
     public static final Type<S2C_OnboardingPacket> TYPE = new Type<>(
@@ -39,6 +44,7 @@ public record S2C_OnboardingPacket(long revision, UUID appliedNationId, String a
         }
         buffer.writeUtf(packet.messageKey, 128);
         buffer.writeBoolean(packet.success);
+        buffer.writeBoolean(packet.inWorld);
     }
 
     private static S2C_OnboardingPacket decode(FriendlyByteBuf buffer) {
@@ -56,7 +62,7 @@ public record S2C_OnboardingPacket(long revision, UUID appliedNationId, String a
                     buffer.readVarInt(), buffer.readVarInt()));
         }
         return new S2C_OnboardingPacket(revision, applied, appliedName, requestedAt, searching, List.copyOf(nations),
-                buffer.readUtf(128), buffer.readBoolean());
+                buffer.readUtf(128), buffer.readBoolean(), buffer.readBoolean());
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }

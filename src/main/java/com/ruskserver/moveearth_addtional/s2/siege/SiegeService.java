@@ -69,7 +69,8 @@ public final class SiegeService {
         UUID attackerId = identity == null ? null : identity.id();
         if (attackerId == null || core == null || siegeData.isCoreFallen(core.id())
                 || (!individualAttacker && (attackerNation.equals(core.nationId())
-                || nations.isAllied(attackerNation, core.nationId())))) {
+                || nations.isAllied(attackerNation, core.nationId())))
+                || formerNationBinding(level.getServer(), attribution, attackerNation, core.nationId()) != null) {
             return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
         }
         if (!individualAttacker) {
@@ -95,6 +96,8 @@ public final class SiegeService {
                     attribution.actorId(), attribution.source(), attackerNation, core.nationId(), target, effectiveDamage);
         }
         boolean offlineDefenseAllowed = OfflineDefenseService.baseDivisor(level, core) > 1;
+        OfflineDefenseDaySavedData.get(level.getServer())
+                .observe(core.id(), OfflineDefenseDaySavedData.today(), offlineDefenseAllowed);
         SiegeSavedData.AttemptResult result = siegeData.registerAttempt(
                 attackerId, individualAttacker, core, effectiveDamage, offlineDefenseAllowed);
         if (result.siege() != null) {
@@ -138,17 +141,84 @@ public final class SiegeService {
         return peaceTruceBlocks(new AttackAttribution(attackerNation, attacker.getUUID(), "player"), level, target);
     }
 
+    /**
+     * The gate every damage path checks first. Besides a peace truce between the attacker's nation
+     * and the defender, it blocks a player whose membership cooldown still binds them to a former
+     * nation that has peace or an alliance with the defender, and an attacker whose failed Siege
+     * locked them out of this core.
+     */
     public static boolean peaceTruceBlocks(AttackAttribution attribution, ServerLevel level, BlockPos target) {
         if (attribution == null || attribution.nationId() == null && attribution.actorId() == null) return false;
-        TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
-                .controllingCore(level.getServer(), level.dimension().location(), target).orElse(null);
+        MinecraftServer server = level.getServer();
+        TerritorySavedData.CoreRecord core = TerritorySavedData.get(server)
+                .controllingCore(server, level.dimension().location(), target).orElse(null);
+        if (core == null) return false;
         UUID attackerNation = resolvedNation(attribution, level, target, core);
-        UUID defenderNation = core == null ? null : core.nationId();
-        return attackerNation != null && defenderNation != null
-                && !attackerNation.equals(defenderNation)
-                && SiegeSavedData.get(level.getServer()).isPeaceTruceActive(
-                        attackerNation, defenderNation);
+        UUID defenderNation = core.nationId();
+        SiegeSavedData siegeData = SiegeSavedData.get(server);
+        if (attackerNation != null && !attackerNation.equals(defenderNation)
+                && siegeData.isPeaceTruceActive(attackerNation, defenderNation)) return true;
+        UUID formerNation = formerNationBinding(server, attribution, attackerNation, defenderNation);
+        if (formerNation != null) {
+            notifyRefusal(server, attribution.actorId(), RefusalKind.FORMER_NATION, Component.translatable(
+                    "message.moveearth_addtional.siege.former_nation_bound",
+                    NationSavedData.get(server).nation(formerNation).map(NationSavedData.Nation::name).orElse("?"),
+                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.duration(
+                            NationSavedData.get(server).formerNationBindingRemaining(attribution.actorId(),
+                                    com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server)))));
+            return true;
+        }
+        // Same identity recordAttack would register, so the lock matches the Siege that failed.
+        if (attribution.frozen() && attribution.contractId() != null && attackerNation == null) return false;
+        SiegeAttackerPolicy.Identity identity = SiegeAttackerPolicy.resolve(attackerNation, attribution.actorId(),
+                siegeData.hasActiveIndividualAttack(attribution.actorId(), core.id()));
+        if (identity == null || (!identity.individual() && identity.id().equals(defenderNation))) return false;
+        long locked = siegeData.failedAttackCooldownTicks(identity.id(), identity.individual(), core.id());
+        if (locked > 0L) {
+            notifyRefusal(server, attribution.actorId(), RefusalKind.FAILED_COOLDOWN, Component.translatable(
+                    "message.moveearth_addtional.siege.failed_cooldown",
+                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownPolicy.remainingMinutes(locked)));
+            return true;
+        }
+        return false;
     }
+
+    /**
+     * The former nation that still binds a player in their membership cooldown, when that nation has
+     * peace or an alliance with the defender; null when nothing binds the attack.
+     */
+    private static UUID formerNationBinding(MinecraftServer server, AttackAttribution attribution,
+                                            UUID attackerNation, UUID defenderNation) {
+        if (attribution == null || attribution.actorId() == null || defenderNation == null
+                || defenderNation.equals(attackerNation)) return null;
+        NationSavedData nations = NationSavedData.get(server);
+        UUID formerNation = nations.cooldownFormerNation(attribution.actorId(),
+                com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server)).orElse(null);
+        if (formerNation == null) return null;
+        boolean blocked = com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownPolicy.formerNationBlocks(
+                formerNation, defenderNation, nations.isAllied(formerNation, defenderNation),
+                SiegeSavedData.get(server).isPeaceTruceActive(formerNation, defenderNation));
+        return blocked ? formerNation : null;
+    }
+
+    private static void notifyRefusal(MinecraftServer server, UUID actorId, RefusalKind kind, Component body) {
+        if (actorId == null) return;
+        ServerPlayer player = server.getPlayerList().getPlayer(actorId);
+        if (player == null) return;
+        long now = server.overworld().getGameTime();
+        RefusalKey key = new RefusalKey(actorId, kind);
+        Long previous = LAST_REFUSALS.get(key);
+        if (previous != null && now - previous < REFUSAL_NOTICE_TICKS) return;
+        LAST_REFUSALS.put(key, now);
+        player.sendSystemMessage(MoveEarthMessage.warning(body));
+    }
+
+    private static final long REFUSAL_NOTICE_TICKS = 100L;
+    private static final Map<RefusalKey, Long> LAST_REFUSALS = new HashMap<>();
+
+    private enum RefusalKind { FORMER_NATION, FAILED_COOLDOWN }
+
+    private record RefusalKey(UUID actorId, RefusalKind kind) { }
 
     private static UUID resolvedNation(AttackAttribution attribution, ServerLevel level, BlockPos target,
                                        TerritorySavedData.CoreRecord core) {
@@ -205,6 +275,9 @@ public final class SiegeService {
         });
         fallen.recovered().forEach(record -> {
             SiegeLootSavedData.get(event.getServer()).revoke(record.siegeId());
+            recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.COUNTER_CAPTURED, record.defenderNation(), record.dimension(), record.corePos(),
+                    record.radius(), warDetail(record.attackerNation(), record.individualAttacker(),
+                            "core=" + record.coreType()));
             TerritorySavedData.get(event.getServer())
                 .recoverCore(record.coreId(), S2TerritoryConfig.siegeCounterRecoveryPercent())
                 .ifPresent(core -> {
@@ -234,7 +307,10 @@ public final class SiegeService {
     }
 
     @SubscribeEvent
-    public static void onServerStopped(ServerStoppedEvent event) { RECENT_LOGS.clear(); }
+    public static void onServerStopped(ServerStoppedEvent event) {
+        RECENT_LOGS.clear();
+        LAST_REFUSALS.clear();
+    }
 
     private static void notifyTransition(MinecraftServer server, NationSavedData nations,
                                          SiegeSavedData.AttemptResult result) {
@@ -243,18 +319,32 @@ public final class SiegeService {
         java.util.List<UUID> parties = notificationParties(siege.attackerNation(),
                 siege.individualAttacker(), siege.defenderNation());
         if (result.status() == SiegeSavedData.AttemptStatus.INITIAL_STARTED) {
+            recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.SIEGE_INITIAL, siege.defenderNation(), siege.dimension(), siege.corePos(), 0L,
+                    warDetail(siege.attackerNation(), siege.individualAttacker(), null));
             String remaining = formatTicks(S2TerritoryConfig.siegeInitialLockTicks());
-            Component body = Component.translatable(
+            // Each side reads the lock from where it stands: the attacker hit enemy land,
+            // the defender's own land was hit.
+            Component attackerBody = Component.translatable(
                     "message.moveearth_addtional.siege.initial_started", remaining);
+            Component defenderBody = Component.translatable(
+                    "message.moveearth_addtional.siege.initial_started.defender", remaining,
+                    siege.corePos().getX(), siege.corePos().getY(), siege.corePos().getZ());
             if (siege.individualAttacker()) {
                 ServerPlayer attacker = server.getPlayerList().getPlayer(siege.attackerNation());
-                if (attacker != null) attacker.sendSystemMessage(MoveEarthMessage.warning(body));
+                if (attacker != null) attacker.sendSystemMessage(MoveEarthMessage.warning(attackerBody));
+            } else {
+                NationNotificationService.publish(server, java.util.List.of(siege.attackerNation()),
+                        NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED,
+                        siege.dimension(), siege.corePos(), attackerBody,
+                        java.util.List.of(remaining));
             }
-            NationNotificationService.publish(server, parties,
+            NationNotificationService.publish(server, java.util.List.of(siege.defenderNation()),
                     NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED,
-                    siege.dimension(), siege.corePos(), body,
+                    siege.dimension(), siege.corePos(), defenderBody,
                     java.util.List.of(remaining));
         } else if (result.status() == SiegeSavedData.AttemptStatus.ROLLING_STARTED) {
+            recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.SIEGE_ROLLING, siege.defenderNation(), siege.dimension(), siege.corePos(), 0L,
+                    warDetail(siege.attackerNation(), siege.individualAttacker(), null));
             NationSavedData.Nation defender = nations.nation(siege.defenderNation()).orElse(null);
             String attackerName = attackerName(server, nations, siege.attackerNation(), siege.individualAttacker());
             String defenderName = defender == null ? "?" : defender.name();
@@ -324,6 +414,9 @@ public final class SiegeService {
     static void broadcastFall(MinecraftServer server, NationSavedData nations,
                                       SiegeSavedData.FallenRecord fallen) {
         NationSavedData.Nation defender = nations.nation(fallen.defenderNation()).orElse(null);
+        recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.CORE_FALLEN, fallen.defenderNation(), fallen.dimension(), fallen.corePos(),
+                fallen.radius(), warDetail(fallen.attackerNation(), fallen.individualAttacker(),
+                        "core=" + fallen.coreType()));
         server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.warning(Component.translatable(
                 "message.moveearth_addtional.siege.core_fallen",
                 defender == null ? "?" : defender.name(),
@@ -331,6 +424,16 @@ public final class SiegeService {
                 fallen.corePos().getX(), fallen.corePos().getY(), fallen.corePos().getZ())), false);
         publishFallen(server, fallen, NationNotificationSavedData.EventType.CORE_FALLEN,
                 defender == null ? "?" : defender.name());
+        // The fall is not final yet; tell the defenders how to take the core back.
+        Component counter = Component.translatable("message.moveearth_addtional.siege.counteroffensive_hint",
+                S2TerritoryConfig.siegeCounterRadiusBlocks(),
+                formatTicks(S2TerritoryConfig.siegeCounterCaptureTicks()),
+                fallen.corePos().getX(), fallen.corePos().getY(), fallen.corePos().getZ());
+        for (ServerPlayer member : server.getPlayerList().getPlayers()) {
+            if (nations.nationIdFor(member.getUUID()).filter(fallen.defenderNation()::equals).isPresent()) {
+                member.sendSystemMessage(MoveEarthMessage.info(counter));
+            }
+        }
         com.ruskserver.moveearth_addtional.s2.recovery.WarHistorySavedData.get(server).append(
                 com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server),
                 com.ruskserver.moveearth_addtional.s2.recovery.WarHistorySavedData.Type.CORE_FALLEN,
@@ -390,6 +493,9 @@ public final class SiegeService {
         boolean capital = settlement.outcome()
                 == com.ruskserver.moveearth_addtional.s2.territory.TerritoryFallSettlementPolicy.Outcome.CAPITAL_REBUILDING;
         siegeData.resolveFallen(record, capital, S2TerritoryConfig.siegeSettlementTruceTicks());
+        recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.FALL_SETTLED, record.defenderNation(), record.dimension(), record.corePos(),
+                settlement.core().radius(), warDetail(record.attackerNation(), record.individualAttacker(),
+                        "core=" + record.coreType() + ";outcome=" + settlement.outcome()));
         TerritoryCoreHealthService.syncCore(server, settlement.core());
         syncFallVisuals(server, record);
         if (capital) {
@@ -436,6 +542,17 @@ public final class SiegeService {
                     record.dimension(), record.corePos(), null,
                     java.util.List.of("neutralized"));
         }
+    }
+
+    /** War events are filed under the defending nation; the attacker goes in the detail. */
+    private static void recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType type, UUID defender, net.minecraft.resources.ResourceLocation dimension,
+                                  BlockPos pos, long value, String detail) {
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.place(type, defender, dimension, pos, value, detail);
+    }
+
+    private static String warDetail(UUID attacker, boolean individual, String extra) {
+        String detail = "attacker=" + attacker + (individual ? ";individual=true" : "");
+        return extra == null ? detail : detail + ";" + extra;
     }
 
     static void notifySiegeEnded(MinecraftServer server, UUID attacker, UUID defender,

@@ -50,6 +50,11 @@ public final class NationOnboardingService {
         return persistedData(player).getBoolean(NBT_PENDING);
     }
 
+    /** Records a first join whose flow will start at the next login, without holding the player now. */
+    public static void markPending(ServerPlayer player) {
+        persistedData(player).putBoolean(NBT_PENDING, true);
+    }
+
     public static void begin(ServerPlayer player) {
         persistedData(player).putBoolean(NBT_PENDING, true);
         NationSavedData nations = NationSavedData.get(player.server);
@@ -88,17 +93,25 @@ public final class NationOnboardingService {
 
     public static void handlePlayerAction(ServerPlayer player, long expectedRevision,
                                           C2S_OnboardingActionPacket.Action action, UUID nationId) {
-        if (!pending(player)) return;
+        if (!pending(player)) {
+            handleInWorldAction(player, expectedRevision, action, nationId);
+            return;
+        }
         if (SEARCHING.contains(player.getUUID())) return;
         NationSavedData nations = NationSavedData.get(player.server);
         switch (action) {
             case APPLY -> {
                 NationSavedData.ApplicationResult result = nations.applyToNation(player.getUUID(),
-                        player.getGameProfile().getName(), nationId, expectedRevision);
+                        player.getGameProfile().getName(), nationId, expectedRevision,
+                        com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server));
+                if (result.status() == NationSavedData.ApplicationStatus.MEMBERSHIP_COOLDOWN) {
+                    MembershipCooldownService.notifyRefused(player);
+                }
                 if (result.success()) {
                     notifyManagers(player, nationId);
                     com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                             com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_APPLIED);
+                    com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.ONBOARDING_APPLIED, player, nationId, 0L, "first_join");
                 }
                 sendOnboarding(player, applicationMessage(result.status()), result.success());
             }
@@ -108,19 +121,17 @@ public final class NationOnboardingService {
                 sendOnboarding(player, applicationMessage(result.status()), result.success());
             }
             case WILDERNESS -> {
-                NationSavedData.JoinApplication application = nations.joinApplicationFor(
-                        player.getUUID()).orElse(null);
-                if (application != null) {
-                    NationSavedData.ApplicationResult cancelled = nations.cancelApplication(
-                            player.getUUID(), expectedRevision);
-                    if (!cancelled.success()) {
-                        sendOnboarding(player, applicationMessage(cancelled.status()), false);
-                        return;
-                    }
-                } else if (expectedRevision != nations.revision()) {
+                // A pending application stays open: the player starts playing now and
+                // joins in place when a manager approves it.
+                if (nations.joinApplicationFor(player.getUUID()).isEmpty()
+                        && expectedRevision != nations.revision()) {
                     sendOnboarding(player, applicationMessage(NationSavedData.ApplicationStatus.STALE), false);
                     return;
                 }
+                com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.ONBOARDING_WILDERNESS, player,
+                        nations.joinApplicationFor(player.getUUID()).map(NationSavedData.JoinApplication::nationId)
+                                .orElse(null), 0L,
+                        nations.joinApplicationFor(player.getUUID()).isPresent() ? "with_application" : null);
                 releaseForSearch(player);
                 RandomSpawnHandler.beginInitialRandomSpawn(player);
             }
@@ -143,8 +154,10 @@ public final class NationOnboardingService {
             return;
         }
         NationSavedData.ApplicationResult result = nations.decideApplication(
-                player.getUUID(), applicantId, approve, expectedRevision);
+                player.getUUID(), applicantId, approve, expectedRevision,
+                com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server));
         ServerPlayer applicant = applicantId == null ? null : player.server.getPlayerList().getPlayer(applicantId);
+        if (result.success()) recordDecision(player, applicantId, applicant, approve, nations);
         if (result.success() && applicant != null) {
             applicant.sendSystemMessage(approve
                     ? MoveEarthMessage.success(net.minecraft.network.chat.Component.translatable(
@@ -152,16 +165,70 @@ public final class NationOnboardingService {
                     : MoveEarthMessage.error(net.minecraft.network.chat.Component.translatable(
                     "screen.moveearth_addtional.onboarding.application.rejected")));
             if (approve) {
-                UUID nationId = nations.nationIdFor(applicantId).orElse(null);
-                releaseForSearch(applicant);
-                if (nationId != null) RandomSpawnHandler.beginNationSpawnSearch(applicant, nationId);
+                // Only a player still waiting at first join is moved to the nation; anyone
+                // already playing joins where they stand rather than getting a free teleport.
+                if (pending(applicant)) {
+                    UUID nationId = nations.nationIdFor(applicantId).orElse(null);
+                    releaseForSearch(applicant);
+                    if (nationId != null) RandomSpawnHandler.beginNationSpawnSearch(applicant, nationId);
+                } else {
+                    applicant.sendSystemMessage(MoveEarthMessage.info(net.minecraft.network.chat.Component.translatable(
+                            "screen.moveearth_addtional.onboarding.application.approved.in_world")));
+                }
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(applicant,
                         com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_CITIZEN);
-            } else {
+            } else if (pending(applicant)) {
                 sendOnboarding(applicant, applicationMessage(result.status()), false);
             }
         }
         sendApplications(player, applicationMessage(result.status()), result.success());
+    }
+
+    private static void recordDecision(ServerPlayer manager, UUID applicantId, ServerPlayer applicant,
+                                       boolean approve, NationSavedData nations) {
+        UUID nationId = nations.nationIdFor(manager.getUUID()).orElse(null);
+        String where = applicant == null ? "offline" : pending(applicant) ? "first_join" : "in_world";
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(approve ? com.ruskserver.moveearth_addtional.analytics.event.GameEventType.ONBOARDING_APPROVED : com.ruskserver.moveearth_addtional.analytics.event.GameEventType.ONBOARDING_REJECTED,
+                applicantId, nationId, 0L, where);
+        if (approve) com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_JOINED, applicantId, nationId, 0L, "application");
+    }
+
+    /**
+     * Applications from a nationless player who is already playing, opened from the
+     * S2 hub. Only applying, cancelling and refreshing apply; nothing moves the player.
+     */
+    private static void handleInWorldAction(ServerPlayer player, long expectedRevision,
+                                            C2S_OnboardingActionPacket.Action action, UUID nationId) {
+        NationSavedData nations = NationSavedData.get(player.server);
+        if (nations.nationIdFor(player.getUUID()).isPresent()) {
+            sendOnboarding(player, applicationMessage(NationSavedData.ApplicationStatus.ALREADY_MEMBER), false);
+            return;
+        }
+        switch (action) {
+            case APPLY -> {
+                NationSavedData.ApplicationResult result = nations.applyToNation(player.getUUID(),
+                        player.getGameProfile().getName(), nationId, expectedRevision,
+                        com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server));
+                if (result.status() == NationSavedData.ApplicationStatus.MEMBERSHIP_COOLDOWN) {
+                    MembershipCooldownService.notifyRefused(player);
+                }
+                if (result.success()) {
+                    notifyManagers(player, nationId);
+                    com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
+                            com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_APPLIED);
+                    com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.ONBOARDING_APPLIED, player, nationId, 0L, "in_world");
+                }
+                sendOnboarding(player, applicationMessage(result.status()), result.success());
+            }
+            case CANCEL -> {
+                NationSavedData.ApplicationResult result = nations.cancelApplication(
+                        player.getUUID(), expectedRevision);
+                sendOnboarding(player, applicationMessage(result.status()), result.success());
+            }
+            case REFRESH -> sendOnboarding(player, "", true);
+            case WILDERNESS, UNKNOWN -> sendOnboarding(player,
+                    "screen.moveearth_addtional.onboarding.action.invalid", false);
+        }
     }
 
     public static void sendOnboarding(ServerPlayer player, String messageKey, boolean success) {
@@ -196,7 +263,7 @@ public final class NationOnboardingService {
         PacketDistributor.sendToPlayer(player, new S2C_OnboardingPacket(nations.revision(),
                 application == null ? null : application.nationId(), applicationNationName,
                 application == null ? 0L : application.requestedAt(), searching, entries,
-                messageKey == null ? "" : messageKey, success));
+                messageKey == null ? "" : messageKey, success, !pending(player)));
     }
 
     public static void sendApplications(ServerPlayer player, String messageKey, boolean success) {

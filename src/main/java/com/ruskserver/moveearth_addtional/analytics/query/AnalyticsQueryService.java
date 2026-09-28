@@ -379,6 +379,91 @@ public class AnalyticsQueryService {
     /**
      * キャッシュのクリア
      */
+    /**
+     * ゲームイベントを新しい順に非同期で取得 (イベントは随時追加されるのでキャッシュしない)
+     */
+    public CompletableFuture<List<GameEventDto>> getGameEventsAsync(String typePrefix, UUID nationUuid, UUID playerUuid,
+                                                                    TimeWindow window, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) {
+                return Collections.<GameEventDto>emptyList();
+            }
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                return engine.queryGameEvents(typePrefix, nationUuid, playerUuid,
+                        window.getStartEpochSec(nowSec), nowSec, limit);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.<GameEventDto>emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    /**
+     * ゲームイベントをキーごとに集計して非同期で取得
+     */
+    public CompletableFuture<List<GameEventAggregateDto>> aggregateGameEventsAsync(String typePrefix, UUID nationUuid,
+                                                                                  GameEventGroupBy groupBy,
+                                                                                  TimeWindow window, int limit) {
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) {
+                return Collections.<GameEventAggregateDto>emptyList();
+            }
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                return engine.aggregateGameEvents(typePrefix, nationUuid, groupBy,
+                        window.getStartEpochSec(nowSec), nowSec, limit);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.<GameEventAggregateDto>emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    public CompletableFuture<List<NationHistoryPointDto>> getNationHistoryAsync(UUID nationUuid, TimeWindow window) {
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return Collections.<NationHistoryPointDto>emptyList();
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                return engine.queryNationHistory(nationUuid, window.getStartEpochSec(nowSec), nowSec);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.<NationHistoryPointDto>emptyList();
+            }
+        }, queryExecutor);
+    }
+
+    public CompletableFuture<Long> countNewPlayersAsync(TimeWindow window) {
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return 0L;
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                return engine.countNewPlayers(window.getStartEpochSec(nowSec), nowSec);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return 0L;
+            }
+        }, queryExecutor);
+    }
+
+    public CompletableFuture<List<EconomyHistoryPointDto>> getEconomyHistoryAsync(TimeWindow window) {
+        return CompletableFuture.supplyAsync(() -> {
+            AnalyticsStorageEngine engine = getStorageEngine();
+            if (engine == null || !engine.isOpen()) return Collections.<EconomyHistoryPointDto>emptyList();
+            try {
+                long nowSec = System.currentTimeMillis() / 1000L;
+                return engine.queryEconomyHistory(window.getStartEpochSec(nowSec), nowSec);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return Collections.<EconomyHistoryPointDto>emptyList();
+            }
+        }, queryExecutor);
+    }
+
     public void clearCache() {
         playerCache.clear();
         topPlayersCache.clear();

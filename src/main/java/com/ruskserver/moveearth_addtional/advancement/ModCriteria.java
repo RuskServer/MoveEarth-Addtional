@@ -17,6 +17,7 @@ public final class ModCriteria {
     public static final String UPKEEP_PAID = "upkeep_paid";
     public static final String COLD_PROTECTION = "cold_protection";
     public static final String REST_HEALED = "rest_healed";
+    public static final String REGION_VIEWED = "region_viewed";
     public static final String ELECTRICITY_BUILT = "electricity_built";
     public static final String FREIGHT_COMPLETED = "freight_completed";
     public static final String REINFORCEMENT_ACTIVATED = "reinforcement_activated";

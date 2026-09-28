@@ -4,6 +4,7 @@ import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_CreateNationPac
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_LinkDiscordAccountPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_LinkNationDiscordPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationApplicationActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationAllyPermissionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationDiplomacyPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationMembershipPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationRolePacket;
@@ -39,6 +40,7 @@ public final class NationPayloads {
         registrar.playToServer(C2S_NationMembershipPacket.TYPE, C2S_NationMembershipPacket.STREAM_CODEC, C2S_NationMembershipPacket::handle);
         registrar.playToServer(C2S_NationRolePacket.TYPE, C2S_NationRolePacket.STREAM_CODEC, C2S_NationRolePacket::handle);
         registrar.playToServer(C2S_NationDiplomacyPacket.TYPE, C2S_NationDiplomacyPacket.STREAM_CODEC, C2S_NationDiplomacyPacket::handle);
+        registrar.playToServer(C2S_NationAllyPermissionPacket.TYPE, C2S_NationAllyPermissionPacket.STREAM_CODEC, C2S_NationAllyPermissionPacket::handle);
         registrar.playToServer(C2S_NationSettingsPacket.TYPE, C2S_NationSettingsPacket.STREAM_CODEC, C2S_NationSettingsPacket::handle);
         registrar.playToServer(C2S_RequestNationNotificationsPacket.TYPE, C2S_RequestNationNotificationsPacket.STREAM_CODEC, C2S_RequestNationNotificationsPacket::handle);
         registrar.playToServer(C2S_UpdateNationNotificationsPacket.TYPE, C2S_UpdateNationNotificationsPacket.STREAM_CODEC, C2S_UpdateNationNotificationsPacket::handle);

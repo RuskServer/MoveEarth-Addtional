@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.client;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.config.ClientDisplayConfig;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_EventHudPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -36,7 +37,8 @@ public final class EventHud {
         if (minecraft.player == null || minecraft.level == null || minecraft.options.hideGui
                 || minecraft.screen != null || minecraft.getDebugOverlay().showDebugScreen()
                 || minecraft.level.getScoreboard().getDisplayObjective(DisplaySlot.SIDEBAR) != null
-                || !snapshot.active() && snapshot.pendingClaims() == 0) return;
+                || !snapshot.active() && snapshot.pendingClaims() == 0
+                || !ClientDisplayConfig.SHOW_EVENT_HUD.get()) return;
 
         List<Line> lines = new ArrayList<>();
         if (snapshot.active()) {

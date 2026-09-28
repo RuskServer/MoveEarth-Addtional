@@ -1,0 +1,1 @@
+{"criteria":{"mixer":{"trigger":"minecraft:placed_block","conditions":{"location":[{"condition":"minecraft:location_check","predicate":{"block":{"blocks":"create:mechanical_mixer"}}}]}},"basin":{"trigger":"minecraft:placed_block","conditions":{"location":[{"condition":"minecraft:location_check","predicate":{"block":{"blocks":"create:basin"}}}]}}}}

@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.config;
 
+import com.ruskserver.moveearth_addtional.s2.tip.TipWikiLink;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /** Server-owned pacing for periodic player tips. */
@@ -17,6 +18,10 @@ public final class TipConfig {
     private static final ModConfigSpec.IntValue HISTORY_SIZE = BUILDER
             .comment("Number of recently displayed tips retained per player.")
             .defineInRange("historySize", 20, 5, 100);
+    private static final ModConfigSpec.ConfigValue<String> WIKI_URL = BUILDER
+            .comment("MoveEarth wiki opened by the wiki tip. Set it empty to leave the wiki tip out.",
+                    "Must start with https:// or http://.")
+            .define("wikiUrl", "https://rusklabo.github.io/moveearth-web/guide/start/", value -> value instanceof String url && TipWikiLink.isValid(url));
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 
@@ -26,4 +31,12 @@ public final class TipConfig {
     public static int initialDelaySeconds() { return INITIAL_DELAY_MINUTES.getAsInt() * 60; }
     public static int intervalSeconds() { return INTERVAL_MINUTES.getAsInt() * 60; }
     public static int historySize() { return HISTORY_SIZE.getAsInt(); }
+
+    /** The configured wiki URL, or empty when none is set. */
+    public static String wikiUrl() {
+        String url = WIKI_URL.get().trim();
+        return TipWikiLink.isValid(url) ? url : "";
+    }
+
+    public static boolean wikiConfigured() { return !wikiUrl().isEmpty(); }
 }

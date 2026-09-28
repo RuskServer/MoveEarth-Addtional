@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.compat;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.raid.RaidAirshipBlueprint;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -9,12 +10,14 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
@@ -120,7 +123,8 @@ public final class SableAirshipController {
             double angle = Math.PI * 2.0D * attempt / 8.0D;
             int x = (int) Math.floor(target.getX() + Math.cos(angle) * 110.0D);
             int z = (int) Math.floor(target.getZ() + Math.sin(angle) * 110.0D);
-            int y = Math.min(level.getMaxBuildHeight() - 14, Math.max((int) target.getY() + 65, level.getSeaLevel() + 80));
+            int y = Math.min(level.getMaxBuildHeight() - 1 - RaidAirshipBlueprint.bounds().maxY(),
+                    Math.max((int) target.getY() + 65, level.getSeaLevel() + 80));
             BlockPos anchor = new BlockPos(x, y, z);
             if (templateSpaceIsEmpty(level, anchor)) return anchor;
         }
@@ -128,9 +132,16 @@ public final class SableAirshipController {
     }
 
     private static boolean templateSpaceIsEmpty(ServerLevel level, BlockPos anchor) {
-        for (int x = -15; x <= 15; x++) {
-            for (int y = -2; y <= 17; y++) {
-                for (int z = -7; z <= 7; z++) {
+        var bounds = RaidAirshipBlueprint.bounds();
+        BlockPos min = anchor.offset(bounds.minX(), bounds.minY(), bounds.minZ());
+        BlockPos max = anchor.offset(bounds.maxX(), bounds.maxY(), bounds.maxZ());
+        if (min.getY() < level.getMinBuildHeight() || max.getY() >= level.getMaxBuildHeight()
+                || !level.getWorldBorder().isWithinBounds(min) || !level.getWorldBorder().isWithinBounds(max)) {
+            return false;
+        }
+        for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+            for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
                     if (!level.getBlockState(anchor.offset(x, y, z)).isAir()) return false;
                 }
             }
@@ -139,55 +150,54 @@ public final class SableAirshipController {
     }
 
     private static void buildAirship(ServerLevel level, BlockPos anchor, List<BlockPos> positions) {
-        BlockState grayEnvelope = aeroBlock("gray_envelope", Blocks.GRAY_WOOL).defaultBlockState();
-        BlockState blackEnvelope = aeroBlock("black_envelope", Blocks.BLACK_WOOL).defaultBlockState();
-        BlockState levitite = aeroBlock("levitite", Blocks.SEA_LANTERN).defaultBlockState();
-        BlockState smartPropeller = aeroBlock("smart_propeller", Blocks.IRON_BLOCK).defaultBlockState();
-        BlockState gyroBearing = aeroBlock("gyroscopic_propeller_bearing", Blocks.IRON_BLOCK).defaultBlockState();
-        BlockState burner = aeroBlock("hot_air_burner", Blocks.BLAST_FURNACE).defaultBlockState();
-        BlockState cannon = aeroBlock("mounted_potato_cannon", Blocks.DISPENSER).defaultBlockState();
+        for (var block : RaidAirshipBlueprint.blocks()) {
+            var pos = block.position();
+            place(level, anchor.offset(pos.x(), pos.y(), pos.z()), stateFor(block), positions);
+        }
+        // Resolve fences/walls after all neighbors exist; assembly must not preserve disconnected posts.
+        for (BlockPos pos : positions) {
+            BlockState state = level.getBlockState(pos);
+            level.setBlock(pos, net.minecraft.world.level.block.Block.updateFromNeighbourShapes(state, level, pos), 2);
+        }
+    }
 
-        for (int x = -10; x <= 10; x++) {
-            int halfWidth = Math.max(2, 5 - Math.abs(x) / 3);
-            for (int z = -halfWidth; z <= halfWidth; z++) {
-                place(level, anchor.offset(x, 0, z), Blocks.DARK_OAK_PLANKS.defaultBlockState(), positions);
-            }
+    private static BlockState stateFor(RaidAirshipBlueprint.Block block) {
+        var material = switch (block.part()) {
+            case HULL, MAST -> Blocks.DARK_OAK_LOG;
+            case DECK -> Blocks.SPRUCE_PLANKS;
+            case TRIM -> Blocks.DARK_OAK_PLANKS;
+            case RAIL -> Blocks.DARK_OAK_FENCE;
+            case CHAIN -> Blocks.CHAIN;
+            case COPPER -> Blocks.CUT_COPPER;
+            case MACHINERY -> Blocks.POLISHED_BLACKSTONE_BRICKS;
+            case GLASS -> Blocks.GRAY_STAINED_GLASS;
+            case SMOKESTACK -> Blocks.POLISHED_BLACKSTONE_WALL;
+            case BLACK_FLAG -> Blocks.BLACK_WOOL;
+            case WHITE_FLAG -> Blocks.WHITE_WOOL;
+            case BLACK_ENVELOPE -> aeroBlock("black_envelope", Blocks.BLACK_WOOL);
+            case GRAY_ENVELOPE -> aeroBlock("gray_envelope", Blocks.GRAY_WOOL);
+            case CORE -> aeroBlock("levitite", Blocks.SEA_LANTERN);
+            case PROPELLER -> aeroBlock("smart_propeller", Blocks.IRON_BLOCK);
+            case BURNER -> aeroBlock("hot_air_burner", Blocks.BLAST_FURNACE);
+            case CANNON -> aeroBlock("mounted_potato_cannon", Blocks.DISPENSER);
+            case BARREL -> Blocks.BARREL;
+        };
+        BlockState state = material.defaultBlockState();
+        Direction direction = switch (block.facing()) {
+            case NORTH -> Direction.NORTH;
+            case SOUTH -> Direction.SOUTH;
+            case WEST -> Direction.WEST;
+            case UP -> Direction.UP;
+        };
+        if (state.hasProperty(BlockStateProperties.FACING)) {
+            state = state.setValue(BlockStateProperties.FACING, direction);
+        } else if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING) && direction != Direction.UP) {
+            state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, direction);
         }
-        for (int x = -9; x <= 9; x++) {
-            place(level, anchor.offset(x, 1, -4), Blocks.DARK_OAK_FENCE.defaultBlockState(), positions);
-            place(level, anchor.offset(x, 1, 4), Blocks.DARK_OAK_FENCE.defaultBlockState(), positions);
+        if (block.part() == RaidAirshipBlueprint.Part.MAST && state.hasProperty(BlockStateProperties.AXIS)) {
+            state = state.setValue(BlockStateProperties.AXIS, direction.getAxis());
         }
-        for (int x : new int[]{-8, 0, 8}) {
-            for (int z : new int[]{-4, 4}) {
-                for (int y = 2; y <= 6; y++) {
-                    place(level, anchor.offset(x, y, z), Blocks.CHAIN.defaultBlockState(), positions);
-                }
-            }
-        }
-        for (int y = 6; y <= 15; y++) {
-            double vertical = (y - 10.5D) / 5.0D;
-            for (int x = -14; x <= 14; x++) {
-                for (int z = -6; z <= 6; z++) {
-                    double shape = x * x / 196.0D + z * z / 36.0D + vertical * vertical;
-                    if (shape <= 1.0D && shape >= 0.67D) {
-                        BlockState state = ((x + y + z) & 4) == 0 ? blackEnvelope : grayEnvelope;
-                        place(level, anchor.offset(x, y, z), state, positions);
-                    }
-                }
-            }
-        }
-        for (int x : new int[]{-8, 0, 8}) {
-            for (int z : new int[]{-2, 2}) place(level, anchor.offset(x, 10, z), levitite, positions);
-        }
-        place(level, anchor.offset(-11, 1, -5), smartPropeller, positions);
-        place(level, anchor.offset(-11, 1, 5), smartPropeller, positions);
-        place(level, anchor.offset(-10, 1, 0), gyroBearing, positions);
-        place(level, anchor.offset(0, 5, 0), burner, positions);
-        place(level, anchor.offset(8, 1, -4), cannon, positions);
-        place(level, anchor.offset(8, 1, 4), cannon, positions);
-        for (int x : new int[]{-3, 3}) {
-            place(level, anchor.offset(x, 1, 0), Blocks.BARREL.defaultBlockState(), positions);
-        }
+        return state;
     }
 
     private static net.minecraft.world.level.block.Block aeroBlock(String path, net.minecraft.world.level.block.Block fallback) {
@@ -208,7 +218,7 @@ public final class SableAirshipController {
     }
 
     private static void place(ServerLevel level, BlockPos pos, BlockState state, List<BlockPos> positions) {
-        level.setBlock(pos, state, 2);
+        if (!level.setBlock(pos, state, 2)) throw new IllegalStateException("Could not place raid airship at " + pos);
         positions.add(pos.immutable());
     }
 

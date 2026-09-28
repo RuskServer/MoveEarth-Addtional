@@ -251,6 +251,9 @@ dependencies {
     // JEI is supplied by the client modpack. Only its public plugin API is compiled against.
     compileOnly 'mezz.jei:jei-1.21.1-common-api:19.21.1.248'
     compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.21.1.248'
+    // Optional YetAnotherConfigLib settings screen. The client modpack supplies
+    // YACL; without it the mod list falls back to NeoForge's config screen.
+    compileOnly 'maven.modrinth:yacl:3.8.2+1.21.1-neoforge'
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'

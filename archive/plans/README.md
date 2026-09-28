@@ -9,6 +9,7 @@
 | [復興・派遣契約](recovery_dispatch_plan.md) | 段階0〜E実装済み | 残作業は実サーバー試験と数値調整 |
 | [Siege・略奪・兵站](siege_logistics_plan.md) | 第1〜4段階実装済み | 実装計画を完了 |
 | [バニラ進捗再実装](progress_system_rebuild_plan.md) | 第1〜3段階と導線変更を実装済み | 旧データ削除のみ移行期間後に実施 |
+| [進捗ツリー再編](advancement_tree_restructure_proposal.md) | ツリー本体・農業・市場・核技術の枝を実装済み | 残りはModpack環境での実機確認。2026-09-28以降の真鍮の進捗・チュートリアル用の判定は`changelog.md`を参照 |
 | [時間方向描画（TAA/TAAU）](temporal_rendering_experiment.md) | 削除済み | SMAA 1x + FSR 1.0 へ置換。現行は`upscale_rendering.md`を参照 |
 | [旧個人ガイド](technology_tree_plan.md) | バニラ進捗方式へ置換 | 現行方式はバニラ進捗再実装計画を参照 |
 | [Discord通知UX改善](discord_notification_ux_improvement_plan.md) | 第1〜5段階と導線改修を実装済み | Discord側の動作確認済み |

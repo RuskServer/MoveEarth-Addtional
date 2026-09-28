@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.s2.territory.TerritoryUpkeepPolicy;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi;
 import com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.Rect;
@@ -142,8 +143,9 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
 
         // "Pay Now" button inside Upkeep Card
         Rect payBtn = payButton(upkeepCard);
+        boolean due = TerritoryUpkeepPolicy.canPayNow(System.currentTimeMillis(), data.nextDueAt());
         drawButton(graphics, font, payBtn, Component.translatable("screen.moveearth_addtional.treasury.pay_now"),
-                GOLD, payBtn.contains(mouseX, mouseY), data.canManage());
+                GOLD, payBtn.contains(mouseX, mouseY), data.canManage() && due);
 
         // 3. Personal Balance Card
         Rect personalCard = new Rect(col.x(), col.y() + 218, col.width(), 58);
@@ -256,7 +258,9 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
         Rect upkeepCard = new Rect(lc.x(), lc.y() + 74, lc.width(), 138);
         Rect payBtn = payButton(upkeepCard);
         if (payBtn.contains(mouseX, mouseY)) {
-            if (data.canManage()) {
+            if (data.canManage() && !TerritoryUpkeepPolicy.canPayNow(System.currentTimeMillis(), data.nextDueAt())) {
+                showToast(Component.translatable("screen.moveearth_addtional.treasury.not_due"), MUTED);
+            } else if (data.canManage()) {
                 send(C2S_NationTreasuryPacket.Action.PAY_NOW, 0L);
                 showToast(Component.translatable("screen.moveearth_addtional.treasury.toast_pay_now"), SUCCESS);
             } else {

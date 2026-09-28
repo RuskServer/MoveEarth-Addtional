@@ -42,7 +42,12 @@ public final class OfflineDefenseService {
 
     public static int divisor(ServerLevel level, TerritorySavedData.CoreRecord core) {
         int baseDivisor = baseDivisor(level, core);
-        boolean suppressed = SiegeSavedData.get(level.getServer()).isOfflineDefenseSuppressed(core.id());
+        SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
+        boolean fallen = sieges.isCoreFallen(core.id());
+        boolean rolling = !fallen && sieges.isCoreRegenPaused(core.id());
+        boolean suppressed = OfflineDefenseDayPolicy.suppressed(fallen, rolling,
+                OfflineDefenseDaySavedData.get(level.getServer())
+                        .allowedOn(core.id(), OfflineDefenseDaySavedData.today()));
         return suppressed ? 1 : baseDivisor;
     }
 

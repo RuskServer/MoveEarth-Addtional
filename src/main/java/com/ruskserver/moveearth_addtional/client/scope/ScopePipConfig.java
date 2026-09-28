@@ -9,6 +9,12 @@ public final class ScopePipConfig {
     public static final ModConfigSpec.BooleanValue IRIS_EXPERIMENTAL = BUILDER.define("irisExperimental", false);
     public static final ModConfigSpec.DoubleValue RESOLUTION = BUILDER.defineInRange("resolutionScale", 0.5, 0.25, 1);
     public static final ModConfigSpec.DoubleValue MINIMUM_MAGNIFICATION = BUILDER.defineInRange("minimumMagnification", 2.0, 1.01, 32);
+    public static final ModConfigSpec.BooleanValue SMOOTH_LENS = BUILDER
+            .comment("Bilinear filtering when the lens resolution is below the screen's; off keeps sharp pixels.")
+            .define("smoothLens", false);
+    public static final ModConfigSpec.IntValue UPDATE_INTERVAL = BUILDER
+            .comment("Redraw the lens every N frames. Higher is lighter, but the lens image lags while turning.")
+            .defineInRange("lensUpdateInterval", 1, 1, 3);
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private ScopePipConfig() { }

@@ -19,4 +19,12 @@ class TerritoryUpkeepPolicyTest {
         assertEquals(20L, TerritoryUpkeepPolicy.calculate(9, 1, 2, 8, 8L, 5L));
         assertEquals(10L, TerritoryUpkeepPolicy.calculate(9, 1, -3, 8, 8L, 5L));
     }
+
+    @Test
+    void payNowOnlyChargesAnUpkeepThatIsDue() {
+        long due = 1_000_000L;
+        org.junit.jupiter.api.Assertions.assertFalse(TerritoryUpkeepPolicy.canPayNow(due - 1L, due));
+        org.junit.jupiter.api.Assertions.assertTrue(TerritoryUpkeepPolicy.canPayNow(due, due));
+        org.junit.jupiter.api.Assertions.assertTrue(TerritoryUpkeepPolicy.canPayNow(due + 60_000L, due));
+    }
 }

@@ -127,9 +127,18 @@ class MekanismRecipePolicyTest {
                 "refined_obsidian/tools/sword", "refined_obsidian/shield"}) {
             assertCategory("mekanismtools", path, MekanismRecipePolicy.RemovalCategory.COMBAT_EQUIPMENT);
         }
-        for (String path : new String[]{"osmium/armor/chestplate", "steel/armor/helmet", "bronze/tools/paxel",
-                "refined_obsidian/nugget_from_smelting"}) {
+        for (String path : new String[]{"osmium/armor/chestplate", "steel/armor/helmet", "bronze/tools/pickaxe",
+                "steel/tools/sword", "refined_obsidian/nugget_from_smelting", "iron_nugget_from_smelting"}) {
             assertFalse(MekanismRecipePolicy.shouldRemove("mekanismtools", path));
+        }
+    }
+
+    @Test
+    void removesPaxelsOfEveryMaterial() {
+        for (String path : new String[]{"bronze/tools/paxel", "steel/tools/paxel", "osmium/tools/paxel",
+                "lapis_lazuli/tools/paxel", "refined_glowstone/tools/paxel", "wood_paxel", "stone_paxel",
+                "iron_paxel", "gold_paxel", "diamond_paxel", "netherite_paxel"}) {
+            assertCategory("mekanismtools", path, MekanismRecipePolicy.RemovalCategory.COMBAT_EQUIPMENT);
         }
     }
 

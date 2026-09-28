@@ -10,6 +10,7 @@ final class S2PacketCodec {
     private static final int MAX_MEMBERS = 256;
     private static final int MAX_ROLES = 64;
     private static final int MAX_DIPLOMACY = 256;
+    private static final int MAX_ALLY_MEMBERS = 256;
     private static final int MAX_INVITATIONS = 8;
     private static final int MAX_CANDIDATES = 256;
     private static final int MAX_SIEGES = 64;
@@ -119,6 +120,17 @@ final class S2PacketCodec {
             buffer.writeUtf(relation.nationTag(), 12);
             buffer.writeByte(relation.state().ordinal());
             buffer.writeBoolean(relation.hostileByViewer());
+            buffer.writeVarLong(relation.allianceEndRemainingTicks());
+            buffer.writeBoolean(relation.allianceEndByViewer());
+            buffer.writeByte(relation.grantMask());
+            int allyMembers = Math.min(relation.allyMembers().size(), MAX_ALLY_MEMBERS);
+            buffer.writeVarInt(allyMembers);
+            for (int memberIndex = 0; memberIndex < allyMembers; memberIndex++) {
+                var allyMember = relation.allyMembers().get(memberIndex);
+                buffer.writeUUID(allyMember.id());
+                buffer.writeUtf(allyMember.name(), 16);
+                buffer.writeByte(allyMember.grantMask());
+            }
         }
         buffer.writeVarInt(Math.min(value.invitations().size(), MAX_INVITATIONS));
         for (int index = 0; index < Math.min(value.invitations().size(), MAX_INVITATIONS); index++) {
@@ -213,10 +225,23 @@ final class S2PacketCodec {
         int diplomacyCount = checkedSize(buffer.readVarInt(), MAX_DIPLOMACY, "diplomacy");
         List<S2NationSnapshot.DiplomacyView> diplomacy = new ArrayList<>(diplomacyCount);
         for (int index = 0; index < diplomacyCount; index++) {
-            diplomacy.add(new S2NationSnapshot.DiplomacyView(buffer.readUUID(),
-                    buffer.readUtf(64), buffer.readUtf(12),
-                    S2NationSnapshot.DiplomacyState.fromNetworkId(buffer.readUnsignedByte()),
-                    buffer.readBoolean()));
+            java.util.UUID nationId = buffer.readUUID();
+            String name = buffer.readUtf(64);
+            String tag = buffer.readUtf(12);
+            S2NationSnapshot.DiplomacyState state =
+                    S2NationSnapshot.DiplomacyState.fromNetworkId(buffer.readUnsignedByte());
+            boolean hostileByViewer = buffer.readBoolean();
+            long endRemaining = Math.max(0L, buffer.readVarLong());
+            boolean endByViewer = buffer.readBoolean();
+            int grantMask = buffer.readUnsignedByte();
+            int allyMemberCount = checkedSize(buffer.readVarInt(), MAX_ALLY_MEMBERS, "ally member");
+            List<S2NationSnapshot.AllyMemberView> allyMembers = new ArrayList<>(allyMemberCount);
+            for (int memberIndex = 0; memberIndex < allyMemberCount; memberIndex++) {
+                allyMembers.add(new S2NationSnapshot.AllyMemberView(buffer.readUUID(), buffer.readUtf(16),
+                        buffer.readUnsignedByte()));
+            }
+            diplomacy.add(new S2NationSnapshot.DiplomacyView(nationId, name, tag, state, hostileByViewer,
+                    endRemaining, endByViewer, grantMask, allyMembers));
         }
         int invitationCount = checkedSize(buffer.readVarInt(), MAX_INVITATIONS, "invitation");
         List<S2NationSnapshot.InvitationView> invitations = new ArrayList<>(invitationCount);

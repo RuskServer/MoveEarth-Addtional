@@ -126,6 +126,28 @@ public interface AnalyticsStorageEngine extends AutoCloseable {
             int limit,
             long currentEpochSec) throws Exception;
 
+    /** Game events, newest first, filtered by type prefix and optionally a nation or player. */
+    List<com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventDto> queryGameEvents(
+            String typePrefix, java.util.UUID nationUuid, java.util.UUID playerUuid,
+            long fromEpochSec, long toEpochSec, int limit) throws Exception;
+
+    /** Game events grouped by one key, with counts, value sums and distinct players. */
+    List<com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventAggregateDto> aggregateGameEvents(
+            String typePrefix, java.util.UUID nationUuid,
+            com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventGroupBy groupBy,
+            long fromEpochSec, long toEpochSec, int limit) throws Exception;
+
+    /** Stored nation snapshots in time order, for one nation or all of them. */
+    List<com.ruskserver.moveearth_addtional.analytics.query.dto.NationHistoryPointDto> queryNationHistory(
+            java.util.UUID nationUuid, long fromEpochSec, long toEpochSec) throws Exception;
+
+    /** Players first seen inside the range. */
+    long countNewPlayers(long fromEpochSec, long toEpochSec) throws Exception;
+
+    /** Stored money supply snapshots in time order. */
+    List<com.ruskserver.moveearth_addtional.analytics.query.dto.EconomyHistoryPointDto> queryEconomyHistory(
+            long fromEpochSec, long toEpochSec) throws Exception;
+
     @Override
     void close() throws Exception;
 }

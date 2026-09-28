@@ -1,19 +1,26 @@
 package com.ruskserver.moveearth_addtional.compat.jei;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.compat.viewer.HiddenIngredientPolicy;
 import com.ruskserver.moveearth_addtional.item.ModItems;
 import com.ruskserver.moveearth_addtional.warehouse.WarehouseEncounterState;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
+import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.runtime.IIngredientManager;
+import mezz.jei.api.runtime.IJeiRuntime;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 
 /**
- * Optional JEI adapter for MoveEarth's warehouse reward category.
+ * Optional JEI adapter for MoveEarth's warehouse reward category, and for
+ * hiding items the server has disabled ({@link HiddenIngredientPolicy}).
  */
 @JeiPlugin
 public final class MoveEarthJeiPlugin implements IModPlugin {
@@ -42,4 +49,15 @@ public final class MoveEarthJeiPlugin implements IModPlugin {
                         + (WarehouseEncounterState.COOLDOWN_TICKS / 20 / 60 / 60) + "時間"));
     }
 
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime runtime) {
+        IIngredientManager ingredients = runtime.getIngredientManager();
+        List<ItemStack> hidden = ingredients.getAllItemStacks().stream()
+                .filter(stack -> {
+                    ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                    return HiddenIngredientPolicy.isHidden(id.getNamespace(), id.getPath());
+                })
+                .toList();
+        if (!hidden.isEmpty()) ingredients.removeIngredientsAtRuntime(VanillaTypes.ITEM_STACK, hidden);
+    }
 }

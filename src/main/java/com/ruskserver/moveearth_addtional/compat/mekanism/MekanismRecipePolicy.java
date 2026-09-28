@@ -193,11 +193,19 @@ public final class MekanismRecipePolicy {
     /**
      * Mekanism Tools' refined obsidian gear (armor 31, toughness 5) out-armors
      * the MekaSuit; bronze, steel and osmium fill the gap left by netherite.
+     * Paxels of every material go too: one tool for every block undercuts the
+     * separate tools the rest of the pack expects.
      */
     private static boolean isBlockedToolsRecipe(String path) {
         return path.startsWith("refined_obsidian/armor/")
                 || path.startsWith("refined_obsidian/tools/")
-                || "refined_obsidian/shield".equals(path);
+                || "refined_obsidian/shield".equals(path)
+                || isPaxelRecipe(path);
+    }
+
+    /** Mekanism materials use {@code <material>/tools/paxel}; vanilla ones {@code <material>_paxel}. */
+    private static boolean isPaxelRecipe(String path) {
+        return path.endsWith("/tools/paxel") || path.endsWith("_paxel");
     }
 
     static boolean isOreMultiplicationPath(String path) {

@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.config.ClientDisplayConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -106,8 +107,10 @@ public class VhsDeathScreen extends Screen {
 
         graphics.fill(0, 0, width, height, 0xFF000000);
 
+        // Calm mode keeps the black frame, static scanlines and text, without flicker.
+        boolean calm = ClientDisplayConfig.CALM_DEATH_SCREEN.get();
         Random noise = new Random(time / 45L);
-        for (int i = 0; i < 36; i++) {
+        for (int i = 0; i < (calm ? 0 : 36); i++) {
             int y = noise.nextInt(Math.max(1, height));
             int alpha = 18 + noise.nextInt(35);
             int color = (alpha << 24) | (noise.nextBoolean() ? 0xB8C4CC : 0x5E6670);
@@ -120,7 +123,7 @@ public class VhsDeathScreen extends Screen {
         // Strong VHS tracking distortion at the top and bottom of the frame.
         graphics.fill(0, 0, width, 42, 0xAA050608);
         graphics.fill(0, height - 42, width, height, 0xAA050608);
-        for (int i = 0; i < 14; i++) {
+        for (int i = 0; i < (calm ? 0 : 14); i++) {
             int bandHeight = 1 + noise.nextInt(4);
             int topY = noise.nextInt(48);
             int bottomY = height - 48 + noise.nextInt(48);
@@ -130,7 +133,7 @@ public class VhsDeathScreen extends Screen {
             graphics.fill(offset, topY, width + offset, topY + bandHeight, color);
             graphics.fill(-offset, bottomY, width - offset, bottomY + bandHeight, color);
         }
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < (calm ? 0 : 5); i++) {
             int glitchY = 55 + noise.nextInt(Math.max(1, height - 110));
             int glitchHeight = 1 + noise.nextInt(3);
             int glitchOffset = noise.nextInt(25) - 12;
@@ -145,7 +148,7 @@ public class VhsDeathScreen extends Screen {
         int textWidth = font.width(visibleMessage);
         int x = (width - textWidth) / 2;
         int y = height / 2 - font.lineHeight / 2;
-        int jitter = noise.nextInt(3) - 1;
+        int jitter = calm ? 0 : noise.nextInt(3) - 1;
         int textAlpha = (int) (255 * fade);
         int shadowAlpha = (int) (150 * fade);
         graphics.drawString(font, visibleMessage, x + jitter - 2, y, (shadowAlpha << 24) | 0x435A66, false);

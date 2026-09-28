@@ -34,6 +34,9 @@ public final class MachineBreaking {
         if (level == null || pos == null) {
             return true;
         }
+        if (isCore(level.getBlockState(pos))) {
+            return false;
+        }
         if (!mayBreakHeldGoods(level, pos)) {
             return false;
         }
@@ -42,6 +45,16 @@ public final class MachineBreaking {
             return true;
         }
         return !SiegeDamageService.penaltyAt(level, pos).reinforcementProtectionEnabled();
+    }
+
+    /**
+     * Territory and vehicle cores take damage only through the siege and vehicle
+     * damage rules; a drill would skip their HP, the siege timer and the owner's
+     * warning, and a vehicle core's record would be left pointing at nothing.
+     */
+    private static boolean isCore(net.minecraft.world.level.block.state.BlockState state) {
+        return state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.TERRITORY_CORE.get())
+                || state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.VEHICLE_CORE.get());
     }
 
     /**

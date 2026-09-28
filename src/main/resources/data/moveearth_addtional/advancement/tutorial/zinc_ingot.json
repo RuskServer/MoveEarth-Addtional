@@ -1,0 +1,1 @@
+{"criteria":{"obtained":{"trigger":"minecraft:inventory_changed","conditions":{"items":[{"items":"create:zinc_ingot"}]}}}}

@@ -47,7 +47,9 @@ public final class NationStorageEvents {
         if (!event.getLevel().getBlockState(event.getPos()).is(STORAGE_BLOCKS)
                 && !event.getItemStack().is(STORAGE_ITEMS)) return;
         if (canUse(player, event.getPos())) {
-            if (!canPlace(player, event.getPos())) OPEN_ENEMY_STORAGE.put(player.getUUID(), event.getPos().immutable());
+            // Sessions opened under loot, vehicle or ally rights are re-checked while open, so a
+            // revoked ally grant or an ended alliance closes the menu.
+            if (!canPlaceOwn(player, event.getPos())) OPEN_ENEMY_STORAGE.put(player.getUUID(), event.getPos().immutable());
             else OPEN_ENEMY_STORAGE.remove(player.getUUID());
             return;
         }
@@ -97,6 +99,10 @@ public final class NationStorageEvents {
             return;
         }
         UUID nation = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
+        // Storage an ally places in the host's land under a STORAGE grant belongs to the host.
+        if (!canPlaceOwn(player, event.getPos()) && AllyAccessService.canUseStorage(player, event.getPos())) {
+            nation = AllyAccessService.hostAt(player, event.getPos());
+        }
         try {
             var vehicle = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
                     .at(player.serverLevel(), event.getPos()).orElse(null);
@@ -166,8 +172,9 @@ public final class NationStorageEvents {
         }
         if (explicitOwner != null) {
             var loot = com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.access(player, pos);
-            if (explicitOwner.equals(nationId) && (canPlace(player, pos)
+            if (explicitOwner.equals(nationId) && (canPlaceOwn(player, pos)
                     || explicitOwner.equals(loot.formerOwner()))) return true;
+            if (allyStorage(player, pos, explicitOwner)) return true;
             if (com.ruskserver.moveearth_addtional.s2.vehicle.VehicleLootSavedData.get(player.server)
                     .canLoot(player, player.serverLevel(), pos)) return true;
             return loot.allowed();
@@ -215,7 +222,23 @@ public final class NationStorageEvents {
         return !owner.equals(machineSide);
     }
 
+    /** Own-nation placement or use, plus an ally's STORAGE grant in the host's storage land. */
     private static boolean canPlace(ServerPlayer player, BlockPos pos) {
+        return canPlaceOwn(player, pos) || allyStorage(player, pos, null);
+    }
+
+    /**
+     * An ally with the host's STORAGE grant may use the host's storage on the host's storage land.
+     * Storage recorded as another nation's stays out of reach.
+     */
+    private static boolean allyStorage(ServerPlayer player, BlockPos pos, UUID explicitOwner) {
+        if (!AllyAccessService.canUseStorage(player, pos)) return false;
+        UUID host = AllyAccessService.hostAt(player, pos);
+        return NationStoragePolicy.canUseAllyStorage(true, host != null,
+                explicitOwner == null || explicitOwner.equals(host));
+    }
+
+    private static boolean canPlaceOwn(ServerPlayer player, BlockPos pos) {
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
         if (player.hasPermissions(2)) return true;
         try {
@@ -236,7 +259,10 @@ public final class NationStorageEvents {
         if (now - previous < 20L) return;
         LAST_NOTICE.put(player.getUUID(), now);
         boolean member = NationSavedData.get(player.server).nationIdFor(player.getUUID()).isPresent();
-        player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(member
+        boolean ally = member && AllyAccessService.alliedHostAt(player, player.blockPosition());
+        player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(ally
+                ? "message.moveearth_addtional.ally_access.storage_denied"
+                : member
                 ? "message.moveearth_addtional.nation_storage.requires_territory"
                 : "message.moveearth_addtional.nation_storage.requires_nation")));
     }

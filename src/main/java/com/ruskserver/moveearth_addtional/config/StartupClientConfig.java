@@ -24,6 +24,11 @@ public final class StartupClientConfig {
         return REDUCED_MOTION.getAsBoolean();
     }
 
+    /** Changes the setting in memory; the caller saves {@link #SPEC}. */
+    public static void setReducedMotion(boolean reducedMotion) {
+        REDUCED_MOTION.set(reducedMotion);
+    }
+
     public static void completeSetup(boolean reducedMotion) {
         REDUCED_MOTION.set(reducedMotion);
         SETUP_COMPLETED.set(true);

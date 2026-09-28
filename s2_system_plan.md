@@ -883,7 +883,7 @@ Siegeの膠着を終わらせるため、コア陥落以外の出口として双
 
 Botトークンはサーバー専用configだけから読み込み、クライアント同期、SavedData、パケット、GUI、ログ、クラッシュ情報へ含めない。トークン未設定・不正時はDiscord機能だけを無効化して警告し、Mod全体の起動失敗にはしない。サーバー停止時はJDAと配送ワーカーを正常終了する。
 
-Bot設定は接続クライアントへ同期される可能性があるNeoForge共通設定から分離し、Dedicated Serverローカルだけで読む `config/moveearth_addtional-discord.toml` 相当の非同期ファイルとする。初期項目は次のとおりとする。
+Bot設定は接続クライアントへ同期される可能性があるNeoForge共通設定から分離し、Dedicated Serverローカルだけで読む `config/moveearth/server/discord.toml` 相当の非同期ファイルとする。初期項目は次のとおりとする。
 
 | 設定 | 初期値 | 用途 |
 | --- | --- | --- |
@@ -1028,7 +1028,7 @@ BotがDiscordユーザーに一度限りの確認コードを表示
 - Discord配送は国家ID、通知種別、ディメンション、任意座標、制限済み引数を持つ永続アウトボックスへ積み、最大4,096件、最大8回、指数バックオフ付き再試行とする。未連携またはDiscord通知OFFの国家はキューへ積まない。標準72時間の保持期限と、国家・種別・位置から作るイベント指紋による標準15分の重複抑止を備え、配送成功・失敗・期限切れ・再試行上限を永続統計と監査ログへ記録する。
 - 初動ロックは関係国家へのゲーム内通知だけとし、ローリングSiege開始から当事国家別の外部配送イベントを生成する。
 - JDA 6.6.0と必要な推移依存関係のjar-in-jar同梱、Dedicated Server限定の非同期起動・停止、特権Intentを使わないスラッシュコマンド、Embed共通表示、メモリ上の一度限りコード、ゲーム内GUIでの国家承認、通知チャンネル検証、非同期アウトボックス配送を実装済み。JDA以外の推移依存パッケージはMoveEarth専用名前空間へrelocateし、Kotlin、Jackson、Gson、Error Prone等を他ModやNeoForgeと二重公開しない。ビルド時に隔離漏れと主要クラスのロードを自動検査する。
-- Bot設定はNeoForgeのクライアント同期対象外であるSTARTUP configとして登録し、Botの起動時にはDedicated Server上の `moveearth_addtional-discord.toml` だけを参照する。トークンはSavedData、パケット、GUI、通常ログへ渡さない。
+- Bot設定はNeoForgeのクライアント同期対象外であるSTARTUP configとして登録し、Botの起動時にはDedicated Server上の `config/moveearth/server/discord.toml` だけを参照する。トークンはSavedData、パケット、GUI、通常ログへ渡さない。
 - Discord側の本人確認、解除、通知チャンネル・ロール・通知設定、テスト通知、状態・監査表示をスラッシュコマンドで実装済み。Discord管理権限と、本人確認済みMinecraft UUIDが現在持つ国家通知管理権限を操作ごとに再検証する。Bot・通知チャンネル・役職の削除時はリンクまたは役職設定を自動無効化する。
 - コアHP警告・陥落、反攻開始・成功・失敗、Siege終了、領土喪失・占領確定、漏出・再封鎖、維持費警告を共通通知イベントへ接続済み。
 - 既存アウトボックスの取得・ACK・失敗処理はJDA配送アダプターからだけ利用し、Discordイベント処理とMinecraft状態変更のスレッド境界を維持する。

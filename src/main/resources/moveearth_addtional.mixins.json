@@ -47,6 +47,7 @@
     "create.CreateGlueSelectionBastionMixin",
     "create.CreatePistonBastionMixin",
     "CdgOilChunksMixin",
+    "ServerConfigLayoutMixin",
     "mekanism.RadiationPassMixin",
     "mekanism.RadiationSourceDecayMixin",
     "mekanism.RadiationExposureMixin",
@@ -54,6 +55,8 @@
     "mekanism.MekaSuitFallAbsorptionMixin"
   ],
   "client": [
+    "client.ParticlePhysicsAccess",
+    "client.CbcParticlePerformanceMixin",
     "client.TaczMekaSuitArmContextMixin",
     "client.MekaSuitTaczArmMixin",
     "client.IrisScopePipPipelineMixin",

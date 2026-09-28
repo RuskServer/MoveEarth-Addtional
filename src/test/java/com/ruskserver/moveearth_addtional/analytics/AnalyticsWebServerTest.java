@@ -272,6 +272,47 @@ public class AnalyticsWebServerTest {
         assertTrue(got429, "20 req/sec を超えた場合に 429 Too Many Requests が返却されるべき");
     }
 
+    @Test
+    public void seasonTwoEndpointsServeEventsFunnelAndState() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        UUID player = UUID.randomUUID();
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.GameEventLogEvent(new com.ruskserver.moveearth_addtional.analytics.event
+                        .GameEventRecord(now - 30L, "onboarding.wilderness", player, null, null, null, null, null,
+                        0L, null)),
+                new AnalyticsEventQueue.GameEventLogEvent(new com.ruskserver.moveearth_addtional.analytics.event
+                        .GameEventRecord(now - 20L, "siege.core_fallen", null, UUID.randomUUID(),
+                        "minecraft:overworld", 10, 64, 10, 3L, "attacker=x"))));
+
+        HttpResponse<String> events = get("/api/events?window=1d&type=siege.");
+        assertEquals(200, events.statusCode());
+        assertTrue(events.body().contains("siege.core_fallen"));
+        assertFalse(events.body().contains("onboarding.wilderness"));
+
+        HttpResponse<String> aggregate = get("/api/events/aggregate?window=7d&group_by=type");
+        assertEquals(200, aggregate.statusCode());
+        assertTrue(aggregate.body().contains("\"key\":\"onboarding.wilderness\""));
+
+        HttpResponse<String> onboarding = get("/api/onboarding?window=7d");
+        assertEquals(200, onboarding.statusCode());
+        assertTrue(onboarding.body().contains("\"newPlayers\":1"));
+
+        assertEquals(200, get("/api/s2").statusCode());
+        assertTrue(get("/api/s2").body().contains("\"eventTypes\""));
+        assertEquals(200, get("/api/wars?window=7d").statusCode());
+        assertEquals(200, get("/api/economy?window=30d").statusCode());
+        assertEquals(200, get("/api/nations/history?window=7d").statusCode());
+        assertEquals(400, get("/api/events?nation=not-a-uuid").statusCode());
+    }
+
+    private HttpResponse<String> get(String pathAndQuery) throws Exception {
+        return HttpClient.newHttpClient().send(HttpRequest.newBuilder()
+                .uri(uri(pathAndQuery))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken())
+                .GET()
+                .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private URI uri(String pathAndQuery) {
         return URI.create("http://127.0.0.1:" + webPort + pathAndQuery);
     }

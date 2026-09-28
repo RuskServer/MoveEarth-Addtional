@@ -32,6 +32,10 @@
 
 ### Iris試験互換
 
+- 通常側とレンズ側のRenderTargetは両方ステンシルを有効にしてから描画する。
+  NeoForgeのdepth-stencil形式を揃え、PIP切替時の深度コピー形式不一致を避ける。
+  実ログの発生元を特定するものではなく、別MODの描画先まで形式一致は保証しない。
+
 - Iris 1.8.14-beta.1 / NeoForge 1.21.1の実jarで内部メソッド・Sodium経路を確認した。
   パック名による分岐やIrisの同梱・必須依存は追加しない。
 - レンズ用の `IrisRenderingPipeline` を別に生成し、追加パス中のみ
@@ -64,16 +68,22 @@
 `lens_render_failed_例外型` / `lens_composite_failed_例外型` を区別する。
 修正版では `/moveearthpip on` を再実行すると安全停止状態を解除して再試行できる。
 
-起動後に生成される `config/moveearth_addtional-scope-pip.toml`:
+起動後に生成される `config/moveearth/client/scope-pip.toml`:
 
 ```toml
 enabled = true
 irisExperimental = false
 resolutionScale = 0.5
 minimumMagnification = 2.0
+smoothLens = false
+lensUpdateInterval = 1
 ```
 
-編集後はクライアントを再起動する。元へ戻す場合は `enabled = false`。
+同じ設定は、MOD一覧の「設定」から開くMoveEarth設定画面（YACL）の「スコープ PiP」でも変えられる。
+値は毎フレーム読み直すため、画面・ファイルどちらで変えても再起動は不要。元へ戻す場合は `enabled = false`。
+`smoothLens` は解像度を下げたレンズ像の補間（オフは従来どおりのドット表示）。
+`lensUpdateInterval` はレンズを何フレームごとに描き直すか（1〜3）。2以上では追加のワールド描画を
+間引き、同じスコープの前回の像を使い回す。ADS解除・スコープ変更・解像度変更で像は破棄する。
 対応する同じTaCZ版を使い、まず標準ガンパックで確認する。
 外部パックの専用レンダラーや独自シェーダー、モデル構造まで互換を保証するものではない。
 

@@ -40,6 +40,8 @@ public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) return;
             NationSavedData data = NationSavedData.get(player.server);
+            UUID nationBefore = data.nationIdFor(player.getUUID()).orElse(null);
+            long openNow = com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server);
             NationSavedData.MembershipResult result = new NationSavedData.MembershipResult(
                     NationSavedData.MembershipStatus.NO_PERMISSION, data.revision());
             ServerPlayer affectedPlayer = null;
@@ -53,14 +55,14 @@ public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
                             affectedPlayer.getGameProfile().getName(), expectedRevision);
                 }
                 case ACCEPT -> result = data.accept(player.getUUID(), targetId,
-                        player.getGameProfile().getName(), expectedRevision);
+                        player.getGameProfile().getName(), expectedRevision, openNow);
                 case DECLINE -> result = data.decline(player.getUUID(), targetId, expectedRevision);
                 case LEAVE -> {
                     UUID nationId = data.nationIdFor(player.getUUID()).orElse(null);
                     result = nationId != null && SiegeSavedData.get(player.server).isNationLocked(nationId)
                             ? new NationSavedData.MembershipResult(
                             NationSavedData.MembershipStatus.SIEGE_LOCKED, data.revision())
-                            : data.leave(player.getUUID(), expectedRevision);
+                            : data.leave(player.getUUID(), expectedRevision, openNow);
                 }
                 case KICK -> {
                     affectedPlayer = player.server.getPlayerList().getPlayer(targetId);
@@ -69,14 +71,18 @@ public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
                     result = nationId != null && SiegeSavedData.get(player.server).isNationLocked(nationId)
                             ? new NationSavedData.MembershipResult(
                             NationSavedData.MembershipStatus.SIEGE_LOCKED, data.revision())
-                            : data.kick(player.getUUID(), targetId, expectedRevision);
+                            : data.kick(player.getUUID(), targetId, expectedRevision, openNow);
                 }
                 case UNKNOWN -> result = new NationSavedData.MembershipResult(
                         NationSavedData.MembershipStatus.NO_PERMISSION, data.revision());
             }
             String messageKey = "screen.moveearth_addtional.nation.membership."
                     + result.status().name().toLowerCase(java.util.Locale.ROOT);
+            if (result.status() == NationSavedData.MembershipStatus.MEMBERSHIP_COOLDOWN) {
+                com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.notifyRefused(player);
+            }
             if (result.success()) {
+                recordMembership(player, nationBefore);
                 S2HubTab tab = action == Action.INVITE || action == Action.KICK
                         ? S2HubTab.MEMBERS : S2HubTab.OVERVIEW;
                 S2NationViewService.INSTANCE.sendHub(player, tab);
@@ -87,10 +93,24 @@ public record C2S_NationMembershipPacket(int requestId, long expectedRevision,
                     affectedPlayer.sendSystemMessage(MoveEarthMessage.info(
                             net.minecraft.network.chat.Component.translatable(affectedMessageKey)));
                 }
+                if (action == Action.LEAVE) {
+                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.notifyStarted(player);
+                } else if (action == Action.KICK) {
+                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.notifyKicked(affectedPlayer);
+                }
             }
             PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(
                     requestId, result.success(), result.revision(), messageKey));
         });
+    }
+
+    private void recordMembership(ServerPlayer player, UUID nationBefore) {
+        switch (action) {
+            case ACCEPT -> com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_JOINED, player, targetId, 0L, "invitation");
+            case LEAVE -> com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_LEFT, player, nationBefore, 0L, "leave");
+            case KICK -> com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_LEFT, targetId, nationBefore, 0L, "kick");
+            default -> { }
+        }
     }
 
     public enum Action {

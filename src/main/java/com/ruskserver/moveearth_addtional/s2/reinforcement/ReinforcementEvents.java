@@ -76,6 +76,20 @@ public final class ReinforcementEvents {
         ReinforcementService.syncChangedNearbyManagers(level, stale);
     }
 
+    /** The breaker belongs to, or is allied with, the nation owning this reinforcement. */
+    private static boolean friendlyToOwner(ServerPlayer player, ServerLevel level, BlockPos pos) {
+        var server = level.getServer();
+        var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(server);
+        java.util.UUID own = nations.nationIdFor(player.getUUID()).orElse(null);
+        if (own == null) return false;
+        java.util.UUID owner = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology.at(level, pos)
+                .map(vehicle -> vehicle.vehicle().nationId())
+                .or(() -> com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData.get(server)
+                        .controllingNation(server, level.dimension().location(), pos))
+                .orElse(null);
+        return owner != null && (owner.equals(own) || nations.isAllied(own, owner));
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBreak(BlockEvent.BreakEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level)
@@ -111,6 +125,12 @@ public final class ReinforcementEvents {
             return;
         }
         event.setCanceled(true);
+        if (friendlyToOwner(player, level, event.getPos())) {
+            // An insider could otherwise chip the defences down unnoticed: no Siege, no alert.
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    "message.moveearth_addtional.reinforcement.own_mining_refused"), true);
+            return;
+        }
         if (!DAMAGE_LIMITER.tryDamage(player.getUUID(), level.dimension().location().toString(),
                 event.getPos().asLong(), level.getGameTime())) return;
         var scaled = OfflineDefenseService.scale(level, event.getPos(), 1);

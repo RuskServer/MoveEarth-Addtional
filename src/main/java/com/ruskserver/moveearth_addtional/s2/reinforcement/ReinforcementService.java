@@ -48,7 +48,7 @@ public final class ReinforcementService {
     public static InteractionResult apply(ServerPlayer player, BlockPos pos, Direction clickedFace) {
         if (!canManage(player, pos)) {
             player.sendSystemMessage(MoveEarthMessage.error(
-                    "自国の予約領土内で補強を管理する権限が必要です。"));
+                    "ここで補強を管理する権限がありません。自国の予約領土か、補強を許可された同盟国の領土で行ってください。"));
             return InteractionResult.FAIL;
         }
         if (SableVehicleTopology.distanceSquared(player.serverLevel(), player, pos) > 36.0D) {
@@ -216,7 +216,9 @@ public final class ReinforcementService {
         }
         List<S2C_ReinforcementSnapshotPacket.Entry> entries = allowed
                 ? visible.values().stream()
-                .filter(value -> reinforceableFor(player, territories, nationId, value.pos()))
+                .filter(value -> reinforceableFor(player, territories, nationId, value.pos())
+                        || com.ruskserver.moveearth_addtional.s2.nation.AllyAccessService
+                        .canReinforce(player, value.pos()))
                 .sorted(java.util.Comparator.comparingDouble(value -> SableVehicleTopology.distanceSquared(
                         player.serverLevel(), player, value.pos())))
                 .limit(8192)
@@ -245,7 +247,8 @@ public final class ReinforcementService {
         NationSavedData nations = NationSavedData.get(player.server);
         UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         return nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT)
-                && reinforceableFor(player, TerritorySavedData.get(player.server), nationId, pos);
+                && (reinforceableFor(player, TerritorySavedData.get(player.server), nationId, pos)
+                || com.ruskserver.moveearth_addtional.s2.nation.AllyAccessService.canReinforce(player, pos));
     }
 
     private static boolean reinforceableFor(ServerPlayer player, TerritorySavedData territories,
@@ -323,7 +326,8 @@ public final class ReinforcementService {
                 && com.ruskserver.moveearth_addtional.s2.territory.NationUpkeepService
                 .penalty(player.server, nationId).reinforcementProtectionEnabled();
         return TerritorySavedData.get(player.server).allowsReinforcement(
-                player.server, nationId, player.level().dimension().location(), pos);
+                player.server, nationId, player.level().dimension().location(), pos)
+                || com.ruskserver.moveearth_addtional.s2.nation.AllyAccessService.canReinforce(player, pos);
     }
 
     /** Ownership check for dismantling; unlike construction it also permits inactive owned territory. */

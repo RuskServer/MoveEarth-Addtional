@@ -85,7 +85,7 @@ side = "BOTH"
 [[dependencies."${mod_id}"]]
 modId = "sable"
 type = "required"
-versionRange = "[2.0.3,)"
+versionRange = "[2.0.3,2.1)"
 ordering = "AFTER"
 side = "BOTH"
 
@@ -113,7 +113,7 @@ side = "BOTH"
 [[dependencies."${mod_id}"]]
 modId = "create"
 type = "required"
-versionRange = "[6.0.10,)"
+versionRange = "[6.0.10,6.1)"
 ordering = "AFTER"
 side = "BOTH"
 
@@ -176,6 +176,97 @@ type = "optional"
 versionRange = "[2.4,)"
 ordering = "AFTER"
 side = "CLIENT"
+
+[[dependencies."${mod_id}"]]
+modId = "yet_another_config_lib_v3"
+type = "optional"
+reason = "MoveEarth's client settings screen uses YACL when it is installed."
+versionRange = "[3.8.2,)"
+ordering = "NONE"
+side = "CLIENT"
+
+# Map and minimap mods reveal terrain, bases and players beyond what the pack's
+# Map Atlases allows in a PvP nation server, so MoveEarth refuses to load beside them.
+
+[[dependencies."${mod_id}"]]
+modId = "xaerominimap"
+type = "incompatible"
+reason = "Xaero's Minimap is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "xaerominimapfair"
+type = "incompatible"
+reason = "Xaero's Minimap Fair-Play Edition is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "xaeroworldmap"
+type = "incompatible"
+reason = "Xaero's World Map is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "journeymap"
+type = "incompatible"
+reason = "JourneyMap is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "voxelmap"
+type = "incompatible"
+reason = "VoxelMap is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "ftbchunks"
+type = "incompatible"
+reason = "FTB Chunks is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "antique_atlas"
+type = "incompatible"
+reason = "Antique Atlas is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "immersiveminimaps"
+type = "incompatible"
+reason = "Immersive Minimaps is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "minimap"
+type = "incompatible"
+reason = "Oaks Minimap is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "projectminimaphud"
+type = "incompatible"
+reason = "Project Minimap HUD is not allowed on MoveEarth. Use Map Atlases, which the pack provides. / MoveEarthではMap Atlases以外の地図・ミニマップMODは使えません。"
+versionRange = "[0,)"
+ordering = "NONE"
+side = "BOTH"
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't

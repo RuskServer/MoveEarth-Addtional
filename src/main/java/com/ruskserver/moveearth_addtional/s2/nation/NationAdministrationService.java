@@ -117,8 +117,10 @@ public final class NationAdministrationService {
         List<TerritorySavedData.CoreRecord> cores = territories.cores().stream()
                 .filter(core -> core.nationId().equals(nationId)).toList();
         TerritorySavedData.VaultChunk vault = territories.vaultChunk(nationId).orElse(null);
-        NationSavedData.NationAdminResult result = nations.disband(actor.getUUID(), expectedRevision);
+        NationSavedData.NationAdminResult result = nations.disband(actor.getUUID(), expectedRevision,
+                com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(actor.server));
         if (!result.success()) return result;
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_DISSOLVED, actor, nationId, 0L, null);
 
         ledger.removeEmptyNationAccount(nationId);
         com.ruskserver.moveearth_addtional.s2.nation.NationStorageOwnershipSavedData.get(actor.server)
@@ -152,6 +154,7 @@ public final class NationAdministrationService {
             ServerPlayer online = actor.server.getPlayerList().getPlayer(memberId);
             if (online != null) online.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.nation.disbanded", nationName)));
+            MembershipCooldownService.notifyStarted(online);
         }
         return result;
     }
