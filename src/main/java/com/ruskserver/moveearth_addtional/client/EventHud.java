@@ -44,7 +44,10 @@ public final class EventHud {
         if (snapshot.active()) {
             lines.add(new Line(snapshot.title(), 0xFFFFC76A));
             lines.add(new Line(snapshot.target() + "  残り" + snapshot.minutes() + "分", 0xFFE4E6E7));
-            String rank = snapshot.rank() == 0 ? "未参加" : snapshot.rank() + "位";
+            String rank = snapshot.rank() > 0 ? snapshot.rank() + "位"
+                    : net.minecraft.network.chat.Component.translatable(snapshot.score() < 100
+                            ? "screen.moveearth_addtional.event.points_remaining"
+                            : "screen.moveearth_addtional.event.unranked", Math.max(0, 100 - snapshot.score())).getString();
             lines.add(new Line("自分 " + snapshot.score() + "点 · " + rank, 0xFF9AD5D1));
             for (int index = 0; index < snapshot.leaders().size(); index++) {
                 S2C_EventHudPacket.Leader leader = snapshot.leaders().get(index);

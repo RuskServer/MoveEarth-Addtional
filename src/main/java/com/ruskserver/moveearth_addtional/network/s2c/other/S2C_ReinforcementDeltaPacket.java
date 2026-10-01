@@ -78,6 +78,11 @@ public record S2C_ReinforcementDeltaPacket(ResourceLocation dimension, List<Entr
                 com.ruskserver.moveearth_addtional.client.ClientPacketHandler.handleReinforcementDelta(this));
     }
 
+    /**
+     * {@code activationTicksRemaining} is relative to the server tick at which the packet was built. The
+     * server no longer resends entries while only this countdown runs, so receivers convert it once to an
+     * absolute tick ({@code clientGameTime + activationTicksRemaining}) and count down locally.
+     */
     public record Entry(BlockPos pos, ReinforcementMaterial material, int durability, boolean enabled,
                         int activationTicksRemaining, boolean constructionInProgress, boolean siegeDisabled) { }
 }

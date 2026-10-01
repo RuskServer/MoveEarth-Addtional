@@ -7,6 +7,7 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.siege.PrisonerService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -14,7 +15,10 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
@@ -33,6 +37,7 @@ import java.util.UUID;
 public final class RestHealingService {
     private static final float HEAL_STEP = 1.0F;
     private static final double MOVEMENT_EPSILON_SQR = 0.0025D;
+    private static final int CAMPFIRE_SCAN_INTERVAL_TICKS = 20;
     private static final Map<UUID, RestState> STATES = new HashMap<>();
 
     private RestHealingService() { }
@@ -72,11 +77,16 @@ public final class RestHealingService {
                 state.resetProgress();
                 return;
             }
-            if (player.tickCount % 20 == 0 || !state.campfireChecked) {
+            // The scan is throttled per player and survives resetProgress(): a reset used to clear
+            // the cache, so a player standing away from any campfire rescanned the cube every tick.
+            int now = player.server.getTickCount();
+            BlockPos here = player.blockPosition();
+            if (state.campfireProbe.tryAcquire(now)) {
                 state.nearCampfire = hasLitCampfire(player, S2TerritoryConfig.campfireRadius());
-                state.campfireChecked = true;
+                state.campfireCheckedAt = here;
             }
-            if (!state.nearCampfire) {
+            // A result from another block position is stale; wait for the next scan instead.
+            if (!state.nearCampfire || !here.equals(state.campfireCheckedAt)) {
                 state.resetProgress();
                 return;
             }
@@ -153,16 +163,54 @@ public final class RestHealingService {
         if (state != null) state.resetProgress();
     }
 
+    /**
+     * Same cube as before, but walked one chunk section at a time: a section whose palette
+     * holds no campfire (nearly all of them) is skipped without reading a single block, so the
+     * 33x33x33 cube of the maximum radius costs a few palette lookups.
+     */
     private static boolean hasLitCampfire(ServerPlayer player, int radius) {
+        Level level = player.level();
         BlockPos center = player.blockPosition();
-        for (BlockPos pos : BlockPos.betweenClosed(center.offset(-radius, -radius, -radius),
-                center.offset(radius, radius, radius))) {
-            var blockState = player.level().getBlockState(pos);
-            if (blockState.is(Blocks.CAMPFIRE)
-                    && blockState.hasProperty(BlockStateProperties.LIT)
-                    && blockState.getValue(BlockStateProperties.LIT)) return true;
+        int minX = center.getX() - radius;
+        int maxX = center.getX() + radius;
+        int minY = Math.max(level.getMinBuildHeight(), center.getY() - radius);
+        int maxY = Math.min(level.getMaxBuildHeight() - 1, center.getY() + radius);
+        int minZ = center.getZ() - radius;
+        int maxZ = center.getZ() + radius;
+        if (minY > maxY) return false;
+        for (int chunkX = SectionPos.blockToSectionCoord(minX); chunkX <= SectionPos.blockToSectionCoord(maxX); chunkX++) {
+            for (int chunkZ = SectionPos.blockToSectionCoord(minZ); chunkZ <= SectionPos.blockToSectionCoord(maxZ); chunkZ++) {
+                LevelChunk chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+                if (chunk == null) continue;
+                for (int sectionY = SectionPos.blockToSectionCoord(minY);
+                     sectionY <= SectionPos.blockToSectionCoord(maxY); sectionY++) {
+                    int index = chunk.getSectionIndexFromSectionY(sectionY);
+                    if (index < 0 || index >= chunk.getSectionsCount()) continue;
+                    LevelChunkSection section = chunk.getSection(index);
+                    if (section.hasOnlyAir() || !section.maybeHas(RestHealingService::isLitCampfire)) continue;
+                    int x0 = Math.max(minX, chunkX << 4);
+                    int x1 = Math.min(maxX, (chunkX << 4) + 15);
+                    int y0 = Math.max(minY, sectionY << 4);
+                    int y1 = Math.min(maxY, (sectionY << 4) + 15);
+                    int z0 = Math.max(minZ, chunkZ << 4);
+                    int z1 = Math.min(maxZ, (chunkZ << 4) + 15);
+                    for (int y = y0; y <= y1; y++) {
+                        for (int z = z0; z <= z1; z++) {
+                            for (int x = x0; x <= x1; x++) {
+                                if (isLitCampfire(section.getBlockState(x & 15, y & 15, z & 15))) return true;
+                            }
+                        }
+                    }
+                }
+            }
         }
         return false;
+    }
+
+    private static boolean isLitCampfire(BlockState blockState) {
+        return blockState.is(Blocks.CAMPFIRE)
+                && blockState.hasProperty(BlockStateProperties.LIT)
+                && blockState.getValue(BlockStateProperties.LIT);
     }
 
     private static void showStatus(ServerPlayer player, RestMode mode, float allowance, float maximum,
@@ -194,8 +242,10 @@ public final class RestHealingService {
         private RestMode mode = RestMode.NONE;
         private int restTicks;
         private int healTicks;
-        private boolean campfireChecked;
+        /** Not cleared by resetProgress(): the scan budget is per player, not per rest attempt. */
+        private final RestCampfireProbe campfireProbe = new RestCampfireProbe(CAMPFIRE_SCAN_INTERVAL_TICKS);
         private boolean nearCampfire;
+        private BlockPos campfireCheckedAt;
         private boolean wasSleeping;
         private boolean bedContinuation;
         private ResourceKey<Level> bedDimension;
@@ -243,8 +293,6 @@ public final class RestHealingService {
             mode = RestMode.NONE;
             restTicks = 0;
             healTicks = 0;
-            campfireChecked = false;
-            nearCampfire = false;
             bedContinuation = false;
             bedDimension = null;
             bedPosition = null;

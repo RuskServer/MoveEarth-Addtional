@@ -127,6 +127,8 @@ public final class NationStorageEvents {
     public static void onServerStopped(ServerStoppedEvent event) {
         LAST_NOTICE.clear();
         OPEN_ENEMY_STORAGE.clear();
+        AUTOMATION_CHUNKS.clear();
+        automationMemoTick = Long.MIN_VALUE;
     }
 
     /** Also closes an already-open storage menu immediately after a leave, kick or disband. */
@@ -199,20 +201,18 @@ public final class NationStorageEvents {
                                                BlockPos storage, BlockPos machine) {
         net.minecraft.server.MinecraftServer server = level.getServer();
         ResourceLocation dimension = level.dimension().location();
-        if (com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.isLootRestrictedPosition(
-                server, dimension, storage)) return true;
+        AutomationChunk storageChunk = automationChunk(server, dimension, storage);
+        if (storageChunk.facts().lootRestricted()) return true;
         try {
             var vehicle = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
                     .at(level, storage).orElse(null);
             if (vehicle != null) return vehicle.vehicle().health() <= 0;
         } catch (RuntimeException | LinkageError ignored) { }
-        UUID landOwner = com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService
-                .formerOwnerAt(server, dimension, storage);
+        UUID landOwner = storageChunk.facts().formerOwner();
         if (landOwner == null) return false;
         UUID owner = NationStorageOwnershipSavedData.get(server).owner(dimension, storage);
         if (owner == null || NationSavedData.get(server).nation(owner).isEmpty()) owner = landOwner;
-        UUID machineSide = com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData.get(server)
-                .controllingNation(server, dimension, machine).orElse(null);
+        UUID machineSide = automationChunk(server, dimension, machine).controller();
         if (machineSide == null) {
             try {
                 machineSide = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
@@ -220,6 +220,57 @@ public final class NationStorageEvents {
             } catch (RuntimeException | LinkageError ignored) { }
         }
         return !owner.equals(machineSide);
+    }
+
+    /**
+     * {@link #automationRestricted} against every storage block next to an actor-less machine (funnel,
+     * chute). Called from those machines' tick, so it scans neighbours without allocating.
+     */
+    public static boolean adjacentAutomationRestricted(net.minecraft.server.level.ServerLevel level, BlockPos machine) {
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (net.minecraft.core.Direction direction : DIRECTIONS) {
+            cursor.setWithOffset(machine, direction);
+            if (level.getBlockState(cursor).is(STORAGE_BLOCKS)
+                    && automationRestricted(level, cursor.immutable(), machine)) return true;
+        }
+        return false;
+    }
+
+    private static final net.minecraft.core.Direction[] DIRECTIONS = net.minecraft.core.Direction.values();
+
+    /*
+     * Hoppers, funnels and chutes ask about the same few chunks every tick. Loot windows, falls and
+     * territory control are chunk-granular, so one answer per chunk is shared for the rest of the tick.
+     * The memo is dropped when the tick changes or a fall or loot grant is added or removed.
+     */
+    private static final Map<ResourceLocation, Map<Long, AutomationChunk>> AUTOMATION_CHUNKS = new HashMap<>();
+    private static long automationMemoTick = Long.MIN_VALUE;
+    private static long automationMemoLootRevision = Long.MIN_VALUE;
+    private static int automationMemoFallen = -1;
+
+    private record AutomationChunk(com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.AutomationFacts facts,
+                                   UUID controller) { }
+
+    private static AutomationChunk automationChunk(net.minecraft.server.MinecraftServer server,
+                                                   ResourceLocation dimension, BlockPos pos) {
+        long tick = server.getTickCount();
+        long lootRevision = com.ruskserver.moveearth_addtional.s2.siege.SiegeLootSavedData.get(server).revision();
+        int fallen = com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData.get(server).fallenRecordView().size();
+        if (tick != automationMemoTick || lootRevision != automationMemoLootRevision || fallen != automationMemoFallen) {
+            AUTOMATION_CHUNKS.clear();
+            automationMemoTick = tick;
+            automationMemoLootRevision = lootRevision;
+            automationMemoFallen = fallen;
+        }
+        long chunk = net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
+        Map<Long, AutomationChunk> chunks = AUTOMATION_CHUNKS.computeIfAbsent(dimension, ignored -> new HashMap<>());
+        AutomationChunk cached = chunks.get(chunk);
+        if (cached != null) return cached;
+        var facts = com.ruskserver.moveearth_addtional.s2.siege.SiegeLootService.automationFacts(server, dimension, pos);
+        UUID controller = TerritorySavedData.get(server).controllingNation(server, dimension, pos).orElse(null);
+        AutomationChunk computed = new AutomationChunk(facts, controller);
+        chunks.put(chunk, computed);
+        return computed;
     }
 
     /** Own-nation placement or use, plus an ally's STORAGE grant in the host's storage land. */

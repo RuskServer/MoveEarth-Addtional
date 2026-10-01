@@ -172,8 +172,10 @@ public final class S2TerritoryConfig {
                 "Multiplier applied only when a heavy CBC projectile directly damages an exposed territory core.")
                 .defineInRange("coreDamageMultiplier", 1.0D, 0.0D, 100.0D);
         CBC_PROTECTED_BLAST_RADIUS = BUILDER.comment(
-                "Radius scanned before CBC explosive terrain transforms; protected hits are handled by MoveEarth.")
-                .defineInRange("protectedBlastRadiusBlocks", 8, 1, 32);
+                "Radius scanned before CBC explosive terrain transforms; protected hits are handled by MoveEarth.",
+                "Every unoccluded reinforcement inside this radius takes the full shell damage (there is no falloff),",
+                "so a wide radius makes shooting the ground in front of a wall beat a direct hit. Keep it small.")
+                .defineInRange("protectedBlastRadiusBlocks", 4, 1, 32);
         BUILDER.pop();
 
         BUILDER.push("warnauticsDamage");

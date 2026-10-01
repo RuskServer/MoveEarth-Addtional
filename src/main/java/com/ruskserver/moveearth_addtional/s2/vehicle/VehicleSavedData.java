@@ -19,12 +19,20 @@ import java.util.UUID;
 public final class VehicleSavedData extends SavedData {
     private final Map<UUID, VehicleRecord> vehicles = new LinkedHashMap<>();
     private final Map<UUID, VehicleRepairPolicy.State> repairs = new LinkedHashMap<>();
+    /** Core positions of {@link #vehicles}; kept in step by every method that adds, moves or drops one. */
+    private final VehiclePositionIndex positions = new VehiclePositionIndex();
 
     public void recordHit(UUID id, long now) {
         if (!vehicles.containsKey(id)) return;
         repairs.put(id, repairs.getOrDefault(id, VehicleRepairPolicy.State.EMPTY)
                 .hit(now, S2TerritoryConfig.vehicleRepairQuietTicks()));
         setDirty();
+    }
+
+    /** Combat and repair-interval state; {@link VehicleRepairPolicy.State#EMPTY} when never hit. */
+    public VehicleRepairPolicy.State repairState(UUID id) {
+        return id == null ? VehicleRepairPolicy.State.EMPTY
+                : repairs.getOrDefault(id, VehicleRepairPolicy.State.EMPTY);
     }
 
     public VehicleRepairPolicy.Result repair(UUID id, long now) {
@@ -49,6 +57,7 @@ public final class VehicleSavedData extends SavedData {
                 corePos.immutable(), null, S2TerritoryConfig.vehicleCoreHealth(),
                 S2TerritoryConfig.vehicleCoreHealth());
         vehicles.put(record.id(), record);
+        index(record);
         setDirty();
         return record;
     }
@@ -58,8 +67,21 @@ public final class VehicleSavedData extends SavedData {
     }
 
     public Optional<VehicleRecord> at(ResourceLocation dimension, BlockPos pos) {
-        return vehicles.values().stream().filter(value -> value.dimension().equals(dimension)
-                && value.corePos().equals(pos)).findFirst();
+        if (dimension == null || pos == null) return Optional.empty();
+        java.util.Set<UUID> ids = positions.at(dimension, pos.asLong());
+        if (ids.isEmpty()) return Optional.empty();
+        if (ids.size() == 1) {
+            VehicleRecord only = vehicles.get(ids.iterator().next());
+            return only != null && only.dimension().equals(dimension) && only.corePos().equals(pos)
+                    ? Optional.of(only) : Optional.empty();
+        }
+        // Several records on one packed position: keep the registration-order winner of a full scan.
+        for (VehicleRecord value : vehicles.values()) {
+            if (ids.contains(value.id()) && value.dimension().equals(dimension) && value.corePos().equals(pos)) {
+                return Optional.of(value);
+            }
+        }
+        return Optional.empty();
     }
 
     public int count(UUID nationId) {
@@ -72,6 +94,8 @@ public final class VehicleSavedData extends SavedData {
         VehicleRecord after = new VehicleRecord(before.id(), before.nationId(), before.placedBy(), dimension,
                 corePos.immutable(), subLevelId, before.health(), before.maximumHealth());
         vehicles.put(id, after);
+        unindex(before);
+        index(after);
         setDirty();
         return after;
     }
@@ -89,12 +113,32 @@ public final class VehicleSavedData extends SavedData {
 
     public void remove(UUID id) {
         repairs.remove(id);
-        if (id != null && vehicles.remove(id) != null) setDirty();
+        VehicleRecord removed = id == null ? null : vehicles.remove(id);
+        if (removed != null) {
+            unindex(removed);
+            setDirty();
+        }
     }
 
     public void removeNation(UUID nationId) {
-        if (vehicles.values().removeIf(value -> value.nationId().equals(nationId))) setDirty();
+        if (vehicles.values().removeIf(value -> value.nationId().equals(nationId))) {
+            reindex();
+            setDirty();
+        }
         repairs.keySet().retainAll(vehicles.keySet());
+    }
+
+    private void index(VehicleRecord record) {
+        positions.add(record.dimension(), record.corePos().asLong(), record.id());
+    }
+
+    private void unindex(VehicleRecord record) {
+        positions.remove(record.dimension(), record.corePos().asLong(), record.id());
+    }
+
+    private void reindex() {
+        positions.clear();
+        for (VehicleRecord record : vehicles.values()) index(record);
     }
 
     @Override
@@ -133,6 +177,7 @@ public final class VehicleSavedData extends SavedData {
                     value.hasUUID("SubLevel") ? value.getUUID("SubLevel") : null,
                     Math.max(0, Math.min(maximum, value.getInt("Health"))), maximum);
             data.vehicles.put(record.id(), record);
+            data.index(record);
             data.repairs.put(record.id(), new VehicleRepairPolicy.State(
                     Math.max(0L, value.getLong("CombatUntil")), Math.max(0L, value.getLong("NextRepairAt"))));
         }

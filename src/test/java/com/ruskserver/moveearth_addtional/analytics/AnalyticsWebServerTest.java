@@ -254,19 +254,23 @@ public class AnalyticsWebServerTest {
         HttpClient client = HttpClient.newHttpClient();
         String token = AnalyticsConfig.getAuthToken();
 
-        boolean got429 = false;
-        // 40回連続リクエスト（秒跨ぎがあっても確実に20req/secを超過させる）
-        for (int i = 0; i < 40; i++) {
+        // 60件を同時に送る。秒の境目を跨いでもどちらかの秒に21件以上が入るので必ず制限を超える
+        // (逐次送信だと遅い環境では1秒あたり20件に届かず、テストが不安定になっていた)。
+        List<java.util.concurrent.CompletableFuture<HttpResponse<String>>> burst = new java.util.ArrayList<>();
+        for (int i = 0; i < 60; i++) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri("/api/health"))
                     .header("Authorization", "Bearer " + token)
                     .GET()
                     .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            burst.add(client.sendAsync(request, HttpResponse.BodyHandlers.ofString()));
+        }
+        boolean got429 = false;
+        for (var pending : burst) {
+            HttpResponse<String> response = pending.get(30, java.util.concurrent.TimeUnit.SECONDS);
             if (response.statusCode() == 429) {
                 got429 = true;
                 assertTrue(response.body().contains("Too Many Requests"));
-                break;
             }
         }
         assertTrue(got429, "20 req/sec を超えた場合に 429 Too Many Requests が返却されるべき");

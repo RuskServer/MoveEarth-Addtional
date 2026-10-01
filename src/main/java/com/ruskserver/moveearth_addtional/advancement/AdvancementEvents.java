@@ -40,6 +40,10 @@ import java.util.UUID;
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class AdvancementEvents {
     private static final String PENDING_REINFORCEMENTS = "MoveEarthPendingReinforcementAdvancements";
+    private static final ResourceLocation REINFORCE_ADVANCEMENT =
+            ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "engineering/reinforce");
+    /** One activation earns the advancement, so a few pending welds are enough to catch it. */
+    private static final int MAX_PENDING_REINFORCEMENTS = 16;
     private static final Map<UUID, Travel> FREIGHT = new HashMap<>();
     private static final Set<UUID> RESTORING = new HashSet<>();
 
@@ -141,8 +145,10 @@ public final class AdvancementEvents {
     /** Track accepted welding work and award only after its delayed activation actually succeeds. */
     public static void trackReinforcement(ServerPlayer player, ResourceKey<Level> dimension,
                                           BlockPos pos, long activatesAt) {
+        if (reinforceEarned(player)) return;
         CompoundTag persisted = persisted(player);
         ListTag pending = persisted.getList(PENDING_REINFORCEMENTS, Tag.TAG_COMPOUND);
+        if (pending.size() >= MAX_PENDING_REINFORCEMENTS) return;
         for (int i = 0; i < pending.size(); i++) {
             CompoundTag existing = pending.getCompound(i);
             if (existing.getLong("Pos") == pos.asLong()
@@ -160,6 +166,10 @@ public final class AdvancementEvents {
         CompoundTag persisted = persisted(player);
         ListTag pending = persisted.getList(PENDING_REINFORCEMENTS, Tag.TAG_COMPOUND);
         if (pending.isEmpty()) return;
+        if (reinforceEarned(player)) {
+            persisted.remove(PENDING_REINFORCEMENTS);
+            return;
+        }
         ListTag retained = new ListTag();
         for (int i = 0; i < pending.size(); i++) {
             CompoundTag value = pending.getCompound(i);
@@ -183,6 +193,11 @@ public final class AdvancementEvents {
         }
         if (retained.isEmpty()) persisted.remove(PENDING_REINFORCEMENTS);
         else persisted.put(PENDING_REINFORCEMENTS, retained);
+    }
+
+    private static boolean reinforceEarned(ServerPlayer player) {
+        var advancement = player.server.getAdvancements().get(REINFORCE_ADVANCEMENT);
+        return advancement != null && player.getAdvancements().getOrStartProgress(advancement).isDone();
     }
 
     private static CompoundTag persisted(ServerPlayer player) {

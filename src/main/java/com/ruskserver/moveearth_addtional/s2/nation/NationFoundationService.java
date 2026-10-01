@@ -129,6 +129,7 @@ public final class NationFoundationService {
             case ALREADY_MEMBER -> Status.ALREADY_MEMBER;
             case STALE -> Status.STALE;
             case MEMBERSHIP_COOLDOWN -> Status.MEMBERSHIP_COOLDOWN;
+            case FORMER_NATION_BOUND -> Status.FORMER_NATION_BOUND;
         };
     }
 
@@ -138,7 +139,7 @@ public final class NationFoundationService {
 
     public enum Status {
         CREATED, INVALID, DUPLICATE, ALREADY_MEMBER, STALE,
-        INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED, MEMBERSHIP_COOLDOWN
+        INVALID_LOCATION, TERRITORY_CONFLICT, PLACEMENT_FAILED, MEMBERSHIP_COOLDOWN, FORMER_NATION_BOUND
     }
 
     /**

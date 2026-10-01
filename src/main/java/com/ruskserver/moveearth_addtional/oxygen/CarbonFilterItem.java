@@ -26,6 +26,10 @@ public class CarbonFilterItem extends Item {
         ItemStack headArmor = player.getItemBySlot(EquipmentSlot.HEAD);
 
         if (headArmor.getItem() instanceof GasMaskItem) {
+            // The server keeps the worn mask's filter in memory between writes.
+            if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                PlayerOxygenManager.settleWornMask(serverPlayer);
+            }
             int currentTicks = GasMaskItem.getFilterTicks(headArmor);
             int maxTicks = GasMaskItem.getMaxFilterTicks();
 

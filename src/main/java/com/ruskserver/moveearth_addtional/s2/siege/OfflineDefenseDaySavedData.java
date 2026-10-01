@@ -9,7 +9,7 @@ import net.minecraft.world.level.saveddata.SavedData;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** Per core, whether offline defense applied at the first attack of the current open day. */
+/** Per core, whether offline defense applied when the current open day's fight on it started. */
 public final class OfflineDefenseDaySavedData extends SavedData {
     private final OfflineDefenseDays days = new OfflineDefenseDays();
 
@@ -18,12 +18,12 @@ public final class OfflineDefenseDaySavedData extends SavedData {
         return LocalDate.now(ServerSchedule.ZONE).toEpochDay();
     }
 
-    /** Records today's answer for the core unless an earlier attack today already did. */
-    public void observe(UUID coreId, long day, boolean allowed) {
-        if (days.observe(coreId, day, allowed)) setDirty();
+    /** Records the answer taken when a fight started on the core; see {@link OfflineDefenseDayPolicy#decides}. */
+    public void record(UUID coreId, long day, boolean allowed) {
+        if (days.record(coreId, day, allowed)) setDirty();
     }
 
-    /** Today's answer, or null before the core's first attack today. */
+    /** Today's answer, or null before a fight started on the core today. */
     public Boolean allowedOn(UUID coreId, long day) {
         return days.allowedOn(coreId, day);
     }

@@ -14,6 +14,9 @@
     "EntityDataAccessorMixin",
     "WarnauticsDropBombAssemblyMixin",
     "SwivelBearingConstraintMixin",
+    "KinematicsBaseJointMixin",
+    "KinematicsHingeWindupMixin",
+    "SwivelBearingWindupMixin",
     "SableVehicleAssemblyMixin",
     "SableArmorMassMixin",
     "AquiferRiverChannelMixin",
@@ -32,6 +35,7 @@
     "create.CreateChuteSiegeLootMixin",
     "ChunkMapAnalyticsMixin",
     "ServerLevelChunkProfilerMixin",
+    "ClosedHoursWorldCycleMixin",
     "BlockEntityChunkProfilerMixin",
     "RnsDepositStructureMixin",
     "create.KineticStressAccess",
@@ -52,9 +56,14 @@
     "mekanism.RadiationSourceDecayMixin",
     "mekanism.RadiationExposureMixin",
     "mekanism.MekaSuitUnspecifiedAbsorptionMixin",
-    "mekanism.MekaSuitFallAbsorptionMixin"
+    "mekanism.MekaSuitFallAbsorptionMixin",
+    "sentry.SentryArmAimLimitMixin",
+    "sentry.SentryContraptionAimLimitMixin",
+    "sentry.SentryStressMixin",
+    "sentry.SentryGunInsertMixin"
   ],
   "client": [
+    "client.KeyboardHitboxDebugMixin",
     "client.ParticlePhysicsAccess",
     "client.CbcParticlePerformanceMixin",
     "client.TaczMekaSuitArmContextMixin",

@@ -1,0 +1,168 @@
+{
+  "credit": "Made with Blockbench",
+  "render_type": "minecraft:cutout",
+  "texture_size": [
+    64,
+    64
+  ],
+  "textures": {
+    "0": "moveearth_addtional:block/blaze_processing_machine",
+    "particle": "moveearth_addtional:block/blaze_processing_machine"
+  },
+  "elements": [
+    {
+      "from": [
+        3,
+        3.5858,
+        3
+      ],
+      "to": [
+        13,
+        4.5858,
+        13
+      ],
+      "rotation": {
+        "angle": 0,
+        "axis": "y",
+        "origin": [
+          7,
+          3.5858,
+          8
+        ]
+      },
+      "faces": {
+        "north": {
+          "uv": [
+            9.5,
+            8,
+            12,
+            8.25
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            9.5,
+            8.25,
+            12,
+            8.5
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            9.5,
+            8.5,
+            12,
+            8.75
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            9.5,
+            9.75,
+            12,
+            10
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            3,
+            0,
+            5.5,
+            2.5
+          ],
+          "texture": "#0"
+        },
+        "down": {
+          "uv": [
+            3,
+            2.5,
+            5.5,
+            5
+          ],
+          "texture": "#0"
+        }
+      }
+    },
+    {
+      "from": [
+        7,
+        4.5858,
+        7
+      ],
+      "to": [
+        9,
+        23.5858,
+        9
+      ],
+      "rotation": {
+        "angle": 0,
+        "axis": "y",
+        "origin": [
+          7,
+          4.5858,
+          7
+        ]
+      },
+      "faces": {
+        "north": {
+          "uv": [
+            2.5,
+            9,
+            3,
+            12.5
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            3,
+            9,
+            3.5,
+            12.5
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            3.5,
+            9,
+            4,
+            12.5
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            9,
+            5.25,
+            9.5,
+            8.75
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            9.5,
+            10,
+            10,
+            10.5
+          ],
+          "texture": "#0"
+        },
+        "down": {
+          "uv": [
+            10,
+            10,
+            10.5,
+            10.5
+          ],
+          "texture": "#0"
+        }
+      }
+    }
+  ]
+}

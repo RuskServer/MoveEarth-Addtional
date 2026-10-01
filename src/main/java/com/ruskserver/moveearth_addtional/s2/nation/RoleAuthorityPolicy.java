@@ -27,4 +27,15 @@ public final class RoleAuthorityPolicy {
         return !self && withinAuthority(false, actorMask, targetCurrentMask)
                 && withinAuthority(false, actorMask, newRoleMask);
     }
+
+    /**
+     * A non-owner may kick only a member of strictly lower authority: every permission the target
+     * holds is one the actor holds, and the actor holds at least one more. So officers of equal rank
+     * cannot kick each other and nobody can kick a superior. The owner may kick anyone but themselves.
+     */
+    public static boolean mayKick(boolean actorIsOwner, boolean self, long actorMask, long targetMask) {
+        if (self) return false;
+        if (actorIsOwner) return true;
+        return withinAuthority(false, actorMask, targetMask) && actorMask != targetMask;
+    }
 }

@@ -14,10 +14,12 @@ import net.minecraft.world.item.component.CustomData;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.List;
+import java.util.UUID;
 
 public class GasMaskItem extends ArmorItem {
     private static final String TAG_FILTER_TICKS = "FilterTicks";
     private static final String TAG_MAX_FILTER_TICKS = "MaxFilterTicks";
+    private static final String TAG_MASK_ID = "MaskId";
 
     public GasMaskItem(Properties properties) {
         super(ArmorMaterials.IRON, Type.HELMET, properties);
@@ -50,6 +52,25 @@ public class GasMaskItem extends ArmorItem {
             tag.putInt(TAG_FILTER_TICKS, clamped);
             tag.putInt(TAG_MAX_FILTER_TICKS, max);
         });
+    }
+
+    /**
+     * The mask's own identity, written once when it is first worn. It lets the server
+     * find a mask again after it left the head, to charge filter it used meanwhile.
+     */
+    static UUID getMaskId(ItemStack stack) {
+        CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
+        if (customData == null || !customData.contains(TAG_MASK_ID)) return null;
+        CompoundTag tag = customData.copyTag();
+        return tag.hasUUID(TAG_MASK_ID) ? tag.getUUID(TAG_MASK_ID) : null;
+    }
+
+    static UUID ensureMaskId(ItemStack stack) {
+        UUID existing = getMaskId(stack);
+        if (existing != null) return existing;
+        UUID created = UUID.randomUUID();
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putUUID(TAG_MASK_ID, created));
+        return created;
     }
 
     public static float getFilterPercentage(ItemStack stack) {

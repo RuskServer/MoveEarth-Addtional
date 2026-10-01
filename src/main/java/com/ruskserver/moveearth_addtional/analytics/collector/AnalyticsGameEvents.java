@@ -80,7 +80,7 @@ public class AnalyticsGameEvents {
         }
 
         // 加害者（キル）判定
-        if (event.getSource().getEntity() instanceof ServerPlayer killer) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer killer) {
             boolean isPvpVictim = event.getEntity() instanceof ServerPlayer;
             AnalyticsCollectorManager.INSTANCE.recordKill(killer, isPvpVictim);
         }

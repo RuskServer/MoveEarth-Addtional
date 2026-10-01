@@ -20,7 +20,7 @@ public final class SiegeLootService {
         ResourceLocation dimension = player.level().dimension().location();
         UUID nation = NationSavedData.get(server).nationIdFor(player.getUUID()).orElse(null);
         TerritorySavedData territories = TerritorySavedData.get(server);
-        for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords()) {
+        for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecordView()) {
             if (!inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius())) continue;
             boolean attacker = fallen.individualAttacker()
                     ? fallen.attackerNation().equals(player.getUUID())
@@ -33,9 +33,8 @@ public final class SiegeLootService {
         long now = OpenTimeService.now(server);
         SiegeLootSavedData loot = SiegeLootSavedData.get(server);
         loot.purgeExpired(now);
-        for (SiegeLootSavedData.LootGrant grant : newestFirst(loot)) {
-            boolean inside = inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius());
-            if (!inside) continue;
+        SiegeLootSavedData.LootGrant grant = newestCovering(loot, dimension, pos);
+        if (grant != null) {
             boolean attacker = grant.individualAttacker() ? grant.attackerId().equals(player.getUUID())
                     : grant.attackerId().equals(nation);
             boolean vault = isVault(territories, grant.defenderNation(), dimension, pos);
@@ -46,22 +45,31 @@ public final class SiegeLootService {
     }
 
     public static UUID formerOwnerAt(MinecraftServer server, ResourceLocation dimension, BlockPos pos) {
-        for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords())
-            if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius())) return fallen.defenderNation();
-        for (SiegeLootSavedData.LootGrant grant : newestFirst(SiegeLootSavedData.get(server)))
-            if (inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius())) return grant.defenderNation();
-        return TerritorySavedData.get(server).controllingNation(server, dimension, pos).orElse(null);
+        return automationFacts(server, dimension, pos).formerOwner();
     }
 
     public static PositionAccess accessForPosition(MinecraftServer server, ResourceLocation dimension, BlockPos pos) {
-        for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords())
-            if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius()))
-                return new PositionAccess(fallen.defenderNation(), fallen.siegeId());
-        for (SiegeLootSavedData.LootGrant grant : newestFirst(SiegeLootSavedData.get(server)))
-            if (inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius()))
-                return new PositionAccess(grant.defenderNation(), grant.siegeId());
+        SiegeSavedData.FallenRecord fallen = firstFallenCovering(SiegeSavedData.get(server), dimension, pos);
+        if (fallen != null) return new PositionAccess(fallen.defenderNation(), fallen.siegeId());
+        SiegeLootSavedData.LootGrant grant = newestCovering(SiegeLootSavedData.get(server), dimension, pos);
+        if (grant != null) return new PositionAccess(grant.defenderNation(), grant.siegeId());
         return new PositionAccess(TerritorySavedData.get(server)
                 .controllingNation(server, dimension, pos).orElse(null), null);
+    }
+
+    /**
+     * {@link #isLootRestrictedPosition} and {@link #formerOwnerAt} from one pass over the fall and grant
+     * records. Both only depend on the chunk of {@code pos}.
+     */
+    public static AutomationFacts automationFacts(MinecraftServer server, ResourceLocation dimension, BlockPos pos) {
+        SiegeSavedData.FallenRecord fallen = firstFallenCovering(SiegeSavedData.get(server), dimension, pos);
+        if (fallen != null) return new AutomationFacts(true, fallen.defenderNation());
+        SiegeLootSavedData.LootGrant grant = newestCovering(SiegeLootSavedData.get(server), dimension, pos);
+        if (grant != null) {
+            return new AutomationFacts(OpenTimeService.now(server) < grant.expiresOpenTick(), grant.defenderNation());
+        }
+        return new AutomationFacts(false,
+                TerritorySavedData.get(server).controllingNation(server, dimension, pos).orElse(null));
     }
 
     /**
@@ -70,28 +78,32 @@ public final class SiegeLootService {
      * cross-nation extraction after the window is refused by the storage ownership rule instead.
      */
     public static boolean isLootRestrictedPosition(MinecraftServer server, ResourceLocation dimension, BlockPos pos) {
-        for (SiegeSavedData.FallenRecord fallen : SiegeSavedData.get(server).fallenRecords())
-            if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius())) return true;
-        long now = OpenTimeService.now(server);
-        for (SiegeLootSavedData.LootGrant grant : newestFirst(SiegeLootSavedData.get(server)))
-            if (inside(dimension, pos, grant.dimension(), grant.corePos(), grant.radius()))
-                return now < grant.expiresOpenTick();
-        return false;
+        if (firstFallenCovering(SiegeSavedData.get(server), dimension, pos) != null) return true;
+        SiegeLootSavedData.LootGrant grant = newestCovering(SiegeLootSavedData.get(server), dimension, pos);
+        return grant != null && OpenTimeService.now(server) < grant.expiresOpenTick();
     }
 
     /** Whether an attacker's finalized loot window against this nation is still open. */
     public static boolean lootWindowOpenAgainst(MinecraftServer server, UUID nationId) {
         long now = OpenTimeService.now(server);
-        for (SiegeLootSavedData.LootGrant grant : SiegeLootSavedData.get(server).grants())
+        for (SiegeLootSavedData.LootGrant grant : SiegeLootSavedData.get(server).grantView())
             if (grant.defenderNation().equals(nationId) && now < grant.expiresOpenTick()) return true;
         return false;
     }
 
+    /** The oldest live fall whose area holds the position; falls are few, so a scan of the live view. */
+    private static SiegeSavedData.FallenRecord firstFallenCovering(SiegeSavedData sieges,
+                                                                    ResourceLocation dimension, BlockPos pos) {
+        if (!sieges.hasFallenRecords()) return null;
+        for (SiegeSavedData.FallenRecord fallen : sieges.fallenRecordView())
+            if (inside(dimension, pos, fallen.dimension(), fallen.corePos(), fallen.radius())) return fallen;
+        return null;
+    }
+
     /** A later fall of the same area supersedes the earlier grant, expired or not. */
-    private static java.util.List<SiegeLootSavedData.LootGrant> newestFirst(SiegeLootSavedData loot) {
-        java.util.List<SiegeLootSavedData.LootGrant> grants = new java.util.ArrayList<>(loot.grants());
-        java.util.Collections.reverse(grants);
-        return grants;
+    private static SiegeLootSavedData.LootGrant newestCovering(SiegeLootSavedData loot,
+                                                               ResourceLocation dimension, BlockPos pos) {
+        return loot.newestCovering(dimension, pos.getX() >> 4, pos.getZ() >> 4);
     }
 
     private static boolean inside(ResourceLocation actualDimension, BlockPos pos,
@@ -113,5 +125,7 @@ public final class SiegeLootService {
     }
 
     public record Access(boolean allowed, UUID formerOwner, UUID siegeId, Long expiresOpenTick) { }
+    /** {@code lootRestricted}: a loot window is open here; {@code formerOwner}: see {@link #formerOwnerAt}. */
+    public record AutomationFacts(boolean lootRestricted, UUID formerOwner) { }
     public record PositionAccess(UUID ownerNation, UUID siegeId) { }
 }

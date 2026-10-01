@@ -155,10 +155,12 @@ public record PvpMapDefinition(
         BlockPos blueSpawn = buffer.readBlockPos();
 
         int redSize = buffer.readVarInt();
+        if (redSize < 0 || redSize > 256) throw new IllegalArgumentException("Invalid red spawn count: " + redSize);
         List<BlockPos> extraRed = new ArrayList<>(redSize);
         for (int i = 0; i < redSize; i++) extraRed.add(buffer.readBlockPos());
 
         int blueSize = buffer.readVarInt();
+        if (blueSize < 0 || blueSize > 256) throw new IllegalArgumentException("Invalid blue spawn count: " + blueSize);
         List<BlockPos> extraBlue = new ArrayList<>(blueSize);
         for (int i = 0; i < blueSize; i++) extraBlue.add(buffer.readBlockPos());
 

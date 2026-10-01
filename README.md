@@ -12,7 +12,7 @@ Createの機構美 × CBCの重砲撃 × TaCZの銃撃戦 を統合する、<br>
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1-62B47A?logo=minecraft&logoColor=white)
 ![NeoForge](https://img.shields.io/badge/NeoForge-21.1.238-E6A756)
 ![Java](https://img.shields.io/badge/Java-21-ED8B00?logo=openjdk&logoColor=white)
-![Version](https://img.shields.io/badge/Version-3.1.0-informational)
+![Version](https://img.shields.io/badge/Version-3.3.0-informational)
 [![Discord](https://img.shields.io/badge/Community-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/QNquTTTdZh)
 
 </div>
@@ -70,13 +70,13 @@ graph TD
 - **領土コアと密閉保護 (Enclosure Seal)**: 各領土に領土コアを設置。コアの全周囲を防壁ブロック等で完全に密閉・防護することで「密閉保護（無敵）」状態が維持されます。
 - **24時間領土維持費**: 領土規模に応じた維持費が国庫から自動徴収されます。残高不足時は無防備化・放棄リスクが発生します。
 - **外交と戦争**: 宣戦布告、停戦条約、無条件降伏、賠償金交渉など、国家間の外交関係を包括的に管理。
-- **直感的な2ペインGUI**: `/s2` コマンドで呼び出せる統一デザイン（MoveEarthUi）のダッシュボードを搭載。
+- **直感的な2ペインGUI**: `N` キーまたは `/nation` で開く統一デザイン（MoveEarthUi）のダッシュボードを搭載。
 
 ### ⚔️ 攻城戦・防壁補強・捕虜 (Siege, Reinforcement & Prisoner)
 - **溶接機による段階的補強**: 専用の溶接機（Welding Tool）を使い、ブロックを木材から鉄、耐爆複合装甲へと段階的に強化。段階ごとに異なるHPと耐爆特性が付与されます。
 - **リアルタイム攻城戦**: Create Big Cannons の大砲による直撃弾・榴弾や、Create Warnautics の航空爆発物に対する耐性・破壊計算。
 - **コア破壊工作 (Sabotage) と陥落**: 防壁を破り敵コアへ侵入して工作を完了させることで、領土を制圧・陥落。
-- **ダウン・捕虜護送・身代金**: 戦闘でダウンした敵兵を護送・収監。国家間の保釈金（身代金）交渉や脱走阻止の駆け引きが発生。
+- **ダウン・捕虜護送・収監**: 戦闘でダウンした敵兵を拘束・護送して牢獄に収監。味方による護送中の救出や、講和での捕虜返還をめぐる駆け引きが発生。
 - **主権復興クエスト (Recovery Dispatch)**: 敗北国が主権を取り戻すための復興ミッション群を実装。
 - **交戦タイマー (Combat Tag)**: Bossbar付きの交戦管理。タイマー中にログアウトするとその場で即死し、所持品をドロップします。
 
@@ -93,7 +93,7 @@ graph TD
 - **Cold Sweat 極地サバイバル**: 極寒・極熱環境の温度HUDと、防寒対策を案内するバニラ進捗。
 - **物資集積所 (Warehouse) レイド**: 各地に点在するNPC守備隊の拠点を攻略し、高価値な工業資材を強奪するPvEコンテンツ。
 - **飛行船レイド (Airship Raid)**: 突如上空に来襲する敵飛行船部隊との迎撃戦闘。
-- **専用PvPアリーナ**: 領土戦とは独立した競技用アリーナ（`/pvp`）。ロードアウト選択、マップ投票、ELOレーティングシステムを完備。
+- **専用PvPアリーナ**: 領土戦とは独立した競技用アリーナ（`/pvp`）。ロードアウト選択とマップ投票に対応。
 
 ### 🤖 Discord Bot・サーバー運用統合 (Discord & Operations)
 - **JDA完全内蔵Bot**: 外部プラグイン不要で、国家チャンネルへの領土防衛アラート（開戦・コア被弾・陥落等）の配信、緊急メンション、アカウント連携、スラッシュコマンド（`/moveearth setup` 等）を完備。
@@ -110,7 +110,7 @@ graph TD
 | Minecraft | 1.21.1 |
 | NeoForge | 21.1.238（依存定義: 21以上） |
 | Java | 21 |
-| MoveEarth-Addtional | 3.1.0 |
+| MoveEarth-Addtional | 3.3.0 |
 
 ### 必須MOD
 
@@ -125,7 +125,7 @@ graph TD
 
 > [!TIP]
 > - **通貨**: 国庫、維持費、取引所には MoveEarth 独自の **Trade Credit (TC)** 台帳を使用します。Lightman's Currency への依存は完全に撤去されており、不要です。
-> - **チャット**: MoveEarth が距離減衰・国家表示付きの独自チャットを内包しているため、Localized Chat などの別MODは導入不要です。
+> - **チャット**: MoveEarth が近距離（既定100ブロック）・国家表示付きの独自チャットを内包しているため、Localized Chat などの別MODは導入不要です。
 
 ### 任意連携MOD
 
@@ -219,6 +219,9 @@ Antique Atlas、Immersive Minimaps、Oaks Minimap、Project Minimap HUD
 | `recovery-dispatch.toml` | 敗北国家の主権復興・派遣ミッション |
 | `market.toml` | 市場取引の緊急停止 |
 | `chat.toml` | 近接チャットの配信半径（既定値: 100） |
+| `schedule.toml` | 開放時間外（専用サーバーのみ）に昼夜・天候サイクルを止めるか（既定値: true）。Ecliptic Seasons の季節も開放中にしか進まなくなる |
+| `nether-gate.toml` | ゲート生成器（応力・最低回転数・チャージ時間・開門半径）、ネザーゲート戦（制限時間・敵数・体力／攻撃倍率・引き戻し半径・シャード数）、ブレイズロッド精製装置（応力・最低回転数・1本あたりの時間） |
+| `sentry.toml` | Create: Sentry Mechanical Arm のタレット（最大俯角・応力・搭載できる銃の1発あたり最大ダメージ） |
 | `tips.toml` | 定期Tipsの配信間隔、Wiki案内TIPが開くURL（`wikiUrl`、既定は [MoveEarth ガイド](https://rusklabo.github.io/moveearth-web/guide/start/)。空にするとWiki案内は出さない） |
 | `regions.toml` | 地域ごとの排他素材・共通素材と採掘の応力 |
 | `oxygen.toml` | 酸素欠乏・有害ガスが始まる高度とフィルター消費 |

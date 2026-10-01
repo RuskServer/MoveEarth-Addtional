@@ -66,4 +66,22 @@ public record ReinforcementEntry(ReinforcementMaterial material, int durability,
     public long activationTicksRemaining(long gameTime) {
         return enabled || activatesAt <= 0L ? 0L : Math.max(0L, activatesAt - gameTime);
     }
+
+    /**
+     * One construction tick. {@code changed} is false while only the activation countdown runs: the
+     * countdown is derived from the absolute {@link #activatesAt()} tick, so it needs no save and no resync.
+     */
+    public Step step(long gameTime) {
+        ReinforcementEntry after = advance(gameTime);
+        if (after.equals(this)) return new Step(this, false, false, false);
+        return new Step(after, true, !enabled && after.enabled && after.damaged(),
+                durability < maxDurability() && !after.damaged());
+    }
+
+    /** Whether the construction loop still has to visit this entry. */
+    public boolean constructing() {
+        return activatesAt > 0L;
+    }
+
+    public record Step(ReinforcementEntry after, boolean changed, boolean activated, boolean completed) { }
 }

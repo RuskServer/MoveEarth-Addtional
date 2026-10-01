@@ -33,9 +33,13 @@ public final class TutorialService {
     private static final String NBT_ROOT = "MoveEarthTutorial";
     private static final String NBT_SKIPPED = "Skipped";
     private static final String NBT_COMPLETED = "Completed";
-    /** How many steps this player has passed, so each is reported to analytics once. */
+    /** Steps already reported to analytics as done, so each is reported once. */
+    private static final String NBT_DONE = "Done";
+    /** The older index-based log; read once to fill {@link #NBT_DONE}. */
     private static final String NBT_REACHED = "Reached";
     private static final Map<UUID, S2C_TutorialPacket> LAST_SENT = new HashMap<>();
+    /** Players told this session that the deferred nation goal is still open. */
+    private static final java.util.Set<UUID> NATION_REMINDED = new java.util.HashSet<>();
 
     private TutorialService() { }
 
@@ -53,9 +57,11 @@ public final class TutorialService {
     public static void skip(ServerPlayer player) {
         CompoundTag state = state(player);
         if (!state.getBoolean(NBT_SKIPPED) && !state.getBoolean(NBT_COMPLETED)) {
-            int reached = state.getInt(NBT_REACHED);
-            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_SKIPPED, player, reached,
-                    reached < TutorialCatalog.STEPS.size() ? TutorialCatalog.STEPS.get(reached).id() : null);
+            NationSavedData nations = NationSavedData.get(player.server);
+            boolean[] done = doneSteps(player, nations);
+            int current = TutorialCatalog.current(step -> done[TutorialCatalog.STEPS.indexOf(step)]);
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_SKIPPED, player, doneCount(done),
+                    current >= 0 ? TutorialCatalog.STEPS.get(current).id() : null);
         }
         state.putBoolean(NBT_SKIPPED, true);
         LAST_SENT.remove(player.getUUID());
@@ -68,7 +74,8 @@ public final class TutorialService {
         state.remove(NBT_SKIPPED);
         state.remove(NBT_COMPLETED);
         LAST_SENT.remove(player.getUUID());
-        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_RESTARTED, player, state.getInt(NBT_REACHED), null);
+        com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_RESTARTED, player,
+                doneCount(doneSteps(player, NationSavedData.get(player.server))), null);
         player.sendSystemMessage(MoveEarthMessage.info(Component.translatable(
                 "tutorial.moveearth_addtional.restarted")));
     }
@@ -81,8 +88,9 @@ public final class TutorialService {
         }
         NationSavedData nations = NationSavedData.get(player.server);
         boolean canReinforce = nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT);
-        int index = TutorialCatalog.current(step -> done(player, nations, step, canReinforce));
-        recordReached(player, state, index < 0 ? TutorialCatalog.STEPS.size() : index);
+        boolean[] done = doneSteps(player, nations);
+        int index = TutorialCatalog.current(step -> done[TutorialCatalog.STEPS.indexOf(step)]);
+        recordDone(player, state, done);
         if (index < 0) {
             state.putBoolean(NBT_COMPLETED, true);
             com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_COMPLETED, player, TutorialCatalog.STEPS.size(), null);
@@ -91,17 +99,54 @@ public final class TutorialService {
             return S2C_TutorialPacket.hidden();
         }
         TutorialCatalog.Step step = TutorialCatalog.STEPS.get(index);
+        remindNation(player, nations, step);
         return new S2C_TutorialPacket(true, index, TutorialCatalog.STEPS.size(),
                 TutorialCatalog.textId(step, canReinforce), step.icon());
     }
 
-    private static void recordReached(ServerPlayer player, CompoundTag state, int reached) {
-        int previous = state.getInt(NBT_REACHED);
-        if (reached <= previous) return;
-        for (int step = previous; step < reached; step++) {
-            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_STEP, player, step + 1, TutorialCatalog.STEPS.get(step).id());
+    /**
+     * The nation step no longer holds the HUD, so a nationless player with no application waiting
+     * is reminded once per session that joining or founding is still a goal. Players waiting for
+     * approval are not: there is nothing for them to do but wait.
+     */
+    private static void remindNation(ServerPlayer player, NationSavedData nations, TutorialCatalog.Step shown) {
+        if (shown.kind() == TutorialCatalog.Kind.NATION || NATION_REMINDED.contains(player.getUUID())) return;
+        if (nations.nationIdFor(player.getUUID()).isPresent()
+                || nations.joinApplicationFor(player.getUUID()).isPresent()) return;
+        NATION_REMINDED.add(player.getUUID());
+        player.sendSystemMessage(MoveEarthMessage.tip(Component.translatable(
+                "tutorial.moveearth_addtional.nation_reminder")));
+    }
+
+    private static boolean[] doneSteps(ServerPlayer player, NationSavedData nations) {
+        boolean canReinforce = nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT);
+        boolean[] done = new boolean[TutorialCatalog.STEPS.size()];
+        for (int index = 0; index < done.length; index++) {
+            done[index] = done(player, nations, TutorialCatalog.STEPS.get(index), canReinforce);
         }
-        state.putInt(NBT_REACHED, reached);
+        return done;
+    }
+
+    private static int doneCount(boolean[] done) {
+        int count = 0;
+        for (boolean step : done) if (step) count++;
+        return count;
+    }
+
+    /** Reports each step once, when it is actually done ({@link TutorialStepLog}). */
+    private static void recordDone(ServerPlayer player, CompoundTag state, boolean[] done) {
+        if (!state.contains(NBT_DONE, Tag.TAG_COMPOUND)) {
+            CompoundTag seeded = new CompoundTag();
+            TutorialStepLog.migrated(state.getInt(NBT_REACHED), done).forEach(id -> seeded.putBoolean(id, true));
+            state.put(NBT_DONE, seeded);
+            state.remove(NBT_REACHED);
+        }
+        CompoundTag reported = state.getCompound(NBT_DONE);
+        for (int index : TutorialStepLog.newlyDone(done, reported.getAllKeys())) {
+            String id = TutorialCatalog.STEPS.get(index).id();
+            com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.TUTORIAL_STEP, player, index + 1, id);
+            reported.putBoolean(id, true);
+        }
     }
 
     private static boolean done(ServerPlayer player, NationSavedData nations, TutorialCatalog.Step step,
@@ -132,10 +177,12 @@ public final class TutorialService {
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         LAST_SENT.remove(event.getEntity().getUUID());
+        NATION_REMINDED.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         LAST_SENT.remove(event.getEntity().getUUID());
+        NATION_REMINDED.remove(event.getEntity().getUUID());
     }
 }

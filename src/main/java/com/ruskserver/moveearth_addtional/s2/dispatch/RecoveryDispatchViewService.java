@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.s2.dispatch;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig;
+import com.ruskserver.moveearth_addtional.network.common.SnapshotCoalescer;
 import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RecoveryDispatchActionPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchSnapshotPacket;
@@ -20,6 +21,8 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -30,9 +33,37 @@ import java.util.UUID;
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class RecoveryDispatchViewService {
     private static final Map<UUID, LinkedHashMap<Integer, CachedResult>> REPLAY = new java.util.HashMap<>();
+    /**
+     * The snapshot lists every nation, its members, every territory core and up to 128 history entries,
+     * so each player gets at most one per {@link #SNAPSHOT_COOLDOWN_TICKS} (4/s); requests in between are
+     * folded into one send, which opens the screen if any of them asked to.
+     */
+    static final int SNAPSHOT_COOLDOWN_TICKS = 5;
+    private static final SnapshotCoalescer<Boolean> SNAPSHOTS =
+            new SnapshotCoalescer<>(SNAPSHOT_COOLDOWN_TICKS, Boolean::logicalOr);
     private RecoveryDispatchViewService() { }
 
     public static void send(ServerPlayer player, boolean openScreen) {
+        Boolean now = SNAPSHOTS.request(player.getUUID(), openScreen, player.server.getTickCount());
+        if (now != null) sendNow(player, now);
+    }
+
+    @SubscribeEvent
+    public static void onServerTick(ServerTickEvent.Post event) {
+        if (!SNAPSHOTS.hasPending()) return;
+        SNAPSHOTS.due(event.getServer().getTickCount()).forEach((playerId, openScreen) -> {
+            ServerPlayer player = event.getServer().getPlayerList().getPlayer(playerId);
+            if (player != null) sendNow(player, openScreen);
+        });
+    }
+
+    @SubscribeEvent
+    public static void onServerStopped(ServerStoppedEvent event) {
+        SNAPSHOTS.clear();
+        REPLAY.clear();
+    }
+
+    private static void sendNow(ServerPlayer player, boolean openScreen) {
         NationSavedData nations = NationSavedData.get(player.server);
         UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         boolean admin = player.hasPermissions(2);
@@ -61,10 +92,11 @@ public final class RecoveryDispatchViewService {
                         value.members().values().stream().map(member ->
                                 new S2C_RecoveryDispatchSnapshotPacket.MemberOption(member.id(), member.lastKnownName())).toList()))
                 .toList();
+        // Any player may open this screen, so cores carry no dimension or coordinates: only what
+        // picking a dispatch target needs.
         List<S2C_RecoveryDispatchSnapshotPacket.CoreOption> cores = TerritorySavedData.get(player.server).cores().stream()
                 .map(core -> new S2C_RecoveryDispatchSnapshotPacket.CoreOption(core.id(), core.nationId(),
-                        nationName(nations, core.nationId()), core.type().name(), core.dimension().toString(),
-                        core.pos().getX(), core.pos().getY(), core.pos().getZ())).toList();
+                        nationName(nations, core.nationId()), core.type().name())).toList();
         List<S2C_RecoveryDispatchSnapshotPacket.HistoryView> history = WarHistorySavedData.get(player.server)
                 .visibleTo(nationId, admin).stream().limit(128).map(value ->
                         new S2C_RecoveryDispatchSnapshotPacket.HistoryView(value.openTick(), value.type().name(),
@@ -187,6 +219,7 @@ public final class RecoveryDispatchViewService {
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         REPLAY.remove(event.getEntity().getUUID());
+        SNAPSHOTS.forget(event.getEntity().getUUID());
     }
 
     private record CachedResult(boolean success, String messageKey) { }

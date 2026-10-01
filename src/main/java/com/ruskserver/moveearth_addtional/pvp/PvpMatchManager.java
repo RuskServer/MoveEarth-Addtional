@@ -61,6 +61,12 @@ public final class PvpMatchManager {
     private static final double PVP_MAX_HEALTH = 20.0D;
     private static final int MULTI_KILL_WINDOW_TICKS = 8 * 20;
     private static final int FINAL_STAND_TICKS = 60 * 20;
+    /** Minimum spacing between one player's join/leave transitions. */
+    private static final int ENTRY_COOLDOWN_TICKS = 5 * 20;
+    /** Entry-count-only updates to players outside the match are spaced this far apart. */
+    private static final int ENTRY_COUNT_SYNC_TICKS = 2 * 20;
+    /** Zone packets go out on change; this re-sends an unchanged zone as a safety net. */
+    private static final int ZONE_KEEPALIVE_TICKS = 5 * 20;
 
     /** Includes queued and active players. Insertion order is used for deterministic balancing. */
     private final Map<UUID, PvpTeam> teams = new LinkedHashMap<>();
@@ -85,6 +91,11 @@ public final class PvpMatchManager {
     private PvpZoneState zoneState = PvpZoneState.NEUTRAL;
     private int zoneRedPlayers;
     private int zoneBluePlayers;
+    private final PvpEntryCooldown entryCooldown = new PvpEntryCooldown(ENTRY_COOLDOWN_TICKS);
+    private final PvpEntryStateSync entryStateSync = new PvpEntryStateSync(ENTRY_COUNT_SYNC_TICKS);
+    private boolean entryStateDirty;
+    private final PvpChangeGate<HudKey> hudGate = new PvpChangeGate<>(0);
+    private final PvpChangeGate<S2C_PvpZonePacket> zoneGate = new PvpChangeGate<>(ZONE_KEEPALIVE_TICKS);
 
     private PvpMatchManager() {}
 
@@ -135,24 +146,38 @@ public final class PvpMatchManager {
             player.sendSystemMessage(MoveEarthMessage.success("ロードアウトを「" + loadout.displayName() + "」に変更しました。（次のリスポーン時から反映されます）"));
             return true;
         }
-        if (phase == PvpPhase.RUNNING && activeMap != null) {
-            return joinRunningMatch(player, loadout);
-        }
-        if (isQueued(player)) {
+        boolean running = phase == PvpPhase.RUNNING && activeMap != null;
+        if (!running && isQueued(player)) {
             loadoutSelections.put(player.getUUID(), loadout.id());
             player.sendSystemMessage(loadoutMessage(loadout, true));
             return true;
+        }
+        if (rejectForEntryCooldown(player)) return false;
+        if (running) {
+            boolean joined = joinRunningMatch(player, loadout);
+            if (joined) entryCooldown.record(player.getUUID(), player.server.getTickCount());
+            return joined;
         }
         PvpTeam assigned = count(PvpTeam.RED, false) <= count(PvpTeam.BLUE, false) ? PvpTeam.RED : PvpTeam.BLUE;
         teams.put(player.getUUID(), assigned);
         loadoutSelections.put(player.getUUID(), loadout.id());
         phase = PvpPhase.WAITING;
         player.sendSystemMessage(loadoutMessage(loadout, false));
+        entryCooldown.record(player.getUUID(), player.server.getTickCount());
         syncEntryState(player.server);
         return true;
     }
 
+    /** Player-requested leave (command / PvP screen); spaced by the join/leave cooldown. */
     public void leave(ServerPlayer player) {
+        boolean transition = isParticipant(player) || PvpSessionSavedData.get(player.server).contains(player.getUUID());
+        if (transition && rejectForEntryCooldown(player)) return;
+        leaveNow(player);
+        if (transition) entryCooldown.record(player.getUUID(), player.server.getTickCount());
+    }
+
+    /** Leave forced by the server (disconnect, lost eligibility); never delayed by the cooldown. */
+    void leaveNow(ServerPlayer player) {
         UUID id = player.getUUID();
         boolean wasActive = isActive(player) || PvpSessionSavedData.get(player.server).contains(id);
         teams.remove(id);
@@ -219,7 +244,7 @@ public final class PvpMatchManager {
         // Recheck after voting, before taking snapshots or teleporting anyone.
         for (ServerPlayer player : participants(server, false)) {
             if (!eligibleForAdmission(player)) {
-                leave(player);
+                leaveNow(player);
                 player.sendSystemMessage(MoveEarthMessage.warning("状態が変わったためPvPの参加登録を解除しました。"));
             }
         }
@@ -243,14 +268,23 @@ public final class PvpMatchManager {
             }
             pendingSnapshots.put(player.getUUID(), snapshot);
         }
+        Map<UUID, PvpSessionSavedData.Entry> replacedStashes = new HashMap<>();
         for (ServerPlayer player : participants(server, false)) {
             PvpPlayerSnapshot snapshot = pendingSnapshots.get(player.getUUID());
             snapshots.put(player.getUUID(), snapshot);
-            sessions.put(player.getUUID(), snapshot);
+            replacedStashes.put(player.getUUID(), sessions.put(player.getUUID(), snapshot));
             matchStats.put(player.getUUID(), new MatchStats());
         }
-        // On disk before any inventory is replaced; see PvpSessionSavedData.persistNow.
-        PvpSessionSavedData.persistNow(server);
+        // On disk before any inventory is replaced; see PvpSessionSavedData.
+        if (!PvpSessionSavedData.persistNow(server)) {
+            // Nothing has been touched yet; put memory back in line with the file and abort.
+            replacedStashes.forEach(sessions::reinstate);
+            snapshots.clear();
+            matchStats.clear();
+            rejectStart(server, Component.translatable("message.moveearth_addtional.pvp.start_stash_save_failed"));
+            stop(server);
+            return;
+        }
         for (ServerPlayer player : participants(server, true)) {
             if (!snapshots.get(player.getUUID()).enterIsolatedState(player)) {
                 rejectStart(server, "Curios装備の隔離に失敗したため試合を中止しました。");
@@ -267,6 +301,8 @@ public final class PvpMatchManager {
         resetAnnouncerState();
         zoneState = PvpZoneState.NEUTRAL;
         zoneRedPlayers = zoneBluePlayers = 0;
+        hudGate.reset();
+        zoneGate.reset();
         cleanupArenaMobs(arena);
         syncTeams(server);
         syncHud(server, "争奪中");
@@ -301,8 +337,21 @@ public final class PvpMatchManager {
         loadoutSelections.put(id, loadout.id());
         snapshots.put(id, snapshot);
         matchStats.put(id, new MatchStats());
-        PvpSessionSavedData.get(server).put(id, snapshot);
-        PvpSessionSavedData.persistNow(server);
+        PvpSessionSavedData sessions = PvpSessionSavedData.get(server);
+        PvpSessionSavedData.Entry replaced = sessions.put(id, snapshot);
+        // On disk before the inventory is replaced; see PvpSessionSavedData.
+        if (!PvpSessionSavedData.persistNow(server)) {
+            sessions.reinstate(id, replaced);
+            teams.remove(id);
+            loadoutSelections.remove(id);
+            snapshots.remove(id);
+            matchStats.remove(id);
+            PvpCuriosInventoryCompat.restore(player, snapshot.curiosInventory);
+            player.sendSystemMessage(MoveEarthMessage.error(
+                    Component.translatable("message.moveearth_addtional.pvp.stash_save_failed")));
+            syncEntryState(server);
+            return false;
+        }
 
         activateParticipant(player, arena, activeMap);
         syncTeams(server);
@@ -348,6 +397,11 @@ public final class PvpMatchManager {
     }
 
     public void tick(MinecraftServer server) {
+        tickPhase(server);
+        flushEntryState(server);
+    }
+
+    private void tickPhase(MinecraftServer server) {
         if (phase == PvpPhase.VOTING) {
             PvpMapVoteManager.INSTANCE.tick(server);
             return;
@@ -543,6 +597,8 @@ public final class PvpMatchManager {
         PacketDistributor.sendToPlayer(player, new S2C_SyncLoadoutsPacket(PvpLoadoutSavedData.get(player.server).getAll()));
 
         if (isActive(player)) return;
+        // A fresh login has no PvP screen state; forget what an earlier session was sent.
+        entryStateSync.forget(player.getUUID());
         PvpSessionSavedData stored = PvpSessionSavedData.get(player.server);
         if (!stored.contains(player.getUUID())) return;
         if (PvpRestoreMarker.restored(player, stored.token(player.getUUID()))) {
@@ -559,6 +615,9 @@ public final class PvpMatchManager {
 
     public void serverStopped() {
         resetRuntime();
+        entryCooldown.clear();
+        entryStateSync.clear();
+        entryStateDirty = false;
     }
 
     private void tickRespawns(MinecraftServer server) {
@@ -962,14 +1021,22 @@ public final class PvpMatchManager {
         }
     }
 
+    /**
+     * Sends the HUD to participants only when what it shows changed: the scores, the
+     * status text, or the whole second the client displays (it renders ticksLeft / 20).
+     */
     private void syncHud(MinecraftServer server, String hillStatus) {
+        HudKey key = new HudKey(redScore, blueScore, WIN_SCORE, Math.max(0, ticksLeft) / 20, hillStatus);
+        if (!hudGate.shouldSend(key, server.getTickCount())) return;
         S2C_PvpHudPacket packet = new S2C_PvpHudPacket(true, redScore, blueScore, WIN_SCORE, ticksLeft, hillStatus);
         forEachPlayer(server, true, player -> PacketDistributor.sendToPlayer(player, packet));
     }
 
+    /** Sends the zone on change, with a slow keep-alive. */
     private void syncZone(MinecraftServer server, PvpMapDefinition map) {
         if (map == null) return;
         S2C_PvpZonePacket packet = zonePacket(map);
+        if (!zoneGate.shouldSend(packet, server.getTickCount())) return;
         forEachPlayer(server, true, player -> PacketDistributor.sendToPlayer(player, packet));
     }
 
@@ -1015,14 +1082,37 @@ public final class PvpMatchManager {
         });
     }
 
+    /**
+     * Requests an entry-state update. Any number of requests in one tick are sent
+     * together at the end of the tick, and only to players whose state changed
+     * (see {@link PvpEntryStateSync}).
+     */
     public void syncEntryState(MinecraftServer server) {
+        entryStateDirty = true;
+    }
+
+    private void flushEntryState(MinecraftServer server) {
+        if (!entryStateDirty) return;
         boolean hosting = PvpArenaSavedData.get(server).hosting();
         boolean running = phase == PvpPhase.RUNNING;
         int entries = participantCount();
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            PacketDistributor.sendToPlayer(player, new S2C_PvpEntryStatePacket(
-                    isParticipant(player), isActive(player), hosting, running, entries));
+        long now = server.getTickCount();
+        boolean pending = false;
+        List<ServerPlayer> online = server.getPlayerList().getPlayers();
+        List<UUID> onlineIds = new ArrayList<>(online.size());
+        for (ServerPlayer player : online) {
+            onlineIds.add(player.getUUID());
+            PvpEntryStateSync.State state = new PvpEntryStateSync.State(
+                    isParticipant(player), isActive(player), hosting, running, entries);
+            switch (entryStateSync.decide(player.getUUID(), state, now)) {
+                case SEND -> PacketDistributor.sendToPlayer(player, new S2C_PvpEntryStatePacket(
+                        state.joined(), state.active(), hosting, running, entries));
+                case DEFER -> pending = true;
+                case SKIP -> { }
+            }
         }
+        entryStateSync.retainOnly(onlineIds);
+        entryStateDirty = pending;
     }
 
     private void clearClientState(ServerPlayer player) {
@@ -1075,6 +1165,21 @@ public final class PvpMatchManager {
     private boolean rejectStart(MinecraftServer server, String reason) {
         server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.error("PvP: " + reason), false);
         return false;
+    }
+
+    private boolean rejectStart(MinecraftServer server, Component reason) {
+        server.getPlayerList().broadcastSystemMessage(
+                MoveEarthMessage.error(Component.literal("PvP: ").append(reason)), false);
+        return false;
+    }
+
+    /** Tells the player to wait and returns true while their join/leave cooldown runs. */
+    private boolean rejectForEntryCooldown(ServerPlayer player) {
+        long remaining = entryCooldown.remainingTicks(player.getUUID(), player.server.getTickCount());
+        if (remaining <= 0) return false;
+        player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
+                "message.moveearth_addtional.pvp.entry_cooldown", PvpEntryCooldown.secondsCeil(remaining))));
+        return true;
     }
 
     private int count(PvpTeam team, boolean activeOnly) {
@@ -1138,6 +1243,8 @@ public final class PvpMatchManager {
         matchStats.clear();
         matchResultsRecorded = false;
         resetAnnouncerState();
+        hudGate.reset();
+        zoneGate.reset();
         PvpMapVoteManager.INSTANCE.cancelVote();
         PvpSpawnSelector.INSTANCE.clear();
         PvpReplayTracker.INSTANCE.clear();
@@ -1171,6 +1278,9 @@ public final class PvpMatchManager {
     }
 
     private record KillPair(UUID killer, UUID victim) {}
+
+    /** What the HUD shows; ticksLeft is reduced to the displayed second. */
+    private record HudKey(int red, int blue, int target, int seconds, String hill) {}
 
     private static final class MatchStats {
         int kills;

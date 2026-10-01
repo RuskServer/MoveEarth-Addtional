@@ -6,6 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class HarvestFestivalRulesTest {
     @Test
+    void rankingAndRewardsRequireMembershipAndMinimumPoints() {
+        org.junit.jupiter.api.Assertions.assertFalse(HarvestFestivalRules.rewardEligible(true, 50));
+        org.junit.jupiter.api.Assertions.assertFalse(HarvestFestivalRules.rewardEligible(true, 99));
+        org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.rewardEligible(true, 100));
+        org.junit.jupiter.api.Assertions.assertFalse(HarvestFestivalRules.rewardEligible(false, 1000));
+    }
+    @Test
     void scoringBonusStaysWithinPersonalCap() {
         assertEquals(10, HarvestFestivalRules.addHarvest(0, false));
         assertEquals(11, HarvestFestivalRules.addHarvest(0, true));
@@ -33,5 +40,22 @@ class HarvestFestivalRulesTest {
                 2000, 100L, early, 2100, 900L, late) > 0);
         org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.compare(
                 500, 100L, late, 500, 100L, early) < 0);
+    }
+
+    @Test
+    void unclaimedRewardsWaitSevenDaysThenLapse() {
+        long awarded = 1_000_000L, week = HarvestFestivalRules.REWARD_RETENTION_MILLIS;
+        assertEquals(7L * 24 * 3600 * 1000, week);
+        org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.keepReward(false, false, awarded, awarded + week - 1));
+        org.junit.jupiter.api.Assertions.assertFalse(HarvestFestivalRules.keepReward(false, false, awarded, awarded + week));
+        org.junit.jupiter.api.Assertions.assertFalse(HarvestFestivalRules.keepReward(true, false, awarded, awarded + week),
+                "the latest event's unclaimed items lapse too");
+    }
+
+    @Test
+    void claimedRewardsAreKeptOnlyForTheLatestEvent() {
+        org.junit.jupiter.api.Assertions.assertTrue(HarvestFestivalRules.keepReward(true, true, 0L, Long.MAX_VALUE / 2),
+                "the latest event re-checks it for idempotent settlement");
+        org.junit.jupiter.api.Assertions.assertFalse(HarvestFestivalRules.keepReward(false, true, 1_000L, 1_000L));
     }
 }

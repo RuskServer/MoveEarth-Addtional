@@ -3,19 +3,18 @@ package com.ruskserver.moveearth_addtional.handler.occlusion;
 import com.ruskserver.moveearth_addtional.config.SubChunkOcclusionConfig;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayDeque;
 import java.util.Map;
-import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -25,15 +24,26 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PlayerVisibilityTracker {
 
+    /** Movement and turning recompute no more often than this per player. */
+    static final int MIN_RECOMPUTE_INTERVAL_TICKS = 5;
+    /** Node budget per search; past it the unreached sections fail open. */
+    static final int MAX_SEARCH_SECTIONS = 2048;
+
     private static final Map<UUID, PlayerCache> PLAYER_CACHES = new ConcurrentHashMap<>();
-    private static final Direction[] DIRECTIONS = Direction.values();
 
     private static class PlayerCache {
-        SectionPos lastSectionPos;
+        boolean computed;
+        ResourceKey<Level> dimension;
+        int startX;
+        int startY;
+        int startZ;
         float lastYaw;
         float lastPitch;
         long lastUpdateGameTime;
-        final LongSet visibleSections = new LongOpenHashSet();
+        int truncatedDepth = SectionVisibilitySearch.COMPLETE;
+        final LongOpenHashSet visibleSections = new LongOpenHashSet();
+        final LongOpenHashSet visited = new LongOpenHashSet();
+        final SectionVisibilitySearch search = new SectionVisibilitySearch(MAX_SEARCH_SECTIONS);
     }
 
     /**
@@ -60,9 +70,13 @@ public class PlayerVisibilityTracker {
         }
 
         try {
-            LongSet visibleSections = getVisibleSections(player);
-            SectionPos entitySection = SectionPos.of(entity.blockPosition());
-            return visibleSections.contains(entitySection.asLong());
+            PlayerCache cache = refresh(player);
+            int sectionX = SectionPos.blockToSectionCoord(entity.getBlockX());
+            int sectionY = SectionPos.blockToSectionCoord(entity.getBlockY());
+            int sectionZ = SectionPos.blockToSectionCoord(entity.getBlockZ());
+            if (cache.visibleSections.contains(SectionVisibilitySearch.key(sectionX, sectionY, sectionZ))) return true;
+            return OcclusionRecomputePolicy.beyondTruncation(cache.truncatedDepth,
+                    cache.startX, cache.startY, cache.startZ, sectionX, sectionY, sectionZ);
         } catch (Exception e) {
             // フェイルセーフ: 例外発生時は送信側にフォールバック
             return true;
@@ -83,31 +97,43 @@ public class PlayerVisibilityTracker {
      * プレイヤーの現在の可視サブチャンク集合を取得します（必要に応じて再探索）。
      */
     public static LongSet getVisibleSections(ServerPlayer player) {
-        PlayerCache cache = PLAYER_CACHES.computeIfAbsent(player.getUUID(), k -> new PlayerCache());
-        SectionPos currentSection = SectionPos.of(player.blockPosition());
-        long currentGameTime = player.serverLevel().getGameTime();
-
-        boolean needsUpdate = cache.lastSectionPos == null
-                || !cache.lastSectionPos.equals(currentSection)
-                || (currentGameTime - cache.lastUpdateGameTime >= SubChunkOcclusionConfig.updateIntervalTicks)
-                || Math.abs(player.getYRot() - cache.lastYaw) >= SubChunkOcclusionConfig.angleThresholdDegrees
-                || Math.abs(player.getXRot() - cache.lastPitch) >= SubChunkOcclusionConfig.angleThresholdDegrees;
-
-        if (needsUpdate) {
-            updateVisibleSections(player, cache, currentSection, currentGameTime);
-        }
-
-        return cache.visibleSections;
+        return refresh(player).visibleSections;
     }
 
-    private static void updateVisibleSections(ServerPlayer player, PlayerCache cache, SectionPos startSection, long gameTime) {
-        cache.lastSectionPos = startSection;
+    private static PlayerCache refresh(ServerPlayer player) {
+        PlayerCache cache = PLAYER_CACHES.computeIfAbsent(player.getUUID(), k -> new PlayerCache());
+        ServerLevel level = player.serverLevel();
+        int sectionX = SectionPos.blockToSectionCoord(player.getBlockX());
+        int sectionY = SectionPos.blockToSectionCoord(player.getBlockY());
+        int sectionZ = SectionPos.blockToSectionCoord(player.getBlockZ());
+        long currentGameTime = level.getGameTime();
+
+        boolean sectionChanged = sectionX != cache.startX || sectionY != cache.startY || sectionZ != cache.startZ;
+        double threshold = SubChunkOcclusionConfig.angleThresholdDegrees;
+        boolean turned = Math.abs(Mth.wrapDegrees(player.getYRot() - cache.lastYaw)) >= threshold
+                || Math.abs(player.getXRot() - cache.lastPitch) >= threshold;
+        boolean hasResult = cache.computed && level.dimension().equals(cache.dimension);
+        if (OcclusionRecomputePolicy.shouldRecompute(hasResult, currentGameTime - cache.lastUpdateGameTime,
+                sectionChanged, turned, MIN_RECOMPUTE_INTERVAL_TICKS,
+                Math.max(MIN_RECOMPUTE_INTERVAL_TICKS, SubChunkOcclusionConfig.updateIntervalTicks))) {
+            updateVisibleSections(player, level, cache, sectionX, sectionY, sectionZ, currentGameTime);
+        }
+        return cache;
+    }
+
+    private static void updateVisibleSections(ServerPlayer player, ServerLevel level, PlayerCache cache,
+                                              int sectionX, int sectionY, int sectionZ, long gameTime) {
+        cache.computed = true;
+        cache.dimension = level.dimension();
+        cache.startX = sectionX;
+        cache.startY = sectionY;
+        cache.startZ = sectionZ;
         cache.lastYaw = player.getYRot();
         cache.lastPitch = player.getXRot();
         cache.lastUpdateGameTime = gameTime;
         cache.visibleSections.clear();
+        cache.visited.clear();
 
-        ServerLevel level = player.serverLevel();
         Vec3 eyePos = player.getEyePosition();
         Vec3 lookVec = player.getLookAngle().normalize();
 
@@ -116,67 +142,13 @@ public class PlayerVisibilityTracker {
         double halfFovRad = Math.toRadians((110.0 + SubChunkOcclusionConfig.fovMarginDegrees) / 2.0);
         double minDotProduct = Math.cos(halfFovRad);
 
-        Queue<SearchNode> queue = new ArrayDeque<>();
-
-        // スタート地点（プレイヤーがいるサブチャンク）を登録
-        cache.visibleSections.add(startSection.asLong());
-
-        // スタート地点から全6方向へ探索開始
-        for (Direction dir : DIRECTIONS) {
-            SectionPos neighbor = SectionPos.of(startSection.x() + dir.getStepX(), startSection.y() + dir.getStepY(), startSection.z() + dir.getStepZ());
-            queue.add(new SearchNode(neighbor, dir.getOpposite(), 1));
-        }
-
-        int maxDepth = SubChunkOcclusionConfig.maxSearchDepth;
-
-        while (!queue.isEmpty()) {
-            SearchNode node = queue.poll();
-            SectionPos sectionPos = node.sectionPos;
-            long sectionLong = sectionPos.asLong();
-
-            if (cache.visibleSections.contains(sectionLong)) {
-                continue;
-            }
-
-            // 視野錐台（Frustum / FOV）による除外判定
-            // プレイヤーから近距離（深さ1）以外のサブチャンクに対して視線方向チェック
-            if (node.depth > 1) {
-                double centerX = (sectionPos.x() << 4) + 8.0;
-                double centerY = (sectionPos.y() << 4) + 8.0;
-                double centerZ = (sectionPos.z() << 4) + 8.0;
-                Vec3 toSection = new Vec3(centerX - eyePos.x, centerY - eyePos.y, centerZ - eyePos.z).normalize();
-                double dot = lookVec.dot(toSection);
-
-                if (dot < minDotProduct) {
-                    // 視野角外のため探索打ち切り
-                    continue;
-                }
-            }
-
-            // サブチャンクを可視集合に追加
-            cache.visibleSections.add(sectionLong);
-
-            if (node.depth >= maxDepth) {
-                continue;
-            }
-
-            // このサブチャンクの透過マスクを取得し、出射可能な面から隣接サブチャンクへ伝播
-            long mask = SectionOcclusionStorage.getSectionMask(level, sectionPos);
-            Direction enterFace = node.enterFace;
-
-            for (Direction exitFace : DIRECTIONS) {
-                if (exitFace == enterFace) {
-                    continue; // 入ってきた方向には戻らない
-                }
-
-                if (SubChunkVisGraph.isConnected(mask, enterFace, exitFace)) {
-                    SectionPos nextSection = SectionPos.of(sectionPos.x() + exitFace.getStepX(), sectionPos.y() + exitFace.getStepY(), sectionPos.z() + exitFace.getStepZ());
-                    if (!cache.visibleSections.contains(nextSection.asLong())) {
-                        queue.add(new SearchNode(nextSection, exitFace.getOpposite(), node.depth + 1));
-                    }
-                }
-            }
-        }
+        LongOpenHashSet visited = cache.visited;
+        LongOpenHashSet visible = cache.visibleSections;
+        cache.truncatedDepth = cache.search.run(sectionX, sectionY, sectionZ,
+                eyePos.x, eyePos.y, eyePos.z, lookVec.x, lookVec.y, lookVec.z,
+                minDotProduct, SubChunkOcclusionConfig.maxSearchDepth,
+                (x, y, z) -> SectionOcclusionStorage.getSectionMask(level, x, y, z),
+                visited::add, visible::add);
     }
 
     public static void removePlayer(UUID playerId) {
@@ -186,6 +158,4 @@ public class PlayerVisibilityTracker {
     public static void clearAll() {
         PLAYER_CACHES.clear();
     }
-
-    private static record SearchNode(SectionPos sectionPos, Direction enterFace, int depth) {}
 }

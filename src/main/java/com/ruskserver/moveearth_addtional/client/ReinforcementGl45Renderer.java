@@ -37,9 +37,11 @@ final class ReinforcementGl45Renderer {
             layout(location = 3) in vec4 InstanceColor;
             uniform mat4 ModelViewMat;
             uniform mat4 ProjMat;
+            uniform vec3 CameraDelta;
             out vec4 vertexColor;
             void main() {
-                gl_Position = ProjMat * ModelViewMat * vec4(Position * InstanceScale + InstancePosition, 1.0);
+                gl_Position = ProjMat * ModelViewMat
+                        * vec4(Position * InstanceScale + InstancePosition + CameraDelta, 1.0);
                 vertexColor = InstanceColor;
             }
             """;
@@ -57,41 +59,64 @@ final class ReinforcementGl45Renderer {
     private static int program;
     private static int modelViewUniform;
     private static int projectionUniform;
+    private static int cameraDeltaUniform;
     private static ByteBuffer mappedInstances;
     private static final FloatBuffer[] mappedSlots = new FloatBuffer[BUFFER_SLOTS];
     private static final long[] fences = new long[BUFFER_SLOTS];
-    private static final int[] faceStarts = new int[FACE_COUNT];
-    private static final int[] faceCounts = new int[FACE_COUNT];
+    private static final int[][] faceStarts = new int[BUFFER_SLOTS][FACE_COUNT];
+    private static final int[][] faceCounts = new int[BUFFER_SLOTS][FACE_COUNT];
     private static final int[] faceCursors = new int[FACE_COUNT];
+    /** Camera position each slot's camera-relative instance positions were written against. */
+    private static final double[][] slotCameras = new double[BUFFER_SLOTS][3];
     private static int slot;
+    /** Most recently written slot, redrawn when the next one is still in use by the GPU; -1 if none. */
+    private static int lastWrittenSlot = -1;
 
     private ReinforcementGl45Renderer() { }
 
-    static boolean render(PoseStack poseStack, float[] positions, float[] scales,
-                          float[] colors, int[] faces, int count) {
-        if (count <= 0) return true;
+    /** Whether the instanced path is usable; initialises it on first use. Render thread only. */
+    static boolean available() {
+        return ensureInitialized();
+    }
+
+    /**
+     * Draws {@code count} instances whose positions are relative to the camera at
+     * ({@code cameraX}, {@code cameraY}, {@code cameraZ}).
+     *
+     * @return false when the caller should draw with the compatibility path instead
+     */
+    static boolean render(PoseStack poseStack, double cameraX, double cameraY, double cameraZ,
+                          float[] positions, float[] scales, float[] colors, int[] faces, int count) {
+        if (count <= 0) {
+            lastWrittenSlot = -1; // never resurrect an older overlay after an empty frame
+            return true;
+        }
         if (!ensureInitialized()) return false;
         int activeSlot = slot;
         long fence = fences[activeSlot];
         if (fence != 0L) {
             int wait = GL32C.glClientWaitSync(fence, 0, 0L);
-            // Never turn transient GPU pressure into thousands of compatibility draw submissions.
-            // Keeping the game frame responsive is preferable to drawing this optional overlay frame.
-            if (wait == GL32C.GL_TIMEOUT_EXPIRED) return true;
             if (wait == GL32C.GL_WAIT_FAILED) return fail("OpenGL 4.5 instance fence failed", null);
+            if (wait == GL32C.GL_TIMEOUT_EXPIRED) {
+                // The GPU is still reading this slot. Skipping the frame made the overlay flicker under
+                // load; instead redraw the last finished slot, shifted to the current camera.
+                if (lastWrittenSlot < 0) return true;
+                return draw(poseStack, lastWrittenSlot, cameraX, cameraY, cameraZ);
+            }
             GL32C.glDeleteSync(fence);
             fences[activeSlot] = 0L;
         }
 
-        long byteOffset = activeSlot * SLOT_BYTES;
         FloatBuffer target = mappedSlots[activeSlot];
-        java.util.Arrays.fill(faceCounts, 0);
-        for (int index = 0; index < count; index++) faceCounts[faces[index]]++;
+        int[] slotStarts = faceStarts[activeSlot];
+        int[] slotCounts = faceCounts[activeSlot];
+        java.util.Arrays.fill(slotCounts, 0);
+        for (int index = 0; index < count; index++) slotCounts[faces[index]]++;
         int written = 0;
         for (int face = 0; face < FACE_COUNT; face++) {
-            faceStarts[face] = written;
+            slotStarts[face] = written;
             faceCursors[face] = written;
-            written += faceCounts[face];
+            written += slotCounts[face];
         }
         for (int index = 0; index < count; index++) {
             int destination = faceCursors[faces[index]]++ * FLOATS_PER_INSTANCE;
@@ -108,7 +133,22 @@ final class ReinforcementGl45Renderer {
             target.put(destination + 8, colors[colorIndex + 2]);
             target.put(destination + 9, colors[colorIndex + 3]);
         }
+        slotCameras[activeSlot][0] = cameraX;
+        slotCameras[activeSlot][1] = cameraY;
+        slotCameras[activeSlot][2] = cameraZ;
+        if (!draw(poseStack, activeSlot, cameraX, cameraY, cameraZ)) return false;
+        lastWrittenSlot = activeSlot;
+        slot = (activeSlot + 1) % BUFFER_SLOTS;
+        return true;
+    }
 
+    /** Issues the draws for one slot and fences it. */
+    private static boolean draw(PoseStack poseStack, int drawSlot, double cameraX, double cameraY,
+                                double cameraZ) {
+        long byteOffset = drawSlot * SLOT_BYTES;
+        int[] slotStarts = faceStarts[drawSlot];
+        int[] slotCounts = faceCounts[drawSlot];
+        double[] writtenCamera = slotCameras[drawSlot];
         try {
             // RenderSystem keeps its own GL state cache. Using it here avoids synchronous glGet* calls
             // and leaves that cache consistent for Minecraft and other renderers.
@@ -127,16 +167,19 @@ final class ReinforcementGl45Renderer {
                 RenderSystem.getProjectionMatrix().get(matrix);
                 GL20C.glUniformMatrix4fv(projectionUniform, false, matrix);
             }
+            GL20C.glUniform3f(cameraDeltaUniform, (float) (writtenCamera[0] - cameraX),
+                    (float) (writtenCamera[1] - cameraY), (float) (writtenCamera[2] - cameraZ));
             GL30C.glBindVertexArray(vao);
             GL42C.glMemoryBarrier(GL44C.GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
             for (int face = 0; face < FACE_COUNT; face++) {
-                if (faceCounts[face] == 0) continue;
-                long faceOffset = byteOffset + (long) faceStarts[face] * INSTANCE_STRIDE;
+                if (slotCounts[face] == 0) continue;
+                long faceOffset = byteOffset + (long) slotStarts[face] * INSTANCE_STRIDE;
                 GL45C.glVertexArrayVertexBuffer(vao, 1, instanceBuffer, faceOffset, INSTANCE_STRIDE);
-                GL31C.glDrawArraysInstanced(GL11C.GL_TRIANGLES, face * 6, 6, faceCounts[face]);
+                GL31C.glDrawArraysInstanced(GL11C.GL_TRIANGLES, face * 6, 6, slotCounts[face]);
             }
-            fences[activeSlot] = GL32C.glFenceSync(GL32C.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-            slot = (activeSlot + 1) % BUFFER_SLOTS;
+            // A redrawn slot gets a fresh fence, so it is not rewritten while this frame still reads it.
+            if (fences[drawSlot] != 0L) GL32C.glDeleteSync(fences[drawSlot]);
+            fences[drawSlot] = GL32C.glFenceSync(GL32C.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
             return true;
         } catch (Throwable error) {
             return fail("OpenGL 4.5 reinforcement renderer failed; using compatibility renderer", error);
@@ -177,6 +220,7 @@ final class ReinforcementGl45Renderer {
             }
             modelViewUniform = GL20C.glGetUniformLocation(program, "ModelViewMat");
             projectionUniform = GL20C.glGetUniformLocation(program, "ProjMat");
+            cameraDeltaUniform = GL20C.glGetUniformLocation(program, "CameraDelta");
 
             vao = GL45C.glCreateVertexArrays();
             cubeBuffer = GL45C.glCreateBuffers();

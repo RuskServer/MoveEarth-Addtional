@@ -95,7 +95,7 @@ public record C2S_UpdateWhitelistPacket(BlockPos pos, String playerName, boolean
                     data.getMemberNamesForDisplay(ownerUuid),
                     onlinePlayers
             ));
-            Moveearth_addtional.LOGGER.info(
+            Moveearth_addtional.LOGGER.debug(
                     "Detector whitelist {} by {} for owner {}: {}",
                     this.isAdd ? "addition" : "removal",
                     player.getGameProfile().getName(),

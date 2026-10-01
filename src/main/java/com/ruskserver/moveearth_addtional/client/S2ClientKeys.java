@@ -30,7 +30,7 @@ public final class S2ClientKeys {
     public static final KeyMapping OPEN_PRISONERS = new KeyMapping(
             "key.moveearth_addtional.prisoners", InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_J, "key.categories.moveearth_addtional");
-    private static int reinforcementScanTicks;
+    private static final ReinforcementScanSchedule REINFORCEMENT_SCANS = new ReinforcementScanSchedule();
     private static boolean wasHoldingWelder;
     private static net.minecraft.core.BlockPos lastReinforcementScanPos;
     private static net.minecraft.resources.ResourceLocation lastReinforcementScanDimension;
@@ -56,6 +56,7 @@ public final class S2ClientKeys {
             WeldingBrushClientState.clear();
             WeldingTargetClientState.clear();
             wasHoldingWelder = false;
+            REINFORCEMENT_SCANS.reset();
             lastReinforcementScanPos = null;
             lastReinforcementScanDimension = null;
             return;
@@ -101,17 +102,16 @@ public final class S2ClientKeys {
                     : Component.translatable("message.moveearth_addtional.map_territories.disabled")), true);
         }
         if (holdingWelder && minecraft.player != null) {
-            reinforcementScanTicks++;
             var currentPos = minecraft.player.blockPosition();
             var currentDimension = minecraft.player.level().dimension().location();
             boolean moved = lastReinforcementScanPos == null
                     || lastReinforcementScanPos.distSqr(currentPos) >= 64.0D;
             boolean changedDimension = !currentDimension.equals(lastReinforcementScanDimension);
-            if (moved || changedDimension || reinforcementScanTicks >= 200) {
+            if (REINFORCEMENT_SCANS.tick(moved || changedDimension, ReinforcementClientState.changeCount())) {
                 requestReinforcementScan(minecraft);
             }
         } else if (!holdingWelder) {
-            reinforcementScanTicks = 0;
+            REINFORCEMENT_SCANS.reset();
             lastReinforcementScanPos = null;
             lastReinforcementScanDimension = null;
         }
@@ -119,7 +119,7 @@ public final class S2ClientKeys {
 
     private static void requestReinforcementScan(Minecraft minecraft) {
         if (minecraft.player == null) return;
-        reinforcementScanTicks = 0;
+        REINFORCEMENT_SCANS.requested(ReinforcementClientState.changeCount());
         lastReinforcementScanPos = minecraft.player.blockPosition().immutable();
         lastReinforcementScanDimension = minecraft.player.level().dimension().location();
         PacketDistributor.sendToServer(new C2S_RequestReinforcementScanPacket(64));

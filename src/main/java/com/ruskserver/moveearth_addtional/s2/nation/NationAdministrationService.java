@@ -51,7 +51,8 @@ public final class NationAdministrationService {
         boolean siegeLocked = nationId != null && SiegeSavedData.get(actor.server).isNationLocked(nationId);
         boolean prisoners = nationId != null && PrisonerSavedData.get(actor.server).hasNation(nationId);
         NationSavedData.NationAdminResult validation = nations.validateDisband(
-                actor.getUUID(), expectedRevision, siegeLocked, prisoners);
+                actor.getUUID(), expectedRevision, siegeLocked, prisoners,
+                nationId != null && hasPeaceTruce(actor.server, nations, nationId));
         if (validation.status() != NationSavedData.NationAdminStatus.ALLOWED || nationId == null) {
             return validation;
         }
@@ -151,12 +152,20 @@ public final class NationAdministrationService {
         sieges.removeCoreState(removedCores);
         PrisonerSavedData.get(actor.server).removePendingReleaseNation(nationId);
         for (UUID memberId : members) {
-            ServerPlayer online = actor.server.getPlayerList().getPlayer(memberId);
-            if (online != null) online.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
-                    "message.moveearth_addtional.nation.disbanded", nationName)));
-            MembershipCooldownService.notifyStarted(online);
+            if (memberId.equals(actor.getUUID())) MembershipCooldownService.notifyDisbandedOwner(actor, nationName);
+            else MembershipCooldownService.notifyDisbandedMember(actor.server, memberId, nationName);
         }
         return result;
+    }
+
+    /** Whether Siege holds an active peace truce between {@code nationId} and any other nation. */
+    private static boolean hasPeaceTruce(net.minecraft.server.MinecraftServer server, NationSavedData nations,
+                                         UUID nationId) {
+        SiegeSavedData sieges = SiegeSavedData.get(server);
+        for (UUID other : nations.nations().keySet()) {
+            if (!other.equals(nationId) && sieges.isPeaceTruceActive(nationId, other)) return true;
+        }
+        return false;
     }
 
     private static Map<net.minecraft.resources.ResourceLocation, Set<Long>> coveredChunks(

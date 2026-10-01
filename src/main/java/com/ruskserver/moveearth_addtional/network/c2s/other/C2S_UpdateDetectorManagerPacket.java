@@ -92,7 +92,7 @@ public record C2S_UpdateDetectorManagerPacket(BlockPos pos, String playerName, b
             }
 
             sendResult(player, data, ownerUuid, success, message);
-            Moveearth_addtional.LOGGER.info(
+            Moveearth_addtional.LOGGER.debug(
                     "Detector manager {} by owner {}: {}",
                     this.isAdd ? "grant" : "revocation",
                     player.getGameProfile().getName(),

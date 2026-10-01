@@ -276,7 +276,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         drawSelector(graphics, field(modal, y), Component.translatable("screen.moveearth_addtional.dispatch.field.participant"),
                 member == null ? "-" : member.name(), mouseX, mouseY); y += 31;
         drawSelector(graphics, field(modal, y), Component.translatable("screen.moveearth_addtional.dispatch.field.core"),
-                core == null ? "-" : core.owner() + " " + core.x() + "," + core.z(), mouseX, mouseY); y += 31;
+                core == null ? "-" : core.owner() + " " + core.type() + " #" + core.shortId(), mouseX, mouseY); y += 31;
         if (defense) { drawSelector(graphics, field(modal, y), Component.translatable("screen.moveearth_addtional.dispatch.field.opponent"),
                 opponent == null ? "-" : opponent.name(), mouseX, mouseY); y += 31; }
         drawSelector(graphics, field(modal, y), Component.translatable("screen.moveearth_addtional.dispatch.field.price"),

@@ -1,0 +1,16 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "moveearth_addtional:block/gate_generator",
+      "x": 90,
+      "y": 90
+    },
+    "axis=y": {
+      "model": "moveearth_addtional:block/gate_generator"
+    },
+    "axis=z": {
+      "model": "moveearth_addtional:block/gate_generator",
+      "x": 90
+    }
+  }
+}

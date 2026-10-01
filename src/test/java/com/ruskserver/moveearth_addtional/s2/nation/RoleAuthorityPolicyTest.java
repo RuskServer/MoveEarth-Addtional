@@ -40,4 +40,27 @@ class RoleAuthorityPolicyTest {
         assertTrue(RoleAuthorityPolicy.mayAssign(true, false, 0L, TREASURY, EVERYTHING));
         assertTrue(RoleAuthorityPolicy.withinAuthority(true, 0L, TREASURY));
     }
+
+    @Test
+    void membersKickOnlyStrictlyLowerAuthority() {
+        long members = S2Permission.MANAGE_MEMBERS.mask();
+        long bastion = S2Permission.BASTION_ACCESS.mask();
+        long officer = members | bastion;
+        long seniorOfficer = officer | TREASURY;
+        // A plain member (bastion access only) sits below an officer who also holds it.
+        assertTrue(RoleAuthorityPolicy.mayKick(false, false, officer, bastion));
+        assertTrue(RoleAuthorityPolicy.mayKick(false, false, seniorOfficer, officer));
+        // Equal rank and superiors are out of reach.
+        assertFalse(RoleAuthorityPolicy.mayKick(false, false, officer, officer));
+        assertFalse(RoleAuthorityPolicy.mayKick(false, false, officer, seniorOfficer));
+        // A target holding anything the actor lacks is not lower, even with fewer bits overall.
+        assertFalse(RoleAuthorityPolicy.mayKick(false, false, seniorOfficer, members | ROLES));
+        assertFalse(RoleAuthorityPolicy.mayKick(false, true, seniorOfficer, 0L));
+    }
+
+    @Test
+    void ownerKicksAnyoneButThemselves() {
+        assertTrue(RoleAuthorityPolicy.mayKick(true, false, 0L, EVERYTHING));
+        assertFalse(RoleAuthorityPolicy.mayKick(true, true, EVERYTHING, EVERYTHING));
+    }
 }

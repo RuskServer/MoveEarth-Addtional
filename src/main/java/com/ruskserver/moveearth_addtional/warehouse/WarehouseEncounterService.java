@@ -150,6 +150,11 @@ public final class WarehouseEncounterService {
                 || !(raider.level() instanceof ServerLevel level)) return;
         Entity attacker = event.getSource().getEntity();
         if (attacker == null && event.getSource().getDirectEntity() == null) return;
+        // Turrets and other machines fire as fake players; they may not clear a raid.
+        if (attacker instanceof net.neoforged.neoforge.common.util.FakePlayer) {
+            event.setCanceled(true);
+            return;
+        }
         WarehouseSites.Site site = site(level.getServer(), taggedRegion(raider));
         boolean inside = attacker != null && site != null
                 && attacker.level().dimension().location().equals(site.dimension())
@@ -166,7 +171,7 @@ public final class WarehouseEncounterService {
     public static void onDamage(LivingDamageEvent.Post event) {
         if (!(event.getEntity() instanceof WarehouseRaiderEntity boss)
                 || taggedRegion(boss) <= 0 || !(boss.level() instanceof ServerLevel level)) return;
-        if (event.getSource().getEntity() instanceof ServerPlayer participant) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer participant) {
             if (isBoss(boss)) {
                 PARTICIPANTS.computeIfAbsent(taggedRegion(boss), ignored -> new HashSet<>())
                         .add(participant.getUUID());
@@ -207,7 +212,7 @@ public final class WarehouseEncounterService {
         Moveearth_addtional.LOGGER.info("Warehouse encounter defeated: region={} cycle={}", region,
                 WarehouseEncounterState.get(level.getServer()).get(region).cycle());
         int participants = PARTICIPANTS.getOrDefault(region, Set.of()).size();
-        if (event.getSource().getEntity() instanceof ServerPlayer killer) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer killer) {
             com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.WAREHOUSE_BOSS, killer, participants, "region=" + region);
         } else {
             com.ruskserver.moveearth_addtional.analytics.event.GameEvents.place(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.WAREHOUSE_BOSS, null, level.dimension().location(), boss.blockPosition(),
@@ -265,7 +270,7 @@ public final class WarehouseEncounterService {
                             && WarehouseSitePolicy.insideStructure(site.min().getX(), site.min().getY(),
                             site.min().getZ(), player.blockPosition().getX(),
                             player.blockPosition().getY(), player.blockPosition().getZ()))) {
-                startForTesting(server, region);
+                if (startForTesting(server, region)) WarehouseZoneService.announceDetected(level, site);
                 continue;
             }
             if (encounter.phase() != WarehouseEncounterState.Phase.ACTIVE

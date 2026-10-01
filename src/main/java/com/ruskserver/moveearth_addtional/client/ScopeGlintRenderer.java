@@ -92,6 +92,18 @@ public final class ScopeGlintRenderer {
      */
     private static final boolean GUNS_PRESENT = ModList.get().isLoaded("tacz");
 
+    /**
+     * Whether each player's held gun carries a magnified optic, keyed by the exact stack held.
+     *
+     * <p>Reading attachments and the optic index is the expensive part of the check and its answer
+     * only changes with the gun, so it is looked up once per held stack instead of every frame. A
+     * changed attachment arrives as a new stack; the expiry is a backstop for in-place edits.
+     */
+    private static final java.util.Map<java.util.UUID, OpticCache> OPTICS = new java.util.HashMap<>();
+    private static final long OPTIC_CACHE_MILLIS = 2_000L;
+    private static final long OPTIC_CACHE_PRUNE_MILLIS = 10_000L;
+    private static long lastPrune;
+
     private ScopeGlintRenderer() { }
 
     @SubscribeEvent
@@ -113,6 +125,8 @@ public final class ScopeGlintRenderer {
         PoseStack poseStack = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
         VertexConsumer vertices = null;
+        long now = net.minecraft.Util.getMillis();
+        pruneOptics(now);
 
         for (Player other : minecraft.level.players()) {
             if (other == minecraft.player || other.isSpectator() || other.isInvisible()) {
@@ -123,7 +137,7 @@ public final class ScopeGlintRenderer {
             if (distanceSquared > MAX_DISTANCE * MAX_DISTANCE || distanceSquared < 4.0D) {
                 continue;
             }
-            float strength = strengthOf(other, lens, eye, partialTick);
+            float strength = strengthOf(other, lens, eye, partialTick, now);
             if (strength <= 0.0F) {
                 continue;
             }
@@ -147,11 +161,11 @@ public final class ScopeGlintRenderer {
      * Facing is something they can reason about, and reasoning about it is the
      * skill this is supposed to reward.
      */
-    private static float strengthOf(Player other, Vec3 lens, Vec3 eye, float partialTick) {
-        if (!ScopeGlintPolicy.scopedAndAiming(other, partialTick)) {
-            return 0.0F;
-        }
-        if (!lit(other)) {
+    private static float strengthOf(Player other, Vec3 lens, Vec3 eye, float partialTick, long now) {
+        // Cheapest test first: almost every player in range is not aiming at all, and for them
+        // nothing about the gun or its attachments needs to be read.
+        float progress = ScopeGlintPolicy.aimingProgress(other, partialTick);
+        if (progress <= 0.0F) {
             return 0.0F;
         }
         Vec3 toViewer = eye.subtract(lens).normalize();
@@ -159,9 +173,34 @@ public final class ScopeGlintRenderer {
         if (facing <= 0.65D) {
             return 0.0F;
         }
+        if (!lit(other) || !magnifiedOptic(other, partialTick, now)) {
+            return 0.0F;
+        }
         float alignment = (float) ((facing - 0.65D) / 0.35D);
-        return 0.45F * alignment * alignment * ScopeGlintPolicy.aimingProgress(other, partialTick);
+        return 0.45F * alignment * alignment * progress;
     }
+
+    /** Called only while the player is aiming, which is when {@code describe} reports the optic alone. */
+    private static boolean magnifiedOptic(Player other, float partialTick, long now) {
+        net.minecraft.world.item.ItemStack held = other.getMainHandItem();
+        OpticCache cached = OPTICS.get(other.getUUID());
+        if (cached != null && cached.stack == held && now - cached.checkedAt < OPTIC_CACHE_MILLIS) {
+            return cached.magnified;
+        }
+        boolean magnified = ScopeGlintPolicy.describe(other, partialTick).glints();
+        OPTICS.put(other.getUUID(), new OpticCache(held, magnified, now));
+        return magnified;
+    }
+
+    private static void pruneOptics(long now) {
+        if (now - lastPrune < OPTIC_CACHE_PRUNE_MILLIS) {
+            return;
+        }
+        lastPrune = now;
+        OPTICS.values().removeIf(cache -> now - cache.checkedAt > OPTIC_CACHE_PRUNE_MILLIS);
+    }
+
+    private record OpticCache(net.minecraft.world.item.ItemStack stack, boolean magnified, long checkedAt) { }
 
     /**
      * Why this player is or is not glinting, in words.
@@ -210,7 +249,8 @@ public final class ScopeGlintRenderer {
         double facing = other.getViewVector(partialTick).dot(eye.subtract(lens).normalize());
         return out.append(String.format(java.util.Locale.ROOT,
                 " | distance=%.0f facing=%.2f strength=%.2f",
-                lens.distanceTo(eye), facing, strengthOf(other, lens, eye, partialTick))).toString();
+                lens.distanceTo(eye), facing,
+                strengthOf(other, lens, eye, partialTick, net.minecraft.Util.getMillis()))).toString();
     }
 
     /** No glint underground, indoors, at night or in the rain: there is no sun. */

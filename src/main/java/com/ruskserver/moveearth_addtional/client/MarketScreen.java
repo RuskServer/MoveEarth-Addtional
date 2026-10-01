@@ -20,9 +20,13 @@ import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
 public final class MarketScreen extends Screen implements SuppressesChatOverlay {
     private static final int W = 610, H = 348;
     private static final int VISIBLE_ROWS = 6;
+    /** Typing pause before the search goes to the server; keeps a typed word to one request. */
+    private static final long SEARCH_DELAY_MILLIS = 300L;
     private S2C_MarketSnapshotPacket snapshot;
     private MoveEarthTextField search, tradeQuantity, quantity, price;
     private int tab, selected, scroll;
+    /** When the search box last changed and has not been sent yet; 0 when nothing is pending. */
+    private long searchEditedAt;
 
     public MarketScreen(S2C_MarketSnapshotPacket snapshot) {
         super(Component.literal("MARKET"));
@@ -30,7 +34,13 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
     }
 
     public void update(S2C_MarketSnapshotPacket next) {
+        // Search results reorder the list; stay on the same order when it is still listed.
+        UUID selectedOrder = tab != 2 && selected < orders().size() ? orders().get(selected).id() : null;
         snapshot = next;
+        if (selectedOrder != null) {
+            List<S2C_MarketSnapshotPacket.OrderEntry> rows = orders();
+            for (int index = 0; index < rows.size(); index++) if (rows.get(index).id().equals(selectedOrder)) selected = index;
+        }
         selected = Mth.clamp(selected, 0, Math.max(0, rowCount() - 1));
         scroll = Mth.clamp(scroll, 0, Math.max(0, rowCount() - VISIBLE_ROWS));
         syncInputs();
@@ -40,7 +50,8 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
         int x = left(), y = top();
         search = new MoveEarthTextField(font, x + 15, y + 98, 251, 24, Component.literal("商品検索"));
         search.setHint(Component.literal("商品名で検索"));
-        search.setMaxLength(64);
+        search.setMaxLength(com.ruskserver.moveearth_addtional.economy.MarketSearch.MAX_TEXT_LENGTH);
+        search.setResponder(value -> searchEditedAt = net.minecraft.Util.getMillis());
         addRenderableWidget(search);
         tradeQuantity = new MoveEarthTextField(font, x + 289, y + 210, 67, 22, Component.literal("取引数"));
         tradeQuantity.setValue("1"); tradeQuantity.setMaxLength(4); addRenderableWidget(tradeQuantity);
@@ -69,6 +80,14 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
     }
 
     @Override public boolean isPauseScreen() { return false; }
+
+    @Override public void tick() {
+        super.tick();
+        if (searchEditedAt > 0L && net.minecraft.Util.getMillis() - searchEditedAt >= SEARCH_DELAY_MILLIS) {
+            selected = 0; scroll = 0;
+            send("SEARCH", snapshot.selectedStation(), 0, 0);
+        }
+    }
 
     @Override public void renderBackground(GuiGraphics g, int mx, int my, float partial) { }
 
@@ -102,11 +121,14 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
         button(g, x + 534, y + 76, 58, 19, "案内解除", DANGER, mx, my,
                 EconomyWaypointHud.waypoint().active());
         if (tab == 2) g.drawString(font, "未回収の品  " + claims().size() + "件", x + 18, y + 106, MUTED, false);
+        else if (othersShown() >= com.ruskserver.moveearth_addtional.economy.MarketOrderSelection.PER_SIDE)
+            g.drawString(font, fit(Component.translatable("screen.moveearth_addtional.market.capped").getString(), 300),
+                    x + 278, y + 106, MUTED, false);
         drawCard(g, new MoveEarthUi.Rect(x + 15, y + 126, 251, H - 142), ACCENT, false, false);
         drawCard(g, new MoveEarthUi.Rect(x + 278, y + 126, W - 293, H - 142), ACCENT, false, false);
         drawRows(g, mx, my);
         drawDetail(g, mx, my);
-        if (!snapshot.result().isBlank()) g.drawString(font, fit(snapshot.result(), 570), x + 18, y + H - 13,
+        if (!snapshot.result().isBlank()) g.drawString(font, fit(resultText(snapshot.result()), 570), x + 18, y + H - 13,
                 snapshot.result().contains("しました") || snapshot.result().contains("更新") ? SUCCESS : DANGER, false);
         super.render(g, mx, my, partial);
     }
@@ -250,14 +272,22 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
         return super.mouseScrolled(mx, my, horizontal, vertical);
     }
 
+    /**
+     * The server already filtered by the search (see MarketScreenSync) and always includes the
+     * player's own orders; they are listed first so they can be found and cancelled.
+     */
     private List<S2C_MarketSnapshotPacket.OrderEntry> orders() {
-        String query = search == null ? "" : search.getValue().toLowerCase(java.util.Locale.ROOT);
+        java.util.Comparator<S2C_MarketSnapshotPacket.OrderEntry> byPrice = tab == 0
+                ? java.util.Comparator.comparingLong(S2C_MarketSnapshotPacket.OrderEntry::unitPrice)
+                : java.util.Comparator.comparingLong(S2C_MarketSnapshotPacket.OrderEntry::unitPrice).reversed();
         return snapshot.orders().stream().filter(o -> o.side().equals(tab == 0 ? "SELL" : "BUY"))
-                .filter(o -> name(o).toLowerCase(java.util.Locale.ROOT).contains(query))
-                .sorted(tab == 0
-                        ? java.util.Comparator.comparingLong(S2C_MarketSnapshotPacket.OrderEntry::unitPrice)
-                        : java.util.Comparator.comparingLong(S2C_MarketSnapshotPacket.OrderEntry::unitPrice).reversed())
+                .sorted(java.util.Comparator.comparing((S2C_MarketSnapshotPacket.OrderEntry o) -> !o.own())
+                        .thenComparing(byPrice))
                 .toList();
+    }
+    /** Other players' orders on this side; at the server's cap, more exist than are shown. */
+    private long othersShown() {
+        return orders().stream().filter(o -> !o.own()).count();
     }
     private List<S2C_MarketSnapshotPacket.ClaimEntry> claims() { return snapshot.claims(); }
     private static String name(S2C_MarketSnapshotPacket.OrderEntry order) {
@@ -291,8 +321,12 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
             return "数量・単価は1以上を入力してください";
         return "";
     }
+    /** Every request carries the current search, so each reply is filtered the way the box shows. */
     private void send(String action, UUID target, int count, long unitPrice) {
-        PacketDistributor.sendToServer(new C2S_MarketActionPacket(action, target, count, unitPrice));
+        searchEditedAt = 0L;
+        String query = search == null ? "" : search.getValue();
+        PacketDistributor.sendToServer(new C2S_MarketActionPacket(action, target, count, unitPrice,
+                query, MarketSearchHints.resolve(query)));
     }
     private int parse(String text) {
         try { return Integer.parseInt(text); } catch (NumberFormatException ignored) { return 0; }
@@ -300,6 +334,17 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
     private int left() { return (width - W) / 2; }
     private int top() { return (height - H) / 2; }
     private String fit(String value, int pixels) { return font.plainSubstrByWidth(value, pixels); }
+
+    /**
+     * Server results are plain text, or a mod translation key followed by {@code |}-separated
+     * arguments (see MarketScreenSync) so newer messages follow the client's language.
+     */
+    private static String resultText(String raw) {
+        if (!raw.startsWith("message.moveearth_addtional.")) return raw;
+        String[] parts = raw.split("\\|");
+        return Component.translatable(parts[0], (Object[]) java.util.Arrays.copyOfRange(parts, 1, parts.length))
+                .getString();
+    }
     private static boolean inside(double mx, double my, int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }

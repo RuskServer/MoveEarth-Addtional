@@ -22,10 +22,23 @@ class NationLifecyclePolicyTest {
     @Test
     void disbandRejectsSiegeAndPrisonerOrphans() {
         assertEquals(NationLifecyclePolicy.Decision.ALLOWED,
-                NationLifecyclePolicy.disband(true, false, false));
+                NationLifecyclePolicy.disband(true, false, false, false, false));
+        assertEquals(NationLifecyclePolicy.Decision.OWNER_ONLY,
+                NationLifecyclePolicy.disband(false, false, false, false, false));
         assertEquals(NationLifecyclePolicy.Decision.SIEGE_LOCKED,
-                NationLifecyclePolicy.disband(true, true, false));
+                NationLifecyclePolicy.disband(true, true, false, false, false));
         assertEquals(NationLifecyclePolicy.Decision.PRISONERS_EXIST,
-                NationLifecyclePolicy.disband(true, false, true));
+                NationLifecyclePolicy.disband(true, false, true, false, false));
+    }
+
+    @Test
+    void disbandCannotShedAnAllianceOrPeaceTruce() {
+        // An alliance under termination notice is still an alliance: it must run out first.
+        assertEquals(NationLifecyclePolicy.Decision.ALLIANCE_ACTIVE,
+                NationLifecyclePolicy.disband(true, false, false, true, false));
+        assertEquals(NationLifecyclePolicy.Decision.PEACE_TRUCE_ACTIVE,
+                NationLifecyclePolicy.disband(true, false, false, false, true));
+        assertEquals(NationLifecyclePolicy.Decision.OWNER_ONLY,
+                NationLifecyclePolicy.disband(false, false, false, true, true));
     }
 }

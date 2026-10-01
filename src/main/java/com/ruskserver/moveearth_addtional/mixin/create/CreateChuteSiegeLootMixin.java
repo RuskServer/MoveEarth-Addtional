@@ -2,8 +2,6 @@ package com.ruskserver.moveearth_addtional.mixin.create;
 
 import com.ruskserver.moveearth_addtional.s2.nation.NationStorageEvents;
 import com.simibubi.create.content.logistics.chute.ChuteBlockEntity;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,13 +16,6 @@ public abstract class CreateChuteSiegeLootMixin {
         net.minecraft.world.level.block.entity.BlockEntity self =
                 (net.minecraft.world.level.block.entity.BlockEntity) (Object) this;
         if (!(self.getLevel() instanceof ServerLevel level)) return;
-        for (Direction direction : Direction.values()) {
-            BlockPos source = self.getBlockPos().relative(direction);
-            if (level.getBlockState(source).is(NationStorageEvents.STORAGE_BLOCKS)
-                    && NationStorageEvents.automationRestricted(level, source, self.getBlockPos())) {
-                ci.cancel();
-                return;
-            }
-        }
+        if (NationStorageEvents.adjacentAutomationRestricted(level, self.getBlockPos())) ci.cancel();
     }
 }

@@ -57,6 +57,8 @@ public final class PrisonerService {
     private static final Map<UUID, RestraintAttempt> ATTEMPTS = new HashMap<>();
     private static final Map<UUID, Integer> LAST_PATH_WARNING = new HashMap<>();
     private static final Map<UUID, Integer> LAST_RESTRICTION_NOTICE = new HashMap<>();
+    /** Players whose client already holds the empty (not escorting, escorted or imprisoned) snapshot. */
+    private static final java.util.Set<UUID> IDLE_SNAPSHOT_SENT = new java.util.HashSet<>();
     private static final double INTAKE_DISTANCE_SQR = 36.0D;
     private static final double JAIL_RADIUS_SQR = 100.0D;
 
@@ -173,7 +175,13 @@ public final class PrisonerService {
                         "message.moveearth_addtional.prisoner.movement_restricted")));
             }
         }
-        if (player.tickCount % 20 == 0) sendSnapshot(player, false, null);
+        if (player.tickCount % 20 == 0) {
+            // The HUD only needs the per-second countdown while involved; the empty state is sent once.
+            boolean involved = data.custodyByCaptor(player.getUUID()).isPresent()
+                    || data.custody(player.getUUID()).isPresent() || data.prisoner(player.getUUID()).isPresent();
+            if (involved) IDLE_SNAPSHOT_SENT.remove(player.getUUID());
+            if (involved || IDLE_SNAPSHOT_SENT.add(player.getUUID())) sendSnapshot(player, false, null);
+        }
     }
 
     private static void tickAttempt(ServerPlayer captor) {
@@ -668,6 +676,8 @@ public final class PrisonerService {
                     "message.moveearth_addtional.prisoner.escort_released_logout")));
         }
         ATTEMPTS.remove(player.getUUID());
+        IDLE_SNAPSHOT_SENT.remove(player.getUUID());
+        LAST_RESTRICTION_NOTICE.remove(player.getUUID());
     }
 
     public static boolean canReturnAll(MinecraftServer server, UUID firstNation, UUID secondNation) {

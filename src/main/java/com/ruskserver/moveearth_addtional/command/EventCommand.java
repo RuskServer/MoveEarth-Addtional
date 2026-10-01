@@ -92,12 +92,14 @@ public final class EventCommand {
 
     private static int top(CommandSourceStack source) {
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(source.getServer());
-        source.sendSuccess(() -> MoveEarthMessage.info(HarvestFestival.eventName(ledger) + ": 上位5名"), false);
-        var ranking = HarvestFestival.ranking(ledger);
+        source.sendSuccess(() -> MoveEarthMessage.info(HarvestFestival.eventName(ledger)
+                + ": 報酬対象の上位5名（国家所属・" + HarvestFestival.MINIMUM_POINTS + "点以上）"), false);
+        // Same eligibility as settlement: only nation members take a rank.
+        var ranking = HarvestFestival.eligibleRanking(source.getServer(), ledger);
         for (int index = 0; index < Math.min(5, ranking.size()); index++) {
             int rank = index + 1;
             var score = ranking.get(index).getValue();
-            source.sendSuccess(() -> Component.literal(rank + ". " + score.name() + " " + score.points() + "点"), false);
+            source.sendSuccess(() -> MoveEarthMessage.info(rank + ". " + score.name() + " " + score.points() + "点"), false);
         }
         return 1;
     }

@@ -42,7 +42,7 @@ final class MoveEarthConfigScreen {
                                 .option(Option.<Integer>createBuilder()
                                         .name(Component.translatable(KEY + "scope.interval"))
                                         .description(describe("scope.interval"))
-                                        .binding(1, ScopePipConfig.UPDATE_INTERVAL::get, ScopePipConfig.UPDATE_INTERVAL::set)
+                                        .binding(2, ScopePipConfig.UPDATE_INTERVAL::get, ScopePipConfig.UPDATE_INTERVAL::set)
                                         .controller(option -> IntegerSliderControllerBuilder.create(option)
                                                 .range(1, 3).step(1)
                                                 .formatValue(value -> Component.translatable(value == 1

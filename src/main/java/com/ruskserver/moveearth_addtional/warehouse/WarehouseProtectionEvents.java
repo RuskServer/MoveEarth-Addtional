@@ -80,7 +80,9 @@ public final class WarehouseProtectionEvents {
     public static void onExplosion(ExplosionEvent.Detonate event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         WarehouseSites sites = WarehouseSites.get(level.getServer());
-        event.getAffectedBlocks().removeIf(pos -> sites.protects(level.dimension().location(), pos));
+        var dimension = level.dimension().location();
+        if (!sites.protectsAnyIn(dimension)) return;
+        event.getAffectedBlocks().removeIf(pos -> sites.protects(dimension, pos));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

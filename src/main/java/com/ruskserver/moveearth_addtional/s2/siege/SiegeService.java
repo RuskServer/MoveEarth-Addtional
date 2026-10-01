@@ -35,13 +35,17 @@ import com.ruskserver.moveearth_addtional.s2.dispatch.DispatchContractSavedData;
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class SiegeService {
     private static final int MAX_RECENT_LOGS = 65_536;
-    private static final Map<LogKey, Long> RECENT_LOGS = new HashMap<>();
+    /** Last INFO line per actor, core and attempt kind: {logged game tick, attempts folded into it since}. */
+    private static final Map<LogKey, long[]> RECENT_LOGS = new HashMap<>();
 
     private SiegeService() { }
 
     public static SiegeSavedData.AttemptResult recordAttack(ServerPlayer attacker, ServerLevel level,
                                                              BlockPos target, boolean effectiveDamage) {
-        if (attacker == null) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+        // A machine acting as a fake player is never a Siege attacker.
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(attacker) == null) {
+            return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+        }
         NationSavedData nations = NationSavedData.get(level.getServer());
         UUID attackerNation = SiegeAttributionService.nationForTarget(attacker, level, target);
         return recordAttack(new AttackAttribution(attackerNation, attacker.getUUID(), "player"),
@@ -53,9 +57,14 @@ public final class SiegeService {
         if (attribution == null || (attribution.nationId() == null && attribution.actorId() == null)) {
             return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
         }
+        return recordAttackOn(attribution, level, target, effectiveDamage, controllingCore(level, target));
+    }
+
+    /** {@link #recordAttack(AttackAttribution, ServerLevel, BlockPos, boolean)} with the target's controlling core resolved. */
+    private static SiegeSavedData.AttemptResult recordAttackOn(AttackAttribution attribution, ServerLevel level,
+                                                               BlockPos target, boolean effectiveDamage,
+                                                               TerritorySavedData.CoreRecord core) {
         NationSavedData nations = NationSavedData.get(level.getServer());
-        TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
-                .controllingCore(level.getServer(), level.dimension().location(), target).orElse(null);
         UUID attackerNation = resolvedNation(attribution, level, target, core);
         if (attribution.frozen() && attribution.contractId() != null && attackerNation == null) {
             return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
@@ -84,22 +93,20 @@ public final class SiegeService {
             }
         }
 
-        long gameTick = level.getServer().overworld().getGameTime();
-        UUID logActor = attribution.actorId() == null ? attackerId : attribution.actorId();
-        LogKey logKey = new LogKey(logActor, level.dimension().location().toString(), target.asLong());
-        boolean shouldLog = gameTick >= RECENT_LOGS.getOrDefault(logKey, Long.MIN_VALUE)
-                + S2TerritoryConfig.siegeDuplicateLogTicks();
-        if (shouldLog) {
-            RECENT_LOGS.put(logKey, gameTick);
-            Moveearth_addtional.LOGGER.info(
-                    "Siege attempt: actor={} source={} attackerNation={} defenderNation={} target={} effective={}",
-                    attribution.actorId(), attribution.source(), attackerNation, core.nationId(), target, effectiveDamage);
-        }
+        logAttempt(level, attribution, attackerId, attackerNation, core, target, effectiveDamage);
         boolean offlineDefenseAllowed = OfflineDefenseService.baseDivisor(level, core) > 1;
-        OfflineDefenseDaySavedData.get(level.getServer())
-                .observe(core.id(), OfflineDefenseDaySavedData.today(), offlineDefenseAllowed);
+        boolean rollingBefore = siegeData.hasRollingSiege(core.id());
         SiegeSavedData.AttemptResult result = siegeData.registerAttempt(
                 attackerId, individualAttacker, core, effectiveDamage, offlineDefenseAllowed);
+        // Decided when real fighting starts on the core, not by whatever poked it first today.
+        OfflineDefenseDaySavedData offlineDays = OfflineDefenseDaySavedData.get(level.getServer());
+        long today = OfflineDefenseDaySavedData.today();
+        if (OfflineDefenseDayPolicy.decides(
+                result.status() == SiegeSavedData.AttemptStatus.ROLLING_STARTED,
+                result.status() == SiegeSavedData.AttemptStatus.ROLLING_EXTENDED,
+                rollingBefore, offlineDays.allowedOn(core.id(), today) != null)) {
+            offlineDays.record(core.id(), today, offlineDefenseAllowed);
+        }
         if (result.siege() != null) {
             RecoveryService.recordBattleWalls(level, result.siege(), core);
             DispatchContractService.bindEligible(level.getServer(), result.siege());
@@ -127,18 +134,58 @@ public final class SiegeService {
         return result;
     }
 
+    /**
+     * One INFO line per actor, core and attempt kind per duplicate-log window; the attempts folded into
+     * a window are counted on the next line. Every attempt is still available at DEBUG.
+     */
+    private static void logAttempt(ServerLevel level, AttackAttribution attribution, UUID attackerId,
+                                   UUID attackerNation, TerritorySavedData.CoreRecord core, BlockPos target,
+                                   boolean effectiveDamage) {
+        UUID logActor = attribution.actorId() == null ? attackerId : attribution.actorId();
+        Moveearth_addtional.LOGGER.debug(
+                "Siege attempt: actor={} source={} attackerNation={} defenderNation={} core={} target={} effective={}",
+                attribution.actorId(), attribution.source(), attackerNation, core.nationId(), core.id(), target,
+                effectiveDamage);
+        long gameTick = level.getServer().overworld().getGameTime();
+        LogKey logKey = new LogKey(logActor, core.id(), effectiveDamage);
+        long[] window = RECENT_LOGS.get(logKey);
+        if (window != null && gameTick < window[0] + S2TerritoryConfig.siegeDuplicateLogTicks()) {
+            window[1]++;
+            return;
+        }
+        long folded = window == null ? 0L : window[1];
+        RECENT_LOGS.put(logKey, new long[] {gameTick, 0L});
+        Moveearth_addtional.LOGGER.info(
+                "Siege attempt: actor={} source={} attackerNation={} defenderNation={} core={} target={} effective={} foldedSinceLast={}",
+                attribution.actorId(), attribution.source(), attackerNation, core.nationId(), core.id(), target,
+                effectiveDamage, folded);
+    }
+
+    private static TerritorySavedData.CoreRecord controllingCore(ServerLevel level, BlockPos target) {
+        return TerritorySavedData.get(level.getServer())
+                .controllingCore(level.getServer(), level.dimension().location(), target).orElse(null);
+    }
+
     public static ServerPlayer attributablePlayer(Entity source) {
-        if (source instanceof ServerPlayer player) return player;
+        if (source instanceof ServerPlayer) return com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(source);
         Entity owner = source instanceof Projectile projectile ? projectile.getOwner()
                 : source instanceof PrimedTnt tnt ? tnt.getOwner() : null;
-        return owner instanceof ServerPlayer player ? player : null;
+        return com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(owner);
     }
 
     public static boolean peaceTruceBlocks(ServerPlayer attacker, ServerLevel level, BlockPos target) {
-        if (attacker == null) return false;
-        NationSavedData nations = NationSavedData.get(level.getServer());
+        return attackBlockReason(attacker, level, target) != null;
+    }
+
+    /** Why this player may not damage the target at all, or null when nothing blocks the attack. */
+    public static Component attackBlockReason(ServerPlayer attacker, ServerLevel level, BlockPos target) {
+        if (attacker == null) return null;
+        // Deployers and turrets act as fake players: they may not wear down defences.
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(attacker) == null) {
+            return Component.translatable("message.moveearth_addtional.siege.machine_refused");
+        }
         UUID attackerNation = SiegeAttributionService.nationForTarget(attacker, level, target);
-        return peaceTruceBlocks(new AttackAttribution(attackerNation, attacker.getUUID(), "player"), level, target);
+        return attackBlockReason(new AttackAttribution(attackerNation, attacker.getUUID(), "player"), level, target);
     }
 
     /**
@@ -148,39 +195,55 @@ public final class SiegeService {
      * locked them out of this core.
      */
     public static boolean peaceTruceBlocks(AttackAttribution attribution, ServerLevel level, BlockPos target) {
-        if (attribution == null || attribution.nationId() == null && attribution.actorId() == null) return false;
+        return attackBlockReason(attribution, level, target) != null;
+    }
+
+    /**
+     * The same gate as {@link #peaceTruceBlocks(AttackAttribution, ServerLevel, BlockPos)}, returning
+     * the player-facing reason (peace truce, former-nation binding, or failed-siege lockout) so callers
+     * can show the right text; null when nothing blocks the attack.
+     */
+    public static Component attackBlockReason(AttackAttribution attribution, ServerLevel level, BlockPos target) {
+        if (attribution == null || attribution.nationId() == null && attribution.actorId() == null) return null;
+        return attackBlockReasonOn(attribution, level, target, controllingCore(level, target));
+    }
+
+    private static Component attackBlockReasonOn(AttackAttribution attribution, ServerLevel level, BlockPos target,
+                                                 TerritorySavedData.CoreRecord core) {
+        if (core == null) return null;
         MinecraftServer server = level.getServer();
-        TerritorySavedData.CoreRecord core = TerritorySavedData.get(server)
-                .controllingCore(server, level.dimension().location(), target).orElse(null);
-        if (core == null) return false;
         UUID attackerNation = resolvedNation(attribution, level, target, core);
         UUID defenderNation = core.nationId();
         SiegeSavedData siegeData = SiegeSavedData.get(server);
         if (attackerNation != null && !attackerNation.equals(defenderNation)
-                && siegeData.isPeaceTruceActive(attackerNation, defenderNation)) return true;
+                && siegeData.isPeaceTruceActive(attackerNation, defenderNation)) {
+            return Component.translatable("message.moveearth_addtional.peace.truce_protected");
+        }
         UUID formerNation = formerNationBinding(server, attribution, attackerNation, defenderNation);
         if (formerNation != null) {
-            notifyRefusal(server, attribution.actorId(), RefusalKind.FORMER_NATION, Component.translatable(
+            Component reason = Component.translatable(
                     "message.moveearth_addtional.siege.former_nation_bound",
                     NationSavedData.get(server).nation(formerNation).map(NationSavedData.Nation::name).orElse("?"),
                     com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.duration(
                             NationSavedData.get(server).formerNationBindingRemaining(attribution.actorId(),
-                                    com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server)))));
-            return true;
+                                    com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server))));
+            notifyRefusal(server, attribution.actorId(), RefusalKind.FORMER_NATION, reason);
+            return reason;
         }
         // Same identity recordAttack would register, so the lock matches the Siege that failed.
-        if (attribution.frozen() && attribution.contractId() != null && attackerNation == null) return false;
+        if (attribution.frozen() && attribution.contractId() != null && attackerNation == null) return null;
         SiegeAttackerPolicy.Identity identity = SiegeAttackerPolicy.resolve(attackerNation, attribution.actorId(),
                 siegeData.hasActiveIndividualAttack(attribution.actorId(), core.id()));
-        if (identity == null || (!identity.individual() && identity.id().equals(defenderNation))) return false;
+        if (identity == null || (!identity.individual() && identity.id().equals(defenderNation))) return null;
         long locked = siegeData.failedAttackCooldownTicks(identity.id(), identity.individual(), core.id());
         if (locked > 0L) {
-            notifyRefusal(server, attribution.actorId(), RefusalKind.FAILED_COOLDOWN, Component.translatable(
+            Component reason = Component.translatable(
                     "message.moveearth_addtional.siege.failed_cooldown",
-                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownPolicy.remainingMinutes(locked)));
-            return true;
+                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownPolicy.remainingMinutes(locked));
+            notifyRefusal(server, attribution.actorId(), RefusalKind.FAILED_COOLDOWN, reason);
+            return reason;
         }
-        return false;
+        return null;
     }
 
     /**
@@ -248,7 +311,7 @@ public final class SiegeService {
         if (event.getServer().isDedicatedServer() && !ServerSchedule.isOpenNow()) return;
         long now = event.getServer().overworld().getGameTime();
         long retention = Math.max(20L, S2TerritoryConfig.siegeDuplicateLogTicks() * 4L);
-        RECENT_LOGS.entrySet().removeIf(entry -> now - entry.getValue() > retention);
+        RECENT_LOGS.entrySet().removeIf(entry -> now - entry.getValue()[0] > retention);
         if (RECENT_LOGS.size() > MAX_RECENT_LOGS) RECENT_LOGS.clear();
         SiegeSavedData siegeData = SiegeSavedData.get(event.getServer());
         SiegeSavedData.TickResult result = siegeData.advance(20L,
@@ -380,6 +443,15 @@ public final class SiegeService {
                 if (player != null) player.sendSystemMessage(MoveEarthMessage.warning(body));
             }
         }
+    }
+
+    /** A siege held behind another attacker's fall is running again because that fall was withdrawn. */
+    static void notifySiegeResumed(MinecraftServer server, NationSavedData nations,
+                                   SiegeSavedData.SiegeRecord siege) {
+        String defender = nations.nation(siege.defenderNation()).map(NationSavedData.Nation::name).orElse("?");
+        notifyParties(server, nations, siege, Component.translatable("message.moveearth_addtional.siege.resumed",
+                attackerName(server, nations, siege.attackerNation(), siege.individualAttacker()), defender,
+                siege.corePos().getX(), siege.corePos().getY(), siege.corePos().getZ()));
     }
 
     private static SiegeFallPolicy.Presence counterPresence(MinecraftServer server, NationSavedData nations,
@@ -614,5 +686,94 @@ public final class SiegeService {
                 : java.util.List.of(attackerId, defenderNation);
     }
 
-    private record LogKey(UUID player, String dimension, long pos) { }
+    private record LogKey(UUID actor, UUID core, boolean effective) { }
+
+    /**
+     * The Siege gate and attempt bookkeeping for one explosion or impact, which may touch hundreds of
+     * blocks under the same attribution.
+     *
+     * <p>Answers match calling {@link #peaceTruceBlocks(AttackAttribution, ServerLevel, BlockPos)} and
+     * {@link #recordAttack(AttackAttribution, ServerLevel, BlockPos, boolean)} per block, in the same order:
+     * <ul>
+     *   <li>The gate only depends on the target's controlling core, so it is decided once per core.</li>
+     *   <li>A repeated attempt of the same kind on a core already recorded in this batch changes no Siege
+     *       state (same timer, same status transitions, wall baseline already taken), so it is not
+     *       registered again. The one effect a repeat still has, binding a further funded dispatch
+     *       contract to the live Siege, is replayed.</li>
+     *   <li>Core damage can make a core fall, which changes both answers; {@link #recordCoreHit} records
+     *       that hit unbatched and starts the batch afresh.</li>
+     * </ul>
+     */
+    public static final class AttackBatch {
+        private final AttackAttribution attribution;
+        private final ServerLevel level;
+        private final boolean attributed;
+        private final Map<UUID, Boolean> blockedByCore = new HashMap<>();
+        private final Map<UUID, CoreAttempts> attemptsByCore = new HashMap<>();
+
+        public AttackBatch(AttackAttribution attribution, ServerLevel level) {
+            this.attribution = attribution;
+            this.level = level;
+            this.attributed = attribution != null && (attribution.nationId() != null || attribution.actorId() != null);
+        }
+
+        public AttackAttribution attribution() { return attribution; }
+
+        /** Same answer as {@link SiegeService#peaceTruceBlocks(AttackAttribution, ServerLevel, BlockPos)}. */
+        public boolean truceBlocks(BlockPos target) {
+            if (!attributed) return false;
+            TerritorySavedData.CoreRecord core = controllingCore(level, target);
+            if (core == null) return false;
+            Boolean cached = blockedByCore.get(core.id());
+            if (cached != null) return cached;
+            boolean blocked = attackBlockReasonOn(attribution, level, target, core) != null;
+            blockedByCore.put(core.id(), blocked);
+            return blocked;
+        }
+
+        /** Same effect as {@link SiegeService#recordAttack(AttackAttribution, ServerLevel, BlockPos, boolean)}. */
+        public SiegeSavedData.AttemptResult record(BlockPos target, boolean effectiveDamage) {
+            if (!attributed) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+            TerritorySavedData.CoreRecord core = controllingCore(level, target);
+            if (core == null) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+            CoreAttempts attempts = attemptsByCore.computeIfAbsent(core.id(), ignored -> new CoreAttempts());
+            if (SiegeBatchPolicy.repeats(attempts.attempted, attempts.effective, effectiveDamage)) {
+                return attempts.replay(level, effectiveDamage);
+            }
+            SiegeSavedData.AttemptResult result = recordAttackOn(attribution, level, target, effectiveDamage, core);
+            if (effectiveDamage) attempts.effective = true;
+            else attempts.attempted = true;
+            if (result.siege() != null) attempts.siege = result.siege();
+            return result;
+        }
+
+        /** Records an effective hit on a core itself, which may make it fall, and starts the batch afresh. */
+        public SiegeSavedData.AttemptResult recordCoreHit(BlockPos corePos) {
+            SiegeSavedData.AttemptResult result = recordAttack(attribution, level, corePos, true);
+            coreStateChanged();
+            return result;
+        }
+
+        /** Forgets every cached answer; call after anything changed a core's health or state. */
+        public void coreStateChanged() {
+            blockedByCore.clear();
+            attemptsByCore.clear();
+        }
+
+        private static final class CoreAttempts {
+            private boolean attempted;
+            private boolean effective;
+            private SiegeSavedData.SiegeRecord siege;
+
+            private SiegeSavedData.AttemptResult replay(ServerLevel level, boolean effectiveDamage) {
+                SiegeSavedData.SiegeRecord live = siege == null ? null
+                        : SiegeSavedData.get(level.getServer()).activeById(siege.id()).orElse(null);
+                if (live == null) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+                DispatchContractService.bindEligible(level.getServer(), live);
+                return new SiegeSavedData.AttemptResult(effectiveDamage
+                        ? SiegeSavedData.AttemptStatus.ROLLING_EXTENDED
+                        : SiegeSavedData.AttemptStatus.ACTIVE_UNCHANGED, live);
+            }
+        }
+    }
 }

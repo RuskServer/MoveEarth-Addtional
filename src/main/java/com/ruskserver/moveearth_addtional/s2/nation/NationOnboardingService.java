@@ -159,20 +159,23 @@ public final class NationOnboardingService {
         ServerPlayer applicant = applicantId == null ? null : player.server.getPlayerList().getPlayer(applicantId);
         if (result.success()) recordDecision(player, applicantId, applicant, approve, nations);
         if (result.success() && applicant != null) {
-            applicant.sendSystemMessage(approve
-                    ? MoveEarthMessage.success(net.minecraft.network.chat.Component.translatable(
-                    "screen.moveearth_addtional.onboarding.application.approved"))
-                    : MoveEarthMessage.error(net.minecraft.network.chat.Component.translatable(
-                    "screen.moveearth_addtional.onboarding.application.rejected")));
+            if (!approve) {
+                applicant.sendSystemMessage(MoveEarthMessage.error(net.minecraft.network.chat.Component.translatable(
+                        "screen.moveearth_addtional.onboarding.application.rejected")));
+            }
             if (approve) {
+                // The manager's "approved" key is worded from their side; the applicant gets their own.
                 // Only a player still waiting at first join is moved to the nation; anyone
                 // already playing joins where they stand rather than getting a free teleport.
                 if (pending(applicant)) {
+                    applicant.sendSystemMessage(MoveEarthMessage.success(net.minecraft.network.chat.Component.translatable(
+                            "message.moveearth_addtional.onboarding.application_approved")));
                     UUID nationId = nations.nationIdFor(applicantId).orElse(null);
                     releaseForSearch(applicant);
                     if (nationId != null) RandomSpawnHandler.beginNationSpawnSearch(applicant, nationId);
                 } else {
-                    applicant.sendSystemMessage(MoveEarthMessage.info(net.minecraft.network.chat.Component.translatable(
+                    // Already reads "your application was approved", plus where to look next.
+                    applicant.sendSystemMessage(MoveEarthMessage.success(net.minecraft.network.chat.Component.translatable(
                             "screen.moveearth_addtional.onboarding.application.approved.in_world")));
                 }
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(applicant,

@@ -45,7 +45,7 @@ public final class SiegeActivityTracker {
 
     @SubscribeEvent
     public static void onBlockBroken(BlockEvent.BreakEvent event) {
-        if (event.getPlayer() instanceof ServerPlayer player) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(event.getPlayer()) instanceof ServerPlayer player) {
             record(player);
         }
     }
@@ -56,7 +56,7 @@ public final class SiegeActivityTracker {
         if (hurt instanceof ServerPlayer player) {
             record(player);
         }
-        if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer attacker) {
             record(attacker);
         }
     }

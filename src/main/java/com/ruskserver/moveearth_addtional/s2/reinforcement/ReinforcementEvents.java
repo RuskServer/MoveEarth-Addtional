@@ -49,7 +49,7 @@ public final class ReinforcementEvents {
         int radius = com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.cbcProtectedBlastRadius();
         Map<BlockPos, BlockState> snapshots = new LinkedHashMap<>();
         for (ReinforcementSavedData.LocatedEntry located : ReinforcementSavedData.get(level)
-                .around(level, center, radius)) {
+                .aroundUnordered(level, center, radius)) {
             snapshots.put(located.pos().immutable(), level.getBlockState(located.pos()));
         }
         if (!snapshots.isEmpty()) CBC_EXPLOSION_SNAPSHOTS.put(event.getExplosion(), snapshots);
@@ -78,9 +78,19 @@ public final class ReinforcementEvents {
 
     /** The breaker belongs to, or is allied with, the nation owning this reinforcement. */
     private static boolean friendlyToOwner(ServerPlayer player, ServerLevel level, BlockPos pos) {
+        return friendlyToOwner(player.getUUID(), level, pos);
+    }
+
+    /**
+     * Same rule for any attributable player, including the owner of a shell or TNT: own and allied
+     * fire must not chip a nation's reinforcement unseen (it opens no Siege and raises no alert).
+     * Unattributed damage (null actor) is never treated as friendly.
+     */
+    static boolean friendlyToOwner(java.util.UUID actorId, ServerLevel level, BlockPos pos) {
+        if (actorId == null) return false;
         var server = level.getServer();
         var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(server);
-        java.util.UUID own = nations.nationIdFor(player.getUUID()).orElse(null);
+        java.util.UUID own = nations.nationIdFor(actorId).orElse(null);
         if (own == null) return false;
         java.util.UUID owner = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology.at(level, pos)
                 .map(vehicle -> vehicle.vehicle().nationId())
@@ -90,6 +100,58 @@ public final class ReinforcementEvents {
         return owner != null && (owner.equals(own) || nations.isAllied(own, owner));
     }
 
+    /**
+     * {@link #friendlyToOwner(java.util.UUID, ServerLevel, BlockPos)} for many blocks hit by one blast: the
+     * actor's nation, territory owners (chunk-granular) and alliance answers are looked up once. Vehicle
+     * ownership is still resolved per block.
+     */
+    static final class FriendlyFire {
+        private final ServerLevel level;
+        private final java.util.UUID own;
+        private final Map<Long, java.util.Optional<java.util.UUID>> territoryOwners = new HashMap<>();
+        private final Map<java.util.UUID, Boolean> friendlyOwners = new HashMap<>();
+
+        FriendlyFire(java.util.UUID actorId, ServerLevel level) {
+            this.level = level;
+            this.own = actorId == null ? null : com.ruskserver.moveearth_addtional.s2.nation.NationSavedData
+                    .get(level.getServer()).nationIdFor(actorId).orElse(null);
+        }
+
+        /**
+         * The actor's own nation as above; when no player stands behind the attack (an unmanned cannon
+         * attributed to its vehicle's or territory's nation) or the actor has no nation, the attacking
+         * nation recorded in the attribution.
+         */
+        FriendlyFire(SiegeService.AttackAttribution attribution, ServerLevel level) {
+            this.level = level;
+            java.util.UUID actorNation = attribution == null || attribution.actorId() == null ? null
+                    : com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
+                    .nationIdFor(attribution.actorId()).orElse(null);
+            this.own = actorNation != null ? actorNation : attribution == null ? null : attribution.nationId();
+        }
+
+        boolean friendly(BlockPos pos) {
+            if (own == null) return false;
+            var server = level.getServer();
+            java.util.UUID owner = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology.at(level, pos)
+                    .map(vehicle -> vehicle.vehicle().nationId())
+                    .or(() -> territoryOwners.computeIfAbsent(
+                            net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4),
+                            ignored -> com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData.get(server)
+                                    .controllingNation(server, level.dimension().location(), pos)))
+                    .orElse(null);
+            if (owner == null) return false;
+            return friendlyOwners.computeIfAbsent(owner, value -> value.equals(own)
+                    || com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(server).isAllied(own, value));
+        }
+
+        /** Territory control may change when a core is damaged during the blast. */
+        void coreStateChanged() {
+            territoryOwners.clear();
+            friendlyOwners.clear();
+        }
+    }
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBreak(BlockEvent.BreakEvent event) {
         if (!(event.getLevel() instanceof ServerLevel level)
@@ -97,10 +159,11 @@ public final class ReinforcementEvents {
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         ReinforcementEntry entry = data.get(event.getPos()).orElse(null);
         if (entry == null) return;
-        if (SiegeService.peaceTruceBlocks(player, level, event.getPos())) {
+        net.minecraft.network.chat.Component blocked = SiegeService.attackBlockReason(player, level, event.getPos());
+        if (blocked != null) {
             event.setCanceled(true);
-            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
-                    "message.moveearth_addtional.peace.truce_protected"), true);
+            // The truce, former-nation and failed-siege gates each explain themselves.
+            player.displayClientMessage(blocked, true);
             return;
         }
         if (OfflineDefenseService.settlementProtected(level, event.getPos())) {
@@ -169,10 +232,15 @@ public final class ReinforcementEvents {
         }
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         net.minecraft.world.entity.Entity source = event.getExplosion().getDirectSourceEntity();
-        ServerPlayer attacker = SiegeService.attributablePlayer(source);
+        // Some CBC blasts (mortar stone) carry no source entity; the round that made them is still nearby.
+        net.minecraft.world.entity.Entity attributionSource = source == null
+                && CbcReinforcementCompat.isCbcExplosion(event.getExplosion())
+                ? CbcReinforcementCompat.impactMunition(level, BlockPos.containing(event.getExplosion().center()))
+                : source;
+        ServerPlayer attacker = SiegeService.attributablePlayer(attributionSource);
         SiegeService.AttackAttribution attribution =
                 com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService
-                        .attribution(source, "delayed_explosion");
+                        .attribution(attributionSource, "delayed_explosion");
         if (attribution == null && attacker != null) {
             attribution = new SiegeService.AttackAttribution(
                     com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
@@ -187,44 +255,52 @@ public final class ReinforcementEvents {
         net.minecraft.core.BlockPos explosionCenter = net.minecraft.core.BlockPos.containing(
                 event.getExplosion().center());
         boolean preHandled = cbc && CbcReinforcementCompat.wasRecentlyPreHandled(
-                source, level, explosionCenter);
+                attributionSource, level, explosionCenter);
+        // Nobody answers for an unattributed CBC blast: it leaves reinforcement and cores untouched.
+        boolean unattributedCbc = cbc && (attack == null || !com.ruskserver.moveearth_addtional.compat.cbc
+                .CbcShotAttributionPolicy.mayDamageProtected(attack.actorId(), attack.nationId()));
         Set<net.minecraft.core.BlockPos> reinforcementChanges = new java.util.LinkedHashSet<>();
+        java.util.List<net.minecraft.core.BlockPos> affectedBlocks = event.getAffectedBlocks();
         int snapshotRadius = 2;
-        for (net.minecraft.core.BlockPos affected : event.getAffectedBlocks()) {
+        for (net.minecraft.core.BlockPos affected : affectedBlocks) {
             snapshotRadius = Math.max(snapshotRadius, Math.max(
                     Math.abs(affected.getX() - explosionCenter.getX()), Math.max(
                             Math.abs(affected.getY() - explosionCenter.getY()),
                             Math.abs(affected.getZ() - explosionCenter.getZ()))) + 2);
         }
-        java.util.Set<net.minecraft.core.BlockPos> blastBarriers = ReinforcementBlastOcclusion.barriersAround(
-                level, data, explosionCenter, Math.min(64, snapshotRadius));
+        // Only blasts that reach a reinforcement or core need the barrier set; most blasts never do.
+        BlastBarriers blastBarriers = new BlastBarriers(level, data, explosionCenter, Math.min(64, snapshotRadius));
         net.minecraft.world.phys.Vec3 blastOrigin = event.getExplosion().center();
         Map<Long, com.ruskserver.moveearth_addtional.s2.territory.UpkeepPenalty> penaltiesByChunk =
                 new HashMap<>();
-        event.getAffectedBlocks().removeIf(pos -> {
-            if (SiegeService.peaceTruceBlocks(attack, level, pos)) return true;
-            var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
-                    .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
+        var vehicles = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(level.getServer());
+        var territories = TerritorySavedData.get(level.getServer());
+        var dimension = level.dimension().location();
+        SiegeService.AttackBatch siege = new SiegeService.AttackBatch(attack, level);
+        FriendlyFire friendlyFire = attack == null ? null : new FriendlyFire(attack, level);
+        affectedBlocks.removeIf(pos -> {
+            if (siege.truceBlocks(pos)) return true;
+            var vehicleCore = vehicles.at(dimension, pos).orElse(null);
             if (vehicleCore != null) {
-                if (!preHandled && cbc) {
-                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
+                if (!preHandled && cbc && !unattributedCbc) {
+                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers.get())) return true;
                     com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
                             level, pos, SiegeDamageService.configuredCoreDamage(munition), attack);
                 }
                 return true;
             }
-            TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
-                    .core(level.dimension().location(), pos).orElse(null);
+            TerritorySavedData.CoreRecord core = territories.core(dimension, pos).orElse(null);
             if (core != null) {
-                if (preHandled) return true;
-                SiegeService.recordAttack(attack, level, pos, false);
+                if (preHandled || unattributedCbc) return true;
+                siege.record(pos, false);
                 if (cbc) {
-                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
+                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers.get())) return true;
                     int beforeHealth = core.health();
                     TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, pos,
                             SiegeDamageService.configuredTerritoryCoreDamage(munition, pos.equals(explosionCenter)));
                     if (after != null && after.health() < beforeHealth) {
-                        SiegeService.recordAttack(attack, level, pos, true);
+                        siege.recordCoreHit(pos);
+                        if (friendlyFire != null) friendlyFire.coreStateChanged();
                     }
                 }
                 return true;
@@ -232,8 +308,8 @@ public final class ReinforcementEvents {
             ReinforcementEntry entry = data.get(pos).orElse(null);
             if (entry == null) return false;
             if (preHandled) return true;
-            if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers)) return true;
-            SiegeService.recordAttack(attack, level, pos, false);
+            if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers.get())) return true;
+            siege.record(pos, false);
             if (!entry.enabled()) {
                 data.remove(pos);
                 reinforcementChanges.add(pos.immutable());
@@ -248,17 +324,45 @@ public final class ReinforcementEvents {
                 reinforcementChanges.add(pos.immutable());
                 return false;
             }
-            if (!cbc) return true;
+            if (!cbc || unattributedCbc) return true;
+            if (friendlyFire != null && friendlyFire.friendly(pos)) return true;
             SiegeDamageService.ReinforcementDamage result = SiegeDamageService.damageReinforcement(
                     level, pos, entry, munition, penalty);
             if (result.appliedDamage() > 0) {
-                SiegeService.recordAttack(attack, level, pos, true);
+                siege.record(pos, true);
                 reinforcementChanges.add(pos.immutable());
             }
             return result.remains();
         });
         restoreCbcTransforms(level, data, event.getExplosion(), reinforcementChanges);
         ReinforcementService.syncChangedNearbyManagers(level, reinforcementChanges);
+    }
+
+    /**
+     * {@link ReinforcementBlastOcclusion#barriersAround}, computed on first use instead of for every blast.
+     *
+     * <p>The set must describe the walls as they stood before the blast. Callers keep that true by asking
+     * for it before their first change to reinforcement data or blocks: every branch of a blast handler that
+     * damages or removes reinforcement tests occlusion first.
+     */
+    public static final class BlastBarriers {
+        private final ServerLevel level;
+        private final ReinforcementSavedData data;
+        private final BlockPos center;
+        private final int radius;
+        private Set<BlockPos> barriers;
+
+        public BlastBarriers(ServerLevel level, ReinforcementSavedData data, BlockPos center, int radius) {
+            this.level = level;
+            this.data = data;
+            this.center = center;
+            this.radius = radius;
+        }
+
+        public Set<BlockPos> get() {
+            if (barriers == null) barriers = ReinforcementBlastOcclusion.barriersAround(level, data, center, radius);
+            return barriers;
+        }
     }
 
     private static void restoreCbcTransforms(ServerLevel level, ReinforcementSavedData data,

@@ -20,8 +20,15 @@ public class SectionOcclusionStorage {
 
     private static final Map<ResourceKey<Level>, Long2LongMap> LEVEL_CACHE = new ConcurrentHashMap<>();
 
+    /** Masks use 36 bits, so a negative value can mean "not cached" without a second lookup. */
+    private static final long MISSING = -1L;
+
     private static Long2LongMap getCacheForLevel(ServerLevel level) {
-        return LEVEL_CACHE.computeIfAbsent(level.dimension(), k -> new Long2LongOpenHashMap());
+        return LEVEL_CACHE.computeIfAbsent(level.dimension(), k -> {
+            Long2LongOpenHashMap map = new Long2LongOpenHashMap();
+            map.defaultReturnValue(MISSING);
+            return map;
+        });
     }
 
     /**
@@ -32,23 +39,30 @@ public class SectionOcclusionStorage {
      * @return 透過ビットマスク
      */
     public static long getSectionMask(ServerLevel level, SectionPos sectionPos) {
-        Long2LongMap cache = getCacheForLevel(level);
-        long key = sectionPos.asLong();
+        return getSectionMask(level, sectionPos.x(), sectionPos.y(), sectionPos.z());
+    }
 
+    /** Allocation-free form for the per-player search, which asks for hundreds of sections. */
+    public static long getSectionMask(ServerLevel level, int sectionX, int sectionY, int sectionZ) {
+        Long2LongMap cache = getCacheForLevel(level);
+        long key = SectionPos.asLong(sectionX, sectionY, sectionZ);
+
+        long cached;
         synchronized (cache) {
-            if (cache.containsKey(key)) {
-                return cache.get(key);
-            }
+            cached = cache.get(key);
+        }
+        if (cached != MISSING) {
+            return cached;
         }
 
         // Unloaded chunks and heights outside the world answer "open" without being cached:
         // nothing would ever invalidate such an entry, so the map would only grow.
-        if (level.getChunkSource().getChunkNow(sectionPos.x(), sectionPos.z()) == null
-                || sectionPos.y() < level.getMinSection() || sectionPos.y() >= level.getMaxSection()) {
+        if (sectionY < level.getMinSection() || sectionY >= level.getMaxSection()
+                || level.getChunkSource().getChunkNow(sectionX, sectionZ) == null) {
             return SubChunkVisGraph.ALL_OPEN_MASK;
         }
 
-        long mask = computeMask(level, sectionPos);
+        long mask = computeMask(level, sectionX, sectionY, sectionZ);
 
         synchronized (cache) {
             cache.put(key, mask);
@@ -57,15 +71,7 @@ public class SectionOcclusionStorage {
         return mask;
     }
 
-    private static long computeMask(ServerLevel level, SectionPos sectionPos) {
-        int chunkX = sectionPos.x();
-        int chunkZ = sectionPos.z();
-        int sectionY = sectionPos.y();
-
-        if (!level.hasChunk(chunkX, chunkZ)) {
-            return SubChunkVisGraph.ALL_OPEN_MASK;
-        }
-
+    private static long computeMask(ServerLevel level, int chunkX, int sectionY, int chunkZ) {
         LevelChunk chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
         if (chunk == null) {
             return SubChunkVisGraph.ALL_OPEN_MASK;
@@ -85,11 +91,11 @@ public class SectionOcclusionStorage {
      * ブロックが変更された際に該当サブチャンクのキャッシュを無効化します。
      */
     public static void invalidate(ServerLevel level, BlockPos pos) {
-        SectionPos sectionPos = SectionPos.of(pos);
         Long2LongMap cache = LEVEL_CACHE.get(level.dimension());
         if (cache != null) {
+            long key = SectionPos.asLong(pos);
             synchronized (cache) {
-                cache.remove(sectionPos.asLong());
+                cache.remove(key);
             }
         }
     }

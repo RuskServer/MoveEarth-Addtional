@@ -2,6 +2,8 @@ package com.ruskserver.moveearth_addtional.network.c2s.other;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.jobs.JobsScreenSync;
+import com.ruskserver.moveearth_addtional.network.common.C2SPacketGate;
+import com.ruskserver.moveearth_addtional.network.common.C2SRateLimiter;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -35,9 +37,11 @@ public record C2S_JobsActionPacket(String action, String jobId, String targetNam
 
     public void handle(net.neoforged.neoforge.network.handling.IPayloadContext context) {
         context.enqueueWork(() -> {
-            if (context.player() instanceof ServerPlayer player) {
-                JobsScreenSync.handleAction(player, this);
-            }
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            // A ranking sorts every player's progress, so it gets the snapshot budget, not the action one.
+            if ("ranking".equalsIgnoreCase(action) && !C2SPacketGate.allowSubAction(
+                    player, "jobs_ranking", C2SRateLimiter.REQUEST)) return;
+            JobsScreenSync.handleAction(player, this);
         });
     }
 }

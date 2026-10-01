@@ -11,12 +11,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public record S2C_NationNameplatesPacket(List<Entry> entries) implements CustomPacketPayload {
-    private static final int MAX_ENTRIES = 512;
+/**
+ * Nameplate prefixes for players the viewer can see. {@code replace} is a full list (the client drops
+ * what it had first); otherwise the packet is a delta: {@code entries} are added or replaced and
+ * {@code removed} players are forgotten. The server sends a full list once per login and deltas after.
+ */
+public record S2C_NationNameplatesPacket(boolean replace, List<Entry> entries, List<UUID> removed)
+        implements CustomPacketPayload {
+    public static final int MAX_ENTRIES = 512;
     public static final Type<S2C_NationNameplatesPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "nation_nameplates"));
     public static final StreamCodec<FriendlyByteBuf, S2C_NationNameplatesPacket> STREAM_CODEC = StreamCodec.of(
             (buffer, packet) -> {
+                buffer.writeBoolean(packet.replace);
                 int size = Math.min(packet.entries.size(), MAX_ENTRIES);
                 buffer.writeVarInt(size);
                 for (int index = 0; index < size; index++) {
@@ -25,8 +32,12 @@ public record S2C_NationNameplatesPacket(List<Entry> entries) implements CustomP
                     buffer.writeUtf(entry.prefix, 80);
                     buffer.writeByte(entry.relation.ordinal());
                 }
+                int removedSize = Math.min(packet.removed.size(), MAX_ENTRIES);
+                buffer.writeVarInt(removedSize);
+                for (int index = 0; index < removedSize; index++) buffer.writeUUID(packet.removed.get(index));
             },
             buffer -> {
+                boolean replace = buffer.readBoolean();
                 int size = buffer.readVarInt();
                 if (size < 0 || size > MAX_ENTRIES) throw new IllegalArgumentException("Invalid nameplate count: " + size);
                 List<Entry> entries = new ArrayList<>(size);
@@ -34,11 +45,18 @@ public record S2C_NationNameplatesPacket(List<Entry> entries) implements CustomP
                     entries.add(new Entry(buffer.readUUID(), buffer.readUtf(80),
                             NationNameplateRelation.fromNetworkId(buffer.readUnsignedByte())));
                 }
-                return new S2C_NationNameplatesPacket(entries);
+                int removedSize = buffer.readVarInt();
+                if (removedSize < 0 || removedSize > MAX_ENTRIES) {
+                    throw new IllegalArgumentException("Invalid nameplate removal count: " + removedSize);
+                }
+                List<UUID> removed = new ArrayList<>(removedSize);
+                for (int index = 0; index < removedSize; index++) removed.add(buffer.readUUID());
+                return new S2C_NationNameplatesPacket(replace, entries, removed);
             });
 
     public S2C_NationNameplatesPacket {
         entries = entries == null ? List.of() : List.copyOf(entries);
+        removed = removed == null ? List.of() : List.copyOf(removed);
     }
 
     @Override

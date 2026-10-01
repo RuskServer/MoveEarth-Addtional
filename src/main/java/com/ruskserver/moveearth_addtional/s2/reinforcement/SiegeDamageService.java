@@ -94,6 +94,8 @@ public final class SiegeDamageService {
                 ReinforcementService.syncChangedNearbyManagers(level, Set.of(pos));
                 return false;
             }
+            // Unattributed artillery is refused outright; own or allied artillery must not chip it unseen.
+            if (attacker == null || ReinforcementEvents.friendlyToOwner(attacker.getUUID(), level, pos)) return true;
             ReinforcementDamage result = damageReinforcement(level, pos, entry, kind, penalty, true);
             if (result.appliedDamage() > 0) {
                 var applied = SiegeService.recordAttack(attacker, level, pos, true);
@@ -107,8 +109,8 @@ public final class SiegeDamageService {
         var vehicleCore = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData
                 .get(level.getServer()).at(level.dimension().location(), pos).orElse(null);
         if (vehicleCore != null) {
-            SiegeService.AttackAttribution attribution = attacker == null ? null
-                    : new SiegeService.AttackAttribution(
+            if (attacker == null) return true;
+            SiegeService.AttackAttribution attribution = new SiegeService.AttackAttribution(
                     com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
                             .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "cbc");
             int damage = configuredVehicleCoreDamage(kind, true);
@@ -121,6 +123,7 @@ public final class SiegeDamageService {
         TerritorySavedData.CoreRecord core = TerritorySavedData.get(level.getServer())
                 .core(level.dimension().location(), pos).orElse(null);
         if (core != null) {
+            if (attacker == null) return true;
             SiegeService.recordAttack(attacker, level, pos, false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, pos, configuredTerritoryCoreDamage(kind, true));
@@ -133,6 +136,11 @@ public final class SiegeDamageService {
     /**
      * Handles protected blocks before CBC's explosion raycast can transform stone into cobblestone.
      * Returning true cancels CBC terrain edits for that blast while entity damage and effects remain.
+     *
+     * <p>An unattributed blast (no actor and no nation, see
+     * {@link com.ruskserver.moveearth_addtional.compat.cbc.CbcShotAttributionPolicy}) is still intercepted
+     * but damages no reinforcement, vehicle core or territory core: nobody would answer for it, so no
+     * truce, Siege or friendly-fire rule could apply.
      */
     public static boolean interceptCbcProtectedArea(ServerPlayer attacker, ServerLevel level, BlockPos center,
                                                      CbcMunitionDamage.Kind kind, int radius) {
@@ -147,22 +155,28 @@ public final class SiegeDamageService {
                                                      CbcMunitionDamage.Kind kind, int radius) {
         int safeRadius = Math.max(0, radius);
         int damage = configuredDamage(kind);
+        boolean attributed = attribution != null && com.ruskserver.moveearth_addtional.compat.cbc
+                .CbcShotAttributionPolicy.mayDamageProtected(attribution.actorId(), attribution.nationId());
         boolean intercepted = false;
         boolean reinforcementChanged = false;
         Set<BlockPos> changedPositions = new LinkedHashSet<>();
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
-        Set<BlockPos> blastBarriers = ReinforcementBlastOcclusion.barriersAround(
+        // Taken before the first reinforcement is damaged, exactly like the former eager snapshot.
+        ReinforcementEvents.BlastBarriers blastBarriers = new ReinforcementEvents.BlastBarriers(
                 level, reinforcements, center, safeRadius + 2);
         net.minecraft.world.phys.Vec3 blastOrigin = center.getCenter();
         Map<Long, UpkeepPenalty> penaltiesByChunk = new HashMap<>();
-        for (ReinforcementSavedData.LocatedEntry located : reinforcements.around(level, center, safeRadius)) {
+        SiegeService.AttackBatch siege = new SiegeService.AttackBatch(attribution, level);
+        ReinforcementEvents.FriendlyFire friendlyFire = attribution == null ? null
+                : new ReinforcementEvents.FriendlyFire(attribution, level);
+        for (ReinforcementSavedData.LocatedEntry located : reinforcements.aroundUnordered(level, center, safeRadius)) {
             ReinforcementEntry entry = located.entry();
             if (!entry.enabled()) continue;
-            if (SiegeService.peaceTruceBlocks(attribution, level, located.pos())) {
+            if (siege.truceBlocks(located.pos())) {
                 intercepted = true;
                 continue;
             }
-            if (ReinforcementBlastOcclusion.blocked(blastOrigin, located.pos(), blastBarriers)) {
+            if (ReinforcementBlastOcclusion.blocked(blastOrigin, located.pos(), blastBarriers.get())) {
                 intercepted = true;
                 continue;
             }
@@ -172,13 +186,14 @@ public final class SiegeDamageService {
                     chunkKey, ignored -> penaltyAt(level, located.pos()));
             if (!penalty.reinforcementProtectionEnabled()) continue;
             intercepted = true;
-            SiegeService.recordAttack(attribution, level, located.pos(), false);
+            if (!attributed) continue;
+            if (friendlyFire != null && friendlyFire.friendly(located.pos())) continue;
+            siege.record(located.pos(), false);
             if (damage > 0) {
                 ReinforcementDamage result = damageReinforcement(
                         level, located.pos(), entry, kind, penalty, false);
                 if (result.appliedDamage() > 0) {
-                    var applied = SiegeService.recordAttack(
-                            attribution, level, located.pos(), true);
+                    var applied = siege.record(located.pos(), true);
                     if (applied.siege() != null && attribution != null && attribution.actorId() != null) {
                         ServerPlayer actor = level.getServer().getPlayerList().getPlayer(attribution.actorId());
                         if (actor != null) com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(actor,
@@ -195,7 +210,7 @@ public final class SiegeDamageService {
                 .get(level.getServer()).at(level.dimension().location(), center).orElse(null);
         if (vehicleCore != null) {
             intercepted = true;
-            if (!SiegeService.peaceTruceBlocks(attribution, level, center)) {
+            if (attributed && !siege.truceBlocks(center)) {
                 int vehicleDamage = configuredVehicleCoreDamage(kind, safeRadius == 0);
                 if (kind == CbcMunitionDamage.Kind.AUTOCANNON
                         && !(level.getBlockEntity(center) instanceof VehicleCoreBlockEntity)) vehicleDamage = 0;
@@ -209,17 +224,37 @@ public final class SiegeDamageService {
             if (core.pos().distSqr(center) > radiusSquared
                     || core.state() != TerritorySavedData.CoreState.EXPOSED || core.health() <= 0) continue;
             intercepted = true;
-            if (SiegeService.peaceTruceBlocks(attribution, level, core.pos())) continue;
-            if (ReinforcementBlastOcclusion.blocked(blastOrigin, core.pos(), blastBarriers)) continue;
-            SiegeService.recordAttack(attribution, level, core.pos(), false);
+            if (!attributed || siege.truceBlocks(core.pos())) continue;
+            if (ReinforcementBlastOcclusion.blocked(blastOrigin, core.pos(), blastBarriers.get())) continue;
+            siege.record(core.pos(), false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, core.pos(), configuredTerritoryCoreDamage(kind, core.pos().equals(center)));
-            if (after != null && after.health() < core.health()) {
-                SiegeService.recordAttack(attribution, level, core.pos(), true);
-            }
+            if (after != null && after.health() < core.health()) siege.recordCoreHit(core.pos());
         }
         if (reinforcementChanged) ReinforcementService.syncChangedNearbyManagers(level, changedPositions);
         return intercepted;
+    }
+
+    /**
+     * Cheap superset test for {@link #interceptCbcProtectedArea}: false only when no enabled reinforcement,
+     * vehicle core or live exposed territory core lies within {@code radius} of the impact, in which case
+     * that method would neither intercept nor change anything.
+     */
+    public static boolean cbcAreaMayBeProtected(ServerLevel level, BlockPos center, int radius) {
+        int safeRadius = Math.max(0, radius);
+        if (com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(level.getServer())
+                .at(level.dimension().location(), center).isPresent()) return true;
+        long radiusSquared = (long) safeRadius * safeRadius;
+        for (TerritorySavedData.CoreRecord core : TerritorySavedData.get(level.getServer())
+                .coresNear(level.dimension().location(), center, safeRadius)) {
+            if (core.pos().distSqr(center) <= radiusSquared
+                    && core.state() == TerritorySavedData.CoreState.EXPOSED && core.health() > 0) return true;
+        }
+        for (ReinforcementSavedData.LocatedEntry located : ReinforcementSavedData.get(level)
+                .aroundUnordered(level, center, safeRadius)) {
+            if (located.entry().enabled()) return true;
+        }
+        return false;
     }
 
     /** Returns true if reinforcement remains and the explosion must not destroy the block. */

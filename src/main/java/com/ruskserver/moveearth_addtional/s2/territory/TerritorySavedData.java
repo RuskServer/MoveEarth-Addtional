@@ -468,7 +468,7 @@ public final class TerritorySavedData extends SavedData {
 
     /** A configuring core holds its land only for {@link ConfiguringReservationPolicy#LIMIT_OPEN_TICKS}. */
     private boolean configuringReservationLive(CoreRecord core) {
-        return attachedServer == null || ConfiguringReservationSavedData.live(attachedServer, core.id);
+        return attachedServer == null || ConfiguringReservationSavedData.live(attachedServer, core);
     }
 
     /**
@@ -658,7 +658,7 @@ public final class TerritorySavedData extends SavedData {
         return dimensionIndex == null ? null : dimensionIndex.get(ChunkPos.asLong(chunkX, chunkZ));
     }
 
-    private static TerritoryPreviewArea area(BlockPos pos, int radius) {
+    static TerritoryPreviewArea area(BlockPos pos, int radius) {
         ChunkPos chunk = new ChunkPos(pos);
         return new TerritoryPreviewArea(chunk.x, chunk.z, clampRadius(radius));
     }

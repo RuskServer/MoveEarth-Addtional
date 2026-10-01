@@ -32,6 +32,15 @@ import java.util.UUID;
 
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class DispatchContractService {
+    /*
+     * Funded contracts by target core. Every Siege attempt asks for one, so it must not copy and scan the
+     * whole contract history. Only {@link #fund} moves a contract into FUNDED (see
+     * DispatchContractSavedData#funded); it drops the index, as does a different saved-data instance after
+     * a world load. Leaving FUNDED needs no invalidation because candidates are re-checked on use.
+     */
+    private static DispatchContractSavedData fundedIndexSource;
+    private static Map<UUID, List<UUID>> fundedByCore;
+
     private DispatchContractService() { }
 
     public static ActionResult create(ServerPlayer actor, UUID providerNation, UUID targetCoreId,
@@ -178,14 +187,32 @@ public final class DispatchContractService {
         }
         DispatchContractSavedData.Contract funded = data.funded(funding.id(), own, subsidy,
                 employerTransaction, fundTransaction);
+        fundedByCore = null;
         return funded == null ? ActionResult.fail("funding_failed") : ActionResult.ok(funded);
+    }
+
+    private static Map<UUID, List<UUID>> fundedByCore(DispatchContractSavedData data) {
+        Map<UUID, List<UUID>> index = fundedByCore;
+        if (index == null || fundedIndexSource != data) {
+            index = new java.util.HashMap<>();
+            for (DispatchContractSavedData.Contract contract : data.all()) {
+                if (contract.state() != DispatchContractSavedData.State.FUNDED) continue;
+                index.computeIfAbsent(contract.targetCoreId(), ignored -> new java.util.ArrayList<>()).add(contract.id());
+            }
+            fundedByCore = index;
+            fundedIndexSource = data;
+        }
+        return index;
     }
 
     public static void bindEligible(MinecraftServer server, SiegeSavedData.SiegeRecord siege) {
         if (!RecoveryDispatchConfig.dispatchEnabled() || siege == null || siege.individualAttacker()) return;
         DispatchContractSavedData data = DispatchContractSavedData.get(server);
+        List<UUID> fundedOnCore = fundedByCore(data).get(siege.coreId());
+        if (fundedOnCore == null) return;
         NationSavedData nations = NationSavedData.get(server);
-        DispatchContractSavedData.Contract selected = data.all().stream()
+        DispatchContractSavedData.Contract selected = fundedOnCore.stream()
+                .map(data::byId).flatMap(java.util.Optional::stream)
                 .filter(contract -> contract.state() == DispatchContractSavedData.State.FUNDED
                         && contract.targetCoreId().equals(siege.coreId()))
                 .filter(contract -> nations.nation(contract.providerNation()).map(provider ->

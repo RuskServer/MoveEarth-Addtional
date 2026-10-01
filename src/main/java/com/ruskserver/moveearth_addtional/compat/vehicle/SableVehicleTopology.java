@@ -13,7 +13,11 @@ import net.minecraft.server.level.ServerPlayer;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
 import net.minecraft.world.phys.Vec3;
 
+import com.ruskserver.moveearth_addtional.s2.vehicle.VehicleIdentityPolicy;
+
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -27,23 +31,35 @@ public final class SableVehicleTopology {
         SubLevel containing = Sable.HELPER.getContaining(level, plotPos);
         if (!(containing instanceof ServerSubLevel serverSubLevel)) return Optional.empty();
         Set<UUID> bodies = new LinkedHashSet<>();
-        Set<UUID> candidates = new LinkedHashSet<>();
+        Map<ServerSubLevel, UUID> bound = new LinkedHashMap<>();
         for (SubLevel body : SubLevelHelper.getConnectedChain(serverSubLevel)) {
             if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
             bodies.add(body.getUniqueId());
             CompoundTag userData = serverBody.getUserDataTag();
             if (userData == null) continue;
-            if (userData.hasUUID(VEHICLE_ID)) candidates.add(userData.getUUID(VEHICLE_ID));
+            if (userData.hasUUID(VEHICLE_ID)) bound.put(serverBody, userData.getUUID(VEHICLE_ID));
         }
-        if (candidates.size() != 1) return Optional.empty();
-        UUID vehicleId = candidates.iterator().next();
-        VehicleSavedData.VehicleRecord record = VehicleSavedData.get(level.getServer())
-                .vehicle(vehicleId).orElse(null);
+        VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
+        // Ids left behind by a dismantled core no longer govern the craft (see VehicleIdentityPolicy).
+        UUID vehicleId = VehicleIdentityPolicy.resolve(bound.values(), id -> vehicles.vehicle(id).isPresent())
+                .orElse(null);
+        if (vehicleId == null) return Optional.empty();
+        VehicleSavedData.VehicleRecord record = vehicles.vehicle(vehicleId).orElse(null);
         // Detached armored fragments retain metadata, but not protection: the chain must still contain the core body.
         if (record == null || record.subLevelId() == null || !bodies.contains(record.subLevelId())) {
             return Optional.empty();
         }
+        rebindStale(bound, vehicleId, vehicles);
         return Optional.of(new VehicleContext(record, Set.copyOf(bodies)));
+    }
+
+    /** Moves bodies still carrying a dismantled core's id onto the live vehicle now governing their chain. */
+    private static void rebindStale(Map<ServerSubLevel, UUID> bound, UUID vehicleId, VehicleSavedData vehicles) {
+        Set<UUID> stale = VehicleIdentityPolicy.stale(bound.values(), id -> vehicles.vehicle(id).isPresent());
+        if (stale.isEmpty()) return;
+        for (Map.Entry<ServerSubLevel, UUID> entry : bound.entrySet()) {
+            if (stale.contains(entry.getValue()) && !entry.getKey().isRemoved()) bind(entry.getKey(), vehicleId);
+        }
     }
 
     public static void bind(ServerSubLevel subLevel, UUID vehicleId) {
@@ -95,7 +111,16 @@ public final class SableVehicleTopology {
         Placement placement = placement(level, plotPos);
         if (placement.subLevel() == null) return record;
         bind(placement.subLevel(), record.id());
-        return VehicleSavedData.get(level.getServer()).move(record.id(), level.dimension().location(),
+        VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
+        // Turrets and other joined bodies still carry the dismantled predecessor's id; hand them to this core.
+        Map<ServerSubLevel, UUID> bound = new LinkedHashMap<>();
+        for (SubLevel body : SubLevelHelper.getConnectedChain(placement.subLevel())) {
+            if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
+            CompoundTag userData = serverBody.getUserDataTag();
+            if (userData != null && userData.hasUUID(VEHICLE_ID)) bound.put(serverBody, userData.getUUID(VEHICLE_ID));
+        }
+        rebindStale(bound, record.id(), vehicles);
+        return vehicles.move(record.id(), level.dimension().location(),
                 plotPos, placement.subLevel().getUniqueId());
     }
 

@@ -2,7 +2,7 @@ package com.ruskserver.moveearth_addtional.config;
 
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-/** Server-side compatibility and balance settings for Create: Simulated. */
+/** Server-side compatibility and balance settings for Create: Simulated and Absolute Kinematics. */
 public final class AeronauticsSwivelConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
@@ -11,6 +11,8 @@ public final class AeronauticsSwivelConfig {
     private static final ModConfigSpec.BooleanValue ALLOW_UNTESTED_VERSIONS;
     private static final ModConfigSpec.BooleanValue PORTABLE_ENGINE_BALANCE_ENABLED;
     private static final ModConfigSpec.DoubleValue PORTABLE_ENGINE_MAX_CAPACITY;
+    private static final ModConfigSpec.BooleanValue JOINT_WINDUP_LIMIT_ENABLED;
+    private static final ModConfigSpec.DoubleValue JOINT_MAX_LEAD_DEGREES;
 
     public static final ModConfigSpec SPEC;
 
@@ -58,6 +60,25 @@ public final class AeronauticsSwivelConfig {
                 .defineInRange("maxStressCapacityPerRpm", 32.0D, 0.0D, 64.0D);
 
         BUILDER.pop();
+
+        BUILDER.push("jointWindupLimit");
+
+        JOINT_WINDUP_LIMIT_ENABLED = BUILDER
+                .comment(
+                        "Stop driven Absolute Kinematics hinges and Create: Simulated swivel bearings from building up force",
+                        "while something holds them back. Without this their target angle keeps turning, and the stored push",
+                        "snaps the moving part round when it is freed."
+                )
+                .define("enabled", true);
+
+        JOINT_MAX_LEAD_DEGREES = BUILDER
+                .comment(
+                        "How far a joint's target may run ahead of its actual angle, in degrees.",
+                        "Fast joints may lead by two ticks of their own motion if that is more."
+                )
+                .defineInRange("maxLeadDegrees", 10.0D, 1.0D, 180.0D);
+
+        BUILDER.pop();
         SPEC = BUILDER.build();
     }
 
@@ -78,6 +99,14 @@ public final class AeronauticsSwivelConfig {
 
     public static boolean portableEngineBalanceEnabled() {
         return PORTABLE_ENGINE_BALANCE_ENABLED.getAsBoolean();
+    }
+
+    public static boolean jointWindupLimitEnabled() {
+        return JOINT_WINDUP_LIMIT_ENABLED.getAsBoolean();
+    }
+
+    public static double jointMaxLeadDegrees() {
+        return JOINT_MAX_LEAD_DEGREES.getAsDouble();
     }
 
     public static double portableEngineMaxCapacity() {

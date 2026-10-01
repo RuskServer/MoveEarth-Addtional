@@ -1,0 +1,11 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "moveearth_addtional:block/blaze_processing_machine"
+    },
+    "axis=z": {
+      "model": "moveearth_addtional:block/blaze_processing_machine",
+      "y": 90
+    }
+  }
+}

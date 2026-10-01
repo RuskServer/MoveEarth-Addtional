@@ -52,7 +52,7 @@ public final class CombatTagService {
     public static void onDamage(LivingDamageEvent.Pre event) {
         if (event.getNewDamage() <= 0.0F) return;
         if (event.getEntity() instanceof ServerPlayer victim
-                && event.getSource().getEntity() instanceof ServerPlayer attacker
+                && RealPlayers.attacker(event.getSource()) instanceof ServerPlayer attacker
                 && !victim.getUUID().equals(attacker.getUUID())) {
             PrisonerSavedData prisoners = PrisonerSavedData.get(victim.server);
             if (prisoners.custody(victim.getUUID()).isPresent()
@@ -88,7 +88,7 @@ public final class CombatTagService {
             CombatTagSavedData.CombatState state = data.state(owner).orElse(null);
             if (state == null) return;
             boolean inCustody = PrisonerSavedData.get(server).custody(owner).isPresent();
-            if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
+            if (RealPlayers.attacker(event.getSource()) instanceof ServerPlayer attacker) {
                 data.tag(attacker.getUUID(), owner, S2TerritoryConfig.combatTagTicks());
                 if (!inCustody) data.tag(owner, attacker.getUUID(), S2TerritoryConfig.combatTagTicks());
             }

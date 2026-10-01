@@ -142,7 +142,7 @@ public final class JobEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onEntityKilled(LivingDeathEvent event) {
-        if (event.isCanceled() || !(event.getSource().getEntity() instanceof ServerPlayer player)
+        if (event.isCanceled() || !(com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer player)
                 || player.isCreative() || player.isSpectator()
                 || player.level().dimension().equals(PvpMatchManager.ARENA)
                 || event.getEntity().getPersistentData().getBoolean(NO_HUNTER_XP_TAG)) {

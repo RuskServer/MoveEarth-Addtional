@@ -5,22 +5,24 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 
-/** Per core, whether offline defense applied at the first attack of an open day. Pure data for tests. */
+/** Per core, whether offline defense applied when the day's current fight on it started. Pure data for tests. */
 final class OfflineDefenseDays {
     record Snapshot(long day, boolean allowed) { }
 
     private final Map<UUID, Snapshot> snapshots = new HashMap<>();
 
-    /** Records the day's answer unless an earlier attack that day already did; returns whether anything changed. */
-    boolean observe(UUID coreId, long day, boolean allowed) {
-        Snapshot current = snapshots.get(coreId);
-        if (current != null && current.day() == day) return false;
-        snapshots.put(coreId, new Snapshot(day, allowed));
-        snapshots.values().removeIf(snapshot -> snapshot.day() < day - 1);
-        return true;
+    /**
+     * Records the answer taken when a fight started on the core, replacing any earlier answer.
+     * {@link OfflineDefenseDayPolicy#decides} chooses when; returns whether anything changed.
+     */
+    boolean record(UUID coreId, long day, boolean allowed) {
+        Snapshot next = new Snapshot(day, allowed);
+        Snapshot previous = snapshots.put(coreId, next);
+        boolean pruned = snapshots.values().removeIf(snapshot -> snapshot.day() < day - 1);
+        return pruned || !next.equals(previous);
     }
 
-    /** The day's answer, or null before the core's first attack that day. */
+    /** The day's answer, or null before a fight started on the core that day. */
     Boolean allowedOn(UUID coreId, long day) {
         Snapshot current = snapshots.get(coreId);
         return current == null || current.day() != day ? null : current.allowed();

@@ -28,6 +28,7 @@ public record S2C_StartMapVotePacket(List<PvpMapDefinition> candidates, int dura
     private static S2C_StartMapVotePacket decode(FriendlyByteBuf buffer) {
         int duration = buffer.readVarInt();
         int size = buffer.readVarInt();
+        if (size < 0 || size > 64) throw new IllegalArgumentException("Invalid map vote candidate count: " + size);
         List<PvpMapDefinition> candidates = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             candidates.add(PvpMapDefinition.read(buffer));

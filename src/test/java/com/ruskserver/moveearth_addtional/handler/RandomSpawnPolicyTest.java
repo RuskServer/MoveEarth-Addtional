@@ -19,6 +19,14 @@ class RandomSpawnPolicyTest {
     }
 
     @Test
+    void timedOutFallbackStillKeepsHostilePlayersAway() {
+        // The previous-spawn rule is dropped; the player-distance rule is not.
+        assertTrue(RandomSpawnPolicy.fallbackAllowed(100.0D, 100.0D));
+        assertTrue(RandomSpawnPolicy.fallbackAllowed(Double.POSITIVE_INFINITY, 100.0D));
+        assertFalse(RandomSpawnPolicy.fallbackAllowed(99.0D, 100.0D));
+    }
+
+    @Test
     void capsDistanceTermsSoExtremeCoordinatesDoNotDominate() {
         assertEquals(138.5D, RandomSpawnPolicy.score(500.0D, 800.0D, 3.5D, 100.0D));
     }

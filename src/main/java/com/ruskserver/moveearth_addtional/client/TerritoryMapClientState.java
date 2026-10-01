@@ -23,6 +23,10 @@ public final class TerritoryMapClientState {
     private TerritoryMapClientState() { }
 
     public static void update(S2C_TerritoryMapPacket packet) {
+        // Refreshes arrive every few seconds while a map is on screen and usually repeat the last one.
+        // Keeping the version unchanged keeps every renderer cache keyed on it valid.
+        if (!TerritoryMapChange.changes(coresByDimension.get(packet.dimension()), nationsByDimension.get(packet.dimension()),
+                packet.cores(), packet.nations(), S2C_TerritoryMapPacket.NationEntry::nationId)) return;
         Map<ResourceLocation, List<S2C_TerritoryMapPacket.CoreEntry>> updatedCores = new HashMap<>(coresByDimension);
         updatedCores.put(packet.dimension(), packet.cores());
         coresByDimension = Map.copyOf(updatedCores);

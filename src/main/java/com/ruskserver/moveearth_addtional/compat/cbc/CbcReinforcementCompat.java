@@ -36,6 +36,21 @@ public final class CbcReinforcementCompat {
     private static final Map<UUID, Long> INTERCEPTED_MUNITIONS = new HashMap<>();
     private static final Map<ProtectedImpact, Long> RECENT_PROTECTED_IMPACTS = new HashMap<>();
     private static Method terrainDamageHook;
+    /** getLevel/getPos of each concrete ProjectileDamageEvent class, looked up once instead of per impact. */
+    private static final ClassValue<Method[]> EVENT_ACCESSORS = new ClassValue<>() {
+        @Override
+        protected Method[] computeValue(Class<?> type) {
+            try {
+                return new Method[] {type.getMethod("getLevel"), type.getMethod("getPos")};
+            } catch (NoSuchMethodException exception) {
+                return new Method[0];
+            }
+        }
+    };
+    /** Server-thread cache: whether a CBC entity type is a munition rather than a mount or contraption. */
+    private static final Map<net.minecraft.world.entity.EntityType<?>, Boolean> MUNITION_TYPES =
+            new java.util.IdentityHashMap<>();
+    private static final String PROJECTILE_BURST = "rbasamoyai.ritchiesprojectilelib.projectile_burst.ProjectileBurst";
 
     private CbcReinforcementCompat() { }
 
@@ -54,13 +69,22 @@ public final class CbcReinforcementCompat {
 
     private static void onProjectileDamage(Event event) {
         try {
-            Method getLevel = event.getClass().getMethod("getLevel");
-            Method getPos = event.getClass().getMethod("getPos");
-            if (!(getLevel.invoke(event) instanceof ServerLevel level)
-                    || !(getPos.invoke(event) instanceof BlockPos pos)) return;
+            Method[] accessors = EVENT_ACCESSORS.get(event.getClass());
+            if (accessors.length != 2) throw new NoSuchMethodException(event.getClass().getName() + ".getLevel/getPos");
+            if (!(accessors[0].invoke(event) instanceof ServerLevel level)
+                    || !(accessors[1].invoke(event) instanceof BlockPos pos)) return;
             // CBC's direct block-damage event can bypass the generic explosion block list.
             if (WarehouseSites.get(level.getServer()).protects(level.dimension().location(), pos)) {
                 if (event instanceof ICancellableEvent cancellable) cancellable.setCanceled(true);
+                return;
+            }
+            // Most impacts land nowhere near a reinforcement, vehicle core or exposed core and follow no
+            // recently intercepted munition. Those would be neither intercepted nor recorded below, so the
+            // entity search, attribution and area pass are skipped.
+            purgeOldImpacts(level.getGameTime());
+            if (INTERCEPTED_MUNITIONS.isEmpty()
+                    && !recentImpactNear(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius(), level.getGameTime())
+                    && !SiegeDamageService.cbcAreaMayBeProtected(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius())) {
                 return;
             }
             Entity munition = nearbyMunition(level, pos);
@@ -80,11 +104,7 @@ public final class CbcReinforcementCompat {
             boolean duplicate = munition != null && INTERCEPTED_MUNITIONS.getOrDefault(
                     munition.getUUID(), Long.MIN_VALUE) >= gameTime;
             if (!duplicate && munition == null) {
-                int fallbackRadius = S2TerritoryConfig.cbcProtectedBlastRadius();
-                duplicate = RECENT_PROTECTED_IMPACTS.entrySet().stream()
-                        .anyMatch(entry -> entry.getValue() >= gameTime
-                                && entry.getKey().dimension().equals(level.dimension().location().toString())
-                                && entry.getKey().pos().distSqr(pos) <= (long) fallbackRadius * fallbackRadius);
+                duplicate = recentImpactNear(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius(), gameTime);
             }
             int radius = CbcMunitionDamage.usesBlastArea(entityPath)
                     ? S2TerritoryConfig.cbcProtectedBlastRadius() : 0;
@@ -168,15 +188,48 @@ public final class CbcReinforcementCompat {
                 : CbcMunitionDamage.classifyExplosionClass(explosion.getClass().getSimpleName());
     }
 
+    /**
+     * The closest CBC munition (cannon projectile or fragment burst) around the impact. Cannon mounts,
+     * carriages and other CBC contraption entities are never the munition, even when nearer.
+     */
     private static Entity nearbyMunition(ServerLevel level, BlockPos pos) {
-        return level.getEntities((Entity) null, new AABB(pos).inflate(6.0D), CbcReinforcementCompat::isCbc)
+        return level.getEntities((Entity) null, new AABB(pos).inflate(6.0D), CbcReinforcementCompat::isCbcMunition)
                 .stream().min(Comparator.comparingDouble(entity -> entity.distanceToSqr(pos.getCenter())))
                 .orElse(null);
+    }
+
+    /**
+     * The munition behind a CBC blast built without a source entity (mortar stone explosions): CBC
+     * explodes it from {@code onImpact}, while the round is still in the world, so the nearest munition is
+     * the one whose attribution snapshot applies.
+     */
+    public static Entity impactMunition(ServerLevel level, BlockPos pos) {
+        return nearbyMunition(level, pos);
+    }
+
+    public static boolean isCbcMunition(Entity entity) {
+        if (entity == null) return false;
+        return MUNITION_TYPES.computeIfAbsent(entity.getType(), ignored -> {
+            String path = entityPath(entity);
+            if (path.isEmpty()) return false;
+            return CbcMunitionSelectionPolicy.isMunition(
+                    entity instanceof net.minecraft.world.entity.projectile.Projectile,
+                    extendsClass(entity.getClass(), PROJECTILE_BURST),
+                    CbcMunitionDamage.classify(path) != CbcMunitionDamage.Kind.UTILITY);
+        });
+    }
+
+    private static boolean extendsClass(Class<?> type, String name) {
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            if (name.equals(current.getName())) return true;
+        }
+        return false;
     }
 
     public static void clearRuntimeState() {
         INTERCEPTED_MUNITIONS.clear();
         RECENT_PROTECTED_IMPACTS.clear();
+        MUNITION_TYPES.clear();
     }
 
     public static boolean wasRecentlyPreHandled(Entity source, ServerLevel level, BlockPos center) {
@@ -185,11 +238,18 @@ public final class CbcReinforcementCompat {
         if (source != null && INTERCEPTED_MUNITIONS.getOrDefault(source.getUUID(), Long.MIN_VALUE) >= gameTime) {
             return true;
         }
-        int radius = S2TerritoryConfig.cbcProtectedBlastRadius();
-        return RECENT_PROTECTED_IMPACTS.entrySet().stream()
-                .anyMatch(entry -> entry.getValue() >= gameTime
-                        && entry.getKey().dimension().equals(level.dimension().location().toString())
-                        && entry.getKey().pos().distSqr(center) <= (long) radius * radius);
+        return recentImpactNear(level, center, S2TerritoryConfig.cbcProtectedBlastRadius(), gameTime);
+    }
+
+    private static boolean recentImpactNear(ServerLevel level, BlockPos pos, int radius, long gameTime) {
+        if (RECENT_PROTECTED_IMPACTS.isEmpty()) return false;
+        String dimension = level.dimension().location().toString();
+        long radiusSquared = (long) radius * radius;
+        for (Map.Entry<ProtectedImpact, Long> entry : RECENT_PROTECTED_IMPACTS.entrySet()) {
+            if (entry.getValue() >= gameTime && entry.getKey().dimension().equals(dimension)
+                    && entry.getKey().pos().distSqr(pos) <= radiusSquared) return true;
+        }
+        return false;
     }
 
     private static void purgeOldImpacts(long gameTime) {

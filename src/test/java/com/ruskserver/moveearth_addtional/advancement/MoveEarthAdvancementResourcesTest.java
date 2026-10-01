@@ -49,7 +49,8 @@ class MoveEarthAdvancementResourcesTest {
     private static final List<String> NEW_ADVANCEMENTS = List.of(
             "nation/market_trade", "agriculture/harvest", "agriculture/farm_delivery",
             "agriculture/harvest_event", "industry/uranium", "industry/fissile_fuel",
-            "industry/fission", "industry/turbine", "industry/brass");
+            "industry/fission", "industry/turbine", "industry/brass",
+            "exploration/nether_gate", "exploration/nether_gate_cleared", "exploration/blaze_rod_refined");
 
     @Test
     void rootUsesVanillaJoinCriterion() {
@@ -80,7 +81,7 @@ class MoveEarthAdvancementResourcesTest {
     void allAdvancementsHaveResolvableParentsTranslationsAndCriteria() {
         assertEquals(37, ADVANCEMENTS.size());
         List<String> all = java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList();
-        assertEquals(46, all.size());
+        assertEquals(49, all.size());
         Set<String> ids = Set.copyOf(all);
         JsonObject ja = read("/assets/moveearth_addtional/lang/ja_jp.json");
         JsonObject en = read("/assets/moveearth_addtional/lang/en_us.json");
@@ -125,7 +126,8 @@ class MoveEarthAdvancementResourcesTest {
                 ModCriteria.MARKET_TRADE_COMPLETED, ModCriteria.CROP_HARVESTED,
                 ModCriteria.FARM_GOODS_DELIVERED, ModCriteria.HARVEST_EVENT_PARTICIPATED,
                 ModCriteria.MEKANISM_MACHINE_OPERATED, ModCriteria.FISSILE_FUEL_PRODUCED,
-                ModCriteria.FISSION_REACTOR_OPERATED, ModCriteria.TURBINE_OPERATED);
+                ModCriteria.FISSION_REACTOR_OPERATED, ModCriteria.TURBINE_OPERATED,
+                ModCriteria.NETHER_GATE_OPENED, ModCriteria.NETHER_GATE_CLEARED, ModCriteria.BLAZE_ROD_REFINED);
         for (String id : java.util.stream.Stream.concat(ADVANCEMENTS.stream(), NEW_ADVANCEMENTS.stream()).toList()) {
             JsonObject criteria = advancement(id).getAsJsonObject("criteria");
             criteria.entrySet().forEach(entry -> {

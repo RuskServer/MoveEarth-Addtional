@@ -17,6 +17,12 @@ import java.util.UUID;
 /** Restart-safe finalized loot windows. Live fallen access remains authoritative in SiegeSavedData. */
 public final class SiegeLootSavedData extends SavedData {
     private final Map<UUID, LootGrant> grants = new LinkedHashMap<>();
+    /**
+     * Spatial view of {@link #grants} in map order, rebuilt lazily after a change. Grants are never pruned
+     * (expired ones still mark the former owner), so position lookups must not scan the whole season.
+     */
+    private ChunkSquareIndex<LootGrant> index;
+    private long revision;
 
     public void open(SiegeSavedData.FallenRecord fallen, long nowOpenTick) {
         if (fallen == null) return;
@@ -24,15 +30,43 @@ public final class SiegeLootSavedData extends SavedData {
                 fallen.individualAttacker(), fallen.defenderNation(), fallen.dimension(), fallen.corePos(),
                 fallen.radius(), Math.max(0L, nowOpenTick)
                 + com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.siegeLootWindowTicks()));
-        setDirty();
+        changed();
     }
 
     public Optional<LootGrant> grant(UUID siegeId) { return Optional.ofNullable(grants.get(siegeId)); }
 
     public java.util.List<LootGrant> grants() { return java.util.List.copyOf(grants.values()); }
 
+    /** Read-only live view in grant order, for hot paths that must not copy the season's grants. */
+    public java.util.Collection<LootGrant> grantView() {
+        return java.util.Collections.unmodifiableCollection(grants.values());
+    }
+
+    public boolean isEmpty() { return grants.isEmpty(); }
+
+    /** Increases whenever a grant is added, replaced or removed. */
+    public long revision() { return revision; }
+
+    /**
+     * The grant a newest-first scan over {@link #grants()} would pick for this chunk: a later fall of
+     * the same area supersedes the earlier grant, expired or not.
+     */
+    public LootGrant newestCovering(ResourceLocation dimension, int chunkX, int chunkZ) {
+        if (grants.isEmpty()) return null;
+        ChunkSquareIndex<LootGrant> current = index;
+        if (current == null) {
+            current = new ChunkSquareIndex<>();
+            for (LootGrant grant : grants.values()) {
+                current.add(grant.dimension(), grant.corePos().getX() >> 4, grant.corePos().getZ() >> 4,
+                        grant.radius(), grant);
+            }
+            index = current;
+        }
+        return current.last(dimension, chunkX, chunkZ);
+    }
+
     public void revoke(UUID siegeId) {
-        if (siegeId != null && grants.remove(siegeId) != null) setDirty();
+        if (siegeId != null && grants.remove(siegeId) != null) changed();
     }
 
     public void revokeBetween(UUID first, UUID second) {
@@ -40,7 +74,13 @@ public final class SiegeLootSavedData extends SavedData {
                 value.attackerId().equals(first) && value.defenderNation().equals(second)
                         || !value.individualAttacker() && value.attackerId().equals(second)
                         && value.defenderNation().equals(first));
-        if (changed) setDirty();
+        if (changed) changed();
+    }
+
+    private void changed() {
+        index = null;
+        revision++;
+        setDirty();
     }
 
     public void purgeExpired(long nowOpenTick) {

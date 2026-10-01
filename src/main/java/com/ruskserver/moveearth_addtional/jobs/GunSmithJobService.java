@@ -9,7 +9,11 @@ public final class GunSmithJobService {
     private GunSmithJobService() {}
 
     public static void awardCraft(ServerPlayer player, ItemStack result) {
-        if (!eligible(player) || result.isEmpty()) return;
+        if (result.isEmpty()) return;
+        // Crafting at the gun smith table is deliberate GUI work: it keeps the player non-idle.
+        com.ruskserver.moveearth_addtional.economy.EarningEligibility.noteActivity(player,
+                com.ruskserver.moveearth_addtional.economy.EarningPolicy.Activity.GUN_SMITH_CRAFT);
+        if (!eligible(player)) return;
         for (JobDefinition definition : JobDefinitions.INSTANCE.all()) {
             double xp = Math.max(definition.gunCraftXp(result), definition.attachmentCraftXp(result));
             if (xp > 0) JobService.INSTANCE.awardAction(player, definition, xp);

@@ -116,7 +116,10 @@ public final class EventScreen extends Screen implements SuppressesChatOverlay {
             graphics.drawString(font, fit(heading, textWidth), textX, primary.y() + 14, GOLD, false);
             graphics.drawString(font, fit(snapshot.target(), textWidth), textX, primary.y() + 34, TEXT, false);
             String personal = "自分  " + snapshot.score() + "点  ·  "
-                    + (snapshot.rank() == 0 ? "未参加" : snapshot.rank() + "位");
+                    + (snapshot.rank() > 0 ? snapshot.rank() + "位"
+                    : Component.translatable(snapshot.score() < 100
+                            ? "screen.moveearth_addtional.event.points_remaining"
+                            : "screen.moveearth_addtional.event.unranked", Math.max(0, 100 - snapshot.score())).getString());
             graphics.drawString(font, fit(personal, textWidth), textX, primary.y() + 61, TEXT, false);
             if (primary.height() >= 110) {
                 graphics.drawString(font, snapshot.jobBonus() ? "職業特典 +10% 適用" : "職業特典なし",
@@ -136,7 +139,7 @@ public final class EventScreen extends Screen implements SuppressesChatOverlay {
             }
         }
         int rankX = ranking.x() + 10;
-        graphics.drawString(font, snapshot.active() ? "現在の順位" : "直近の順位",
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.event.reward_ranking"),
                 rankX, ranking.y() + 14, GOLD, false);
         List<S2C_EventScreenPacket.Leader> leaders = snapshot.leaders();
         int visibleLeaders = Math.min(leaders.size(), Math.max(0, (ranking.height() - 55) / 23));

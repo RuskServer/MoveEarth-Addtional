@@ -139,7 +139,7 @@ public final class MoveEarthTitleScreen extends Screen {
                 panel.x() + padding, panel.y() + 14, SUCCESS, false);
         String version = ModList.get().getModContainerById(Moveearth_addtional.MODID)
                 .map(container -> "v" + container.getModInfo().getVersion())
-                .orElse("v3.1");
+                .orElse("v3.3");
         graphics.drawString(font, version, panel.right() - font.width(version) - padding,
                 panel.y() + 14, MUTED, false);
 

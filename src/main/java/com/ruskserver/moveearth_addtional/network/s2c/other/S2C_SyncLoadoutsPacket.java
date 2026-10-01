@@ -29,6 +29,7 @@ public record S2C_SyncLoadoutsPacket(List<PvpLoadoutDefinition> loadouts) implem
             },
             buf -> {
                 int count = buf.readVarInt();
+                if (count < 0 || count > 256) throw new IllegalArgumentException("Invalid loadout count: " + count);
                 List<PvpLoadoutDefinition> list = new ArrayList<>(count);
                 for (int i = 0; i < count; i++) {
                     list.add(PvpLoadoutDefinition.read(buf));

@@ -98,20 +98,35 @@ public final class MarketService {
         ItemStack held = player.getMainHandItem();
         if (station == null || !station.nationId().equals(nation) || held.isEmpty())
             return new EconomyLedgerSavedData.MarketResult(EconomyLedgerSavedData.MarketStatus.INVALID, null);
-        return EconomyLedgerSavedData.get(player.server).createBuyOrder(player.getUUID(), stationId,
-                held, quantity, price, System.currentTimeMillis() + MarketOrderRules.MAX_LIFETIME_MILLIS,
-                System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        // The escrow leaves the new account now and can pay out to anyone who delivers, so it counts
+        // once, here. Fills and refunds move escrow, not the player's own TC, and are not counted.
+        long escrow = MarketOrderRules.totalPrice(quantity, price);
+        var newAccountTransfers = NewAccountTransferSavedData.get(player.server);
+        if (!EarningPolicy.allowsTransfer(escrow, newAccountTransfers.remaining(player, now)))
+            return new EconomyLedgerSavedData.MarketResult(EconomyLedgerSavedData.MarketStatus.NEW_ACCOUNT_LIMIT, null);
+        EconomyLedgerSavedData.MarketResult result = EconomyLedgerSavedData.get(player.server).createBuyOrder(
+                player.getUUID(), stationId, held, quantity, price, now + MarketOrderRules.MAX_LIFETIME_MILLIS, now);
+        if (result.status() == EconomyLedgerSavedData.MarketStatus.APPLIED)
+            newAccountTransfers.record(player, escrow, now);
+        return result;
     }
 
     public static EconomyLedgerSavedData.MarketStatus purchase(ServerPlayer player, UUID orderId, int quantity) {
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
-        MarketOrder order = ledger.marketOrders().stream().filter(o -> o.id().equals(orderId)).findFirst().orElse(null);
+        MarketOrder order = ledger.marketOrder(orderId);
         // A remote purchase is settled in the ledger; only physical hand-off needs the chunk loaded.
         if (order == null || activeStation(player.server, order.stationId(), false) == null)
             return EconomyLedgerSavedData.MarketStatus.INVALID;
-        EconomyLedgerSavedData.MarketStatus result = ledger.purchase(player.getUUID(), orderId,
-                quantity, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        // A purchase pays the seller directly, like /pay: it shares the new-account daily limit.
+        long price = MarketOrderRules.totalPrice(quantity, order.unitPrice());
+        var newAccountTransfers = NewAccountTransferSavedData.get(player.server);
+        if (!EarningPolicy.allowsTransfer(price, newAccountTransfers.remaining(player, now)))
+            return EconomyLedgerSavedData.MarketStatus.NEW_ACCOUNT_LIMIT;
+        EconomyLedgerSavedData.MarketStatus result = ledger.purchase(player.getUUID(), orderId, quantity, now);
         if (result == EconomyLedgerSavedData.MarketStatus.APPLIED) {
+            newAccountTransfers.record(player, price, now);
             recordTrade(player, order, quantity);
             ModCriteria.trigger(player, ModCriteria.MARKET_TRADE_COMPLETED);
             ServerPlayer seller = player.server.getPlayerList().getPlayer(order.owner());
@@ -122,7 +137,7 @@ public final class MarketService {
 
     public static EconomyLedgerSavedData.MarketStatus deliver(ServerPlayer player, UUID orderId, int quantity) {
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
-        MarketOrder order = ledger.marketOrders().stream().filter(o -> o.id().equals(orderId)).findFirst().orElse(null);
+        MarketOrder order = ledger.marketOrder(orderId);
         ItemStack held = player.getMainHandItem();
         if (order == null || !local(player, order.stationId()) || held.isEmpty() || held.getCount() < quantity)
             return EconomyLedgerSavedData.MarketStatus.INVALID;
@@ -153,22 +168,24 @@ public final class MarketService {
     public static int claim(ServerPlayer player, UUID stationId, UUID claimId) {
         if (!inPickupReach(player, stationId)) return 0;
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
-        EconomyLedgerSavedData.MarketClaim claim = ledger.claimsAt(player.getUUID(), stationId).stream()
-                .filter(c -> c.id().equals(claimId)).findFirst().orElse(null);
-        if (claim == null) return 0;
+        EconomyLedgerSavedData.MarketClaim claim = ledger.marketClaim(player.getUUID(), claimId);
+        if (claim == null || !claim.stationId().equals(stationId)) return 0;
         int requested = Math.min(claim.quantity(), claim.item().getMaxStackSize());
-        ItemStack stack = claim.item().copyWithCount(requested);
-        player.getInventory().add(stack);
-        int received = requested - stack.getCount();
-        if (received > 0) ledger.reduceClaim(player.getUUID(), claimId, received);
-        return received;
+        // Take what fits off the goods store and save it before the items move: a crash in between
+        // loses this hand-off instead of leaving both the items and the claim.
+        int fits = PlayerHandOff.book(PlayerHandOff.space(player), claim.item().copyWithCount(requested));
+        if (fits <= 0) return 0;
+        try (PlayerHandOff.HandOff handOff = PlayerHandOff.begin(ledger)) {
+            if (!ledger.reduceClaim(player.getUUID(), claimId, fits) || !handOff.commit(player)) return 0;
+        }
+        PlayerHandOff.give(player, claim.item().copyWithCount(fits));
+        return fits;
     }
 
     /** Whether anything at the station still belongs to someone: open orders or goods awaiting pickup. */
     public static boolean holdsGoods(MinecraftServer server, UUID stationId) {
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(server);
-        return ledger.outstanding(stationId) > 0
-                || ledger.marketOrders().stream().anyMatch(order -> order.stationId().equals(stationId));
+        return ledger.outstanding(stationId) > 0 || ledger.hasOrdersAt(stationId);
     }
 
     /** Called before ordinary break/explosion handling so virtual inventory has a physical recovery point. */
@@ -177,8 +194,7 @@ public final class MarketService {
                 || !(level.getBlockEntity(pos) instanceof MarketStationBlockEntity entity)
                 || entity.stationId() == null) return false;
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(level.getServer());
-        if (ledger.outstanding(entity.stationId()) == 0
-                && ledger.marketOrders().stream().noneMatch(o -> o.stationId().equals(entity.stationId())))
+        if (ledger.outstanding(entity.stationId()) == 0 && !ledger.hasOrdersAt(entity.stationId()))
             return false;
         var result = ledger.wreckMarketStation(entity.stationId(), entity.nationId(),
                 level.dimension().location(), pos);
@@ -193,8 +209,7 @@ public final class MarketService {
         if (!(level.getBlockEntity(pos) instanceof MarketStationBlockEntity entity)
                 || entity.stationId() == null) return false;
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(level.getServer());
-        boolean pending = ledger.outstanding(entity.stationId()) > 0
-                || ledger.marketOrders().stream().anyMatch(o -> o.stationId().equals(entity.stationId()));
+        boolean pending = ledger.outstanding(entity.stationId()) > 0 || ledger.hasOrdersAt(entity.stationId());
         if (!pending) return false;
         UUID actorNation = attack == null || attack.actorId() == null ? null
                 : NationSavedData.get(level.getServer()).nationIdFor(attack.actorId()).orElse(null);
@@ -211,15 +226,23 @@ public final class MarketService {
         if (wreckage == null) return false;
         boolean siegeLoot = SiegeLootService.access(player, pos).allowed();
         int recovered = 0;
-        for (var claim : wreckage.claims()) {
-            if (!claim.owner().equals(player.getUUID()) && !siegeLoot && !player.hasPermissions(2)) continue;
-            int count = Math.min(claim.quantity(), claim.item().getMaxStackSize());
-            ItemStack stack = claim.item().copyWithCount(count);
-            player.getInventory().add(stack);
-            int received = count - stack.getCount();
-            if (received > 0 && ledger.reduceWreckageClaim(player.level().dimension().location(), pos,
-                    claim.id(), received)) recovered += received;
+        // Same order as a market claim: book, take off the goods store, save, then hand over.
+        HandOffSpace<ItemStack> space = PlayerHandOff.space(player);
+        java.util.List<ItemStack> handOff = new java.util.ArrayList<>();
+        try (PlayerHandOff.HandOff open = PlayerHandOff.begin(ledger)) {
+            for (var claim : wreckage.claims()) {
+                if (!claim.owner().equals(player.getUUID()) && !siegeLoot && !player.hasPermissions(2)) continue;
+                int count = Math.min(claim.quantity(), claim.item().getMaxStackSize());
+                int fits = PlayerHandOff.book(space, claim.item().copyWithCount(count));
+                if (fits > 0 && ledger.reduceWreckageClaim(player.level().dimension().location(), pos,
+                        claim.id(), fits)) {
+                    handOff.add(claim.item().copyWithCount(fits));
+                    recovered += fits;
+                }
+            }
+            if (!handOff.isEmpty() && !open.commit(player)) return true;
         }
+        handOff.forEach(stack -> PlayerHandOff.give(player, stack));
         if (ledger.marketWreckage(player.level().dimension().location(), pos) == null)
             player.level().removeBlock(pos, false);
         player.sendSystemMessage(MoveEarthMessage.success("残骸から " + recovered + "個回収しました"));
@@ -235,6 +258,10 @@ public final class MarketService {
 
     @SubscribeEvent public static void onLogout(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) {
         MarketScreenSync.forget(event.getEntity().getUUID());
+    }
+
+    @SubscribeEvent public static void onStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
+        MarketScreenSync.clear();
     }
 
     @SubscribeEvent public static void onTick(ServerTickEvent.Post event) {

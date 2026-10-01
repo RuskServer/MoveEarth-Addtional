@@ -59,7 +59,7 @@ public record S2C_MarketSnapshotPacket(long balance, UUID selectedStation,
         for (int i = 0; i < stationCount; i++) stations.add(new StationEntry(buf.readUUID(),
                 buf.readUtf(64), buf.readUtf(80), buf.readResourceLocation(), buf.readBlockPos(),
                 buf.readBoolean(), buf.readBoolean()));
-        int orderCount = count(buf, 100);
+        int orderCount = count(buf, com.ruskserver.moveearth_addtional.economy.MarketOrderSelection.MAX_TOTAL);
         List<OrderEntry> orders = new ArrayList<>(orderCount);
         for (int i = 0; i < orderCount; i++) {
             UUID id = buf.readUUID(), stationId = buf.readUUID();

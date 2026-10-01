@@ -75,8 +75,16 @@ public class SubChunkVisGraph {
             return ALL_OPEN_MASK;
         }
 
+        // Most sections hold no occluding block at all (air, water, foliage); the palette says so
+        // without reading 4096 states. Block updates invalidate sections constantly, so this matters.
+        if (!section.maybeHas(BlockState::canOcclude)) {
+            return ALL_OPEN_MASK;
+        }
+
         PalettedContainer<BlockState> states = section.getStates();
-        BitSet opaqueVoxels = new BitSet(TOTAL_VOXELS);
+        Scratch scratch = SCRATCH.get();
+        BitSet opaqueVoxels = scratch.opaque;
+        opaqueVoxels.clear();
         int opaqueCount = 0;
 
         for (int y = 0; y < CHUNK_SIZE; y++) {
@@ -100,16 +108,26 @@ public class SubChunkVisGraph {
             return ALL_CLOSED_MASK;
         }
 
-        return floodFillSection(opaqueVoxels);
+        return floodFillSection(opaqueVoxels, scratch);
+    }
+
+    /** Reused per thread: a flood fill used to allocate two BitSets and a 16 KiB queue each time. */
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
+
+    private static final class Scratch {
+        final BitSet opaque = new BitSet(TOTAL_VOXELS);
+        final BitSet visited = new BitSet(TOTAL_VOXELS);
+        final int[] queue = new int[TOTAL_VOXELS];
     }
 
     /**
      * 透過ボクセルのフラッドフィルを行い、面間の接続性を抽出します。
      */
-    private static long floodFillSection(BitSet opaqueVoxels) {
+    private static long floodFillSection(BitSet opaqueVoxels, Scratch scratch) {
         long resultMask = 0L;
-        BitSet visited = new BitSet(TOTAL_VOXELS);
-        int[] queue = new int[TOTAL_VOXELS];
+        BitSet visited = scratch.visited;
+        visited.clear();
+        int[] queue = scratch.queue;
 
         for (int i = 0; i < TOTAL_VOXELS; i++) {
             if (opaqueVoxels.get(i) || visited.get(i)) {
@@ -139,7 +157,6 @@ public class SubChunkVisGraph {
                 if (x == 15) connectedFacesMask |= (1 << Direction.EAST.ordinal());
 
                 // 6方向の隣接ボクセルをキューに追加
-                checkNeighbor(x + 1, y, z, opaqueVoxels, visited, queue, tail);
                 if (isValidNeighbor(x + 1, y, z, opaqueVoxels, visited)) {
                     visited.set(getIndex(x + 1, y, z));
                     queue[tail++] = getIndex(x + 1, y, z);
@@ -187,10 +204,6 @@ public class SubChunkVisGraph {
         }
         int index = getIndex(x, y, z);
         return !opaque.get(index) && !visited.get(index);
-    }
-
-    private static void checkNeighbor(int x, int y, int z, BitSet opaque, BitSet visited, int[] queue, int tail) {
-        // dummy for inlining if needed
     }
 
     public static int getIndex(int x, int y, int z) {

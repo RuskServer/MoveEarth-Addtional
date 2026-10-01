@@ -104,7 +104,7 @@ public final class PvpEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onIncomingDamage(LivingIncomingDamageEvent event) {
         PvpMatchManager manager = PvpMatchManager.INSTANCE;
-        ServerPlayer attacker = event.getSource().getEntity() instanceof ServerPlayer player ? player : null;
+        ServerPlayer attacker = com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer player ? player : null;
         ServerPlayer victim = event.getEntity() instanceof ServerPlayer player ? player : null;
 
         if (attacker != null && manager.isActive(attacker)) {
@@ -123,13 +123,13 @@ public final class PvpEvents {
         if (!(event.getEntity() instanceof ServerPlayer victim)) return;
         PvpMatchManager manager = PvpMatchManager.INSTANCE;
         if (!manager.isActive(victim) || manager.phase() != PvpPhase.RUNNING) return;
-        if (event.getSource().getEntity() instanceof ServerPlayer attacker) {
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer attacker) {
             manager.recordDamage(attacker, victim, event.getNewDamage());
         }
         if (event.getNewDamage() < victim.getHealth() + victim.getAbsorptionAmount()) return;
 
         event.setNewDamage(0.0F);
-        ServerPlayer killer = event.getSource().getEntity() instanceof ServerPlayer player ? player : null;
+        ServerPlayer killer = com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer player ? player : null;
         manager.eliminate(victim, killer);
     }
 
@@ -139,7 +139,7 @@ public final class PvpEvents {
         PvpMatchManager manager = PvpMatchManager.INSTANCE;
         if (!manager.isActive(victim) || manager.phase() != PvpPhase.RUNNING) return;
         event.setCanceled(true);
-        ServerPlayer killer = event.getSource().getEntity() instanceof ServerPlayer player ? player : null;
+        ServerPlayer killer = com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource()) instanceof ServerPlayer player ? player : null;
         manager.eliminate(victim, killer);
     }
 
@@ -187,7 +187,7 @@ public final class PvpEvents {
 
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) PvpMatchManager.INSTANCE.leave(player);
+        if (event.getEntity() instanceof ServerPlayer player) PvpMatchManager.INSTANCE.leaveNow(player);
     }
 
     @SubscribeEvent

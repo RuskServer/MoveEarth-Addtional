@@ -58,6 +58,8 @@ public final class BalanceScreenSync {
             send(player, false, "プレイ時間が短いアカウントの送金は1日合計 "
                     + com.ruskserver.moveearth_addtional.config.EconomyGuardConfig.newAccountDailyTransfer()
                     + " TC までです（今日の残り " + remaining + " TC）", false);
+            // The balance screen shows plain text only; the chat line adds the active time still needed.
+            player.sendSystemMessage(MoveEarthMessage.warning(NewAccountTransferSavedData.limitMessage(player, remaining)));
             return;
         }
         LAST_PAY_TICK.put(senderId, now);

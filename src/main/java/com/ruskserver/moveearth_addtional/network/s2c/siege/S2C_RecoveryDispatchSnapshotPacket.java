@@ -119,12 +119,14 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeUtf(name, 32); }
         static MemberOption read(FriendlyByteBuf b) { return new MemberOption(b.readUUID(), b.readUtf(32)); }
     }
-    public record CoreOption(UUID id, UUID nationId, String owner, String type, String dimension,
-                             int x, int y, int z) {
+    /** A dispatch target. Deliberately no dimension or position: every player receives the full list. */
+    public record CoreOption(UUID id, UUID nationId, String owner, String type) {
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeUUID(nationId); b.writeUtf(owner, 64);
-            b.writeUtf(type, 16); b.writeUtf(dimension, 128); b.writeInt(x); b.writeInt(y); b.writeInt(z); }
+            b.writeUtf(type, 16); }
         static CoreOption read(FriendlyByteBuf b) { return new CoreOption(b.readUUID(), b.readUUID(), b.readUtf(64),
-                b.readUtf(16), b.readUtf(128), b.readInt(), b.readInt(), b.readInt()); }
+                b.readUtf(16)); }
+        /** Short id shown to tell a nation's cores apart, matching how contracts name their target. */
+        public String shortId() { return id.toString().substring(0, 8); }
     }
     public record HistoryView(long openTick, String type, String primary, String secondary, List<String> details) {
         void write(FriendlyByteBuf b) { b.writeVarLong(openTick); b.writeUtf(type, 32); b.writeUtf(primary, 64);

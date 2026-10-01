@@ -1,6 +1,5 @@
 package com.ruskserver.moveearth_addtional.economy;
 
-import com.ruskserver.moveearth_addtional.beginner.BeginnerKitService;
 import com.ruskserver.moveearth_addtional.config.EconomyGuardConfig;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,10 +12,17 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.saveddata.SavedData;
 
 /**
- * TC sent today by accounts still inside the new-account period, across player payments and
- * treasury deposits. Kept apart from the ledger journal, which is trimmed and mixes in income.
+ * TC sent today by accounts still inside the new-account period, across player payments, treasury
+ * deposits, market purchases and buy-order escrow. Kept apart from the ledger journal, which is
+ * trimmed and mixes in income. An account is new until it has {@code newAccountActiveHours} of active
+ * play time ({@link ActivePlayTimeSavedData}).
  */
 public final class NewAccountTransferSavedData extends SavedData {
+    /**
+     * Refusal shown when a new account's transfer would exceed today's allowance; arguments from
+     * {@link #limitArguments}.
+     */
+    public static final String LIMIT_KEY = "message.moveearth_addtional.market.new_account_limit";
     private final Map<UUID, Sent> sent = new HashMap<>();
 
     private record Sent(long day, long amount) { }
@@ -25,10 +31,30 @@ public final class NewAccountTransferSavedData extends SavedData {
     public long remaining(ServerPlayer player, long nowMillis) {
         Sent today = sent.get(player.getUUID());
         long day = EarningPolicy.day(nowMillis);
-        return EarningPolicy.remainingTransfer(BeginnerKitService.playTimeTicks(player),
-                EconomyGuardConfig.newAccountPlayTicks(),
+        return EarningPolicy.remainingTransfer(activeTicks(player),
+                EconomyGuardConfig.newAccountActiveTicks(),
                 today == null || today.day() != day ? 0L : today.amount(),
                 EconomyGuardConfig.newAccountDailyTransfer());
+    }
+
+    /** Active play ticks still needed before the limit lifts; 0 once it no longer applies. */
+    public static long activeTicksLeft(ServerPlayer player) {
+        return EarningPolicy.newAccountTicksLeft(activeTicks(player), EconomyGuardConfig.newAccountActiveTicks());
+    }
+
+    private static long activeTicks(ServerPlayer player) {
+        return ActivePlayTimeSavedData.get(player.server).ticks(player.getUUID());
+    }
+
+    /** Arguments of {@link #LIMIT_KEY}: daily limit, TC left today, active hours and minutes left. */
+    public static Object[] limitArguments(ServerPlayer player, long remainingToday) {
+        long minutes = (activeTicksLeft(player) + 1_199L) / 1_200L;
+        return new Object[] {String.valueOf(EconomyGuardConfig.newAccountDailyTransfer()),
+                String.valueOf(remainingToday), String.valueOf(minutes / 60L), String.valueOf(minutes % 60L)};
+    }
+
+    public static net.minecraft.network.chat.Component limitMessage(ServerPlayer player, long remainingToday) {
+        return net.minecraft.network.chat.Component.translatable(LIMIT_KEY, limitArguments(player, remainingToday));
     }
 
     /** Call only after the ledger transfer was applied. */

@@ -3,6 +3,8 @@ package com.ruskserver.moveearth_addtional.event;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.advancement.ModCriteria;
 import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
+import com.ruskserver.moveearth_addtional.economy.HandOffSpace;
+import com.ruskserver.moveearth_addtional.economy.PlayerHandOff;
 import com.ruskserver.moveearth_addtional.jobs.JobProgressSavedData;
 import com.ruskserver.moveearth_addtional.s2.time.OpenTimeService;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -32,7 +34,7 @@ public final class HarvestFestival {
     private static final ResourceLocation FARMER = ResourceLocation.fromNamespaceAndPath(
             Moveearth_addtional.MODID, "farmer");
     public static final long DURATION_TICKS = 30L * 60L * 20L;
-    public static final int MINIMUM_POINTS = 100;
+    public static final int MINIMUM_POINTS = HarvestFestivalRules.MINIMUM_POINTS;
 
     private HarvestFestival() { }
 
@@ -55,6 +57,19 @@ public final class HarvestFestival {
                 .toList();
     }
 
+    /**
+     * The ranking settlement pays out on: nation members with at least the minimum points. The HUD
+     * and the event screen use this too, so a player who left their nation after scoring neither
+     * shows as a leader nor pushes members down a place they would not lose at settlement.
+     */
+    public static List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> eligibleRanking(
+            MinecraftServer server, EconomyLedgerSavedData ledger) {
+        var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(server);
+        return ranking(ledger).stream()
+                .filter(entry -> HarvestFestivalRules.rewardEligible(
+                        nations.nationIdFor(entry.getKey()).isPresent(), entry.getValue().points())).toList();
+    }
+
     public static boolean settle(MinecraftServer server, boolean force) {
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(server);
         if (ledger.harvestSettled() || ledger.harvestId() == null
@@ -62,10 +77,7 @@ public final class HarvestFestival {
         UUID eventId = ledger.harvestId();
         boolean resource = "RESOURCE".equals(ledger.eventKind());
         // Rewards go to players who belong to a nation at settlement; others do not take a rank.
-        var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(server);
-        List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> eligible = ranking(ledger).stream()
-                .filter(entry -> entry.getValue().points() >= MINIMUM_POINTS)
-                .filter(entry -> nations.nationIdFor(entry.getKey()).isPresent()).toList();
+        List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> eligible = eligibleRanking(server, ledger);
         for (int index = 0; index < eligible.size(); index++) {
             UUID playerId = eligible.get(index).getKey();
             if (ledger.eventReward(eventId, playerId) != null) continue;
@@ -77,6 +89,7 @@ public final class HarvestFestival {
             if (!ledger.awardEvent(eventId, playerId, currency, items, System.currentTimeMillis())) return false;
         }
         ledger.finishHarvest();
+        ledger.pruneEventRewards(System.currentTimeMillis());
         server.getPlayerList().broadcastSystemMessage(MoveEarthMessage.info(eventName(ledger)
                 + ": 終了しました。/event claim で報酬を受け取れます（国家所属者のみ）。"), false);
         return true;
@@ -122,17 +135,30 @@ public final class HarvestFestival {
             return 0;
         }
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.getServer());
-        int received = 0;
-        for (EconomyLedgerSavedData.EventReward reward : ledger.pendingEventRewards(player.getUUID())) {
-            List<ItemStack> remaining = new ArrayList<>();
-            for (ItemStack item : reward.items()) {
-                ItemStack stack = item.copy();
-                int before = stack.getCount();
-                player.getInventory().add(stack);
-                received += before - stack.getCount();
-                if (!stack.isEmpty()) remaining.add(stack);
+        // Book what fits and take it off the goods store first, save that, then hand items over:
+        // a crash between the store save and the player save can lose a claim but not duplicate it.
+        HandOffSpace<ItemStack> space = PlayerHandOff.space(player);
+        List<ItemStack> handOff = new ArrayList<>();
+        try (PlayerHandOff.HandOff open = PlayerHandOff.begin(ledger)) {
+            for (EconomyLedgerSavedData.EventReward reward : ledger.pendingEventRewards(player.getUUID())) {
+                List<ItemStack> remaining = new ArrayList<>();
+                boolean changed = false;
+                for (ItemStack item : reward.items()) {
+                    int fits = PlayerHandOff.book(space, item);
+                    if (fits > 0) {
+                        handOff.add(item.copyWithCount(fits));
+                        changed = true;
+                    }
+                    if (fits < item.getCount()) remaining.add(item.copyWithCount(item.getCount() - fits));
+                }
+                if (changed) ledger.updateEventItems(reward.eventId(), player.getUUID(), remaining);
             }
-            ledger.updateEventItems(reward.eventId(), player.getUUID(), remaining);
+            if (handOff.isEmpty() || !open.commit(player)) return 0;
+        }
+        int received = 0;
+        for (ItemStack stack : handOff) {
+            received += stack.getCount();
+            PlayerHandOff.give(player, stack);
         }
         return received;
     }
@@ -144,5 +170,8 @@ public final class HarvestFestival {
             settle(server, false);
             startAuto(server);
         }
+        // Hourly sweep so rewards lapse even when no event settles for a while.
+        if (server.getTickCount() % 72_000 == 0)
+            EconomyLedgerSavedData.get(server).pruneEventRewards(System.currentTimeMillis());
     }
 }

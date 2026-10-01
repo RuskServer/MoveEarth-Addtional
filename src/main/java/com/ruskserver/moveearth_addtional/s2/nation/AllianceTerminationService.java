@@ -47,7 +47,14 @@ public final class AllianceTerminationService {
                 "message.moveearth_addtional.diplomacy.alliance_end.declared_own",
                 "message.moveearth_addtional.diplomacy.alliance_end.declared_other",
                 MembershipCooldownService.duration(remaining),
-                "同盟破棄が通告されました（サーバー開放時間で2時間後に失効）");
+                "同盟破棄が通告されました（サーバー開放時間で2時間後に失効。通告した国家が相手国から受けていた領土権限は即時取り消し）");
+        // Declaring revoked every grant the other nation had given the declarer (NationSavedData).
+        String declaringLabel = label(nations, declaringNation);
+        String otherLabel = label(nations, otherNation);
+        chat(server, nations, declaringNation, Component.translatable(
+                "message.moveearth_addtional.diplomacy.alliance_end.grants_revoked_own", otherLabel));
+        chat(server, nations, otherNation, Component.translatable(
+                "message.moveearth_addtional.diplomacy.alliance_end.grants_revoked_other", declaringLabel));
     }
 
     public static void cancelled(MinecraftServer server, UUID declaringNation, UUID otherNation) {

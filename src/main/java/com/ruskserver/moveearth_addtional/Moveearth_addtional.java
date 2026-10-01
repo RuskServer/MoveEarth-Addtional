@@ -92,6 +92,15 @@ public class Moveearth_addtional {
                 ConfigFileLayout.WORLD + "economy-guard.toml");
         modContainer.registerConfig(ModConfig.Type.SERVER, LocalChatConfig.SPEC,
                 ConfigFileLayout.WORLD + "chat.toml");
+        modContainer.registerConfig(ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.config.ScheduleConfig.SPEC,
+                ConfigFileLayout.WORLD + "schedule.toml");
+        modContainer.registerConfig(ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.nether.NetherGateConfig.SPEC,
+                ConfigFileLayout.WORLD + "nether-gate.toml");
+        modContainer.registerConfig(ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.compat.sentry.SentryTurretConfig.SPEC,
+                ConfigFileLayout.WORLD + "sentry.toml");
         modContainer.registerConfig(
                 ModConfig.Type.SERVER,
                 RecoveryDispatchConfig.SPEC,
@@ -123,6 +132,7 @@ public class Moveearth_addtional {
 
         // Register Blocks, Items, BlockEntities, CreativeModeTabs
         com.ruskserver.moveearth_addtional.block.ModBlocks.BLOCKS.register(modEventBus);
+        com.ruskserver.moveearth_addtional.nether.NetherGateRegistry.register(modEventBus);
         com.ruskserver.moveearth_addtional.item.ModItems.ITEMS.register(modEventBus);
         com.ruskserver.moveearth_addtional.region.worldgen.RegionWorldgen
                 .PLACEMENT_MODIFIERS.register(modEventBus);

@@ -71,7 +71,8 @@ public final class EventScreenSync {
         long now = OpenTimeService.now(server);
         int remaining = minutes(Math.max(0L, ledger.harvestEndTick() - now));
         int next = minutes(Math.max(0L, ledger.nextAutoEventTick() - now));
-        List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> ranking = HarvestFestival.ranking(ledger);
+        List<Map.Entry<UUID, EconomyLedgerSavedData.HarvestScore>> ranking =
+                HarvestFestival.eligibleRanking(server, ledger);
         int rank = 0;
         for (int index = 0; index < ranking.size(); index++) {
             if (ranking.get(index).getKey().equals(player.getUUID())) {
@@ -79,7 +80,7 @@ public final class EventScreenSync {
                 break;
             }
         }
-        EconomyLedgerSavedData.HarvestScore own = ledger.harvestScores().get(player.getUUID());
+        EconomyLedgerSavedData.HarvestScore own = ledger.harvestScore(player.getUUID());
         List<S2C_EventScreenPacket.Leader> leaders = ranking.stream().limit(5)
                 .map(entry -> new S2C_EventScreenPacket.Leader(entry.getValue().name(), entry.getValue().points()))
                 .toList();

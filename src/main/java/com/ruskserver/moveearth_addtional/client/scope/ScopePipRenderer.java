@@ -4,6 +4,7 @@ import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.client.upscale.GlStateCache;
 import com.tacz.guns.api.client.gameplay.IClientPlayerGunOperator;
 import com.tacz.guns.api.item.IGun;
 import com.tacz.guns.api.item.IAttachment;
@@ -48,6 +49,10 @@ public final class ScopePipRenderer {
     private static boolean lensFresh;
     private static ResourceLocation lensOptic;
     private static int lensFilter = -1;
+    private static int cachedStencilFramebuffer = -1;
+    private static int cachedStencilWidth;
+    private static int cachedStencilHeight;
+    private static int cachedStencilBits;
 
     private ScopePipRenderer() { }
 
@@ -207,11 +212,13 @@ public final class ScopePipRenderer {
             Moveearth_addtional.LOGGER.warn("Scope PIP disabled: lens stencil buffer is unavailable");
             return;
         }
-        int stencilFunction = GL11.glGetInteger(GL11.GL_STENCIL_FUNC);
-        int stencilReference = GL11.glGetInteger(GL11.GL_STENCIL_REF);
-        int stencilMask = GL11.glGetInteger(GL11.GL_STENCIL_VALUE_MASK);
-        boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
+        // TaCZ and vanilla set these through RenderSystem, so GlStateManager's cache is exact and
+        // saves five synchronous driver queries per scoped frame.
+        int stencilFunction = GlStateCache.stencilFunc();
+        int stencilReference = GlStateCache.stencilRef();
+        int stencilMask = GlStateCache.stencilValueMask();
+        boolean depth = GlStateCache.depthTest();
+        boolean blend = GlStateCache.blend();
         try {
             RenderSystem.disableBlend();
             var main = Minecraft.getInstance().getMainRenderTarget();
@@ -234,8 +241,27 @@ public final class ScopePipRenderer {
         }
     }
 
+    /**
+     * Stencil bits of the bound draw framebuffer. The answer for the main target only changes when
+     * it is recreated or resized, so it is remembered for that target instead of re-queried.
+     */
     private static int stencilBits() {
         int framebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        var main = Minecraft.getInstance().getMainRenderTarget();
+        boolean mainBound = framebuffer != 0 && framebuffer == main.frameBufferId;
+        if (mainBound && cachedStencilFramebuffer == framebuffer && cachedStencilWidth == main.width
+                && cachedStencilHeight == main.height) return cachedStencilBits;
+        int bits = queryStencilBits(framebuffer);
+        if (mainBound) {
+            cachedStencilFramebuffer = framebuffer;
+            cachedStencilWidth = main.width;
+            cachedStencilHeight = main.height;
+            cachedStencilBits = bits;
+        }
+        return bits;
+    }
+
+    private static int queryStencilBits(int framebuffer) {
         int attachment = framebuffer == 0 ? GL11.GL_STENCIL : GL30.GL_STENCIL_ATTACHMENT;
         int type = GL30.glGetFramebufferAttachmentParameteri(GL30.GL_DRAW_FRAMEBUFFER, attachment,
                 GL30.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
@@ -253,6 +279,7 @@ public final class ScopePipRenderer {
     }
 
     private static void release() {
+        cachedStencilFramebuffer = -1;
         lensFresh = false;
         lensOptic = null;
         lensFilter = -1;

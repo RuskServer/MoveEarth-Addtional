@@ -25,9 +25,16 @@ public final class NationSavedData extends SavedData {
     private final Map<UUID, Invitation> invitations = new LinkedHashMap<>();
     private final Map<UUID, JoinApplication> joinApplications = new LinkedHashMap<>();
     private final Map<NationPair, DiplomacyRecord> diplomacy = new LinkedHashMap<>();
-    /** Players who recently lost a membership, keyed by player; see {@link MembershipCooldownPolicy}. */
-    private final Map<UUID, MembershipCooldown> membershipCooldowns = new LinkedHashMap<>();
+    /**
+     * Memberships each player recently lost, oldest first; see {@link MembershipCooldownPolicy}. A later
+     * loss is appended rather than replacing an earlier one, so the earliest binding holds until it ends.
+     */
+    private final Map<UUID, java.util.List<MembershipCooldownPolicy.Entry>> membershipCooldowns = new LinkedHashMap<>();
     private long revision;
+    // Nameplate revision and join-application cooldown: in memory only, see nameplateRevision()
+    // and applyToNation().
+    private final NameplateRevisionTracker<NameplateState> nameplateRevision = new NameplateRevisionTracker<>();
+    private final Map<UUID, Long> applicationChangedAt = new java.util.HashMap<>();
 
     public Optional<Nation> nationFor(UUID playerId) {
         UUID nationId = nationByMember.get(playerId);
@@ -131,6 +138,10 @@ public final class NationSavedData extends SavedData {
                 if (decision != AllianceTerminationPolicy.Decision.ALLOWED) return diplomacyResult(map(decision));
                 record.allianceEndsAt = AllianceTerminationPolicy.endsAt(openNow);
                 record.allianceEndFrom = actorNation.id;
+                // The declarer loses at once what the other nation let it do in the other's territory,
+                // so the notice cannot be used to loot or wreck a soon-former ally at a chosen moment.
+                // What the declarer granted stays until expiry; the other nation may re-grant if it wants.
+                record.grantsFrom(targetNationId).clear();
                 status = DiplomacyStatus.ALLIANCE_END_DECLARED;
             }
             case CANCEL_ALLIANCE_END -> {
@@ -298,43 +309,53 @@ public final class NationSavedData extends SavedData {
 
     /** Open-time ticks before {@code playerId} may join or found a nation again; 0 when free. */
     public long membershipCooldownRemaining(UUID playerId, long openNow) {
-        MembershipCooldown cooldown = playerId == null ? null : membershipCooldowns.get(playerId);
-        return cooldown == null || !cooldown.joinLocked() ? 0L
-                : MembershipCooldownPolicy.remaining(cooldown.endsAt(), openNow);
+        return playerId == null ? 0L
+                : MembershipCooldownPolicy.joinLockRemaining(membershipCooldowns.get(playerId), openNow);
     }
 
-    /** Open-time ticks a former member stays bound to that nation's truces and alliances. */
+    /** Open-time ticks a former member stays bound to the truces and alliances of {@link #cooldownFormerNation}. */
     public long formerNationBindingRemaining(UUID playerId, long openNow) {
-        MembershipCooldown cooldown = playerId == null ? null : membershipCooldowns.get(playerId);
-        return cooldown == null ? 0L : MembershipCooldownPolicy.remaining(cooldown.endsAt(), openNow);
+        return playerId == null ? 0L : MembershipCooldownPolicy.bindingRemaining(
+                membershipCooldowns.get(playerId), openNow, nations::containsKey);
     }
 
     /**
-     * The nation whose ceasefires and alliances still bind a player who left it, while their
-     * membership cooldown runs and the nation still exists.
+     * The nation whose ceasefires and alliances still bind a player who left it: the earliest
+     * membership loss whose cooldown still runs and whose nation still exists.
      */
     public Optional<UUID> cooldownFormerNation(UUID playerId, long openNow) {
-        MembershipCooldown cooldown = playerId == null ? null : membershipCooldowns.get(playerId);
-        if (cooldown == null) return Optional.empty();
-        return Optional.ofNullable(MembershipCooldownPolicy.ceasefireNation(null, cooldown.formerNationId(),
-                MembershipCooldownPolicy.active(cooldown.endsAt(), openNow),
-                cooldown.formerNationId() != null && nations.containsKey(cooldown.formerNationId())));
+        if (playerId == null) return Optional.empty();
+        return MembershipCooldownPolicy.binding(membershipCooldowns.get(playerId), openNow, nations::containsKey)
+                .map(MembershipCooldownPolicy.Entry::formerNationId);
     }
 
     /** Forgets cooldowns that have run out. Does not change the revision: nothing visible changes. */
     public void pruneMembershipCooldowns(long openNow) {
-        if (membershipCooldowns.values().removeIf(cooldown ->
-                !MembershipCooldownPolicy.active(cooldown.endsAt(), openNow))) setDirty();
+        boolean pruned = false;
+        var iterator = membershipCooldowns.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            java.util.List<MembershipCooldownPolicy.Entry> kept =
+                    MembershipCooldownPolicy.record(entry.getValue(), null, openNow);
+            if (kept.size() == entry.getValue().size()) continue;
+            pruned = true;
+            if (kept.isEmpty()) iterator.remove(); else entry.setValue(kept);
+        }
+        if (pruned) setDirty();
     }
 
     /**
+     * Records a lost membership after any the player is still serving; an earlier binding that still
+     * runs is kept, never replaced.
+     *
      * @param joinLocked false for a kick: the player chose nothing, so a hostile nation must not be
      *                   able to accept a newcomer and kick them to lock them out for a night. The
      *                   truce/alliance binding still applies, so a staged kick cannot dodge a ceasefire.
      */
     private void startMembershipCooldown(UUID playerId, UUID formerNationId, long openNow, boolean joinLocked) {
-        membershipCooldowns.put(playerId, new MembershipCooldown(formerNationId,
-                MembershipCooldownPolicy.endsAt(openNow), joinLocked));
+        membershipCooldowns.put(playerId, MembershipCooldownPolicy.record(membershipCooldowns.get(playerId),
+                new MembershipCooldownPolicy.Entry(formerNationId, MembershipCooldownPolicy.endsAt(openNow),
+                        joinLocked), openNow));
     }
 
     private boolean inMembershipCooldown(UUID playerId, long openNow) {
@@ -344,6 +365,32 @@ public final class NationSavedData extends SavedData {
     public long revision() {
         return revision;
     }
+
+    /**
+     * Changes only when something a nameplate shows may have changed: which nation each player is in,
+     * a nation's name or tag, or an alliance or hostility. Role edits, applications, invitations and other
+     * revision bumps leave it alone, so they no longer resend every nameplate to every player. Derived
+     * lazily from the state itself, so a new mutation path cannot forget to bump it.
+     */
+    public long nameplateRevision() {
+        return nameplateRevision.revision(revision, this::nameplateState);
+    }
+
+    private NameplateState nameplateState() {
+        Map<UUID, String> labels = new java.util.HashMap<>();
+        nations.values().forEach(nation -> labels.put(nation.id, nation.name + '\u0000' + nation.tag));
+        Map<NationPair, Integer> relations = new java.util.HashMap<>();
+        diplomacy.values().forEach(record -> {
+            int bits = (record.allied ? 1 : 0) | (record.hostileFirstToSecond ? 2 : 0)
+                    | (record.hostileSecondToFirst ? 4 : 0);
+            if (bits != 0) relations.put(record.pair, bits);
+        });
+        return new NameplateState(Map.copyOf(nationByMember), Map.copyOf(labels), Map.copyOf(relations));
+    }
+
+    /** What nameplates are derived from; compared by value. Transient, never saved. */
+    private record NameplateState(Map<UUID, UUID> memberNations, Map<UUID, String> nationLabels,
+                                  Map<NationPair, Integer> relations) { }
 
     public Optional<Invitation> invitationFor(UUID playerId) {
         return Optional.ofNullable(invitations.get(playerId));
@@ -363,6 +410,12 @@ public final class NationSavedData extends SavedData {
     public ApplicationResult applyToNation(UUID applicantId, String applicantName, UUID nationId,
                                            long expectedRevision, long openNow) {
         if (expectedRevision != revision) return applicationResult(ApplicationStatus.STALE);
+        // Each application pings the nation's managers and records analytics, so apply/cancel loops are
+        // paced per player. Only successful changes start the cooldown.
+        long changeAt = System.currentTimeMillis();
+        if (!JoinApplicationCooldownPolicy.applyAllowed(applicationChangedAt.get(applicantId), changeAt)) {
+            return applicationResult(ApplicationStatus.APPLICATION_COOLDOWN);
+        }
         if (!nationByMember.containsKey(applicantId) && inMembershipCooldown(applicantId, openNow)) {
             return applicationResult(ApplicationStatus.MEMBERSHIP_COOLDOWN);
         }
@@ -374,6 +427,7 @@ public final class NationSavedData extends SavedData {
         }
         joinApplications.put(applicantId, new JoinApplication(nationId, applicantId,
                 safePlayerName(applicantName), System.currentTimeMillis()));
+        recordApplicationChange(applicantId, changeAt);
         changed();
         return applicationResult(ApplicationStatus.APPLIED);
     }
@@ -383,8 +437,17 @@ public final class NationSavedData extends SavedData {
         if (joinApplications.remove(applicantId) == null) {
             return applicationResult(ApplicationStatus.APPLICATION_NOT_FOUND);
         }
+        // Cancelling stays possible at once (undoing a misclick); it only delays the next application.
+        recordApplicationChange(applicantId, System.currentTimeMillis());
         changed();
         return applicationResult(ApplicationStatus.CANCELLED);
+    }
+
+    private void recordApplicationChange(UUID applicantId, long changeAt) {
+        if (applicationChangedAt.size() >= 256) {
+            applicationChangedAt.values().removeIf(at -> JoinApplicationCooldownPolicy.applyAllowed(at, changeAt));
+        }
+        applicationChangedAt.put(applicantId, changeAt);
     }
 
     public ApplicationResult decideApplication(UUID actorId, UUID applicantId, boolean approve,
@@ -512,6 +575,10 @@ public final class NationSavedData extends SavedData {
         // Leaving has its own path and checks; kicking oneself would sidestep them.
         if (actorId.equals(targetId)) return membershipResult(MembershipStatus.NO_PERMISSION);
         if (!nation.members.containsKey(targetId)) return membershipResult(MembershipStatus.NOT_MEMBER);
+        if (!RoleAuthorityPolicy.mayKick(nation.ownerId.equals(actorId), false,
+                heldMask(nation, actorId), heldMask(nation, targetId))) {
+            return membershipResult(MembershipStatus.TARGET_OUTRANKS);
+        }
         nation.members.remove(targetId);
         nationByMember.remove(targetId);
         dropPersonalAllyGrants(targetId);
@@ -634,12 +701,25 @@ public final class NationSavedData extends SavedData {
         return adminResult(NationAdminStatus.OWNER_TRANSFERRED);
     }
 
+    /** Whether the nation is allied with anyone; an alliance under termination notice still counts. */
+    public boolean hasAlliance(UUID nationId) {
+        if (nationId == null) return false;
+        for (DiplomacyRecord record : diplomacy.values()) {
+            if (record.allied && record.pair.contains(nationId)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param hasPeaceTruce whether Siege holds an active peace truce between this nation and any other
+     */
     public NationAdminResult validateDisband(UUID actorId, long expectedRevision,
-                                             boolean siegeLocked, boolean hasPrisoners) {
+                                             boolean siegeLocked, boolean hasPrisoners, boolean hasPeaceTruce) {
         if (expectedRevision != revision) return adminResult(NationAdminStatus.STALE);
         Nation nation = nationFor(actorId).orElse(null);
         NationLifecyclePolicy.Decision decision = NationLifecyclePolicy.disband(
-                nation != null && nation.ownerId.equals(actorId), siegeLocked, hasPrisoners);
+                nation != null && nation.ownerId.equals(actorId), siegeLocked, hasPrisoners,
+                nation != null && hasAlliance(nation.id), hasPeaceTruce);
         return adminResult(decision == NationLifecyclePolicy.Decision.ALLOWED
                 ? NationAdminStatus.ALLOWED : map(decision));
     }
@@ -650,7 +730,12 @@ public final class NationSavedData extends SavedData {
         if (nation == null || !nation.ownerId.equals(actorId)) return adminResult(NationAdminStatus.OWNER_ONLY);
         UUID nationId = nation.id;
         nation.members.keySet().forEach(nationByMember::remove);
-        nation.members.keySet().forEach(memberId -> startMembershipCooldown(memberId, nationId, openNow, true));
+        UUID ownerId = nation.ownerId;
+        // Only the owner chose this; see MembershipCooldownPolicy.onDisband.
+        nation.members.keySet().forEach(memberId -> MembershipCooldownPolicy
+                .onDisband(memberId.equals(ownerId), nationId, openNow)
+                .ifPresent(entry -> membershipCooldowns.put(memberId, MembershipCooldownPolicy.record(
+                        membershipCooldowns.get(memberId), entry, openNow))));
         invitations.values().removeIf(invitation -> invitation.nationId.equals(nationId));
         joinApplications.values().removeIf(application -> application.nationId.equals(nationId));
         diplomacy.entrySet().removeIf(entry -> entry.getKey().first.equals(nationId)
@@ -671,6 +756,8 @@ public final class NationSavedData extends SavedData {
             case TARGET_IS_OWNER -> NationAdminStatus.TARGET_IS_OWNER;
             case SIEGE_LOCKED -> NationAdminStatus.SIEGE_LOCKED;
             case PRISONERS_EXIST -> NationAdminStatus.PRISONERS_EXIST;
+            case ALLIANCE_ACTIVE -> NationAdminStatus.ALLIANCE_ACTIVE;
+            case PEACE_TRUCE_ACTIVE -> NationAdminStatus.PEACE_TRUCE_ACTIVE;
             case ALLOWED -> NationAdminStatus.ALLOWED;
         };
     }
@@ -723,7 +810,11 @@ public final class NationSavedData extends SavedData {
                                  long openNow) {
         if (expectedRevision != revision) return Status.STALE;
         if (nationByMember.containsKey(ownerId)) return Status.ALREADY_MEMBER;
-        if (inMembershipCooldown(ownerId, openNow)) return Status.MEMBERSHIP_COOLDOWN;
+        switch (MembershipCooldownPolicy.founding(membershipCooldowns.get(ownerId), openNow, nations::containsKey)) {
+            case MEMBERSHIP_COOLDOWN -> { return Status.MEMBERSHIP_COOLDOWN; }
+            case FORMER_NATION_BOUND -> { return Status.FORMER_NATION_BOUND; }
+            case ALLOWED -> { }
+        }
         NationNamePolicy.Validation validation = NationNamePolicy.validate(rawName, rawTag);
         if (!validation.valid()) return Status.INVALID;
         boolean duplicate = nations.values().stream().anyMatch(nation ->
@@ -845,13 +936,16 @@ public final class NationSavedData extends SavedData {
         }
         tag.put("Diplomacy", diplomacyList);
         ListTag cooldownList = new ListTag();
-        membershipCooldowns.forEach((playerId, cooldown) -> {
-            CompoundTag value = new CompoundTag();
-            value.putUUID("Player", playerId);
-            if (cooldown.formerNationId() != null) value.putUUID("FormerNation", cooldown.formerNationId());
-            value.putLong("EndsAt", cooldown.endsAt());
-            value.putBoolean("JoinLocked", cooldown.joinLocked());
-            cooldownList.add(value);
+        // One compound per lost membership, oldest first; a player may appear more than once.
+        membershipCooldowns.forEach((playerId, cooldowns) -> {
+            for (MembershipCooldownPolicy.Entry cooldown : cooldowns) {
+                CompoundTag value = new CompoundTag();
+                value.putUUID("Player", playerId);
+                if (cooldown.formerNationId() != null) value.putUUID("FormerNation", cooldown.formerNationId());
+                value.putLong("EndsAt", cooldown.endsAt());
+                value.putBoolean("JoinLocked", cooldown.joinLocked());
+                cooldownList.add(value);
+            }
         });
         tag.put("MembershipCooldowns", cooldownList);
         return tag;
@@ -956,9 +1050,11 @@ public final class NationSavedData extends SavedData {
             if (!value.hasUUID("Player")) continue;
             long endsAt = Math.max(0L, value.getLong("EndsAt"));
             if (endsAt <= 0L) continue;
-            data.membershipCooldowns.put(value.getUUID("Player"), new MembershipCooldown(
-                    value.hasUUID("FormerNation") ? value.getUUID("FormerNation") : null, endsAt,
-                    !value.contains("JoinLocked") || value.getBoolean("JoinLocked")));
+            // Appended in saved order, which is the order the memberships were lost.
+            data.membershipCooldowns.computeIfAbsent(value.getUUID("Player"), ignored -> new java.util.ArrayList<>())
+                    .add(new MembershipCooldownPolicy.Entry(
+                            value.hasUUID("FormerNation") ? value.getUUID("FormerNation") : null, endsAt,
+                            !value.contains("JoinLocked") || value.getBoolean("JoinLocked")));
         }
         return data;
     }
@@ -969,19 +1065,19 @@ public final class NationSavedData extends SavedData {
                 "moveearth_nations");
     }
 
-    public enum Status { CREATED, INVALID, DUPLICATE, ALREADY_MEMBER, STALE, MEMBERSHIP_COOLDOWN }
+    public enum Status { CREATED, INVALID, DUPLICATE, ALREADY_MEMBER, STALE, MEMBERSHIP_COOLDOWN, FORMER_NATION_BOUND }
 
     public enum MembershipStatus {
         INVITED, JOINED, DECLINED, LEFT, KICKED,
         STALE, NO_PERMISSION, TARGET_ALREADY_MEMBER, ALREADY_INVITED,
         INVITE_NOT_FOUND, NOT_MEMBER, OWNER_CANNOT_LEAVE, TARGET_OFFLINE, SIEGE_LOCKED,
-        MEMBERSHIP_COOLDOWN
+        MEMBERSHIP_COOLDOWN, TARGET_OUTRANKS
     }
 
     public enum ApplicationStatus {
         APPLIED, CANCELLED, APPROVED, REJECTED, STALE, NO_PERMISSION,
         ALREADY_MEMBER, ALREADY_APPLIED, NATION_NOT_FOUND, APPLICATION_NOT_FOUND,
-        MEMBERSHIP_COOLDOWN, APPLICANT_COOLDOWN
+        MEMBERSHIP_COOLDOWN, APPLICANT_COOLDOWN, APPLICATION_COOLDOWN
     }
 
     public enum RoleStatus {
@@ -991,7 +1087,8 @@ public final class NationSavedData extends SavedData {
 
     public enum NationAdminStatus {
         ALLOWED, UPDATED, OWNER_TRANSFERRED, DISBANDED, UNCHANGED, INVALID, DUPLICATE,
-        OWNER_ONLY, TARGET_NOT_MEMBER, TARGET_IS_OWNER, SIEGE_LOCKED, PRISONERS_EXIST, STALE
+        OWNER_ONLY, TARGET_NOT_MEMBER, TARGET_IS_OWNER, SIEGE_LOCKED, PRISONERS_EXIST, STALE,
+        ALLIANCE_ACTIVE, PEACE_TRUCE_ACTIVE
     }
 
     public record NationAdminResult(NationAdminStatus status, long revision) {
@@ -1065,8 +1162,6 @@ public final class NationSavedData extends SavedData {
     public record AllianceEnd(UUID declaringNation, long endsAt) { }
 
     public record EndedAlliance(UUID declaringNation, UUID otherNation) { }
-
-    private record MembershipCooldown(UUID formerNationId, long endsAt, boolean joinLocked) { }
 
     public static final class Nation {
         private final UUID id;

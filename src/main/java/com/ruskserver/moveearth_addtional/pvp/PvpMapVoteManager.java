@@ -12,12 +12,15 @@ import java.util.*;
 public final class PvpMapVoteManager {
     public static final PvpMapVoteManager INSTANCE = new PvpMapVoteManager();
     public static final int VOTE_DURATION_SECONDS = 15;
+    /** Vote-driven tally updates go out at most this often (the countdown still updates every second). */
+    private static final int VOTE_UPDATE_MIN_TICKS = 5;
 
     private boolean active;
     private int ticksLeft;
     private final List<PvpMapDefinition> candidates = new ArrayList<>();
     private final Map<UUID, String> votes = new HashMap<>();
     private final Set<UUID> voterUuids = new HashSet<>();
+    private final PvpUpdateCoalescer tallyUpdates = new PvpUpdateCoalescer(VOTE_UPDATE_MIN_TICKS);
 
     private PvpMapVoteManager() {}
 
@@ -32,6 +35,7 @@ public final class PvpMapVoteManager {
         votes.clear();
         voterUuids.clear();
         voterUuids.addAll(participants);
+        tallyUpdates.reset();
 
         candidates.clear();
         if (availableMaps.size() <= 4) {
@@ -57,8 +61,8 @@ public final class PvpMapVoteManager {
         if (!active || !voterUuids.contains(player.getUUID())) return;
         boolean valid = candidates.stream().anyMatch(c -> c.id().equals(mapId));
         if (!valid) return;
-        votes.put(player.getUUID(), mapId);
-        broadcastVoteUpdate(player.server);
+        // Repeating the same vote changes nothing; a changed tally is sent from tick(), coalesced.
+        if (!mapId.equals(votes.put(player.getUUID(), mapId))) tallyUpdates.markDirty();
         
         // 参加者全員が投票を完了したら、残り時間を3秒に短縮
         if (votes.size() >= voterUuids.size()) {
@@ -71,7 +75,7 @@ public final class PvpMapVoteManager {
     public void tick(MinecraftServer server) {
         if (!active) return;
         ticksLeft--;
-        if (ticksLeft % 20 == 0) {
+        if (ticksLeft % 20 == 0 || tallyUpdates.due(server.getTickCount())) {
             broadcastVoteUpdate(server);
         }
         if (ticksLeft <= 0) {
@@ -85,6 +89,7 @@ public final class PvpMapVoteManager {
         candidates.clear();
         votes.clear();
         voterUuids.clear();
+        tallyUpdates.reset();
     }
 
     private void finishVote(MinecraftServer server) {
@@ -143,6 +148,7 @@ public final class PvpMapVoteManager {
         Map<String, Integer> tally = tallyVotes();
         int secondsRemaining = Math.max(0, (ticksLeft + 19) / 20);
         S2C_UpdateMapVotePacket packet = new S2C_UpdateMapVotePacket(tally, secondsRemaining);
+        tallyUpdates.sent(server.getTickCount());
         for (UUID id : voterUuids) {
             ServerPlayer player = server.getPlayerList().getPlayer(id);
             if (player != null) {

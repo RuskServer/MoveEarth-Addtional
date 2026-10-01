@@ -13,8 +13,10 @@ public final class ScopePipConfig {
             .comment("Bilinear filtering when the lens resolution is below the screen's; off keeps sharp pixels.")
             .define("smoothLens", false);
     public static final ModConfigSpec.IntValue UPDATE_INTERVAL = BUILDER
-            .comment("Redraw the lens every N frames. Higher is lighter, but the lens image lags while turning.")
-            .defineInRange("lensUpdateInterval", 1, 1, 3);
+            .comment("Redraw the lens every N frames. Each redraw renders the whole world a second time,",
+                    "so 1 roughly doubles world rendering cost while scoped. Higher is lighter, but the",
+                    "lens image lags while turning.")
+            .defineInRange("lensUpdateInterval", 2, 1, 3);
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private ScopePipConfig() { }

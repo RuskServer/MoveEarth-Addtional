@@ -19,6 +19,8 @@ public final class WarehouseSites extends SavedData {
     // A paste is journaled before any world edit. An interrupted/failed paste is never retried
     // automatically, and its footprint remains protected until an operator repairs it.
     private final Map<Integer, Site> placements = new LinkedHashMap<>();
+    /** Protection footprints of both maps, rebuilt lazily after a change. */
+    private WarehouseProtectionIndex protection;
 
     public List<Site> all() { return List.copyOf(byRegion.values()); }
 
@@ -38,7 +40,7 @@ public final class WarehouseSites extends SavedData {
                         && WarehouseSitePolicy.overlaps(existing.min().getX(), existing.min().getZ(),
                         site.min().getX(), site.min().getZ()))) return false;
         placements.put(site.regionId(), site);
-        setDirty();
+        changed();
         return true;
     }
 
@@ -56,15 +58,33 @@ public final class WarehouseSites extends SavedData {
                 site.min().getX(), site.min().getZ()))) return false;
         byRegion.put(site.regionId(), site);
         placements.remove(site.regionId());
-        setDirty();
+        changed();
         return true;
     }
 
     public boolean protects(ResourceLocation dimension, BlockPos pos) {
-        return java.util.stream.Stream.concat(byRegion.values().stream(), placements.values().stream())
-                .anyMatch(site -> site.dimension().equals(dimension)
-                && WarehouseSitePolicy.within(site.min().getX(), site.min().getZ(), pos.getX(), pos.getZ(),
-                WarehouseSitePolicy.BUILD_MARGIN));
+        return protection().protects(dimension, pos.getX(), pos.getZ());
+    }
+
+    /** False when no registered or pending warehouse protects anything in the dimension. */
+    public boolean protectsAnyIn(ResourceLocation dimension) {
+        return protection().hasDimension(dimension);
+    }
+
+    private WarehouseProtectionIndex protection() {
+        WarehouseProtectionIndex current = protection;
+        if (current == null) {
+            current = new WarehouseProtectionIndex();
+            for (Site site : byRegion.values()) current.add(site.dimension(), site.min().getX(), site.min().getZ());
+            for (Site site : placements.values()) current.add(site.dimension(), site.min().getX(), site.min().getZ());
+            protection = current;
+        }
+        return current;
+    }
+
+    private void changed() {
+        protection = null;
+        setDirty();
     }
 
     public boolean insideStructure(ResourceLocation dimension, BlockPos pos) {

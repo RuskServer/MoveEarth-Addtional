@@ -80,6 +80,20 @@ class TutorialCatalogTest {
     }
 
     @Test
+    void theNationStepDoesNotHoldBackTheRest() {
+        List<String> ids = TutorialCatalog.STEPS.stream().map(TutorialCatalog.Step::id).toList();
+        int nation = ids.indexOf("nation");
+        // Waiting for approval or starting in the wilderness: the next goal after it shows.
+        assertEquals(nation + 1, TutorialCatalog.current(step -> ids.indexOf(step.id()) < nation));
+        assertEquals(ids.indexOf("brass"), TutorialCatalog.current(step -> !step.id().equals("brass")
+                && !step.id().equals("nation")));
+        // Only once nothing else is left does it show; the tutorial is not over until it is done.
+        assertEquals(nation, TutorialCatalog.current(step -> !step.id().equals("nation")));
+        assertTrue(TutorialCatalog.deferred(TutorialCatalog.STEPS.get(nation)));
+        assertEquals(1, TutorialCatalog.STEPS.stream().filter(TutorialCatalog::deferred).count());
+    }
+
+    @Test
     void placedBlockCriteriaFilterByLocation() throws IOException {
         // 1.21 dropped placed_block's "block" field; a criterion that still uses it
         // matches any placed block, which once completed the water wheel advancement.

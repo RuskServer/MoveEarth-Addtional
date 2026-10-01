@@ -226,6 +226,11 @@ public class ClientPacketHandler {
         PvpHardpointClientState.update(packet);
     }
 
+    public static void handleWarehouseZones(
+            com.ruskserver.moveearth_addtional.network.s2c.other.S2C_WarehouseZonesPacket packet) {
+        WarehouseZoneRenderer.update(packet);
+    }
+
     public static void handlePvpTeam(S2C_PvpTeamPacket packet) {
         PvpClientState.updateAllies(packet.allies());
     }

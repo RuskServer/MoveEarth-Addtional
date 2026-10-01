@@ -3,6 +3,8 @@ package com.ruskserver.moveearth_addtional.network.c2s.nation;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPacket;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.network.common.C2SPacketGate;
+import com.ruskserver.moveearth_addtional.network.common.C2SRateLimiter;
 import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData;
@@ -36,6 +38,14 @@ public record C2S_NotificationActionPacket(int requestId, Action action) impleme
             boolean manage = nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_NOTIFICATIONS);
             boolean success;
             String result;
+            // Unlinks write the shared Discord audit log, so they get a much tighter budget than the
+            // packet itself; a refused attempt is answered but not audited.
+            if ((action == Action.UNLINK_ACCOUNT || action == Action.UNLINK_NATION)
+                    && !C2SPacketGate.allowSubAction(player, "notification_unlink", C2SRateLimiter.AUDIT)) {
+                PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(requestId, false,
+                        data.revision(), "screen.moveearth_addtional.notifications.result.rate_limited"));
+                return;
+            }
             switch (action) {
                 case TEST -> {
                     long now = System.currentTimeMillis();

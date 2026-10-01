@@ -19,6 +19,6 @@ public abstract class MapInstanceTerritoryOverlayMixin {
             target = "Lnet/minecraft/world/level/saveddata/maps/MapItemSavedData;getDecorations()Ljava/lang/Iterable;"))
     private void moveEarth$renderTerritories(PoseStack poseStack, MultiBufferSource buffers,
                                               boolean inItemFrame, int packedLight, CallbackInfo callback) {
-        TerritoryMapRenderer.render(poseStack, buffers, data);
+        TerritoryMapRenderer.render(poseStack, buffers, data, inItemFrame);
     }
 }

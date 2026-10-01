@@ -17,10 +17,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.ArrayDeque;
-import java.util.HashMap;
 
-/** The server-owned source of truth for MoveEarth balances and idempotent payments. */
+/**
+ * The server-owned source of truth for MoveEarth balances and idempotent payments. Market orders,
+ * claims, wreckage and event rewards live in {@link EconomyGoodsSavedData}, a small file that
+ * hand-offs persist at once; this ledger is saved with the world. See that class for why the two
+ * files may diverge after a crash without duplicating anything.
+ */
 public final class EconomyLedgerSavedData extends SavedData {
     private static final int RECENT_INDEX_LIMIT = 100;
     private static final int JOURNAL_LIMIT = 10_000;
@@ -29,9 +32,9 @@ public final class EconomyLedgerSavedData extends SavedData {
     private final Map<UUID, Transaction> transactions = new LinkedHashMap<>();
     /** One durable receipt per nation keeps the current upkeep retry idempotent after journal trimming. */
     private final Map<UUID, Transaction> upkeepReceipts = new LinkedHashMap<>();
-    private final Map<Account, ArrayDeque<Transaction>> recentByPlayer = new HashMap<>();
+    /** Newest transactions per player and nation account; the only source of account history. */
+    private final RecentIndex<Account, Transaction> recentByAccount = new RecentIndex<>(RECENT_INDEX_LIMIT);
     private final Map<UUID, JobIncomeState> jobIncome = new LinkedHashMap<>();
-    private final Map<UUID, EventReward> eventRewards = new LinkedHashMap<>();
     private final Map<UUID, EventIncome> eventIncome = new LinkedHashMap<>();
     private UUID harvestId;
     private long harvestEndTick;
@@ -42,9 +45,10 @@ public final class EconomyLedgerSavedData extends SavedData {
     private long nextAutoEventTick = -1L;
     private int eventSequence;
     private final Map<UUID, HarvestScore> harvestScores = new LinkedHashMap<>();
-    private final Map<UUID, MarketOrder> marketOrders = new LinkedHashMap<>();
-    private final Map<UUID, MarketClaim> marketClaims = new LinkedHashMap<>();
-    private final Map<WreckageKey, MarketWreckage> marketWreckage = new LinkedHashMap<>();
+    /** Attached by {@link #get}; every goods read and write goes through it. */
+    private EconomyGoodsSavedData goods;
+    /** Goods read from a ledger file written before the split, until the goods file holds them. */
+    private EconomyGoodsSavedData legacyGoods;
 
     public long balance(Account account) {
         return account == null ? 0L : balances.getOrDefault(account, 0L);
@@ -59,6 +63,7 @@ public final class EconomyLedgerSavedData extends SavedData {
         Account account = Account.nation(nationId);
         if (balance(account) != 0L) return false;
         if (balances.remove(account) != null) setDirty();
+        recentByAccount.remove(account);
         return true;
     }
 
@@ -119,16 +124,18 @@ public final class EconomyLedgerSavedData extends SavedData {
             transactions.remove(transactions.keySet().iterator().next());
     }
 
-    public List<MarketOrder> marketOrders() { return List.copyOf(marketOrders.values()); }
-    public EventReward eventReward(UUID eventId, UUID playerId) {
-        EventReward reward = eventRewards.get(eventRewardKey(eventId, playerId));
-        return reward != null && reward.playerId().equals(playerId) ? reward : null;
-    }
+    public List<MarketOrder> marketOrders() { return List.copyOf(goods.orders()); }
+    /** One order by id, without copying the order book. */
+    public MarketOrder marketOrder(UUID orderId) { return goods.order(orderId); }
+    /** Whether any order, buy or sell, is listed at the station. */
+    public boolean hasOrdersAt(UUID stationId) { return goods.hasOrdersAt(stationId); }
+    public EventReward eventReward(UUID eventId, UUID playerId) { return goods.reward(eventId, playerId); }
 
     public UUID harvestId() { return harvestId; }
     public long harvestEndTick() { return harvestEndTick; }
     public boolean harvestSettled() { return harvestSettled; }
     public Map<UUID, HarvestScore> harvestScores() { return Map.copyOf(harvestScores); }
+    public HarvestScore harvestScore(UUID playerId) { return playerId == null ? null : harvestScores.get(playerId); }
     public String eventKind() { return eventKind; }
     public int targetRegion() { return targetRegion; }
     public String targetMaterial() { return targetMaterial; }
@@ -190,7 +197,7 @@ public final class EconomyLedgerSavedData extends SavedData {
 
     public boolean awardEvent(UUID eventId, UUID playerId, int requestedCurrency,
                               List<ItemStack> items, long nowMillis) {
-        if (eventId == null || playerId == null || eventRewards.containsKey(eventRewardKey(eventId, playerId))
+        if (eventId == null || playerId == null || goods.reward(eventId, playerId) != null
                 || requestedCurrency < 0 || requestedCurrency > 5 || items == null
                 || items.stream().anyMatch(item -> item == null || item.isEmpty())) return false;
         EventIncome income = eventIncome.computeIfAbsent(playerId, ignored -> new EventIncome());
@@ -203,32 +210,47 @@ public final class EconomyLedgerSavedData extends SavedData {
         if (currency > 0 && transfer(UUID.randomUUID(), null, Account.player(playerId), currency,
                 "event_reward", eventId) != Result.APPLIED) return false;
         income.paid += currency;
-        eventRewards.put(eventRewardKey(eventId, playerId), new EventReward(eventId, playerId, currency,
-                items.stream().map(ItemStack::copy).toList()));
+        goods.putReward(new EventReward(eventId, playerId, currency,
+                items.stream().map(ItemStack::copy).toList(), nowMillis));
         setDirty();
         return true;
     }
 
-    public List<EventReward> pendingEventRewards(UUID playerId) {
-        return eventRewards.values().stream().filter(reward -> reward.playerId().equals(playerId)
-                && !reward.items().isEmpty()).toList();
-    }
+    public List<EventReward> pendingEventRewards(UUID playerId) { return goods.pendingRewards(playerId); }
+
+    /** Unclaimed rewards of one player, kept as a running count for the once-a-second HUD sync. */
+    public int pendingEventRewardCount(UUID playerId) { return goods.pendingRewardCount(playerId); }
 
     public boolean updateEventItems(UUID eventId, UUID playerId, List<ItemStack> remaining) {
         EventReward reward = eventReward(eventId, playerId);
         if (reward == null || remaining == null) return false;
-        eventRewards.put(eventRewardKey(eventId, playerId), new EventReward(eventId, playerId, reward.currency(),
-                remaining.stream().map(ItemStack::copy).toList()));
-        setDirty();
+        if (remaining.isEmpty() && !HarvestFestivalRules.keepReward(eventId.equals(harvestId), true,
+                reward.awardedAt(), System.currentTimeMillis())) {
+            // A fully claimed reward of an older event no longer guards anything: settlement only
+            // ever re-checks the current event.
+            goods.removeReward(eventId, playerId);
+        } else {
+            goods.putReward(new EventReward(eventId, playerId, reward.currency(),
+                    remaining.stream().map(ItemStack::copy).toList(), reward.awardedAt()));
+        }
         return true;
     }
 
-    private static UUID eventRewardKey(UUID eventId, UUID playerId) {
-        return UUID.nameUUIDFromBytes((eventId.toString() + ":" + playerId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    /**
+     * Drops fully claimed rewards of past events and unclaimed ones past the retention window, so
+     * the reward table stays bounded over a season. Returns how many were removed.
+     */
+    public int pruneEventRewards(long nowMillis) {
+        return goods.removeRewardsIf(reward -> !HarvestFestivalRules.keepReward(
+                reward.eventId().equals(harvestId), reward.items().isEmpty(), reward.awardedAt(), nowMillis));
     }
 
-    public List<MarketClaim> marketClaims(UUID owner) {
-        return marketClaims.values().stream().filter(claim -> claim.owner().equals(owner)).toList();
+    public List<MarketClaim> marketClaims(UUID owner) { return goods.claimsOf(owner); }
+
+    /** One claim by id, or null when it does not exist or belongs to someone else. */
+    public MarketClaim marketClaim(UUID owner, UUID claimId) {
+        MarketClaim claim = goods.claim(claimId);
+        return claim != null && claim.owner().equals(owner) ? claim : null;
     }
 
     public MarketResult createBuyOrder(UUID owner, UUID stationId, ItemStack item,
@@ -242,9 +264,8 @@ public final class EconomyLedgerSavedData extends SavedData {
         Result paid = transfer(UUID.randomUUID(), Account.player(owner), Account.escrow(id), cost,
                 "market_buy_escrow", id);
         if (paid != Result.APPLIED) return new MarketResult(MarketStatus.PAYMENT_FAILED, null);
-        marketOrders.put(id, new MarketOrder(id, MarketOrder.Side.BUY, owner, stationId,
+        goods.putOrder(new MarketOrder(id, MarketOrder.Side.BUY, owner, stationId,
                 item, quantity, unitPrice, expiresAt));
-        setDirty();
         return new MarketResult(MarketStatus.APPLIED, id);
     }
 
@@ -258,15 +279,14 @@ public final class EconomyLedgerSavedData extends SavedData {
                 || openOrders(owner) >= MarketOrderRules.MAX_OPEN_ORDERS_PER_PLAYER)
             return new MarketResult(MarketStatus.INVALID, null);
         UUID id = UUID.randomUUID();
-        marketOrders.put(id, new MarketOrder(id, MarketOrder.Side.SELL, owner, stationId,
+        goods.putOrder(new MarketOrder(id, MarketOrder.Side.SELL, owner, stationId,
                 item, quantity, unitPrice, expiresAt));
-        setDirty();
         return new MarketResult(MarketStatus.APPLIED, id);
     }
 
     /** Remote purchase: money moves now, stock becomes a station-bound personal claim. */
     public MarketStatus purchase(UUID buyer, UUID orderId, int quantity, long nowMillis) {
-        MarketOrder order = marketOrders.get(orderId);
+        MarketOrder order = goods.order(orderId);
         if (order == null || order.side() != MarketOrder.Side.SELL || buyer == null
                 || buyer.equals(order.owner()) || !MarketOrderRules.stillOpen(nowMillis, order.expiresAt())
                 || !MarketOrderRules.canFill(quantity, order.remaining(), order.remaining(),
@@ -285,7 +305,7 @@ public final class EconomyLedgerSavedData extends SavedData {
     /** Physical delivery: caller verifies and removes matching items only after this succeeds. */
     public MarketStatus deliver(UUID seller, UUID orderId, ItemStack delivered,
                                 int quantity, long nowMillis) {
-        MarketOrder order = marketOrders.get(orderId);
+        MarketOrder order = goods.order(orderId);
         if (order == null || order.side() != MarketOrder.Side.BUY || seller == null
                 || seller.equals(order.owner()) || delivered == null
                 || !ItemStack.isSameItemSameComponents(order.item(), delivered)
@@ -305,81 +325,78 @@ public final class EconomyLedgerSavedData extends SavedData {
 
     /** Cancelling a sell order keeps the unsold stock at its station for owner pickup. */
     public MarketStatus cancelMarketOrder(UUID actor, UUID orderId, boolean admin) {
-        MarketOrder order = marketOrders.get(orderId);
+        MarketOrder order = goods.order(orderId);
         if (order == null || actor == null || !admin && !order.owner().equals(actor)) return MarketStatus.INVALID;
         if (order.side() == MarketOrder.Side.BUY) {
-            long refund = (long) order.remaining() * order.unitPrice();
+            // Refund what the escrow holds. It holds exactly the remaining demand, unless a crash
+            // left the order (goods file) without its escrow (ledger file): then the order still
+            // has to go, or it would retry its refund forever.
+            long refund = Math.min((long) order.remaining() * order.unitPrice(), balance(Account.escrow(order.id())));
             if (refund > 0 && transfer(UUID.randomUUID(), Account.escrow(order.id()),
                     Account.player(order.owner()), refund, "market_buy_refund", order.id()) != Result.APPLIED)
                 return MarketStatus.PAYMENT_FAILED;
         } else if (order.remaining() > 0) {
             addClaim(order.owner(), order.stationId(), order.item(), order.remaining());
         }
-        marketOrders.remove(orderId);
-        setDirty();
+        goods.removeOrder(orderId);
         return MarketStatus.APPLIED;
     }
 
+    /** Cheap when nothing is due: the goods store tracks the earliest expiry. */
     public int expireMarketOrders(long nowMillis) {
+        if (goods.nextExpiry() > nowMillis) return 0;
         int expired = 0;
-        for (MarketOrder order : List.copyOf(marketOrders.values())) {
+        for (MarketOrder order : List.copyOf(goods.orders())) {
             if (order.expiresAt() > nowMillis) continue;
             if (cancelMarketOrder(order.owner(), order.id(), false) == MarketStatus.APPLIED) expired++;
         }
+        goods.resetNextExpiry();
         return expired;
     }
 
     public List<MarketClaim> claimsAt(UUID owner, UUID stationId) {
-        return marketClaims.values().stream()
-                .filter(claim -> claim.owner().equals(owner) && claim.stationId().equals(stationId)).toList();
+        return goods.claimsOf(owner).stream().filter(claim -> claim.stationId().equals(stationId)).toList();
     }
 
+    /** The goods store hand-offs persist; see {@link PlayerHandOff}. */
+    EconomyGoodsSavedData goods() { return goods; }
+
     public boolean reduceClaim(UUID owner, UUID claimId, int quantity) {
-        MarketClaim claim = marketClaims.get(claimId);
+        MarketClaim claim = goods.claim(claimId);
         if (claim == null || !claim.owner().equals(owner) || quantity < 1 || quantity > claim.quantity()) return false;
-        if (quantity == claim.quantity()) marketClaims.remove(claimId);
-        else marketClaims.put(claimId, new MarketClaim(claim.id(), owner, claim.stationId(),
+        if (quantity == claim.quantity()) goods.removeClaim(claimId);
+        else goods.putClaim(new MarketClaim(claim.id(), owner, claim.stationId(),
                 claim.item(), claim.quantity() - quantity));
-        setDirty();
         return true;
     }
 
-    public int outstanding(UUID stationId) {
-        long count = marketClaims.values().stream().filter(c -> c.stationId().equals(stationId))
-                .mapToLong(MarketClaim::quantity).sum();
-        count += marketOrders.values().stream().filter(o -> o.stationId().equals(stationId)
-                && o.side() == MarketOrder.Side.SELL).mapToLong(MarketOrder::remaining).sum();
-        return (int) Math.min(Integer.MAX_VALUE, count);
-    }
+    /** Units held at the station (claims plus unsold stock), from a running per-station total. */
+    public int outstanding(UUID stationId) { return goods.outstanding(stationId); }
 
     /** Cancel demand and turn all physical stock/claims into a policy-gated local wreckage. */
     public MarketStatus wreckMarketStation(UUID stationId, UUID nationId,
                                            ResourceLocation dimension, BlockPos pos) {
         if (stationId == null || dimension == null || pos == null) return MarketStatus.INVALID;
-        WreckageKey key = new WreckageKey(dimension, pos.asLong());
-        if (marketWreckage.containsKey(key)) return MarketStatus.INVALID;
-        for (MarketOrder order : List.copyOf(marketOrders.values())) {
+        if (goods.wreckage(dimension, pos.asLong()) != null) return MarketStatus.INVALID;
+        for (MarketOrder order : List.copyOf(goods.orders())) {
             if (!order.stationId().equals(stationId)) continue;
             if (cancelMarketOrder(order.owner(), order.id(), false) != MarketStatus.APPLIED)
                 return MarketStatus.PAYMENT_FAILED;
         }
-        List<MarketClaim> contents = marketClaims.values().stream()
-                .filter(claim -> claim.stationId().equals(stationId)).toList();
+        List<MarketClaim> contents = goods.claimsAtStation(stationId);
         if (contents.isEmpty()) return MarketStatus.APPLIED;
-        marketWreckage.put(key, new MarketWreckage(nationId, List.copyOf(contents)));
-        for (MarketClaim claim : contents) marketClaims.remove(claim.id());
-        setDirty();
+        goods.putWreckage(dimension, pos.asLong(), new MarketWreckage(nationId, List.copyOf(contents)));
+        for (MarketClaim claim : contents) goods.removeClaim(claim.id());
         return MarketStatus.APPLIED;
     }
 
     public MarketWreckage marketWreckage(ResourceLocation dimension, BlockPos pos) {
-        return marketWreckage.get(new WreckageKey(dimension, pos.asLong()));
+        return goods.wreckage(dimension, pos.asLong());
     }
 
     public boolean reduceWreckageClaim(ResourceLocation dimension, BlockPos pos,
                                        UUID claimId, int quantity) {
-        WreckageKey key = new WreckageKey(dimension, pos.asLong());
-        MarketWreckage wreckage = marketWreckage.get(key);
+        MarketWreckage wreckage = goods.wreckage(dimension, pos.asLong());
         if (wreckage == null || quantity < 1) return false;
         List<MarketClaim> next = new java.util.ArrayList<>();
         boolean changed = false;
@@ -391,39 +408,31 @@ public final class EconomyLedgerSavedData extends SavedData {
                     claim.stationId(), claim.item(), claim.quantity() - quantity));
         }
         if (!changed) return false;
-        if (next.isEmpty()) marketWreckage.remove(key);
-        else marketWreckage.put(key, new MarketWreckage(wreckage.nationId(), List.copyOf(next)));
-        setDirty();
+        if (next.isEmpty()) goods.removeWreckage(dimension, pos.asLong());
+        else goods.putWreckage(dimension, pos.asLong(), new MarketWreckage(wreckage.nationId(), List.copyOf(next)));
         return true;
     }
 
-    private int openOrders(UUID owner) {
-        return (int) marketOrders.values().stream().filter(o -> o.owner().equals(owner)).count();
-    }
+    private int openOrders(UUID owner) { return goods.openOrders(owner); }
 
     private void updateOrder(MarketOrder order, int filled) {
         int remainder = order.remaining() - filled;
-        if (remainder == 0) marketOrders.remove(order.id());
-        else marketOrders.put(order.id(), order.withRemaining(remainder));
-        setDirty();
+        if (remainder == 0) goods.removeOrder(order.id());
+        else goods.putOrder(order.withRemaining(remainder));
     }
 
     private void addClaim(UUID owner, UUID stationId, ItemStack item, int quantity) {
         UUID id = UUID.randomUUID();
-        marketClaims.put(id, new MarketClaim(id, owner, stationId, item, quantity));
-        setDirty();
+        goods.putClaim(new MarketClaim(id, owner, stationId, item, quantity));
     }
 
+    /**
+     * Newest transactions of a player or nation account, newest first, at most 100. Read from the
+     * bounded per-account index, never the journal; escrow accounts are not indexed.
+     */
     public List<Transaction> recent(Account account, int limit) {
         if (account == null || limit <= 0) return List.of();
-        if (account.kind() == Kind.PLAYER) {
-            ArrayDeque<Transaction> indexed = recentByPlayer.get(account);
-            return indexed == null ? List.of() : indexed.stream().limit(Math.min(limit, RECENT_INDEX_LIMIT)).toList();
-        }
-        return transactions.values().stream()
-                .filter(tx -> account.equals(tx.from()) || account.equals(tx.to()))
-                .sorted((left, right) -> Long.compare(right.occurredAt(), left.occurredAt()))
-                .limit(Math.min(limit, 100)).toList();
+        return recentByAccount.recent(account, Math.min(limit, RECENT_INDEX_LIMIT));
     }
 
     private void indexRecent(Transaction transaction) {
@@ -433,10 +442,9 @@ public final class EconomyLedgerSavedData extends SavedData {
     }
 
     private void indexRecent(Account account, Transaction transaction) {
-        if (account == null || account.kind() != Kind.PLAYER) return;
-        ArrayDeque<Transaction> recent = recentByPlayer.computeIfAbsent(account, ignored -> new ArrayDeque<>());
-        recent.addFirst(transaction);
-        if (recent.size() > RECENT_INDEX_LIMIT) recent.removeLast();
+        // Escrow accounts are one per order and never shown, so they would only grow the index.
+        if (account == null || account.kind() == Kind.ESCROW) return;
+        recentByAccount.add(account, transaction);
     }
 
     /** Income counters and minted balance live in the same SavedData for crash-safe persistence. */
@@ -535,18 +543,6 @@ public final class EconomyLedgerSavedData extends SavedData {
             jobIncomeList.add(entry);
         });
         tag.put("JobIncome", jobIncomeList);
-        ListTag eventRewardList = new ListTag();
-        eventRewards.values().forEach(reward -> {
-            CompoundTag entry = new CompoundTag();
-            entry.putUUID("Id", reward.eventId());
-            entry.putUUID("Player", reward.playerId());
-            entry.putInt("Currency", reward.currency());
-            ListTag items = new ListTag();
-            reward.items().forEach(item -> items.add(item.save(registries)));
-            entry.put("Items", items);
-            eventRewardList.add(entry);
-        });
-        tag.put("EventRewards", eventRewardList);
         ListTag eventIncomeList = new ListTag();
         eventIncome.forEach((playerId, income) -> {
             CompoundTag entry = new CompoundTag();
@@ -575,51 +571,10 @@ public final class EconomyLedgerSavedData extends SavedData {
             harvestList.add(entry);
         });
         tag.put("HarvestScores", harvestList);
-        ListTag orders = new ListTag();
-        marketOrders.values().forEach(order -> {
-            CompoundTag entry = new CompoundTag();
-            entry.putUUID("Id", order.id());
-            entry.putString("Side", order.side().name());
-            entry.putUUID("Owner", order.owner());
-            entry.putUUID("Station", order.stationId());
-            entry.put("Item", order.item().save(registries));
-            entry.putInt("Remaining", order.remaining());
-            entry.putLong("UnitPrice", order.unitPrice());
-            entry.putLong("ExpiresAt", order.expiresAt());
-            orders.add(entry);
-        });
-        tag.put("MarketOrders", orders);
-        ListTag claims = new ListTag();
-        marketClaims.values().forEach(claim -> {
-            CompoundTag entry = new CompoundTag();
-            entry.putUUID("Id", claim.id());
-            entry.putUUID("Owner", claim.owner());
-            entry.putUUID("Station", claim.stationId());
-            entry.put("Item", claim.item().save(registries));
-            entry.putInt("Quantity", claim.quantity());
-            claims.add(entry);
-        });
-        tag.put("MarketClaims", claims);
-        ListTag wreckages = new ListTag();
-        marketWreckage.forEach((key, value) -> {
-            CompoundTag entry = new CompoundTag();
-            entry.putString("Dimension", key.dimension().toString());
-            entry.putLong("Pos", key.pos());
-            if (value.nationId() != null) entry.putUUID("Nation", value.nationId());
-            ListTag items = new ListTag();
-            value.claims().forEach(claim -> {
-                CompoundTag stored = new CompoundTag();
-                stored.putUUID("Id", claim.id());
-                stored.putUUID("Owner", claim.owner());
-                stored.putUUID("Station", claim.stationId());
-                stored.put("Item", claim.item().save(registries));
-                stored.putInt("Quantity", claim.quantity());
-                items.add(stored);
-            });
-            entry.put("Claims", items);
-            wreckages.add(entry);
-        });
-        tag.put("MarketWreckage", wreckages);
+        // Goods read from an older file stay here until the goods file holds them, so a crash
+        // before that first write still finds them in one of the two files.
+        if (legacyGoods != null && goods != null && goods.written()) legacyGoods = null;
+        if (legacyGoods != null) legacyGoods.writeLists(tag, registries);
         return tag;
     }
 
@@ -682,7 +637,6 @@ public final class EconomyLedgerSavedData extends SavedData {
                     && carriedXp < JobIncomePolicy.XP_PER_CURRENCY ? carriedXp : 0.0D;
             data.jobIncome.put(entry.getUUID("Player"), state);
         }
-        ListTag orders = tag.getList("MarketOrders", Tag.TAG_COMPOUND);
         if (tag.hasUUID("HarvestId")) {
             data.harvestId = tag.getUUID("HarvestId");
             data.harvestEndTick = Math.max(0L, tag.getLong("HarvestEndTick"));
@@ -701,19 +655,6 @@ public final class EconomyLedgerSavedData extends SavedData {
                     new HarvestScore(entry.getString("Name"), Math.max(0, Math.min(HarvestFestivalRules.MAX_POINTS, entry.getInt("Points"))),
                             entry.getBoolean("Farmer"), entry.getLong("ReachedTick")));
         }
-        ListTag eventRewardList = tag.getList("EventRewards", Tag.TAG_COMPOUND);
-        for (int i = 0; i < eventRewardList.size(); i++) {
-            CompoundTag entry = eventRewardList.getCompound(i);
-            if (!entry.hasUUID("Id") || !entry.hasUUID("Player")) continue;
-            List<ItemStack> items = new java.util.ArrayList<>();
-            ListTag itemList = entry.getList("Items", Tag.TAG_COMPOUND);
-            for (int j = 0; j < itemList.size(); j++)
-                ItemStack.parse(registries, itemList.getCompound(j)).ifPresent(items::add);
-            UUID id = entry.getUUID("Id");
-            UUID playerId = entry.getUUID("Player");
-            data.eventRewards.put(eventRewardKey(id, playerId), new EventReward(id, playerId,
-                    Math.max(0, Math.min(5, entry.getInt("Currency"))), List.copyOf(items)));
-        }
         ListTag eventIncomeList = tag.getList("EventIncome", Tag.TAG_COMPOUND);
         for (int i = 0; i < eventIncomeList.size(); i++) {
             CompoundTag entry = eventIncomeList.getCompound(i);
@@ -723,61 +664,38 @@ public final class EconomyLedgerSavedData extends SavedData {
             income.paid = Math.max(0, Math.min(10, entry.getInt("Paid")));
             data.eventIncome.put(entry.getUUID("Player"), income);
         }
-        for (int i = 0; i < orders.size(); i++) {
-            CompoundTag entry = orders.getCompound(i);
-            if (!entry.hasUUID("Id") || !entry.hasUUID("Owner") || !entry.hasUUID("Station")) continue;
-            try {
-                MarketOrder.Side side = MarketOrder.Side.valueOf(entry.getString("Side"));
-                ItemStack.parse(registries, entry.getCompound("Item")).ifPresent(item -> {
-                    int remaining = entry.getInt("Remaining");
-                    long price = entry.getLong("UnitPrice");
-                    if (MarketOrderRules.totalPrice(remaining, price) < 0) return;
-                    UUID id = entry.getUUID("Id");
-                    data.marketOrders.put(id, new MarketOrder(id, side, entry.getUUID("Owner"),
-                            entry.getUUID("Station"), item, remaining, price, entry.getLong("ExpiresAt")));
-                });
-            } catch (IllegalArgumentException ignored) { }
-        }
-        ListTag claims = tag.getList("MarketClaims", Tag.TAG_COMPOUND);
-        for (int i = 0; i < claims.size(); i++) {
-            CompoundTag entry = claims.getCompound(i);
-            if (!entry.hasUUID("Id") || !entry.hasUUID("Owner") || !entry.hasUUID("Station")) continue;
-            ItemStack.parse(registries, entry.getCompound("Item")).ifPresent(item -> {
-                int quantity = entry.getInt("Quantity");
-                if (quantity < 1 || quantity > MarketOrderRules.MAX_ORDER_QUANTITY) return;
-                UUID id = entry.getUUID("Id");
-                data.marketClaims.put(id, new MarketClaim(id, entry.getUUID("Owner"),
-                        entry.getUUID("Station"), item, quantity));
-            });
-        }
-        ListTag wreckages = tag.getList("MarketWreckage", Tag.TAG_COMPOUND);
-        for (int i = 0; i < wreckages.size(); i++) {
-            CompoundTag entry = wreckages.getCompound(i);
-            ResourceLocation dimension = ResourceLocation.tryParse(entry.getString("Dimension"));
-            if (dimension == null) continue;
-            List<MarketClaim> contents = new java.util.ArrayList<>();
-            ListTag items = entry.getList("Claims", Tag.TAG_COMPOUND);
-            for (int j = 0; j < items.size(); j++) {
-                CompoundTag stored = items.getCompound(j);
-                if (!stored.hasUUID("Id") || !stored.hasUUID("Owner") || !stored.hasUUID("Station")) continue;
-                ItemStack.parse(registries, stored.getCompound("Item")).ifPresent(item -> {
-                    int quantity = stored.getInt("Quantity");
-                    if (quantity > 0 && quantity <= MarketOrderRules.MAX_ORDER_QUANTITY)
-                        contents.add(new MarketClaim(stored.getUUID("Id"), stored.getUUID("Owner"),
-                                stored.getUUID("Station"), item, quantity));
-                });
-            }
-            if (!contents.isEmpty()) data.marketWreckage.put(new WreckageKey(dimension, entry.getLong("Pos")),
-                    new MarketWreckage(entry.hasUUID("Nation") ? entry.getUUID("Nation") : null,
-                            List.copyOf(contents)));
-        }
+        if (EconomyGoodsSavedData.hasLists(tag)) data.legacyGoods = EconomyGoodsSavedData.load(tag, registries);
         return data;
     }
 
+    private static final String DATA_NAME = "moveearth_economy_ledger";
+
     public static EconomyLedgerSavedData get(MinecraftServer server) {
-        return server.overworld().getDataStorage().computeIfAbsent(
+        EconomyLedgerSavedData ledger = server.overworld().getDataStorage().computeIfAbsent(
                 new SavedData.Factory<>(EconomyLedgerSavedData::new, EconomyLedgerSavedData::load, null),
-                "moveearth_economy_ledger");
+                DATA_NAME);
+        if (ledger.goods == null) ledger.attachGoods(server);
+        return ledger;
+    }
+
+    /** Loads the goods store and moves goods out of a ledger file written before the split. */
+    private void attachGoods(MinecraftServer server) {
+        EconomyGoodsSavedData store = EconomyGoodsSavedData.get(server);
+        goods = store;
+        switch (LegacyGoodsMigration.decide(legacyGoods != null && !legacyGoods.isEmpty(), !store.createdFresh())) {
+            case NONE -> legacyGoods = null;
+            case DISCARD -> {
+                legacyGoods = null;
+                setDirty();
+            }
+            case IMPORT -> {
+                store.absorb(legacyGoods);
+                // Written at once so the next ledger save may drop its copy; if this fails the
+                // ledger keeps writing the copy until the goods file reaches disk.
+                if (store.persistNow(server)) legacyGoods = null;
+                setDirty();
+            }
+        }
     }
 
     public record Account(Kind kind, UUID id) {
@@ -806,9 +724,11 @@ public final class EconomyLedgerSavedData extends SavedData {
 
     public enum Kind { PLAYER, NATION, ESCROW }
     public enum Result { APPLIED, ALREADY_APPLIED, INVALID, INSUFFICIENT_FUNDS, OVERFLOW, CONFLICT }
-    public enum MarketStatus { APPLIED, INVALID, PAYMENT_FAILED }
+    /** NEW_ACCOUNT_LIMIT: refused before the ledger was touched, by the new-account daily send limit. */
+    public enum MarketStatus { APPLIED, INVALID, PAYMENT_FAILED, NEW_ACCOUNT_LIMIT }
     public record MarketResult(MarketStatus status, UUID orderId) { }
-    public record EventReward(UUID eventId, UUID playerId, int currency, List<ItemStack> items) { }
+    /** awardedAt: wall-clock millis of settlement, for the unclaimed-reward retention window. */
+    public record EventReward(UUID eventId, UUID playerId, int currency, List<ItemStack> items, long awardedAt) { }
     /** reachedTick: open-time tick of the last scoring harvest (0 for scores saved before it existed). */
     public record HarvestScore(String name, int points, boolean farmer, long reachedTick) { }
     private static final class EventIncome {
@@ -823,7 +743,6 @@ public final class EconomyLedgerSavedData extends SavedData {
             item = item.copyWithCount(1);
         }
     }
-    private record WreckageKey(ResourceLocation dimension, long pos) { }
     public record MarketWreckage(UUID nationId, List<MarketClaim> claims) { }
     public record JobIncomeSnapshot(int justEarned, int paidThisHour, int paidToday, double carriedXp) { }
     private static final class JobIncomeState {

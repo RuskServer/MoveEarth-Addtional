@@ -26,15 +26,46 @@ public final class VehicleCoreEvents {
                 || !(event.getLevel() instanceof ServerLevel level)
                 || !(level.getBlockEntity(event.getPos()) instanceof VehicleCoreBlockEntity blockEntity)
                 || blockEntity.vehicleId() == null) return;
+        if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(player) == null) {
+            // Deployers and turrets act as fake players; only a person may break a vehicle core.
+            event.setCanceled(true);
+            return;
+        }
         VehicleSavedData.VehicleRecord vehicle = VehicleSavedData.get(player.server)
                 .vehicle(blockEntity.vehicleId()).orElse(null);
         if (vehicle == null) return;
         NationSavedData nations = NationSavedData.get(player.server);
         java.util.UUID playerNation = nations.nationIdFor(player.getUUID()).orElse(null);
-        boolean manager = vehicle.nationId().equals(playerNation)
-                && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT);
-        if (manager || vehicle.health() <= 0) return;
+        if (vehicle.nationId().equals(playerNation)) {
+            // Breaking drops the core and deletes its record; re-placing it would restart at full HP.
+            long now = player.server.overworld().getGameTime();
+            long combatUntil = VehicleSavedData.get(player.server).repairState(vehicle.id()).combatUntil();
+            var decision = VehicleCoreDismantlePolicy.owner(
+                    nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT),
+                    vehicle.health(), vehicle.maximumHealth(), now, combatUntil);
+            if (decision == VehicleCoreDismantlePolicy.Decision.ALLOWED) return;
+            event.setCanceled(true);
+            player.sendSystemMessage(MoveEarthMessage.error(switch (decision) {
+                case IN_COMBAT -> Component.translatable(
+                        "message.moveearth_addtional.vehicle_core.dismantle_in_combat",
+                        VehicleCoreDismantlePolicy.secondsUntil(now, combatUntil));
+                case DAMAGED -> Component.translatable(
+                        "message.moveearth_addtional.vehicle_core.dismantle_damaged",
+                        vehicle.health(), vehicle.maximumHealth());
+                default -> Component.translatable(
+                        "message.moveearth_addtional.vehicle_core.dismantle_no_permission");
+            }));
+            return;
+        }
+        var decision = VehicleCoreDismantlePolicy.outsider(vehicle.health(),
+                VehicleLootSavedData.get(player.server).salvageHeldByOthers(vehicle.id(), player, playerNation));
+        if (decision == VehicleCoreDismantlePolicy.Decision.ALLOWED) return;
         event.setCanceled(true);
+        if (decision == VehicleCoreDismantlePolicy.Decision.LOOT_PROTECTED) {
+            player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
+                    "message.moveearth_addtional.vehicle_core.break_salvage_protected")));
+            return;
+        }
         if (!SiegeService.peaceTruceBlocks(player, level, event.getPos())) {
             SiegeService.recordAttack(player, level, event.getPos(), false);
         }

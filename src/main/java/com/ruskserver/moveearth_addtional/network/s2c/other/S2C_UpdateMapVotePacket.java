@@ -28,6 +28,7 @@ public record S2C_UpdateMapVotePacket(Map<String, Integer> votes, int secondsRem
     private static S2C_UpdateMapVotePacket decode(FriendlyByteBuf buffer) {
         int seconds = buffer.readVarInt();
         int size = buffer.readVarInt();
+        if (size < 0 || size > 64) throw new IllegalArgumentException("Invalid map vote count: " + size);
         Map<String, Integer> votes = new HashMap<>(size);
         for (int i = 0; i < size; i++) {
             votes.put(buffer.readUtf(64), buffer.readVarInt());

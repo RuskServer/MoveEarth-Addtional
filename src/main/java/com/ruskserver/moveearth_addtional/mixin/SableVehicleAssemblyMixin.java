@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.mixin;
 
 import com.ruskserver.moveearth_addtional.block.entity.VehicleCoreBlockEntity;
+import com.ruskserver.moveearth_addtional.compat.vehicle.SableAssemblyExclusions;
 import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 import com.ruskserver.moveearth_addtional.compat.vehicle.VehicleAssemblyGuard;
 import com.ruskserver.moveearth_addtional.compat.vehicle.AssemblyState;
@@ -47,54 +48,53 @@ public abstract class SableVehicleAssemblyMixin {
             ThreadLocal.withInitial(ArrayDeque::new);
 
     /**
-     * Leaves ore deposits in the ground.
+     * Filters the block set, then snapshots what moves with it.
      *
-     * <p>A deposit is an ordinary block -- no block entity, so none of Create's
-     * protections for blocks that carry data apply to it, and it is not tagged
-     * immovable. The resource <em>is</em> those blocks, which the miner counts
-     * as it works. Glue a few to a hull, assemble, fly home, set it down, and
-     * the deposit has moved: whichever region was given that resource no longer
-     * has it, and whichever one flew there does.
+     * <p>Ore deposits stay in the ground. A deposit is an ordinary block -- no
+     * block entity, so none of Create's protections for blocks that carry data
+     * apply to it, and it is not tagged immovable. The resource <em>is</em> those
+     * blocks, which the miner counts as it works. Glue a few to a hull, assemble,
+     * fly home, set it down, and the deposit has moved: whichever region was given
+     * that resource no longer has it, and whichever one flew there does.
      *
-     * <p>That would empty the whole regional allocation of meaning, so they are
-     * dropped from the block set before anything is built. Excluded rather than
-     * refused: the ship assembles without them and the deposit stays where it
-     * was, which needs no error to explain and leaves nothing half-built.
+     * <p>Territory cores, market stations and storage wreckage are tied to where
+     * they stand in the same way, and another nation's active reinforcement or
+     * live vehicle core must not leave its owner's land or craft: Create's
+     * structure search follows slime, honey glue, chassis and attached blocks
+     * across a border with no ownership check, and a lifted wall comes off the
+     * ground without its reinforcement. See {@link SableAssemblyExclusions}.
      *
-     * <p>Guarded whether or not the glue can currently reach one. Finding out
-     * by experiment would cost a test; finding out by being wrong costs the
-     * resource map.
+     * <p>Excluded rather than refused: the craft assembles without them and they
+     * stay where they were, which needs no error to explain and leaves nothing
+     * half-built. Guarded whether or not a given assembler can currently reach
+     * one; finding out by experiment would cost a test, finding out by being
+     * wrong costs the map.
+     *
+     * <p>The snapshot is taken here, from the filtered set, rather than in a
+     * separate HEAD injector: two HEAD handlers have no guaranteed order, and a
+     * snapshot of the unfiltered set would move the reinforcement of blocks that
+     * stayed behind.
      */
     @ModifyVariable(method = "assembleBlocks", at = @At("HEAD"), argsOnly = true, remap = false)
-    private static Iterable<BlockPos> moveearth$leaveDepositsBehind(Iterable<BlockPos> positions,
-                                                                    ServerLevel level) {
-        List<BlockPos> kept = new ArrayList<>();
-        boolean removedAny = false;
-        for (BlockPos raw : positions) {
-            if (level.getBlockState(raw).is(MOVEARTH$DEPOSIT_BLOCKS)) {
-                removedAny = true;
-                continue;
-            }
-            kept.add(raw.immutable());
+    private static Iterable<BlockPos> moveearth$filterAndCapture(Iterable<BlockPos> positions,
+                                                                 ServerLevel level, BlockPos anchor) {
+        SableAssemblyExclusions.Result filtered = SableAssemblyExclusions.filter(level, anchor, positions,
+                MOVEARTH$DEPOSIT_BLOCKS);
+        if (filtered.removedAny()) {
+            Moveearth_addtional.LOGGER.debug("Sable assembly at {} left {} fixed and {} foreign-owned block(s) in place",
+                    anchor, filtered.fixtures(), filtered.foreign());
         }
-        if (!removedAny) {
-            return positions;
-        }
-        Moveearth_addtional.LOGGER.debug("Left {} deposit block(s) in the ground during assembly",
-                kept.size());
-        return kept;
+        moveearth$captureVehicle(level, anchor, filtered.kept());
+        return filtered.removedAny() ? filtered.kept() : positions;
     }
 
-    @Inject(method = "assembleBlocks", at = @At("HEAD"))
-    private static void moveearth$captureVehicle(ServerLevel level, BlockPos anchor,
-                                                 Iterable<BlockPos> positions, BoundingBox3ic bounds,
-                                                 CallbackInfoReturnable<ServerSubLevel> callback) {
+    @Unique
+    private static void moveearth$captureVehicle(ServerLevel level, BlockPos anchor, List<BlockPos> positions) {
         List<BlockPos> moved = new ArrayList<>();
         Map<BlockPos, ReinforcementEntry> reinforcements = new LinkedHashMap<>();
         List<VehicleCoreBlockEntity> cores = new ArrayList<>();
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
-        for (BlockPos raw : positions) {
-            BlockPos pos = raw.immutable();
+        for (BlockPos pos : positions) {
             moved.add(pos);
             data.get(pos).ifPresent(entry -> reinforcements.put(pos, entry));
             if (level.getBlockEntity(pos) instanceof VehicleCoreBlockEntity core && core.vehicleId() != null) {

@@ -19,8 +19,9 @@ import net.minecraft.world.item.ItemStack;
 import java.util.List;
 
 /**
- * Optional JEI adapter for MoveEarth's warehouse reward category, and for
- * hiding items the server has disabled ({@link HiddenIngredientPolicy}).
+ * Optional JEI adapter for MoveEarth's warehouse rewards, the Nether gate and
+ * blaze rod refining, and for hiding items the server has disabled
+ * ({@link HiddenIngredientPolicy}).
  */
 @JeiPlugin
 public final class MoveEarthJeiPlugin implements IModPlugin {
@@ -31,8 +32,9 @@ public final class MoveEarthJeiPlugin implements IModPlugin {
 
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration) {
-        registration.addRecipeCategories(
-                new WarehouseRewardCategory(registration.getJeiHelpers().getGuiHelper()));
+        var gui = registration.getJeiHelpers().getGuiHelper();
+        registration.addRecipeCategories(new WarehouseRewardCategory(gui), new NetherGateCategory(gui),
+                new BlazeRodRefiningCategory(gui));
     }
 
     @Override
@@ -42,11 +44,23 @@ public final class MoveEarthJeiPlugin implements IModPlugin {
         // the loot cannot state.
         registration.addRecipes(WarehouseRewardCategory.TYPE,
                 List.of(WarehouseRewardCategory.display()));
+        registration.addRecipes(NetherGateCategory.TYPE, List.of(NetherGateCategory.display()));
+        registration.addRecipes(BlazeRodRefiningCategory.TYPE, List.of(BlazeRodRefiningCategory.display()));
         registration.addIngredientInfo(ModItems.PRECISION_FIRING_ASSEMBLY.get(),
                 Component.literal("倉庫拠点の警備隊長を倒し、建物内の輸送コンテナから回収"),
                 Component.literal("戦利品は共有され、先に回収した側が獲得"),
                 Component.literal("再稼働までサーバー開放時間 "
                         + (WarehouseEncounterState.COOLDOWN_TICKS / 20 / 60 / 60) + "時間"));
+    }
+
+    @Override
+    public void registerRecipeCatalysts(mezz.jei.api.registration.IRecipeCatalystRegistration registration) {
+        registration.addRecipeCatalyst(new ItemStack(
+                com.ruskserver.moveearth_addtional.nether.NetherGateRegistry.GATE_GENERATOR_ITEM.get()),
+                NetherGateCategory.TYPE);
+        registration.addRecipeCatalyst(new ItemStack(
+                com.ruskserver.moveearth_addtional.nether.NetherGateRegistry.BLAZE_ROD_REFINER_ITEM.get()),
+                BlazeRodRefiningCategory.TYPE);
     }
 
     @Override

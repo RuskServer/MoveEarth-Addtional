@@ -40,17 +40,12 @@ public record C2S_S2HubActionPacket(int requestId, long expectedRevision, S2HubT
 
     public void handle(net.neoforged.neoforge.network.handling.IPayloadContext context) {
         context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player)) return;
-            if (action == Action.REFRESH) {
-                var snapshot = S2NationViewService.INSTANCE.snapshotFor(player);
-                PacketDistributor.sendToPlayer(player, new S2C_S2HubSnapshotPacket(tab, snapshot));
-                PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(
-                        requestId, true, snapshot.revision(), "screen.moveearth_addtional.s2.refreshed"));
-            } else {
-                PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(
-                        requestId, false, S2NationViewService.INSTANCE.snapshotFor(player).revision(),
-                        "screen.moveearth_addtional.s2.unsupported_action"));
-            }
+            // Only REFRESH exists; anything else is dropped before building a snapshot.
+            if (action != Action.REFRESH || !(context.player() instanceof ServerPlayer player)) return;
+            var snapshot = S2NationViewService.INSTANCE.snapshotFor(player);
+            PacketDistributor.sendToPlayer(player, new S2C_S2HubSnapshotPacket(tab, snapshot));
+            PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(
+                    requestId, true, snapshot.revision(), "screen.moveearth_addtional.s2.refreshed"));
         });
     }
 

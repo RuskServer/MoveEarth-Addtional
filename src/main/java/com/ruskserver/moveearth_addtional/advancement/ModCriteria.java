@@ -46,6 +46,9 @@ public final class ModCriteria {
     public static final String FISSILE_FUEL_PRODUCED = "fissile_fuel_produced";
     public static final String FISSION_REACTOR_OPERATED = "fission_reactor_operated";
     public static final String TURBINE_OPERATED = "turbine_operated";
+    public static final String NETHER_GATE_OPENED = "nether_gate_opened";
+    public static final String NETHER_GATE_CLEARED = "nether_gate_cleared";
+    public static final String BLAZE_ROD_REFINED = "blaze_rod_refined";
 
     public static final DeferredRegister<CriterionTrigger<?>> TRIGGERS =
             DeferredRegister.create(Registries.TRIGGER_TYPE, Moveearth_addtional.MODID);

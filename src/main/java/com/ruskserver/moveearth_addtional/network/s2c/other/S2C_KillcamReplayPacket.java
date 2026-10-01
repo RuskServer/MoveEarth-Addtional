@@ -64,10 +64,12 @@ public record S2C_KillcamReplayPacket(
         String victimName = buffer.readUtf(64);
 
         int kSize = buffer.readVarInt();
+        if (kSize < 0 || kSize > com.ruskserver.moveearth_addtional.pvp.PvpReplayTracker.MAX_FRAMES) throw new IllegalArgumentException("Invalid killer frame count: " + kSize);
         List<PvpReplayFrame> killerFrames = new ArrayList<>(kSize);
         for (int i = 0; i < kSize; i++) killerFrames.add(PvpReplayFrame.read(buffer));
 
         int vSize = buffer.readVarInt();
+        if (vSize < 0 || vSize > com.ruskserver.moveearth_addtional.pvp.PvpReplayTracker.MAX_FRAMES) throw new IllegalArgumentException("Invalid victim frame count: " + vSize);
         List<PvpReplayFrame> victimFrames = new ArrayList<>(vSize);
         for (int i = 0; i < vSize; i++) victimFrames.add(PvpReplayFrame.read(buffer));
 
@@ -76,6 +78,7 @@ public record S2C_KillcamReplayPacket(
         String weaponName = buffer.readUtf(64);
 
         int attSize = buffer.readVarInt();
+        if (attSize < 0 || attSize > 64) throw new IllegalArgumentException("Invalid attachment count: " + attSize);
         List<String> attachments = new ArrayList<>(attSize);
         for (int i = 0; i < attSize; i++) attachments.add(buffer.readUtf(64));
 

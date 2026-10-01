@@ -1,0 +1,91 @@
+{
+  "credit": "Made with Blockbench",
+  "render_type": "minecraft:cutout",
+  "texture_size": [
+    64,
+    64
+  ],
+  "textures": {
+    "0": "moveearth_addtional:block/blaze_processing_machine",
+    "particle": "moveearth_addtional:block/blaze_processing_machine"
+  },
+  "elements": [
+    {
+      "from": [
+        0,
+        5.5858,
+        7
+      ],
+      "to": [
+        16,
+        9.5858,
+        11
+      ],
+      "rotation": {
+        "angle": -45,
+        "axis": "x",
+        "origin": [
+          8,
+          6.5858,
+          8
+        ]
+      },
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            8.5,
+            4,
+            9
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            10.5,
+            6,
+            11,
+            6.5
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            8.5,
+            0,
+            12.5,
+            0.5
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            10.5,
+            6.5,
+            11,
+            7
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            8.5,
+            0.5,
+            12.5,
+            1
+          ],
+          "texture": "#0"
+        },
+        "down": {
+          "uv": [
+            8.5,
+            1,
+            12.5,
+            1.5
+          ],
+          "texture": "#0"
+        }
+      }
+    }
+  ]
+}

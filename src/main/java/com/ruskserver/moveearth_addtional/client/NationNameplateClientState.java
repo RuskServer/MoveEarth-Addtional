@@ -24,7 +24,8 @@ public final class NationNameplateClientState {
     }
 
     public static void update(S2C_NationNameplatesPacket packet) {
-        ENTRIES.clear();
+        if (packet.replace()) ENTRIES.clear();
+        packet.removed().forEach(ENTRIES::remove);
         for (S2C_NationNameplatesPacket.Entry entry : packet.entries()) {
             ENTRIES.put(entry.playerId(), entry);
         }

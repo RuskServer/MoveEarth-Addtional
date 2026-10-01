@@ -11,6 +11,15 @@ final class RandomSpawnPolicy {
                 && lastSpawnDistanceSqr >= minimumLastSpawnDistanceSqr;
     }
 
+    /**
+     * A search that ran out of time may settle for a spot near the player's last
+     * spawn, but never for one near a hostile player: that rule is checked again,
+     * against where everyone is now, before the fallback is used.
+     */
+    static boolean fallbackAllowed(double playerDistanceSqr, double minimumPlayerDistanceSqr) {
+        return playerDistanceSqr >= minimumPlayerDistanceSqr;
+    }
+
     static double score(double playerDistanceSqr, double lastSpawnDistanceSqr,
                         double tieBreaker, double distanceCapSqr) {
         return Math.min(playerDistanceSqr, distanceCapSqr)

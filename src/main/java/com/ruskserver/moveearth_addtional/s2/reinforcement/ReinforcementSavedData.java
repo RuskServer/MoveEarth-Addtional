@@ -4,11 +4,11 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -24,10 +24,24 @@ import java.util.function.Predicate;
 public final class ReinforcementSavedData extends SavedData {
     private static final int MAX_SYNC_ENTRIES = 8192;
     private static final int CLEANUP_BUDGET_PER_SECOND = 512;
+    private static final String TAG_VERSION = "Version";
+    private static final String TAG_PALETTE = "Palette";
+    private static final String TAG_CHUNKS = "Chunks";
+    private static final String TAG_POSITIONS = "Pos";
+    private static final String TAG_MATERIALS = "Mat";
+    private static final String TAG_DURABILITY = "Hp";
+    private static final String TAG_FLAGS = "Flags";
+    private static final String TAG_TIMER_INDICES = "TimerIdx";
+    private static final String TAG_STARTED_AT = "Started";
+    private static final String TAG_ACTIVATES_AT = "Activates";
+    private static final String TAG_DELAY_POSITIONS = "RepairDelayPos";
+    private static final String TAG_DELAY_DEADLINES = "RepairDelayUntil";
     private final Map<BlockPos, ReinforcementEntry> entries = new HashMap<>();
     private final Map<Long, java.util.Set<BlockPos>> entriesByChunk = new HashMap<>();
     private final java.util.Set<BlockPos> constructionEntries = new HashSet<>();
     private final ArrayDeque<BlockPos> cleanupQueue = new ArrayDeque<>();
+    /** Chunk order of the current cleanup sweep; refreshed once per full sweep instead of every second. */
+    private long[] cleanupChunkOrder = new long[0];
     private int cleanupChunkCursor;
     // Transient invalidation only. HP/activation changes do not change the installed armor's mass.
     private final ReinforcementMassRevisions massRevisions = new ReinforcementMassRevisions();
@@ -116,26 +130,71 @@ public final class ReinforcementSavedData extends SavedData {
         return removed;
     }
 
+    /**
+     * Reinforced, non-air blocks within {@code radius} (Euclidean, block corners), nearest first and capped at
+     * {@value #MAX_SYNC_ENTRIES}. Use {@link #aroundUnordered} when order and the cap are irrelevant.
+     */
     public List<LocatedEntry> around(ServerLevel level, BlockPos center, int radius) {
-        long radiusSquared = (long) radius * radius;
-        int minChunkX = (center.getX() - radius) >> 4;
-        int maxChunkX = (center.getX() + radius) >> 4;
-        int minChunkZ = (center.getZ() - radius) >> 4;
-        int maxChunkZ = (center.getZ() + radius) >> 4;
-        List<BlockPos> nearby = new ArrayList<>();
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                java.util.Set<BlockPos> indexed = entriesByChunk.get(net.minecraft.world.level.ChunkPos.asLong(chunkX, chunkZ));
-                if (indexed != null) nearby.addAll(indexed);
+        return located(ReinforcementAroundQuery.select(spatialSource(), center.getX(), center.getY(),
+                center.getZ(), radius, pos -> !level.getBlockState(pos).isAir(), true, MAX_SYNC_ENTRIES));
+    }
+
+    /**
+     * Same selection as {@link #around} without sorting and without the client-sync cap: for damage, blast
+     * snapshots and other callers that visit every hit. The result is a detached list, so callers may modify
+     * reinforcements while iterating it.
+     */
+    public List<LocatedEntry> aroundUnordered(ServerLevel level, BlockPos center, int radius) {
+        return located(ReinforcementAroundQuery.select(spatialSource(), center.getX(), center.getY(),
+                center.getZ(), radius, pos -> !level.getBlockState(pos).isAir(), false, Integer.MAX_VALUE));
+    }
+
+    private List<LocatedEntry> located(List<BlockPos> positions) {
+        if (positions.isEmpty()) return List.of();
+        List<LocatedEntry> result = new ArrayList<>(positions.size());
+        for (BlockPos pos : positions) result.add(new LocatedEntry(pos, entries.get(pos)));
+        return result;
+    }
+
+    private ReinforcementAroundQuery.Source<BlockPos> spatialSource() {
+        return new ReinforcementAroundQuery.Source<>() {
+            private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+
+            @Override
+            public long countInChunks(int minChunkX, int maxChunkX, int minChunkZ, int maxChunkZ, long cap) {
+                long count = 0L;
+                for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                    for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                        Set<BlockPos> indexed = entriesByChunk.get(
+                                net.minecraft.world.level.ChunkPos.asLong(chunkX, chunkZ));
+                        if (indexed != null) count += indexed.size();
+                        if (count > cap) return count;
+                    }
+                }
+                return count;
             }
-        }
-        return nearby.stream()
-                .filter(pos -> pos.distSqr(center) <= radiusSquared)
-                .filter(pos -> !level.getBlockState(pos).isAir())
-                .sorted(Comparator.comparingDouble(pos -> pos.distSqr(center)))
-                .limit(MAX_SYNC_ENTRIES)
-                .map(pos -> new LocatedEntry(pos, entries.get(pos)))
-                .toList();
+
+            @Override
+            public void forEachInChunks(int minChunkX, int maxChunkX, int minChunkZ, int maxChunkZ,
+                                        java.util.function.Consumer<BlockPos> consumer) {
+                for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                    for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                        Set<BlockPos> indexed = entriesByChunk.get(
+                                net.minecraft.world.level.ChunkPos.asLong(chunkX, chunkZ));
+                        if (indexed != null) indexed.forEach(consumer);
+                    }
+                }
+            }
+
+            @Override
+            public BlockPos at(int x, int y, int z) {
+                return entries.containsKey(cursor.set(x, y, z)) ? new BlockPos(x, y, z) : null;
+            }
+
+            @Override public int x(BlockPos value) { return value.getX(); }
+            @Override public int y(BlockPos value) { return value.getY(); }
+            @Override public int z(BlockPos value) { return value.getZ(); }
+        };
     }
 
     public List<LocatedEntry> inside(ServerLevel level, int minX, int minY, int minZ,
@@ -182,8 +241,14 @@ public final class ReinforcementSavedData extends SavedData {
 
     public record RecoveryWalls(int health, int blocks) { }
 
+    /**
+     * One construction/cleanup pass. {@link AdvanceResult#progressed()} lists only entries whose stored state
+     * changed; a pending entry whose activation countdown merely ticked is neither re-synced nor marked dirty
+     * (clients derive the countdown from the absolute activation tick).
+     */
     public AdvanceResult advance(ServerLevel level, long gameTime) {
-        if (repairBlockedUntil.expire(gameTime)) setDirty();
+        // Expired deadlines are inert (until() clamps to now), so dropping them is not worth an autosave.
+        repairBlockedUntil.expire(gameTime);
         List<BlockPos> activated = new ArrayList<>();
         List<BlockPos> completed = new ArrayList<>();
         List<BlockPos> progressed = new ArrayList<>();
@@ -207,24 +272,22 @@ public final class ReinforcementSavedData extends SavedData {
                 changed = true;
                 continue;
             }
-            progressed.add(pos.immutable());
-            ReinforcementEntry after = before.advance(gameTime);
-            if (after.equals(before)) continue;
+            ReinforcementEntry.Step step = before.step(gameTime);
+            if (!step.changed()) continue;
+            ReinforcementEntry after = step.after();
             entries.put(pos, after);
-            if (after.activatesAt() <= 0L) iterator.remove();
+            if (!after.constructing()) iterator.remove();
             changed = true;
-            if (!before.enabled() && after.enabled() && after.damaged()) {
-                activated.add(pos.immutable());
-            }
-            if (before.durability() < before.maxDurability() && !after.damaged()) {
-                completed.add(pos.immutable());
-            }
+            progressed.add(pos.immutable());
+            if (step.activated()) activated.add(pos.immutable());
+            if (step.completed()) completed.add(pos.immutable());
         }
         if (cleanupQueue.isEmpty() && !entriesByChunk.isEmpty()) {
-            List<Long> chunks = new ArrayList<>(entriesByChunk.keySet());
-            cleanupChunkCursor = Math.floorMod(cleanupChunkCursor, chunks.size());
-            java.util.Set<BlockPos> chunkEntries = entriesByChunk.get(chunks.get(cleanupChunkCursor));
-            cleanupChunkCursor = (cleanupChunkCursor + 1) % chunks.size();
+            if (cleanupChunkCursor >= cleanupChunkOrder.length) {
+                cleanupChunkOrder = entriesByChunk.keySet().stream().mapToLong(Long::longValue).toArray();
+                cleanupChunkCursor = 0;
+            }
+            java.util.Set<BlockPos> chunkEntries = entriesByChunk.get(cleanupChunkOrder[cleanupChunkCursor++]);
             if (chunkEntries != null) cleanupQueue.addAll(chunkEntries);
         }
         for (int checked = 0; checked < CLEANUP_BUDGET_PER_SECOND && !cleanupQueue.isEmpty(); checked++) {
@@ -240,52 +303,99 @@ public final class ReinforcementSavedData extends SavedData {
                 List.copyOf(progressed), List.copyOf(removed));
     }
 
+    /**
+     * Format version 2: one compound per chunk column holding primitive arrays (see
+     * {@link ReinforcementPackedChunk}) plus one material palette and two repair-delay arrays, instead of a
+     * compound per block. Only this format is written; {@link #load} still reads version 1.
+     */
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
-        ListTag list = new ListTag();
-        for (Map.Entry<BlockPos, ReinforcementEntry> value : entries.entrySet()) {
-            CompoundTag entryTag = new CompoundTag();
-            entryTag.putLong("Pos", value.getKey().asLong());
-            entryTag.putString("Material", value.getValue().material().id());
-            entryTag.putInt("Durability", value.getValue().durability());
-            entryTag.putBoolean("Enabled", value.getValue().enabled());
-            entryTag.putLong("ConstructionStartedAt", value.getValue().constructionStartedAt());
-            entryTag.putLong("ActivatesAt", value.getValue().activatesAt());
-            list.add(entryTag);
+        tag.putInt(TAG_VERSION, ReinforcementPackedChunk.FORMAT_VERSION);
+        ReinforcementPackedChunk.Palette palette = ReinforcementPackedChunk.Palette.current();
+        ListTag paletteTag = new ListTag();
+        for (String id : palette.ids()) paletteTag.add(StringTag.valueOf(id));
+        tag.put(TAG_PALETTE, paletteTag);
+        ListTag chunks = new ListTag();
+        for (Set<BlockPos> positions : entriesByChunk.values()) {
+            ReinforcementPackedChunk.Writer writer = new ReinforcementPackedChunk.Writer(palette, positions.size());
+            for (BlockPos pos : positions) {
+                ReinforcementEntry entry = entries.get(pos);
+                if (entry != null) writer.add(pos.asLong(), entry);
+            }
+            if (writer.size() == 0) continue;
+            ReinforcementPackedChunk.Columns columns = writer.finish();
+            CompoundTag chunk = new CompoundTag();
+            chunk.putLongArray(TAG_POSITIONS, columns.positions());
+            chunk.putByteArray(TAG_MATERIALS, columns.materials());
+            chunk.putIntArray(TAG_DURABILITY, columns.durability());
+            chunk.putByteArray(TAG_FLAGS, columns.flags());
+            if (columns.timerIndices().length > 0) {
+                chunk.putIntArray(TAG_TIMER_INDICES, columns.timerIndices());
+                chunk.putLongArray(TAG_STARTED_AT, columns.startedAt());
+                chunk.putLongArray(TAG_ACTIVATES_AT, columns.activatesAt());
+            }
+            chunks.add(chunk);
         }
-        tag.put("Entries", list);
-        ListTag delays = new ListTag();
-        repairBlockedUntil.snapshot().forEach((pos, until) -> {
-            CompoundTag delay = new CompoundTag();
-            delay.putLong("Pos", pos);
-            delay.putLong("Until", until);
-            delays.add(delay);
-        });
-        tag.put("RepairDelays", delays);
+        tag.put(TAG_CHUNKS, chunks);
+        Map<Long, Long> delays = repairBlockedUntil.snapshot();
+        long[] delayPositions = new long[delays.size()];
+        long[] delayDeadlines = new long[delays.size()];
+        int index = 0;
+        for (Map.Entry<Long, Long> delay : delays.entrySet()) {
+            delayPositions[index] = delay.getKey();
+            delayDeadlines[index++] = delay.getValue();
+        }
+        tag.putLongArray(TAG_DELAY_POSITIONS, delayPositions);
+        tag.putLongArray(TAG_DELAY_DEADLINES, delayDeadlines);
         return tag;
     }
 
     public static ReinforcementSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         ReinforcementSavedData data = new ReinforcementSavedData();
+        // Version 1 repair delays: one compound per position.
         ListTag delays = tag.getList("RepairDelays", Tag.TAG_COMPOUND);
         for (int i = 0; i < delays.size(); i++) {
             CompoundTag delay = delays.getCompound(i);
             data.repairBlockedUntil.restore(delay.getLong("Pos"), delay.getLong("Until"));
         }
+        long[] delayPositions = tag.getLongArray(TAG_DELAY_POSITIONS);
+        long[] delayDeadlines = tag.getLongArray(TAG_DELAY_DEADLINES);
+        for (int i = 0; i < Math.min(delayPositions.length, delayDeadlines.length); i++) {
+            data.repairBlockedUntil.restore(delayPositions[i], delayDeadlines[i]);
+        }
+        // Version 1 entries: one compound per reinforced block.
         ListTag list = tag.getList("Entries", Tag.TAG_COMPOUND);
         for (int index = 0; index < list.size(); index++) {
             CompoundTag entryTag = list.getCompound(index);
-            ReinforcementMaterial material = ReinforcementMaterial.fromId(entryTag.getString("Material"));
-            boolean hasConstructionTiming = entryTag.contains("ActivatesAt", Tag.TAG_LONG);
-            BlockPos pos = BlockPos.of(entryTag.getLong("Pos"));
-            data.entries.put(pos, new ReinforcementEntry(
-                    material, entryTag.getInt("Durability"), entryTag.getBoolean("Enabled"),
-                    hasConstructionTiming ? entryTag.getLong("ConstructionStartedAt") : 0L,
-                    hasConstructionTiming ? entryTag.getLong("ActivatesAt") : 0L));
-            data.index(pos);
-            if (data.entries.get(pos).activatesAt() > 0L) data.constructionEntries.add(pos);
+            data.restore(BlockPos.of(entryTag.getLong("Pos")), ReinforcementPackedChunk.legacyEntry(
+                    entryTag.getString("Material"), entryTag.getInt("Durability"), entryTag.getBoolean("Enabled"),
+                    entryTag.contains("ActivatesAt", Tag.TAG_LONG),
+                    entryTag.getLong("ConstructionStartedAt"), entryTag.getLong("ActivatesAt")));
+        }
+        // Version 2 entries: packed per chunk column.
+        if (tag.contains(TAG_CHUNKS, Tag.TAG_LIST)) {
+            ListTag paletteTag = tag.getList(TAG_PALETTE, Tag.TAG_STRING);
+            List<String> ids = new ArrayList<>(paletteTag.size());
+            for (int i = 0; i < paletteTag.size(); i++) ids.add(paletteTag.getString(i));
+            ReinforcementPackedChunk.Palette palette = ReinforcementPackedChunk.Palette.read(ids);
+            ListTag chunks = tag.getList(TAG_CHUNKS, Tag.TAG_COMPOUND);
+            for (int i = 0; i < chunks.size(); i++) {
+                CompoundTag chunk = chunks.getCompound(i);
+                ReinforcementPackedChunk.decode(new ReinforcementPackedChunk.Columns(
+                        chunk.getLongArray(TAG_POSITIONS), chunk.getByteArray(TAG_MATERIALS),
+                        chunk.getIntArray(TAG_DURABILITY), chunk.getByteArray(TAG_FLAGS),
+                        chunk.getIntArray(TAG_TIMER_INDICES), chunk.getLongArray(TAG_STARTED_AT),
+                        chunk.getLongArray(TAG_ACTIVATES_AT)),
+                        palette, (pos, entry) -> data.restore(BlockPos.of(pos), entry));
+            }
         }
         return data;
+    }
+
+    private void restore(BlockPos pos, ReinforcementEntry entry) {
+        if (entries.put(pos, entry) == null) index(pos);
+        if (entry.constructing()) constructionEntries.add(pos);
+        else constructionEntries.remove(pos);
     }
 
     public static ReinforcementSavedData get(ServerLevel level) {

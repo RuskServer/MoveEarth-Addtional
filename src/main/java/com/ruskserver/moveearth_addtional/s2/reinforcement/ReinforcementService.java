@@ -33,6 +33,7 @@ import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 
 public final class ReinforcementService {
     public static final int SCAN_RADIUS = 64;
+    private static final int MAX_SCAN_ENTRIES = 8192;
     private static final long FORCED_FULL_SYNC_TICKS = 10L * 20L;
     private static final Map<UUID, ScanSignature> LAST_SCANS = new HashMap<>();
     private static final Set<UUID> PENDING_SCANS = new HashSet<>();
@@ -204,42 +205,94 @@ public final class ReinforcementService {
         NationSavedData nations = NationSavedData.get(player.server);
         java.util.UUID nationId = nations.nationIdFor(player.getUUID()).orElse(null);
         boolean allowed = nationId != null && nations.can(player.getUUID(), S2Permission.MANAGE_REINFORCEMENT);
-        TerritorySavedData territories = TerritorySavedData.get(player.server);
-        SiegeSavedData sieges = SiegeSavedData.get(player.server);
-        ReinforcementSavedData reinforcementData = ReinforcementSavedData.get(player.serverLevel());
-        java.util.LinkedHashMap<BlockPos, ReinforcementSavedData.LocatedEntry> visible = new java.util.LinkedHashMap<>();
+        ServerLevel level = player.serverLevel();
+        ResourceLocation dimension = level.dimension().location();
+        long gameTime = level.getGameTime();
+        List<ScanEntry> selected = List.of();
+        ChunkVisibility visibility = null;
         if (allowed) {
-            reinforcementData.around(player.serverLevel(), player.blockPosition(), radius)
+            ReinforcementSavedData reinforcementData = ReinforcementSavedData.get(level);
+            java.util.LinkedHashMap<BlockPos, ReinforcementSavedData.LocatedEntry> visible = new java.util.LinkedHashMap<>();
+            reinforcementData.around(level, player.blockPosition(), radius)
                     .forEach(value -> visible.put(value.pos(), value));
             SableVehicleTopology.entriesForPlayer(player, reinforcementData)
                     .forEach(value -> visible.put(value.pos(), value));
+            visibility = new ChunkVisibility(player, nationId);
+            List<ScanEntry> candidates = new java.util.ArrayList<>(visible.size());
+            for (ReinforcementSavedData.LocatedEntry value : visible.values()) {
+                if (!visibility.reinforceable(value.pos())) continue;
+                // Sort key computed once: the Sable-aware distance is far too costly for a comparator.
+                candidates.add(new ScanEntry(value, SableVehicleTopology.distanceSquared(level, player, value.pos())));
+            }
+            candidates.sort(java.util.Comparator.comparingDouble(ScanEntry::distanceSquared));
+            selected = candidates.size() > MAX_SCAN_ENTRIES ? candidates.subList(0, MAX_SCAN_ENTRIES) : candidates;
         }
-        List<S2C_ReinforcementSnapshotPacket.Entry> entries = allowed
-                ? visible.values().stream()
-                .filter(value -> reinforceableFor(player, territories, nationId, value.pos())
-                        || com.ruskserver.moveearth_addtional.s2.nation.AllyAccessService
-                        .canReinforce(player, value.pos()))
-                .sorted(java.util.Comparator.comparingDouble(value -> SableVehicleTopology.distanceSquared(
-                        player.serverLevel(), player, value.pos())))
-                .limit(8192)
-                .map(value -> new S2C_ReinforcementSnapshotPacket.Entry(value.pos(),
-                        value.entry().material(), value.entry().durability(), value.entry().enabled(),
-                        (int) Math.min(Integer.MAX_VALUE,
-                                value.entry().activationTicksRemaining(player.serverLevel().getGameTime())),
-                        value.entry().activatesAt() > 0L,
-                        sieges.isReinforcementDisabled(player.level().dimension().location(), value.pos())))
-                .toList()
-                : List.of();
-        net.minecraft.resources.ResourceLocation dimension = player.level().dimension().location();
-        long signature = signature(entries);
-        long gameTime = player.serverLevel().getGameTime();
+        long signature = ReinforcementScanSignature.EMPTY;
+        for (ScanEntry value : selected) {
+            BlockPos pos = value.located().pos();
+            signature = ReinforcementScanSignature.add(signature, pos.asLong(), value.located().entry(),
+                    visibility.siegeDisabled(pos));
+        }
         ScanSignature previous = LAST_SCANS.get(player.getUUID());
         if (previous != null && previous.dimension.equals(dimension) && previous.allowed == allowed
-                && previous.entryCount == entries.size() && previous.contentHash == signature
+                && previous.entryCount == selected.size() && previous.contentHash == signature
                 && gameTime - previous.sentAtGameTime < FORCED_FULL_SYNC_TICKS) return;
         LAST_SCANS.put(player.getUUID(), new ScanSignature(
-                dimension, allowed, entries.size(), signature, gameTime));
+                dimension, allowed, selected.size(), signature, gameTime));
+        List<S2C_ReinforcementSnapshotPacket.Entry> entries = new java.util.ArrayList<>(selected.size());
+        for (ScanEntry value : selected) {
+            BlockPos pos = value.located().pos();
+            ReinforcementEntry entry = value.located().entry();
+            entries.add(new S2C_ReinforcementSnapshotPacket.Entry(pos, entry.material(), entry.durability(),
+                    entry.enabled(), activationTicks(entry, gameTime), entry.constructing(),
+                    visibility.siegeDisabled(pos)));
+        }
         PacketDistributor.sendToPlayer(player, new S2C_ReinforcementSnapshotPacket(dimension, allowed, entries));
+    }
+
+    /** Remaining ticks relative to {@code gameTime}, the server tick at which the packet is built. */
+    private static int activationTicks(ReinforcementEntry entry, long gameTime) {
+        return (int) Math.min(Integer.MAX_VALUE, entry.activationTicksRemaining(gameTime));
+    }
+
+    private record ScanEntry(ReinforcementSavedData.LocatedEntry located, double distanceSquared) { }
+
+    /**
+     * Per-request cache of the visibility rules. Territory, ally grants, Sable containment and siege
+     * fall-out are all resolved per chunk column, so one lookup serves every reinforced block in it.
+     */
+    private static final class ChunkVisibility {
+        private final ServerPlayer player;
+        private final UUID nationId;
+        private final TerritorySavedData territories;
+        private final SiegeSavedData sieges;
+        private final ResourceLocation dimension;
+        private final Map<Long, Boolean> reinforceable = new HashMap<>();
+        private final Map<Long, Boolean> siegeDisabled = new HashMap<>();
+
+        private ChunkVisibility(ServerPlayer player, UUID nationId) {
+            this.player = player;
+            this.nationId = nationId;
+            this.territories = TerritorySavedData.get(player.server);
+            this.sieges = SiegeSavedData.get(player.server);
+            this.dimension = player.level().dimension().location();
+        }
+
+        boolean reinforceable(BlockPos pos) {
+            return reinforceable.computeIfAbsent(chunkKey(pos), ignored ->
+                    reinforceableFor(player, territories, nationId, pos)
+                            || com.ruskserver.moveearth_addtional.s2.nation.AllyAccessService
+                            .canReinforce(player, pos));
+        }
+
+        boolean siegeDisabled(BlockPos pos) {
+            return siegeDisabled.computeIfAbsent(chunkKey(pos), ignored ->
+                    sieges.isReinforcementDisabled(dimension, pos));
+        }
+    }
+
+    private static long chunkKey(BlockPos pos) {
+        return net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
     }
 
     /** Whether {@code player} may see and manage reinforcement on {@code pos}; matches the scan filter. */
@@ -288,24 +341,6 @@ public final class ReinforcementService {
         PENDING_DELTAS.clear();
         LAST_REQUESTED_SCAN.clear();
         DEFERRED_REQUESTS.clear();
-    }
-
-    private static long signature(List<S2C_ReinforcementSnapshotPacket.Entry> entries) {
-        long hash = 0xcbf29ce484222325L;
-        for (S2C_ReinforcementSnapshotPacket.Entry entry : entries) {
-            hash = mix(hash, entry.pos().asLong());
-            hash = mix(hash, entry.material().ordinal());
-            hash = mix(hash, entry.durability());
-            hash = mix(hash, entry.activationTicksRemaining());
-            hash = mix(hash, entry.enabled() ? 1L : 0L);
-            hash = mix(hash, entry.constructionInProgress() ? 1L : 0L);
-            hash = mix(hash, entry.siegeDisabled() ? 1L : 0L);
-        }
-        return hash;
-    }
-
-    private static long mix(long hash, long value) {
-        return (hash ^ value) * 0x100000001b3L;
     }
 
     private record ScanSignature(net.minecraft.resources.ResourceLocation dimension, boolean allowed,
@@ -363,11 +398,16 @@ public final class ReinforcementService {
         }
     }
 
-    /** Queues exact changed positions, coalesced into one delta packet per player and server tick. */
+    /**
+     * Queues exact changed positions, coalesced into one delta packet per player and server tick.
+     * Positions are grouped per chunk column once; for ordinary (non-Sable) chunks one exact distance to a
+     * representative block plus the group's extent accepts or rejects the whole column per player, so only
+     * columns straddling the scan sphere pay per-position distance checks.
+     */
     public static void syncChangedNearbyManagers(ServerLevel level, Collection<BlockPos> changedPositions) {
         if (changedPositions == null || changedPositions.isEmpty()) return;
         ResourceLocation dimension = level.dimension().location();
-        long radiusSquared = (long) SCAN_RADIUS * SCAN_RADIUS;
+        List<ServerPlayer> recipients = new java.util.ArrayList<>();
         for (ServerPlayer player : level.players()) {
             if (PENDING_SCANS.contains(player.getUUID()) || !canManage(player)) continue;
             PendingDelta pending = PENDING_DELTAS.get(player.getUUID());
@@ -376,14 +416,62 @@ public final class ReinforcementService {
                 PENDING_SCANS.add(player.getUUID());
                 continue;
             }
-            for (BlockPos pos : changedPositions) {
-                if (SableVehicleTopology.distanceSquared(level, player, pos) > radiusSquared) continue;
-                if (pending == null) {
-                    pending = new PendingDelta(dimension, new LinkedHashSet<>());
-                    PENDING_DELTAS.put(player.getUUID(), pending);
+            recipients.add(player);
+        }
+        if (recipients.isEmpty()) return;
+        List<ChangeGroup> groups = ChangeGroup.of(level, changedPositions);
+        double radius = SCAN_RADIUS;
+        double radiusSquared = radius * radius;
+        for (ServerPlayer player : recipients) {
+            PendingDelta pending = PENDING_DELTAS.get(player.getUUID());
+            for (ChangeGroup group : groups) {
+                boolean acceptAll = false;
+                if (group.plainWorld()) {
+                    double distance = Math.sqrt(SableVehicleTopology.distanceSquared(level, player, group.anchor()));
+                    if (distance - group.extent() > radius) continue;
+                    acceptAll = distance + group.extent() <= radius;
                 }
-                pending.positions.add(pos.immutable());
+                for (BlockPos pos : group.positions()) {
+                    if (!acceptAll && SableVehicleTopology.distanceSquared(level, player, pos) > radiusSquared) continue;
+                    if (pending == null) {
+                        pending = new PendingDelta(dimension, new LinkedHashSet<>());
+                        PENDING_DELTAS.put(player.getUUID(), pending);
+                    }
+                    pending.positions.add(pos);
+                }
             }
+        }
+    }
+
+    /**
+     * Changed positions of one chunk column. {@code extent} bounds the Euclidean distance of every member
+     * from {@code anchor}; it is only used for columns outside Sable plots, where block distance is plain
+     * world distance and the triangle inequality holds exactly.
+     */
+    private record ChangeGroup(BlockPos anchor, List<BlockPos> positions, double extent, boolean plainWorld) {
+        static List<ChangeGroup> of(ServerLevel level, Collection<BlockPos> changedPositions) {
+            Map<Long, List<BlockPos>> byChunk = new java.util.LinkedHashMap<>();
+            for (BlockPos pos : changedPositions) {
+                byChunk.computeIfAbsent(chunkKey(pos), ignored -> new java.util.ArrayList<>()).add(pos.immutable());
+            }
+            List<ChangeGroup> groups = new java.util.ArrayList<>(byChunk.size());
+            for (List<BlockPos> positions : byChunk.values()) {
+                BlockPos anchor = positions.getFirst();
+                if (positions.size() == 1) {
+                    groups.add(new ChangeGroup(anchor, positions, 0.0D, false));
+                    continue;
+                }
+                long extentSquared = 0L;
+                for (BlockPos pos : positions) {
+                    long dx = pos.getX() - anchor.getX();
+                    long dy = pos.getY() - anchor.getY();
+                    long dz = pos.getZ() - anchor.getZ();
+                    extentSquared = Math.max(extentSquared, dx * dx + dy * dy + dz * dz);
+                }
+                boolean plainWorld = SableVehicleTopology.placement(level, anchor).subLevel() == null;
+                groups.add(new ChangeGroup(anchor, positions, Math.sqrt(extentSquared), plainWorld));
+            }
+            return groups;
         }
     }
 
@@ -429,31 +517,26 @@ public final class ReinforcementService {
             sendScan(player, SCAN_RADIUS);
             return;
         }
-        TerritorySavedData territories = TerritorySavedData.get(player.server);
-        SiegeSavedData sieges = SiegeSavedData.get(player.server);
-        ReinforcementSavedData data = ReinforcementSavedData.get(player.serverLevel());
+        ServerLevel level = player.serverLevel();
+        ReinforcementSavedData data = ReinforcementSavedData.get(level);
+        ChunkVisibility visibility = new ChunkVisibility(player, nationId);
         List<S2C_ReinforcementDeltaPacket.Entry> upserts = new java.util.ArrayList<>();
         List<BlockPos> removals = new java.util.ArrayList<>();
-        long now = player.serverLevel().getGameTime();
+        long now = level.getGameTime();
         long radiusSquared = (long) SCAN_RADIUS * SCAN_RADIUS;
         for (BlockPos pos : pending.positions) {
-            boolean ownedVehicle = SableVehicleTopology.at(player.serverLevel(), pos)
-                    .map(context -> nationId.equals(context.vehicle().nationId())).orElse(false);
-            if (SableVehicleTopology.distanceSquared(player.serverLevel(), player, pos) > radiusSquared
-                    || (!ownedVehicle && !territories.allowsReinforcement(
-                    player.server, nationId, pending.dimension, pos))) {
-                removals.add(pos);
-                continue;
-            }
             ReinforcementEntry entry = data.get(pos).orElse(null);
-            if (entry == null || player.serverLevel().getBlockState(pos).isAir()) {
+            // Same visibility rule as sendScan (own territory, owned vehicle or ally grant), so a delta can
+            // never remove an entry the next snapshot would show again.
+            if (entry == null || !visibility.reinforceable(pos)
+                    || SableVehicleTopology.distanceSquared(level, player, pos) > radiusSquared
+                    || level.getBlockState(pos).isAir()) {
                 removals.add(pos);
                 continue;
             }
             upserts.add(new S2C_ReinforcementDeltaPacket.Entry(pos, entry.material(), entry.durability(),
-                    entry.enabled(), (int) Math.min(Integer.MAX_VALUE,
-                    entry.activationTicksRemaining(now)), entry.activatesAt() > 0L,
-                    sieges.isReinforcementDisabled(pending.dimension, pos)));
+                    entry.enabled(), activationTicks(entry, now), entry.constructing(),
+                    visibility.siegeDisabled(pos)));
         }
         if (!upserts.isEmpty() || !removals.isEmpty()) {
             PacketDistributor.sendToPlayer(player,

@@ -50,6 +50,14 @@ public final class VehicleLootSavedData extends SavedData {
 
     public Grant grant(UUID vehicleId) { return grants.get(vehicleId); }
 
+    /** A live grant belongs to another side, so this player must not erase it by breaking the core. */
+    public boolean salvageHeldByOthers(UUID vehicleId, ServerPlayer player, UUID playerNation) {
+        Grant grant = vehicleId == null ? null : grants.get(vehicleId);
+        return grant != null && VehicleCoreDismantlePolicy.salvageHeldByOthers(true, grant.expiresOpenTick(),
+                OpenTimeService.now(player.server), grant.individualAttacker(), grant.attackerId(),
+                player.getUUID(), playerNation);
+    }
+
     public void revoke(UUID vehicleId) {
         if (vehicleId != null && grants.remove(vehicleId) != null) setDirty();
     }

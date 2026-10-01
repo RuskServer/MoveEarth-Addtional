@@ -58,7 +58,7 @@ public abstract class PlayerListLocalChatMixin {
                 .filter(recipient -> !message.filter(filterPredicate.test(recipient)).isFullyFiltered())
                 .map(recipient -> recipient.getGameProfile().getName())
                 .toList();
-        Moveearth_addtional.LOGGER.info("[LocalChat] recipients for <{}>: [{}]",
+        Moveearth_addtional.LOGGER.debug("[LocalChat] recipients for <{}>: [{}]",
                 sender.getGameProfile().getName(), String.join(", ", recipients));
         String senderName = sender.getGameProfile().getName();
         if (recipients.stream().noneMatch(name -> !name.equals(senderName))) {

@@ -11,7 +11,7 @@ public record S2C_PvpTeamPacket(List<UUID> allies) implements CustomPacketPayloa
     public static final Type<S2C_PvpTeamPacket> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "pvp_team"));
     public static final StreamCodec<FriendlyByteBuf, S2C_PvpTeamPacket> STREAM_CODEC = StreamCodec.of(
             (buf, p) -> { buf.writeVarInt(p.allies.size()); p.allies.forEach(buf::writeUUID); },
-            buf -> { int size = buf.readVarInt(); List<UUID> ids = new ArrayList<>(size); for (int i=0;i<size;i++) ids.add(buf.readUUID()); return new S2C_PvpTeamPacket(ids); });
+            buf -> { int size = buf.readVarInt(); if (size < 0 || size > 256) throw new IllegalArgumentException("Invalid PvP ally count: " + size); List<UUID> ids = new ArrayList<>(size); for (int i=0;i<size;i++) ids.add(buf.readUUID()); return new S2C_PvpTeamPacket(ids); });
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     public void handle(net.neoforged.neoforge.network.handling.IPayloadContext context) {
         context.enqueueWork(() -> com.ruskserver.moveearth_addtional.client.ClientPacketHandler.handlePvpTeam(this));
