@@ -285,22 +285,72 @@ public final class TerritorySavedData extends SavedData {
      * permits the one bootstrap case needed to activate a newly placed core.
      * Reserved space around active cores is deliberately not accepted here, so
      * upkeep shrinkage cannot be bypassed by welding in the disabled outer area.
+     *
+     * <p>A configuring core whose reservation has lapsed keeps that bootstrap on
+     * any of its chunks no other nation has claimed since. The lapse frees the
+     * land for others; it must not strand a nation that took longer than the hour
+     * to seal its core, since sealing is the only way to activate it. Chunks in
+     * the reserved area of the nation's own established cores are excluded, so a
+     * lapsed outpost laid over a ring that upkeep switched off does not re-open it.
      */
     public boolean allowsReinforcement(MinecraftServer server, UUID nationId,
                                        ResourceLocation dimension, BlockPos pos) {
+        return reinforcementAccess(server, nationId, dimension, pos, true);
+    }
+
+    /**
+     * The established-land rule: effective territory or a live configuring
+     * reservation, never a lapsed one. For what a lapsed core must not grant:
+     * registering vehicles (a shipyard) and counting recovery walls.
+     */
+    public boolean allowsEstablishedReinforcement(MinecraftServer server, UUID nationId,
+                                                  ResourceLocation dimension, BlockPos pos) {
+        return reinforcementAccess(server, nationId, dimension, pos, false);
+    }
+
+    private boolean reinforcementAccess(MinecraftServer server, UUID nationId, ResourceLocation dimension,
+                                        BlockPos pos, boolean allowLapsed) {
         boolean controlled = controlsChunk(server, nationId, dimension, pos);
         if (controlled) return true;
         ChunkPos chunk = new ChunkPos(pos);
         boolean configuringReservation = false;
+        boolean lapsedReservation = false;
+        boolean establishedReservation = false;
         for (CoreKey key : indexed(reservedChunkIndex, dimension, chunk.x, chunk.z)) {
             CoreRecord core = cores.get(key);
-            if (core != null && core.nationId.equals(nationId)
-                    && core.state == CoreState.CONFIGURING && configuringReservationLive(core)) {
-                configuringReservation = true;
-                break;
+            if (core == null || !core.nationId.equals(nationId)) continue;
+            if (core.state != CoreState.CONFIGURING) {
+                establishedReservation = true;
+                continue;
             }
+            if (configuringReservationLive(core)) configuringReservation = true;
+            else lapsedReservation = true;
         }
-        return TerritoryReinforcementAccessPolicy.canManage(controlled, configuringReservation);
+        boolean lapsedButUnclaimed = allowLapsed && lapsedReservation && !configuringReservation
+                && !establishedReservation
+                && !conflicts(nationId, dimension, area(pos, TerritoryPreviewArea.MIN_RADIUS), null);
+        return TerritoryReinforcementAccessPolicy.canManage(controlled, configuringReservation, lapsedButUnclaimed);
+    }
+
+    /**
+     * Minutes left on the configuring reservation covering {@code pos} for {@code nationId}:
+     * the longest among its configuring cores there, 0 when all have lapsed, or
+     * {@link ConfiguringReservationPolicy#NO_RESERVATION} when none reserves it.
+     */
+    public int reservationMinutesLeft(MinecraftServer server, UUID nationId,
+                                      ResourceLocation dimension, BlockPos pos) {
+        if (nationId == null || controlsChunk(server, nationId, dimension, pos)) {
+            // Own territory needs no reservation; a lapsed one overlapping it is beside the point.
+            return ConfiguringReservationPolicy.NO_RESERVATION;
+        }
+        ChunkPos chunk = new ChunkPos(pos);
+        int best = ConfiguringReservationPolicy.NO_RESERVATION;
+        for (CoreKey key : indexed(reservedChunkIndex, dimension, chunk.x, chunk.z)) {
+            CoreRecord core = cores.get(key);
+            if (core == null || !core.nationId.equals(nationId) || core.state != CoreState.CONFIGURING) continue;
+            best = Math.max(best, ConfiguringReservationSavedData.minutesLeft(server, core));
+        }
+        return best;
     }
 
     /** Storage is nation infrastructure: effective home territory plus the initial configuring reservation. */

@@ -60,10 +60,10 @@ public record S2C_PrisonerSnapshotPacket(boolean openScreen, int state, String c
         BlockPos jail = readOptionalPos(buffer);
         BlockPos intakePos = readOptionalPos(buffer);
         IntakeView intake = IntakeView.read(buffer);
-        int entryCount = Math.min(MAX_ROWS, buffer.readVarInt());
+        int entryCount = rowCount(buffer.readVarInt());
         List<EntryView> entries = new ArrayList<>(entryCount);
         for (int i = 0; i < entryCount; i++) entries.add(EntryView.read(buffer));
-        int candidateCount = Math.min(MAX_ROWS, buffer.readVarInt());
+        int candidateCount = rowCount(buffer.readVarInt());
         List<CandidateView> candidates = new ArrayList<>(candidateCount);
         for (int i = 0; i < candidateCount; i++) candidates.add(CandidateView.read(buffer));
         return new S2C_PrisonerSnapshotPacket(open, state, counterpart, holdingNation, remaining,
@@ -146,5 +146,16 @@ public record S2C_PrisonerSnapshotPacket(boolean openScreen, int state, String c
                     buffer.readBoolean(), buffer.readBoolean(), buffer.readBoolean(),
                     buffer.readVarInt(), buffer.readBoolean());
         }
+    }
+
+    /**
+     * A row count from the wire. The encoder never writes more than {@link #MAX_ROWS},
+     * and a negative count would fail the list allocation, so anything else is refused.
+     */
+    private static int rowCount(int declared) {
+        if (declared < 0 || declared > MAX_ROWS) {
+            throw new IllegalArgumentException("Prisoner row count out of range: " + declared);
+        }
+        return declared;
     }
 }

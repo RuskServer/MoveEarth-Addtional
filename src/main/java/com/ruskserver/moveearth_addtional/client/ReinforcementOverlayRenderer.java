@@ -224,9 +224,12 @@ public final class ReinforcementOverlayRenderer {
                         ? "overlay.moveearth_addtional.reinforcement.filling"
                         : "overlay.moveearth_addtional.reinforcement.reinforced"),
                 x + 11, y + 8, accent, false);
+        int reservationMinutes = WeldingTargetClientState.reservationMinutes(target);
         Component detail = unavailable
                 ? Component.translatable(noPermission
                         ? "overlay.moveearth_addtional.reinforcement.unavailable.no_permission"
+                        : reservationMinutes == 0
+                        ? "overlay.moveearth_addtional.reinforcement.unavailable.lapsed_claimed"
                         : "overlay.moveearth_addtional.reinforcement.unavailable.outside")
                 : entry == null
                 ? Component.translatable("overlay.moveearth_addtional.reinforcement.material_hint")
@@ -253,6 +256,17 @@ public final class ReinforcementOverlayRenderer {
                 : "overlay.moveearth_addtional.reinforcement.detail_hint");
         graphics.drawString(minecraft.font, mode, x + boxWidth - minecraft.font.width(mode) - 9, y + 8,
                 ReinforcementClientState.overlayActive() ? 0xFF5DCBFF : 0xFF8F9AA8, false);
+        if (reservationMinutes >= 0 && !noPermission) {
+            // A configuring core holds its land for one hour of open time; say how much is left,
+            // or that it ran out and only unclaimed land can still be sealed.
+            Component reservation = reservationMinutes > 0
+                    ? Component.translatable("overlay.moveearth_addtional.reinforcement.reservation.left", reservationMinutes)
+                    : Component.translatable("overlay.moveearth_addtional.reinforcement.reservation.lapsed");
+            int reservationY = y + boxHeight + 4;
+            graphics.fill(x, reservationY, x + boxWidth, reservationY + 14, 0xD012161D);
+            graphics.drawString(minecraft.font, reservation, x + 11, reservationY + 3,
+                    reservationMinutes > 10 ? 0xFF8F9AA8 : 0xFFFFB454, false);
+        }
     }
 
     private static boolean validWorld(Minecraft minecraft) {

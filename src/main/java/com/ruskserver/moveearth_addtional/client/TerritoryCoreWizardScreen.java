@@ -33,6 +33,8 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
     private int radius;
     private int health;
     private int maximumHealth;
+    /** Open time left on a configuring core's reservation; 0 once lapsed, -1 when not configuring. */
+    private int reservationMinutes = -1;
     private S2C_TerritoryPreviewPacket preview;
     private S2C_TerritoryClosurePacket closure;
     private int pendingRequestId = -1;
@@ -51,6 +53,12 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
 
     public TerritoryCoreWizardScreen(BlockPos corePos, int radius, TerritorySavedData.CoreState coreState) {
         this(corePos, radius, coreState, 1, 1);
+    }
+
+    public TerritoryCoreWizardScreen(BlockPos corePos, int radius, TerritorySavedData.CoreState coreState,
+                                     int health, int maximumHealth, int reservationMinutes) {
+        this(corePos, radius, coreState, health, maximumHealth);
+        this.reservationMinutes = reservationMinutes;
     }
 
     public TerritoryCoreWizardScreen(BlockPos corePos, int radius, TerritorySavedData.CoreState coreState,
@@ -166,6 +174,14 @@ public final class TerritoryCoreWizardScreen extends Screen implements Suppresse
                     && coreState == TerritorySavedData.CoreState.ACTIVE) ? SUCCESS
                     : closure == null && coreState == TerritorySavedData.CoreState.CONFIGURING ? MUTED : DANGER;
             graphics.drawString(font, closureText, summary.x() + 14, summary.y() + 47, color, false);
+            if (coreState == TerritorySavedData.CoreState.CONFIGURING && reservationMinutes >= 0) {
+                Component reservation = reservationMinutes > 0
+                        ? Component.translatable("screen.moveearth_addtional.territory.reservation.left",
+                        reservationMinutes)
+                        : Component.translatable("screen.moveearth_addtional.territory.reservation.lapsed");
+                graphics.drawString(font, reservation, summary.x() + 14, summary.y() + 60,
+                        reservationMinutes > 10 ? MUTED : GOLD, false);
+            }
             int barX = summary.right() - 192;
             int barY = summary.y() + 45;
             int barWidth = 174;

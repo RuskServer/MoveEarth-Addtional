@@ -178,7 +178,10 @@ final class DiscordCommandListener extends ListenerAdapter {
                 if (!manager) event.replyEmbeds(MoveEarthDiscordEmbeds.permissionDenied()).setEphemeral(true).queue();
                 else service.replyComponentUnlink(event, false);
             }
-            case "clear-role" -> service.replyComponentTarget(event, null, null);
+            case "clear-role" -> {
+                if (!manager) event.replyEmbeds(MoveEarthDiscordEmbeds.permissionDenied()).setEphemeral(true).queue();
+                else service.replyComponentTarget(event, null, null);
+            }
             default -> event.replyEmbeds(MoveEarthDiscordEmbeds.operation("操作できません",
                     "このセットアップ画面は古くなっています。/moveearth setup を再実行してください。", false))
                     .setEphemeral(true).queue();

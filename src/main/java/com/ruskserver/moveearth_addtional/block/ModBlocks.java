@@ -26,7 +26,9 @@ public class ModBlocks {
             ));
     public static final DeferredHolder<Block, PrisonIntakeBlock> PRISON_INTAKE = BLOCKS.register("prison_intake",
             () -> new PrisonIntakeBlock(BlockBehaviour.Properties.of()
-                    .strength(8.0F, 1200.0F).sound(SoundType.METAL).requiresCorrectToolForDrops()));
+                    .strength(8.0F, 1200.0F).sound(SoundType.METAL).requiresCorrectToolForDrops()
+                    // Moving it would release everyone held there; see PrisonIntakeBlock#onRemove.
+                    .pushReaction(net.minecraft.world.level.material.PushReaction.BLOCK)));
     public static final DeferredHolder<Block, VehicleCoreBlock> VEHICLE_CORE = BLOCKS.register("vehicle_core",
             () -> new VehicleCoreBlock(BlockBehaviour.Properties.of()
                     .strength(10.0F, 1200.0F).sound(SoundType.METAL)

@@ -634,7 +634,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(blockEntity.ownerUUID);
             if (player != null) {
                 player.sendSystemMessage(MoveEarthMessage.error("【" + blockEntity.getDetectorDisplayName()
-                        + "】維持費（5ゴールド）の引き落としに失敗したため、検知機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
+                        + "】維持費（5 TC）の引き落としに失敗したため、検知機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
             }
         }
     }

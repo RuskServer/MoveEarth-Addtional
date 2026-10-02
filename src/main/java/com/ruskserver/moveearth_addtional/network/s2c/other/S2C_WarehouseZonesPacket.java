@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Every Warehouse footprint and whether entering it calls out the guards; see {@link WarehouseZoneView}. */
+/** The Warehouse footprints near the player and whether entering each calls out the guards; see {@link WarehouseZoneView}. */
 public record S2C_WarehouseZonesPacket(List<Zone> zones) implements CustomPacketPayload {
     /** Far above the number of regions; bounds what a hostile server can make a client allocate. */
     public static final int MAX_ZONES = 1024;

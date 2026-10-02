@@ -22,7 +22,10 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Tells players where Warehouses are and what stepping in does; see
@@ -32,15 +35,19 @@ import java.util.List;
  */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID)
 public final class WarehouseZoneService {
-    private static List<S2C_WarehouseZonesPacket.Zone> lastSent = List.of();
+    /**
+     * Only Warehouses this close are sent. The field shows from 32 blocks, and a player
+     * updated once a second cannot cross the rest of this between updates; sending
+     * every site would hand a modified client a live map of all of them, raids included.
+     */
+    private static final double SYNC_RADIUS = 256.0D;
+    private static final Map<UUID, List<S2C_WarehouseZonesPacket.Zone>> LAST_SENT = new HashMap<>();
 
     private WarehouseZoneService() { }
 
     @SubscribeEvent
-    public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
-            PacketDistributor.sendToPlayer(player, new S2C_WarehouseZonesPacket(zones(player.getServer())));
-        }
+    public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        LAST_SENT.remove(event.getEntity().getUUID());
     }
 
     @SubscribeEvent
@@ -48,16 +55,28 @@ public final class WarehouseZoneService {
         MinecraftServer server = event.getServer();
         if (server.getTickCount() % 20 != 0) return;
         List<S2C_WarehouseZonesPacket.Zone> zones = zones(server);
-        if (!zones.equals(lastSent)) {
-            lastSent = zones;
-            PacketDistributor.sendToAllPlayers(new S2C_WarehouseZonesPacket(zones));
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            List<S2C_WarehouseZonesPacket.Zone> nearby = near(player, zones);
+            // A first, empty list is still sent, so the client starts from a known state.
+            List<S2C_WarehouseZonesPacket.Zone> previous = LAST_SENT.put(player.getUUID(), nearby);
+            if (!nearby.equals(previous)) PacketDistributor.sendToPlayer(player, new S2C_WarehouseZonesPacket(nearby));
         }
         warnApproachingPlayers(server);
     }
 
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
-        lastSent = List.of();
+        LAST_SENT.clear();
+    }
+
+    private static List<S2C_WarehouseZonesPacket.Zone> near(ServerPlayer player,
+                                                           List<S2C_WarehouseZonesPacket.Zone> zones) {
+        var dimension = player.level().dimension().location();
+        return zones.stream()
+                .filter(zone -> zone.dimension().equals(dimension)
+                        && WarehouseZoneView.distanceToFootprint(zone.min().getX(), zone.min().getZ(),
+                        player.getX(), player.getZ()) <= SYNC_RADIUS)
+                .toList();
     }
 
     /** Called when a player walking into {@code site} has just called out its guards. */

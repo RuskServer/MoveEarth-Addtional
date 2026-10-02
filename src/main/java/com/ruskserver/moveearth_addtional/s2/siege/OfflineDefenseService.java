@@ -11,6 +11,8 @@ public final class OfflineDefenseService {
     private OfflineDefenseService() { }
 
     public static OfflineDefensePolicy.DamageResult scale(ServerLevel level, BlockPos pos, int rawDamage) {
+        var vehicle = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.vehicleAt(level, pos);
+        if (vehicle != null) return scaleVehicle(level, pos, rawDamage, vehicle);
         TerritorySavedData territories = TerritorySavedData.get(level.getServer());
         SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
         boolean settlementProtected = territories.reservedCores(level.dimension().location(), pos).stream()
@@ -37,6 +39,27 @@ public final class OfflineDefenseService {
                     absence.damageNumerator(), absence.damageDenominator());
         }
         int divisor = divisor(level, core);
+        return sieges.applyScaledDamage(level.dimension().location(), pos, rawDamage, 1, divisor);
+    }
+
+    /**
+     * Vehicle armour and cores: while the vehicle physically stands in its nation's own territory, the owner's
+     * rebuilding truce refuses damage and the owner's offline defense applies (with that core's rolling-Siege
+     * suppression). Elsewhere a vehicle takes full damage, truce or not.
+     */
+    private static OfflineDefensePolicy.DamageResult scaleVehicle(
+            ServerLevel level, BlockPos pos, int rawDamage,
+            com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.VehicleRecord vehicle) {
+        SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
+        if (com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.settlementTruceApplies(level, vehicle, pos)) {
+            sieges.clearOfflineDamageCarry(level.dimension().location(), pos);
+            return OfflineDefensePolicy.applyRatio(rawDamage, 0, 1, 0);
+        }
+        int divisor = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.offlineDivisor(level, vehicle, pos);
+        if (divisor <= 1) {
+            sieges.clearOfflineDamageCarry(level.dimension().location(), pos);
+            return OfflineDefensePolicy.apply(rawDamage, 1, 0);
+        }
         return sieges.applyScaledDamage(level.dimension().location(), pos, rawDamage, 1, divisor);
     }
 

@@ -1388,7 +1388,7 @@
                 tbody.innerHTML = topPlayers.map((p, idx) => `
                     <tr>
                         <td><strong>${idx + 1}</strong></td>
-                        <td><strong style="color:var(--accent-blue);">${p.lastKnownName}</strong></td>
+                        <td><strong style="color:var(--accent-blue);">${escapeHtml(p.lastKnownName)}</strong></td>
                         <td style="color:var(--accent-emerald); font-weight:600;">${formatDuration(p.totalActiveSeconds)}</td>
                         <td>${formatNumber(p.totalBreaks)}</td>
                         <td>${p.totalJobsXp.toFixed(1)} XP</td>
@@ -1421,7 +1421,7 @@
                 const pct = p.totalOnlineSeconds > 0 ? Math.min(100, Math.round((p.totalActiveSeconds / p.totalOnlineSeconds) * 100)) : 0;
                 return `
                     <tr>
-                        <td><strong>${p.lastKnownName}</strong></td>
+                        <td><strong>${escapeHtml(p.lastKnownName)}</strong></td>
                         <td style="color:var(--accent-emerald); font-weight:600;">${formatDuration(p.totalActiveSeconds)}</td>
                         <td style="width: 140px;">
                             <div style="font-size:0.8rem; margin-bottom:4px;">${pct}%</div>

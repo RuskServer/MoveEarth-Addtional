@@ -21,9 +21,14 @@ public final class PrisonIntakeBlock extends Block {
         return InteractionResult.CONSUME;
     }
 
+    /**
+     * Breaking the intake releases its prisoners. Being moved does not: pistons,
+     * Create contraptions and Sable assembly are all refused, and should one get
+     * through anyway, a move must not free everyone held here.
+     */
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState replacement, boolean moving) {
-        if (!state.is(replacement.getBlock()) && !level.isClientSide()) {
+        if (!moving && !state.is(replacement.getBlock()) && !level.isClientSide()) {
             PrisonerService.onPrisonIntakeRemoved(level, pos);
         }
         super.onRemove(state, level, pos, replacement, moving);

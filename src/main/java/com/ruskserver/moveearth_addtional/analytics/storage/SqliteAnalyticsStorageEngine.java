@@ -707,7 +707,9 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
             psChunkProfile.executeBatch();
 
             connection.commit();
-        } catch (SQLException e) {
+        } catch (SQLException | RuntimeException e) {
+            // Roll back on any failure: restoring auto-commit below would otherwise
+            // commit whatever part of the batch had already run.
             connection.rollback();
             throw e;
         } finally {

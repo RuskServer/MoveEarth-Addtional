@@ -358,8 +358,10 @@ public final class PvpCommand {
             source.sendFailure(Component.literal("§c有効なマップが存在しません。"));
             return 0;
         }
+        // Run from the console or a command block there is no player to count as a voter.
+        ServerPlayer caller = source.getPlayer();
         PvpMapVoteManager.INSTANCE.startVote(source.getServer(),
-                PvpMatchManager.INSTANCE.isParticipant(source.getPlayer()) ? Set.of(source.getPlayer().getUUID()) : Set.of(),
+                caller != null && PvpMatchManager.INSTANCE.isParticipant(caller) ? Set.of(caller.getUUID()) : Set.of(),
                 maps, seconds);
         source.sendSuccess(() -> Component.literal("§aマップ投票を開始しました（" + seconds + "秒）。"), true);
         return 1;

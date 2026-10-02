@@ -54,3 +54,6 @@ __pycache__/
 
 # World saves captured from the live server for analysis
 /archive-*.tar.gz
+
+# Server config written when a server is started from the repository root; holds the Discord bot token
+/config/

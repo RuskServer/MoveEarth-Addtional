@@ -78,6 +78,24 @@ public final class ScopePipRenderer {
         return false;
     }
 
+    /**
+     * The eligibility check reads TaCZ's gun, attachment and aiming state, which can
+     * throw on a malformed item or pack. It runs from the frame loop, so a failure is
+     * turned into the same session-long fallback a lens render failure gets.
+     */
+    private static boolean eligibleSafely(DeltaTracker timer) {
+        try {
+            return eligible(timer);
+        } catch (RuntimeException | LinkageError exception) {
+            // LinkageError: a TaCZ build whose API moved under this code.
+            failed = true;
+            failureReason = "eligibility_failed_" + rootCauseName(exception);
+            Moveearth_addtional.LOGGER.warn("Scope PIP disabled for this session after an eligibility failure",
+                    exception);
+            return reject(failureReason);
+        }
+    }
+
     private static boolean eligible(DeltaTracker timer) {
         Minecraft minecraft = Minecraft.getInstance();
         if (!ScopePipConfig.ENABLED.get()) return reject("disabled_in_config");
@@ -130,7 +148,7 @@ public final class ScopePipRenderer {
         outsideFov = 0;
         insideFov = 0;
         normalFov = Double.NaN;
-        if (!eligible(timer)) {
+        if (!eligibleSafely(timer)) {
             lensFresh = false;
             if (!ScopePipConfig.ENABLED.get() || failed || Minecraft.getInstance().level == null
                     || reason.equals("iris_experimental_disabled")) release();

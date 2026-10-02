@@ -10,10 +10,17 @@ class NotificationSetupPolicyTest {
     @Test
     void inviteLinkUsesApplicationIdAndRequiredPermissions() {
         assertEquals("https://discord.com/oauth2/authorize?client_id=1548331274198982807"
-                        + "&permissions=552440170496&integration_type=0&scope=bot+applications.commands",
+                        + "&permissions=2147699712&integration_type=0&scope=bot+applications.commands",
                 DiscordInviteLink.url("1548331274198982807"));
         assertEquals("", DiscordInviteLink.url(""));
         assertEquals("", DiscordInviteLink.url("abc&scope=evil"));
+    }
+
+    @Test
+    void invitePermissionsAreExactlyWhatTheBotNeeds() {
+        long expected = (1L << 10) | (1L << 11) | (1L << 14) | (1L << 16) | (1L << 17) | (1L << 31);
+        assertEquals(expected, DiscordInviteLink.PERMISSIONS);
+        assertEquals(0L, DiscordInviteLink.PERMISSIONS & (1L << 29), "must not ask for webhook management");
     }
 
     @Test

@@ -69,6 +69,15 @@ public final class SableVehicleTopology {
         subLevel.setUserDataTag(tag);
     }
 
+    /** Binds a body that no live vehicle governs yet; one bound to a live vehicle keeps it. */
+    public static void bindIfUnbound(ServerLevel level, ServerSubLevel subLevel, UUID vehicleId) {
+        CompoundTag current = subLevel.getUserDataTag();
+        if (current == null || !current.hasUUID(VEHICLE_ID)
+                || VehicleSavedData.get(level.getServer()).vehicle(current.getUUID(VEHICLE_ID)).isEmpty()) {
+            bind(subLevel, vehicleId);
+        }
+    }
+
     /** Resolves plot-space placement to the craft's current physical world position. */
     public static Placement placement(ServerLevel level, BlockPos plotPos) {
         try {

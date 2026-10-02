@@ -30,6 +30,19 @@ public final class ConfiguringReservationPolicy {
         return nowOpenTicks - sinceOpenTicks < LIMIT_OPEN_TICKS;
     }
 
+    /** Reported for a chunk no configuring core of the nation reserves. */
+    public static final int NO_RESERVATION = -1;
+
+    /**
+     * Whole minutes of open time left on a reservation, rounded up, so a player never
+     * reads "0 minutes" while it still holds. 0 means it has lapsed.
+     */
+    public static int minutesLeft(long sinceOpenTicks, long nowOpenTicks) {
+        long left = LIMIT_OPEN_TICKS - (nowOpenTicks - sinceOpenTicks);
+        if (left <= 0) return 0;
+        return (int) Math.min(Integer.MAX_VALUE, (left + 20L * 60L - 1) / (20L * 60L));
+    }
+
     /** Whether the land of an outpost removed at {@code removedAtOpenTicks} is still tied to its start. */
     public static boolean retained(long removedAtOpenTicks, long nowOpenTicks) {
         return nowOpenTicks - removedAtOpenTicks < REUSE_COOLDOWN_OPEN_TICKS;

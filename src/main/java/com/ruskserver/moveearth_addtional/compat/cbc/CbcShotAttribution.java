@@ -1,6 +1,7 @@
 package com.ruskserver.moveearth_addtional.compat.cbc;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 import com.ruskserver.moveearth_addtional.s2.combat.RealPlayers;
 import com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService;
@@ -26,7 +27,8 @@ import java.util.UUID;
  * Attributes Create Big Cannons shots, which CBC fires without any owner.
  *
  * <p>Mixins wrap the CBC methods that spawn munitions: {@code fireShot} of mounted big cannons and
- * autocannons and the delayed drop-mortar launch open a <em>firing</em> frame for the cannon contraption,
+ * autocannons (and of the CBC Modern Warfare cannons built on the same contraption base) and the delayed
+ * drop-mortar launch open a <em>firing</em> frame for the cannon contraption,
  * and the detonations that release fragment bursts open a <em>detonation</em> frame for the parent
  * munition. A CBC munition entering the world inside a frame is stamped by
  * {@link AttributionSnapshotService} before anything can read it: inside a firing frame it receives the
@@ -45,6 +47,9 @@ import java.util.UUID;
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class CbcShotAttribution {
     static final String PLACER = "moveearth_cbc_mount_placer";
+    /** The placer's nation at placement; absent (not just empty) on mounts placed before it was recorded. */
+    static final String PLACER_NATION = "moveearth_cbc_mount_placer_nation";
+    static final String PLACER_NATIONLESS = "moveearth_cbc_mount_placer_nationless";
     private static final String MOUNT_INTERFACE = "rbasamoyai.createbigcannons.cannon_control.ControlPitchContraption$Block";
 
     private static final ThreadLocal<ArrayDeque<Frame>> FRAMES = ThreadLocal.withInitial(ArrayDeque::new);
@@ -89,7 +94,11 @@ public final class CbcShotAttribution {
      */
     public static boolean attach(ServerLevel level, Entity entity) {
         ArrayDeque<Frame> frames = FRAMES.get();
-        if (frames.isEmpty() || !CbcReinforcementCompat.isCbcMunition(entity)) return false;
+        // Rounds of CBC add-ons (CBC Modern Warfare ammunition fired from CBC cannons) are Projectiles of
+        // another namespace; the casing an autocannon ejects is an ItemEntity and stays unattributed.
+        if (frames.isEmpty() || !(entity instanceof Projectile || CbcReinforcementCompat.isCbcMunition(entity))) {
+            return false;
+        }
         Frame frame = frames.peek();
         if (frame instanceof Detonation detonation) {
             AttributionSnapshotService.copy(detonation.parent(), entity);
@@ -124,6 +133,9 @@ public final class CbcShotAttribution {
         BlockEntity blockEntity = level.getBlockEntity(event.getPos());
         if (blockEntity == null || !MOUNT_BLOCK_ENTITY.get(blockEntity.getClass())) return;
         blockEntity.getPersistentData().putUUID(PLACER, placer.getUUID());
+        UUID nation = NationSavedData.get(level.getServer()).nationIdFor(placer.getUUID()).orElse(null);
+        if (nation != null) blockEntity.getPersistentData().putUUID(PLACER_NATION, nation);
+        else blockEntity.getPersistentData().putBoolean(PLACER_NATIONLESS, true);
         blockEntity.setChanged();
     }
 
@@ -141,8 +153,21 @@ public final class CbcShotAttribution {
                 : controller instanceof Entity carriage ? carriage.blockPosition() : cannon.blockPosition();
         UUID placer = mount != null && mount.getPersistentData().hasUUID(PLACER)
                 ? mount.getPersistentData().getUUID(PLACER) : null;
+        if (placer != null && !placerAnswers(level, mount, placer, mountPos)) placer = null;
         return CbcShotAttributionPolicy.decide(realPassenger(cannon), placer,
                 () -> vehicleNation(level, mountPos), () -> territoryNation(level, mountPos));
+    }
+
+    private static boolean placerAnswers(ServerLevel level, BlockEntity mount, UUID placer, BlockPos mountPos) {
+        var data = mount.getPersistentData();
+        boolean recorded = data.hasUUID(PLACER_NATION) || data.getBoolean(PLACER_NATIONLESS);
+        UUID atPlacement = data.hasUUID(PLACER_NATION) ? data.getUUID(PLACER_NATION) : null;
+        NationSavedData nations = NationSavedData.get(level.getServer());
+        UUID now = nations.nationIdFor(placer).orElse(null);
+        UUID owner = vehicleNation(level, mountPos);
+        if (owner == null) owner = territoryNation(level, mountPos);
+        boolean allied = owner != null && now != null && nations.isAllied(now, owner);
+        return CbcShotAttributionPolicy.placerAnswers(recorded, atPlacement, now, owner, allied);
     }
 
     /** The cannon's own controlling passenger, or the rider of the carriage carrying it. */

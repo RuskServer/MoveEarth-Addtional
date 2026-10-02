@@ -18,6 +18,21 @@ class ConfiguringReservationTest {
         assertFalse(ConfiguringReservationPolicy.live(start, start + ConfiguringReservationPolicy.LIMIT_OPEN_TICKS));
     }
 
+    @Test
+    void minutesLeftRoundUpAndReachZeroExactlyWhenTheReservationLapses() {
+        long start = 1_000L;
+        long minute = 20L * 60L;
+        assertEquals(60, ConfiguringReservationPolicy.minutesLeft(start, start));
+        assertEquals(59, ConfiguringReservationPolicy.minutesLeft(start, start + minute));
+        // Any part of a minute left still reads as a minute, so "0" never shows while it holds.
+        assertEquals(1, ConfiguringReservationPolicy.minutesLeft(start,
+                start + ConfiguringReservationPolicy.LIMIT_OPEN_TICKS - 1));
+        assertEquals(0, ConfiguringReservationPolicy.minutesLeft(start,
+                start + ConfiguringReservationPolicy.LIMIT_OPEN_TICKS));
+        assertEquals(0, ConfiguringReservationPolicy.minutesLeft(start,
+                start + 10 * ConfiguringReservationPolicy.LIMIT_OPEN_TICKS));
+    }
+
     private static final UUID NATION = UUID.randomUUID();
     private static final String OVERWORLD = "minecraft:overworld";
 

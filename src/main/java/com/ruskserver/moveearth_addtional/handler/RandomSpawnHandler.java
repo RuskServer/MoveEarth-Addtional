@@ -122,12 +122,13 @@ public final class RandomSpawnHandler {
         for (int[] offset : offsets) {
             int x = baseX + offset[0];
             int z = baseZ + offset[1];
-            BlockPos safe = findSafeSurface(level, chunk, x, z);
-            if (safe == null || !level.getWorldBorder().isWithinBounds(safe)
-                    || !level.canSeeSky(safe)) continue;
-            if (!insideTerrainFootprint(safe)) continue;
-            double distance = horizontalDistanceSqr(safe, center);
+            // Column-only checks first: the surface search below reads blocks and structures.
+            BlockPos column = new BlockPos(x, center.getY(), z);
+            if (!level.getWorldBorder().isWithinBounds(column) || !insideTerrainFootprint(column)) continue;
+            double distance = horizontalDistanceSqr(column, center);
             if (distance < square(minimum) || distance > square(maximum)) continue;
+            BlockPos safe = findSafeSurface(level, chunk, x, z);
+            if (safe == null || !level.canSeeSky(safe)) continue;
             if (pool.hasNearby(safe, SPAWN_POOL_SPACING_SQR)) continue;
             if (!isAllowedTerritory(level, safe, null)) continue;
             pool.remember(safe, RandomSpawnSavedData.Source.PASSIVE, level.getGameTime());
@@ -829,8 +830,39 @@ public final class RandomSpawnHandler {
         int motionBlockingY = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, localX, localZ) + 1;
         int worldSurfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, localX, localZ) + 1;
         BlockPos result = findSafeNear(level, x, z, motionBlockingY);
-        if (result != null || worldSurfaceY == motionBlockingY) return result;
-        return findSafeNear(level, x, z, worldSurfaceY);
+        if (result == null && worldSurfaceY != motionBlockingY) result = findSafeNear(level, x, z, worldSurfaceY);
+        return result == null || onStructure(level, chunk, result) ? null : result;
+    }
+
+    /**
+     * Whether a spot stands on or inside a generated structure. The heightmap's top
+     * block is a building's roof wherever one stands, so a player could arrive on
+     * a ruined tower with no way down but the fall, or inside a Warehouse; such
+     * columns are treated as having no safe surface. Both the feet and the block
+     * underfoot are checked, since a roof's top layer is the last row inside the
+     * building's piece and the feet stand just above it.
+     *
+     * <p>Never loads a chunk: this also runs while chunks load, and a structure's
+     * start can sit several chunks away. Only the column's own chunk references
+     * are read, and a start chunk that is not loaded yet counts as covered, so an
+     * unknown spot is passed over rather than risked.
+     */
+    private static boolean onStructure(ServerLevel level, LevelChunk chunk, BlockPos feet) {
+        var references = chunk.getAllReferences();
+        if (references.isEmpty()) return false;
+        BlockPos below = feet.below();
+        var structures = level.structureManager();
+        for (var entry : references.entrySet()) {
+            for (long packed : entry.getValue()) {
+                LevelChunk startChunk = level.getChunkSource().getChunkNow(
+                        ChunkPos.getX(packed), ChunkPos.getZ(packed));
+                if (startChunk == null) return true;
+                var start = startChunk.getStartForStructure(entry.getKey());
+                if (start != null && start.isValid() && (structures.structureHasPieceAt(feet, start)
+                        || structures.structureHasPieceAt(below, start))) return true;
+            }
+        }
+        return false;
     }
 
     static List<BlockPos> mappingSurfaces(ServerLevel level, LevelChunk chunk) {

@@ -41,4 +41,12 @@ class SentryTurretRulesTest {
         assertFalse(SentryTurretRules.gunAllowed(true, 8, 5.0F, false, MAX_DAMAGE));   // pellet shotgun
         assertFalse(SentryTurretRules.gunAllowed(true, 1, 10.0F, true, MAX_DAMAGE));   // M320
     }
+
+    @Test
+    void ammoModsAndOtherHitChangingAttachmentsAreCaught() {
+        assertTrue(SentryTurretRules.attachmentChangesHits(java.util.List.of("weight", "ads", "damage")));   // HP
+        assertTrue(SentryTurretRules.attachmentChangesHits(java.util.List.of("explosion", "rpm")));          // HE
+        assertTrue(SentryTurretRules.attachmentChangesHits(java.util.List.of("ignite")));                    // incendiary
+        assertFalse(SentryTurretRules.attachmentChangesHits(java.util.List.of("weight", "ads", "recoil")));  // a scope
+    }
 }

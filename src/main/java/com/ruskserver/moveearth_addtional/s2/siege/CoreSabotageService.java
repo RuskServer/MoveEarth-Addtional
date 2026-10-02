@@ -188,7 +188,7 @@ public final class CoreSabotageService {
                         player.getMainHandItem().is(ModItems.WELDING_TOOL.get()),
                         player.distanceToSqr(core.pos().getCenter()) <= 16D,
                         offhand.is(Items.TNT) ? offhand.getCount() : 0),
-                !friendly && open(player.serverLevel()) && validCore(player, core), charge);
+                !friendly && open(player.serverLevel()) && validCore(player, core, false), charge);
     }
 
     /** Whether a charge is close enough that defenders without a welder still need guidance. */
@@ -217,10 +217,19 @@ public final class CoreSabotageService {
     }
 
     private static boolean validCore(ServerPlayer player, TerritorySavedData.CoreRecord core) {
+        return validCore(player, core, true);
+    }
+
+    /**
+     * @param promptConsent whether an attack still needing war consent opens the consent prompt; false for
+     *                      the crosshair prompt, which only looks and must not pop a modal every few seconds
+     */
+    private static boolean validCore(ServerPlayer player, TerritorySavedData.CoreRecord core, boolean promptConsent) {
         return player.serverLevel().dimension().location().equals(core.dimension())
                 && core.state() == TerritorySavedData.CoreState.EXPOSED && core.health() > 0
                 && !friendly(player, core)
-                && !SiegeService.peaceTruceBlocks(player, player.serverLevel(), core.pos())
+                && !(promptConsent ? SiegeService.peaceTruceBlocks(player, player.serverLevel(), core.pos())
+                : SiegeService.peaceTruceBlocksQuietly(player, player.serverLevel(), core.pos()))
                 && !OfflineDefenseService.settlementProtected(player.serverLevel(), core.pos());
     }
 

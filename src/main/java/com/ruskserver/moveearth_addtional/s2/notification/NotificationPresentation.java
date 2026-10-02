@@ -42,6 +42,12 @@ public record NotificationPresentation(String title, String description,
                 add(fields, "破壊したプレイヤー", arg(args, 0, "不明"));
                 add(fields, "破壊数", arg(args, 1, "1"));
             }
+            case VEHICLE_ATTACKED -> {
+                add(fields, "攻撃側", arg(args, 0, "不明"));
+                String current = arg(args, 1, "?");
+                String maximum = arg(args, 2, "?");
+                add(fields, "車両コア耐久値", current + " / " + maximum + healthPercent(current, maximum));
+            }
             case TERRITORY_OCCUPIED -> {
                 add(fields, "旧所有国", arg(args, 0, "不明"));
                 add(fields, "占領国", arg(args, 1, nationName));
@@ -67,7 +73,7 @@ public record NotificationPresentation(String title, String description,
             case SIEGE_STARTED, CORE_DAMAGED, CORE_FALLEN, TERRITORY_LOST -> NotificationSeverity.URGENT;
             case SIEGE_INITIAL_STARTED, TERRITORY_EXPOSED, UPKEEP_WARNING,
                     COUNTEROFFENSIVE_STARTED, COUNTEROFFENSIVE_FAILED, RECOVERY_STARTED,
-                    DISPATCH_ACTIVATED, TERRITORY_INTRUSION -> NotificationSeverity.WARNING;
+                    DISPATCH_ACTIVATED, TERRITORY_INTRUSION, VEHICLE_ATTACKED -> NotificationSeverity.WARNING;
             default -> NotificationSeverity.NORMAL;
         };
     }
@@ -105,6 +111,7 @@ public record NotificationPresentation(String title, String description,
             case RIVAL_UPDATED -> "宿敵設定が更新されました";
             case DIGEST -> "国家通知のまとめ";
             case TERRITORY_INTRUSION -> "領土内のブロックが壊されています";
+            case VEHICLE_ATTACKED -> "車両が攻撃されています";
             case SYSTEM -> "MoveEarthからのお知らせ";
         };
     }

@@ -1,6 +1,13 @@
 package com.ruskserver.moveearth_addtional.config;
 
+import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
 
 /** Non-synced startup settings for the dedicated-server JDA bot. */
 public final class DiscordBotConfig {
@@ -46,4 +53,37 @@ public final class DiscordBotConfig {
     public static int outboxRetentionHours() { return OUTBOX_RETENTION_HOURS.getAsInt(); }
     public static int deduplicationWindowSeconds() { return DEDUPLICATION_WINDOW_SECONDS.getAsInt(); }
     public static int auditLogEntries() { return AUDIT_LOG_ENTRIES.getAsInt(); }
+
+    /**
+     * Keeps the file holding the bot token readable by the server's own user only
+     * (600), as the operations guide promises. Runs on every load and reload,
+     * since a rewritten file comes back with the default permissions.
+     */
+    public static void restrictOwnerAccess(ModConfigEvent event) {
+        if (event.getConfig().getSpec() != SPEC) return;
+        Path file = event.getConfig().getFullPath();
+        if (file == null || !Files.exists(file)) return;
+        ownerOnly(file);
+        // FML keeps a .bak copy when it corrects a broken file; it holds the token too.
+        Path directory = file.getParent();
+        String name = file.getFileName().toString();
+        String stem = name.endsWith(".toml") ? name.substring(0, name.length() - ".toml".length()) : name;
+        if (directory == null) return;
+        try (var backups = Files.newDirectoryStream(directory, stem + "*.bak")) {
+            for (Path backup : backups) ownerOnly(backup);
+        } catch (Exception exception) {
+            Moveearth_addtional.LOGGER.warn("Could not check {} for config backups: {}", directory, exception.getMessage());
+        }
+    }
+
+    private static void ownerOnly(Path file) {
+        try {
+            Files.setPosixFilePermissions(file, EnumSet.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        } catch (UnsupportedOperationException ignored) {
+            // Windows and some mounted filesystems do not expose POSIX permissions.
+        } catch (Exception exception) {
+            Moveearth_addtional.LOGGER.warn("Could not restrict permissions on {}: {}", file, exception.getMessage());
+        }
+    }
 }

@@ -95,12 +95,11 @@ public final class TerritoryCoreBlock extends Block implements EntityBlock {
         TerritorySavedData.CoreRecord record = TerritorySavedData.get(serverPlayer.server)
                 .core(level.dimension().location(), pos).orElse(null);
         if (record != null) core.bind(record);
-        PacketDistributor.sendToPlayer(serverPlayer,
-                new S2C_OpenTerritoryCoreScreenPacket(pos,
-                        record == null ? core.radius() : record.radius(),
-                        record == null ? core.coreState() : record.state(),
-                        record == null ? core.health() : record.health(),
-                        record == null ? core.maximumHealth() : record.maximumHealth()));
+        PacketDistributor.sendToPlayer(serverPlayer, record != null
+                ? S2C_OpenTerritoryCoreScreenPacket.of(serverPlayer.server, record)
+                : new S2C_OpenTerritoryCoreScreenPacket(pos, core.radius(), core.coreState(),
+                        core.health(), core.maximumHealth(),
+                        com.ruskserver.moveearth_addtional.s2.territory.ConfiguringReservationPolicy.NO_RESERVATION));
         return InteractionResult.SUCCESS;
     }
 }

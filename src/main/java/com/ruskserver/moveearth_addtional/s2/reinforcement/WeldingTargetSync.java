@@ -59,7 +59,15 @@ public final class WeldingTargetSync {
         BlockPos target = target(player);
         if (target == null) return S2C_WeldingTargetPacket.NONE;
         return new S2C_WeldingTargetPacket(target, welding && ReinforcementService.reinforceableBy(player, target),
-                CoreSabotageService.prompt(player, target));
+                CoreSabotageService.prompt(player, target), welding ? reservationMinutes(player, target)
+                : com.ruskserver.moveearth_addtional.s2.territory.ConfiguringReservationPolicy.NO_RESERVATION);
+    }
+
+    private static int reservationMinutes(ServerPlayer player, BlockPos target) {
+        var nationId = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(player.server)
+                .nationIdFor(player.getUUID()).orElse(null);
+        return com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData.get(player.server)
+                .reservationMinutesLeft(player.server, nationId, player.level().dimension().location(), target);
     }
 
     private static BlockPos target(ServerPlayer player) {

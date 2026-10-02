@@ -1,15 +1,16 @@
 package com.ruskserver.moveearth_addtional.compat.vehicle;
 
-import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import net.minecraft.core.BlockPos;
-
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 /** Runtime assembly snapshot, accessible from Sable's transformed helper class.
  * Must stay outside the reserved mixin package and expose public accessors.
+ *
+ * @param lifted          the (possibly filtered) block set handed on to Sable; matched by identity
+ * @param origin          where the assembly was started
+ * @param binding         vehicle the new body is bound to
+ * @param liftedReinforced reinforced blocks in {@code lifted}
+ * @param fromWorld       lifted from the plain world rather than split off another body
+ * @param request         Simulated request behind it, or null
  */
-public record AssemblyState(BlockPos anchor, List<BlockPos> positions,
-                            Map<BlockPos, ReinforcementEntry> reinforcements,
-                            UUID vehicleId, boolean containsCore) { }
+public record AssemblyState(Iterable<BlockPos> lifted, BlockPos origin, VehicleAssemblyPolicy.Binding binding,
+                            int liftedReinforced, boolean fromWorld, AssemblyRequests.Request request) { }

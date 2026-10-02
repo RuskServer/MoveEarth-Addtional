@@ -31,13 +31,23 @@ import java.util.UUID;
 public final class SableVoidFailsafe {
     private static final int TERRAIN_SAMPLE_SPACING = 16;
     private static final int MAX_AXIS_SAMPLES = 65;
+    /** A body below the floor keeps falling slowly enough that a quarter-second check still catches it. */
+    private static final int CHECK_INTERVAL_TICKS = 5;
+    /** Bodies whose rescue already failed once, so a broken body is reported once, not every check. */
+    private static final Set<UUID> FAILED = new HashSet<>();
 
     private SableVoidFailsafe() { }
 
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
-        if (!S2TerritoryConfig.sableVoidFailsafeEnabled()) return;
+        if (!S2TerritoryConfig.sableVoidFailsafeEnabled()
+                || event.getServer().getTickCount() % CHECK_INTERVAL_TICKS != 0) return;
         for (ServerLevel level : event.getServer().getAllLevels()) rescueInvalidBodies(level);
+    }
+
+    @SubscribeEvent
+    public static void onServerStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
+        FAILED.clear();
     }
 
     private static void rescueInvalidBodies(ServerLevel level) {
@@ -49,7 +59,17 @@ public final class SableVoidFailsafe {
             BoundingBox3dc bounds = body.boundingBox();
             if (!SableVoidFailsafePolicy.shouldRescue(bounds.minY(), level.getMinBuildHeight(),
                     S2TerritoryConfig.sableVoidTriggerDepth())) continue;
-            rescueConnectedChain(level, container, body, handled);
+            // This runs exactly when Sable is in a bad state; a failure here must cost
+            // this one rescue, not the server tick (the event bus rethrows).
+            try {
+                rescueConnectedChain(level, container, body, handled);
+            } catch (RuntimeException | LinkageError exception) {
+                handled.add(body.getUniqueId());
+                if (FAILED.add(body.getUniqueId())) {
+                    Moveearth_addtional.LOGGER.error("Could not rescue Sable body {} from below the world in {}",
+                            body.getUniqueId(), level.dimension().location(), exception);
+                }
+            }
         }
     }
 

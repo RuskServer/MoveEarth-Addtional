@@ -40,6 +40,7 @@ import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpResultPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpTeamPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpZonePacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_WarehouseZonesPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_LiveStreamersPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_RegionSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementDeltaPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementSnapshotPacket;
@@ -104,6 +105,7 @@ public final class OtherPayloads {
         registrar.playToClient(S2C_PvpHudPacket.TYPE, S2C_PvpHudPacket.STREAM_CODEC, S2C_PvpHudPacket::handle);
         registrar.playToClient(S2C_PvpZonePacket.TYPE, S2C_PvpZonePacket.STREAM_CODEC, S2C_PvpZonePacket::handle);
         registrar.playToClient(S2C_WarehouseZonesPacket.TYPE, S2C_WarehouseZonesPacket.STREAM_CODEC, S2C_WarehouseZonesPacket::handle);
+        registrar.playToClient(S2C_LiveStreamersPacket.TYPE, S2C_LiveStreamersPacket.STREAM_CODEC, S2C_LiveStreamersPacket::handle);
         registrar.playToClient(S2C_PvpTeamPacket.TYPE, S2C_PvpTeamPacket.STREAM_CODEC, S2C_PvpTeamPacket::handle);
         registrar.playToClient(S2C_PvpKillcamPacket.TYPE, S2C_PvpKillcamPacket.STREAM_CODEC, S2C_PvpKillcamPacket::handle);
         registrar.playToClient(S2C_PvpResultPacket.TYPE, S2C_PvpResultPacket.STREAM_CODEC, S2C_PvpResultPacket::handle);

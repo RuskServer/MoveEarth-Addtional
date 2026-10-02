@@ -148,6 +148,10 @@ public final class WarnauticsReinforcementCompat {
         var vehicles = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(level.getServer());
         // Gate answers and Siege attempts are shared per core across the whole blast list.
         SiegeService.AttackBatch siege = new SiegeService.AttackBatch(attribution, level);
+        // Own and allied bombs must not chip a nation's (or its vehicles') reinforcement unseen, as with CBC.
+        var friendlyFire = attribution == null ? null
+                : new com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEvents.FriendlyFire(
+                attribution, level);
 
         Iterator<?> iterator = rawToBlow.iterator();
         while (iterator.hasNext()) {
@@ -198,6 +202,11 @@ public final class WarnauticsReinforcementCompat {
                 changed.add(pos.immutable());
                 if (com.ruskserver.moveearth_addtional.s2.siege.StorageWreckageService
                         .wreckStorage(level, pos, attribution)) iterator.remove();
+                continue;
+            }
+            if (friendlyFire != null && friendlyFire.friendly(pos)) {
+                iterator.remove();
+                protectedStates.put(pos.immutable(), level.getBlockState(pos));
                 continue;
             }
             long chunkKey = net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);

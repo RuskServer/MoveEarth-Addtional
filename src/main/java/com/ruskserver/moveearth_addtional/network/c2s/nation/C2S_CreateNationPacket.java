@@ -62,9 +62,8 @@ public record C2S_CreateNationPacket(int requestId, long expectedRevision, Strin
                 com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.notifyFoundingBound(player);
             }
             if (success && result.core() != null) {
-                PacketDistributor.sendToPlayer(player, new S2C_OpenTerritoryCoreScreenPacket(
-                        result.core().pos(), result.core().radius(), result.core().state(),
-                        result.core().health(), result.core().maximumHealth()));
+                PacketDistributor.sendToPlayer(player,
+                        S2C_OpenTerritoryCoreScreenPacket.of(player.server, result.core()));
             }
             PacketDistributor.sendToPlayer(player, new S2C_S2ActionResultPacket(
                     requestId, success, result.revision(), messageKey));

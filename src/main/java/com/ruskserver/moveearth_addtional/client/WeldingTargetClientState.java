@@ -31,6 +31,12 @@ public final class WeldingTargetClientState {
         return matches(target) ? latest.reinforceable() : null;
     }
 
+    /** Minutes left on the own configuring reservation at this block, 0 once lapsed, -1 where none applies. */
+    public static int reservationMinutes(BlockPos target) {
+        return matches(target) ? latest.reservationMinutes()
+                : com.ruskserver.moveearth_addtional.s2.territory.ConfiguringReservationPolicy.NO_RESERVATION;
+    }
+
     private static boolean matches(BlockPos target) {
         return target != null && target.equals(latest.target());
     }

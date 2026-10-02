@@ -15,14 +15,17 @@ public final class TerrainConfig {
 
     /**
      * Prefers a per-world copy so a server can hold several worlds, and falls
-     * back to the shared config directory.
+     * back to the shared config directory. A per-world directory with no tiles
+     * in it, such as one left empty, does not hide tiles in the shared one.
      */
     public static Path tileDirectory(MinecraftServer server) {
         Path perWorld = perWorldDirectory(server);
-        if (Files.isDirectory(perWorld)) {
-            return perWorld;
-        }
-        return sharedDirectory();
+        Path shared = sharedDirectory();
+        if (TerrainTileStore.holdsTiles(perWorld)) return perWorld;
+        if (TerrainTileStore.holdsTiles(shared)) return shared;
+        // Neither has tiles: name the directory the operator set up, so the
+        // startup error describes the place they were looking at.
+        return Files.isDirectory(perWorld) ? perWorld : shared;
     }
 
     /** The per-world location, whether or not anything is in it. */

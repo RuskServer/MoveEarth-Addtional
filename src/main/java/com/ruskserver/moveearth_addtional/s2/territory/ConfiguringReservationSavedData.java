@@ -46,14 +46,21 @@ public final class ConfiguringReservationSavedData extends SavedData {
     }
 
     boolean liveAt(TerritorySavedData.CoreRecord core, long now) {
+        return ConfiguringReservationPolicy.live(startAt(core, now), now);
+    }
+
+    /** Minutes of open time left on the core's configuring reservation; 0 once it has lapsed. */
+    public static int minutesLeft(MinecraftServer server, TerritorySavedData.CoreRecord core) {
+        long now = OpenTimeService.now(server);
+        return ConfiguringReservationPolicy.minutesLeft(get(server).startAt(core, now), now);
+    }
+
+    private long startAt(TerritorySavedData.CoreRecord core, long now) {
         Long start = since.get(core.id());
-        if (start == null) {
-            // Not swept yet. A capital is free until then; an outpost already answers for
-            // any earlier claim on its land, so a re-placed one is not live for those seconds.
-            if (core.type() != TerritorySavedData.CoreType.OUTPOST) return true;
-            start = outpostStart(core, now, now);
-        }
-        return ConfiguringReservationPolicy.live(start, now);
+        if (start != null) return start;
+        // Not swept yet. A capital is free until then; an outpost already answers for
+        // any earlier claim on its land, so a re-placed one is not live for those seconds.
+        return core.type() != TerritorySavedData.CoreType.OUTPOST ? now : outpostStart(core, now, now);
     }
 
     @SubscribeEvent

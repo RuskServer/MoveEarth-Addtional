@@ -32,4 +32,19 @@ public final class SentryTurretRules {
                                      boolean explosive, double maxDamage) {
         return semiAutoOnly && projectilesPerShot <= 1 && !explosive && damage <= maxDamage;
     }
+
+    /** Attachment modifiers that change what a hit does; ammo mods (HP, HE, incendiary, slug, FMJ) carry these. */
+    private static final java.util.Set<String> HIT_MODIFIERS = java.util.Set.of(
+            "damage", "explosion", "ignite", "head_shot", "armor_ignore", "pierce", "rpm");
+
+    /**
+     * Whether an attachment with these modifier keys changes the gun's hits. The gun limit is judged on
+     * the base data, so a sidearm loaded with hollow-point or incendiary ammo would otherwise pass it.
+     */
+    public static boolean attachmentChangesHits(java.util.Collection<String> modifierKeys) {
+        for (String key : modifierKeys) {
+            if (HIT_MODIFIERS.contains(key)) return true;
+        }
+        return false;
+    }
 }

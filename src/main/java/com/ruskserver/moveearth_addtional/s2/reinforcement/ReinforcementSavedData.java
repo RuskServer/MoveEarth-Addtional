@@ -91,6 +91,35 @@ public final class ReinforcementSavedData extends SavedData {
         if (until > now) recordDamage(destination, now, until - now);
     }
 
+    /**
+     * Moves reinforcement with blocks Sable relocated (assembly, disassembly, merge). {@code moves} maps each
+     * moved source block to its destination; the entries are written to {@code target} (the destination
+     * level's data, usually this one). All sources are read and cleared before any destination is written,
+     * so overlapping source and destination sets never lose an entry. Battle damage history is copied for
+     * every moved block, reinforced or not. Returns the changed positions (sources and destinations).
+     */
+    public List<BlockPos> transfer(Map<BlockPos, BlockPos> moves, ReinforcementSavedData target, long now) {
+        if (moves.isEmpty()) return List.of();
+        var delays = com.ruskserver.moveearth_addtional.compat.vehicle.BlockRelocationPlan.<BlockPos, Long>of(
+                moves.keySet(), moves::get, source -> {
+                    long until = repairBlockedUntil(source, now);
+                    return until > now ? until : null;
+                });
+        delays.apply(source -> { }, (destination, until) -> target.recordDamage(destination, now, until - now));
+        var plan = com.ruskserver.moveearth_addtional.compat.vehicle.BlockRelocationPlan.<BlockPos,
+                ReinforcementEntry>of(moves.keySet(), moves::get, entries::get);
+        if (plan.isEmpty()) return List.of();
+        List<BlockPos> changed = new ArrayList<>(plan.moves().size() * 2);
+        plan.apply(source -> {
+            remove(source);
+            changed.add(source);
+        }, (destination, entry) -> {
+            target.put(destination, entry);
+            changed.add(destination.immutable());
+        });
+        return List.copyOf(changed);
+    }
+
     public Optional<ReinforcementEntry> get(BlockPos pos) {
         return Optional.ofNullable(entries.get(pos));
     }

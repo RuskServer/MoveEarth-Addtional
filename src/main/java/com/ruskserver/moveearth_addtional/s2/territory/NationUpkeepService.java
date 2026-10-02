@@ -71,9 +71,7 @@ public final class NationUpkeepService {
         long remaining = intoNation ? newAccountTransfers.remaining(player, System.currentTimeMillis()) : Long.MAX_VALUE;
         if (amount > remaining) {
             player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning(
-                    "プレイ時間が短いアカウントの国家金庫への入金は、送金と合わせて1日合計 "
-                            + com.ruskserver.moveearth_addtional.config.EconomyGuardConfig.newAccountDailyTransfer()
-                            + " TC までです（今日の残り " + remaining + " TC）"));
+                    com.ruskserver.moveearth_addtional.economy.NewAccountTransferSavedData.limitMessage(player, remaining)));
             return false;
         }
         Account nation = Account.nation(nationId);

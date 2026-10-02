@@ -121,22 +121,21 @@ public class CompatEventHandler {
     @SubscribeEvent
     public static void onPlayerTick(net.neoforged.neoforge.event.tick.PlayerTickEvent.Post event) {
         Player player = event.getEntity();
+        // Runs for every player every tick: the cheap item check goes first, so the reflective
+        // downed check and the prisoner lookup only run for someone actually holding TaCZ gear.
+        var mainHandStack = player.getMainHandItem();
+        if (mainHandStack.isEmpty()
+                || !mainHandStack.getItem().builtInRegistryHolder().key().location().getNamespace().equals("tacz")) {
+            return;
+        }
         boolean movementRestricted = player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
                 && com.ruskserver.moveearth_addtional.s2.siege.PrisonerService.isMovementRestricted(serverPlayer);
-        if (isPlayerDown(player) || movementRestricted) {
-            var mainHandStack = player.getMainHandItem();
-            if (!mainHandStack.isEmpty() && mainHandStack.getItem().builtInRegistryHolder().key().location().getNamespace().equals("tacz")) {
-                int targetSlot = -1;
-                for (int i = 0; i < 9; i++) {
-                    var stack = player.getInventory().getItem(i);
-                    if (stack.isEmpty() || !stack.getItem().builtInRegistryHolder().key().location().getNamespace().equals("tacz")) {
-                        targetSlot = i;
-                        break;
-                    }
-                }
-                if (targetSlot != -1) {
-                    player.getInventory().selected = targetSlot;
-                }
+        if (!movementRestricted && !isPlayerDown(player)) return;
+        for (int i = 0; i < 9; i++) {
+            var stack = player.getInventory().getItem(i);
+            if (stack.isEmpty() || !stack.getItem().builtInRegistryHolder().key().location().getNamespace().equals("tacz")) {
+                player.getInventory().selected = i;
+                break;
             }
         }
     }

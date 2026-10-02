@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -23,6 +24,15 @@ class TileSearchTest {
         Path directory = Files.createDirectories(parent.resolve(name));
         Files.writeString(directory.resolve("tile.json"), "{}");
         return directory;
+    }
+
+    @Test
+    void anEmptyDirectoryHoldsNoTiles(@TempDir Path root) throws IOException {
+        Path empty = Files.createDirectories(root.resolve("moveearth_terrain"));
+        assertFalse(TerrainTileStore.holdsTiles(empty));
+        assertFalse(TerrainTileStore.holdsTiles(root.resolve("missing")));
+        tile(root, "tile_0_0");
+        assertTrue(TerrainTileStore.holdsTiles(root));
     }
 
     @Test

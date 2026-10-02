@@ -83,7 +83,8 @@ public class ClientPacketHandler {
 
     public static void handleOpenTerritoryCore(S2C_OpenTerritoryCoreScreenPacket packet) {
         Minecraft.getInstance().setScreen(new TerritoryCoreWizardScreen(
-                packet.pos(), packet.radius(), packet.coreState(), packet.health(), packet.maximumHealth()));
+                packet.pos(), packet.radius(), packet.coreState(), packet.health(), packet.maximumHealth(),
+                packet.reservationMinutes()));
     }
 
     public static void handleWeldingTarget(S2C_WeldingTargetPacket packet) {
@@ -224,6 +225,11 @@ public class ClientPacketHandler {
 
     public static void handlePvpZone(S2C_PvpZonePacket packet) {
         PvpHardpointClientState.update(packet);
+    }
+
+    public static void handleLiveStreamers(
+            com.ruskserver.moveearth_addtional.network.s2c.other.S2C_LiveStreamersPacket packet) {
+        LiveNameTagClient.update(packet);
     }
 
     public static void handleWarehouseZones(

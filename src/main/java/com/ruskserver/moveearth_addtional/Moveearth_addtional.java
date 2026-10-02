@@ -38,6 +38,11 @@ public class Moveearth_addtional {
                         FMLPaths.GAMEDIR.get().resolve("defaultconfigs"))
                 .forEach(line -> LOGGER.info("[MoveEarth] Config layout: {}", line));
         if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
+            // Before registering: a startup config is loaded on the spot.
+            modEventBus.addListener(net.neoforged.fml.event.config.ModConfigEvent.Loading.class,
+                    DiscordBotConfig::restrictOwnerAccess);
+            modEventBus.addListener(net.neoforged.fml.event.config.ModConfigEvent.Reloading.class,
+                    DiscordBotConfig::restrictOwnerAccess);
             modContainer.registerConfig(
                     ModConfig.Type.STARTUP,
                     DiscordBotConfig.SPEC,

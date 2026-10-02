@@ -57,7 +57,11 @@ public final class SiegeService {
         if (attribution == null || (attribution.nationId() == null && attribution.actorId() == null)) {
             return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
         }
-        return recordAttackOn(attribution, level, target, effectiveDamage, controllingCore(level, target));
+        TerritorySavedData.CoreRecord core = controllingCore(level, target);
+        // Vehicle armour sits in plot space with no territory: no Siege, but its owner hears of the hit.
+        if (core == null && effectiveDamage) com.ruskserver.moveearth_addtional.s2.vehicle.VehicleHitNotifier
+                .hit(level, target, attribution);
+        return recordAttackOn(attribution, level, target, effectiveDamage, core);
     }
 
     /** {@link #recordAttack(AttackAttribution, ServerLevel, BlockPos, boolean)} with the target's controlling core resolved. */
@@ -90,6 +94,12 @@ public final class SiegeService {
                     .get(level.getServer()).protectionWaived(recovery.id())) {
                 return new SiegeSavedData.AttemptResult(
                         SiegeSavedData.AttemptStatus.RECOVERY_PROTECTED, null);
+            }
+            // No Siege record on a nation nobody declared hostility to until the attacker confirmed it.
+            if (WarConsentService.required(level.getServer(), attackerNation, false, attribution.actorId(),
+                    core.nationId())) {
+                WarConsentService.refuse(level.getServer(), attribution.actorId(), core.nationId());
+                return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
             }
         }
 
@@ -177,15 +187,31 @@ public final class SiegeService {
         return attackBlockReason(attacker, level, target) != null;
     }
 
+    /**
+     * The same answer as {@link #peaceTruceBlocks(ServerPlayer, ServerLevel, BlockPos)} without its one side
+     * effect: an attack that still needs war consent does not open the consent prompt. For read-only checks,
+     * such as what to show a player merely looking at a core.
+     */
+    public static boolean peaceTruceBlocksQuietly(ServerPlayer attacker, ServerLevel level, BlockPos target) {
+        return attackBlockReason(attacker, level, target, false) != null;
+    }
+
     /** Why this player may not damage the target at all, or null when nothing blocks the attack. */
     public static Component attackBlockReason(ServerPlayer attacker, ServerLevel level, BlockPos target) {
+        return attackBlockReason(attacker, level, target, true);
+    }
+
+    private static Component attackBlockReason(ServerPlayer attacker, ServerLevel level, BlockPos target,
+                                               boolean promptConsent) {
         if (attacker == null) return null;
         // Deployers and turrets act as fake players: they may not wear down defences.
         if (com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(attacker) == null) {
             return Component.translatable("message.moveearth_addtional.siege.machine_refused");
         }
         UUID attackerNation = SiegeAttributionService.nationForTarget(attacker, level, target);
-        return attackBlockReason(new AttackAttribution(attackerNation, attacker.getUUID(), "player"), level, target);
+        AttackAttribution attribution = new AttackAttribution(attackerNation, attacker.getUUID(), "player");
+        if (attribution.nationId() == null && attribution.actorId() == null) return null;
+        return attackBlockReasonOn(attribution, level, target, controllingCore(level, target), promptConsent);
     }
 
     /**
@@ -205,12 +231,53 @@ public final class SiegeService {
      */
     public static Component attackBlockReason(AttackAttribution attribution, ServerLevel level, BlockPos target) {
         if (attribution == null || attribution.nationId() == null && attribution.actorId() == null) return null;
-        return attackBlockReasonOn(attribution, level, target, controllingCore(level, target));
+        return attackBlockReasonOn(attribution, level, target, controllingCore(level, target), true);
     }
 
     private static Component attackBlockReasonOn(AttackAttribution attribution, ServerLevel level, BlockPos target,
-                                                 TerritorySavedData.CoreRecord core) {
+                                                 TerritorySavedData.CoreRecord core, boolean promptConsent) {
+        Component standing = standingBlockReasonOn(attribution, level, target, core);
+        if (standing != null) return standing;
+        UUID consentNation = consentDefenderOn(attribution, level, target, core);
+        if (consentNation == null || !protectedTarget(level, target)) return null;
+        return promptConsent ? WarConsentService.refuse(level.getServer(), attribution.actorId(), consentNation)
+                : WarConsentService.reason(level.getServer(), attribution.actorId(), consentNation);
+    }
+
+    /**
+     * The defender nation whose first attack the actor still has to confirm ({@link WarConsentPolicy}), or null.
+     * Only nation attacks on a territory core's land can open a nation Siege, so only they are asked about.
+     */
+    private static UUID consentDefenderOn(AttackAttribution attribution, ServerLevel level, BlockPos target,
+                                          TerritorySavedData.CoreRecord core) {
         if (core == null) return null;
+        UUID attackerNation = resolvedNation(attribution, level, target, core);
+        if (attackerNation == null) return null;
+        SiegeAttackerPolicy.Identity identity = SiegeAttackerPolicy.resolve(attackerNation, attribution.actorId(),
+                SiegeSavedData.get(level.getServer()).hasActiveIndividualAttack(attribution.actorId(), core.id()));
+        if (identity == null || identity.individual()) return null;
+        return WarConsentService.required(level.getServer(), attackerNation, false, attribution.actorId(),
+                core.nationId()) ? core.nationId() : null;
+    }
+
+    /**
+     * Targets whose damage records a Siege: reinforcement, territory cores and vehicle cores. Unreinforced
+     * blocks never open a Siege, so the consent gate leaves them to the ordinary territory rules.
+     */
+    private static boolean protectedTarget(ServerLevel level, BlockPos target) {
+        var dimension = level.dimension().location();
+        return com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData.get(level)
+                .get(target).isPresent()
+                || TerritorySavedData.get(level.getServer()).core(dimension, target).isPresent()
+                || com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(level.getServer())
+                .at(dimension, target).isPresent();
+    }
+
+    /** Truce, former-nation and failed-Siege gates; vehicles answer for their owning nation. */
+    private static Component standingBlockReasonOn(AttackAttribution attribution, ServerLevel level,
+                                                   BlockPos target, TerritorySavedData.CoreRecord core) {
+        if (core == null) return vehicleBlockReason(attribution, level, target,
+                com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.vehicleAt(level, target));
         MinecraftServer server = level.getServer();
         UUID attackerNation = resolvedNation(attribution, level, target, core);
         UUID defenderNation = core.nationId();
@@ -220,16 +287,7 @@ public final class SiegeService {
             return Component.translatable("message.moveearth_addtional.peace.truce_protected");
         }
         UUID formerNation = formerNationBinding(server, attribution, attackerNation, defenderNation);
-        if (formerNation != null) {
-            Component reason = Component.translatable(
-                    "message.moveearth_addtional.siege.former_nation_bound",
-                    NationSavedData.get(server).nation(formerNation).map(NationSavedData.Nation::name).orElse("?"),
-                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.duration(
-                            NationSavedData.get(server).formerNationBindingRemaining(attribution.actorId(),
-                                    com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server))));
-            notifyRefusal(server, attribution.actorId(), RefusalKind.FORMER_NATION, reason);
-            return reason;
-        }
+        if (formerNation != null) return formerNationReason(server, attribution, formerNation);
         // Same identity recordAttack would register, so the lock matches the Siege that failed.
         if (attribution.frozen() && attribution.contractId() != null && attackerNation == null) return null;
         SiegeAttackerPolicy.Identity identity = SiegeAttackerPolicy.resolve(attackerNation, attribution.actorId(),
@@ -244,6 +302,41 @@ public final class SiegeService {
             return reason;
         }
         return null;
+    }
+
+    /**
+     * Vehicle blocks live in plot space where no territory exists, so the vehicle's owner stands in for the
+     * territory's: a peace truce with it, its nation-wide rebuilding truce and a former-nation binding refuse
+     * the hit exactly as they would on its land. Failed-Siege lockouts belong to territory cores only.
+     */
+    private static Component vehicleBlockReason(AttackAttribution attribution, ServerLevel level, BlockPos target,
+                                                com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.VehicleRecord vehicle) {
+        if (vehicle == null) return null;
+        MinecraftServer server = level.getServer();
+        UUID defenderNation = vehicle.nationId();
+        UUID attackerNation = resolvedNation(attribution, level, target, null);
+        if (defenderNation.equals(attackerNation)) return null;
+        SiegeSavedData siegeData = SiegeSavedData.get(server);
+        if (attackerNation != null && siegeData.isPeaceTruceActive(attackerNation, defenderNation)) {
+            return Component.translatable("message.moveearth_addtional.vehicle.truce_protected");
+        }
+        if (com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.settlementTruceApplies(level, vehicle, target)) {
+            return Component.translatable("message.moveearth_addtional.vehicle.settlement_truce");
+        }
+        UUID formerNation = formerNationBinding(server, attribution, attackerNation, defenderNation);
+        return formerNation == null ? null : formerNationReason(server, attribution, formerNation);
+    }
+
+    private static Component formerNationReason(MinecraftServer server, AttackAttribution attribution,
+                                                UUID formerNation) {
+        Component reason = Component.translatable(
+                "message.moveearth_addtional.siege.former_nation_bound",
+                NationSavedData.get(server).nation(formerNation).map(NationSavedData.Nation::name).orElse("?"),
+                com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownService.duration(
+                        NationSavedData.get(server).formerNationBindingRemaining(attribution.actorId(),
+                                com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(server))));
+        notifyRefusal(server, attribution.actorId(), RefusalKind.FORMER_NATION, reason);
+        return reason;
     }
 
     /**
@@ -709,6 +802,9 @@ public final class SiegeService {
         private final ServerLevel level;
         private final boolean attributed;
         private final Map<UUID, Boolean> blockedByCore = new HashMap<>();
+        private final Map<UUID, Boolean> blockedByVehicle = new HashMap<>();
+        private final Map<UUID, java.util.Optional<UUID>> consentByCore = new HashMap<>();
+        private final java.util.Set<UUID> prompted = new java.util.HashSet<>();
         private final Map<UUID, CoreAttempts> attemptsByCore = new HashMap<>();
 
         public AttackBatch(AttackAttribution attribution, ServerLevel level) {
@@ -723,19 +819,35 @@ public final class SiegeService {
         public boolean truceBlocks(BlockPos target) {
             if (!attributed) return false;
             TerritorySavedData.CoreRecord core = controllingCore(level, target);
-            if (core == null) return false;
+            if (core == null) {
+                var vehicle = com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.vehicleAt(level, target);
+                if (vehicle == null) return false;
+                return blockedByVehicle.computeIfAbsent(vehicle.id(),
+                        ignored -> vehicleBlockReason(attribution, level, target, vehicle) != null);
+            }
             Boolean cached = blockedByCore.get(core.id());
-            if (cached != null) return cached;
-            boolean blocked = attackBlockReasonOn(attribution, level, target, core) != null;
-            blockedByCore.put(core.id(), blocked);
-            return blocked;
+            if (cached == null) {
+                cached = standingBlockReasonOn(attribution, level, target, core) != null;
+                blockedByCore.put(core.id(), cached);
+            }
+            if (cached) return true;
+            // The consent gate only covers targets whose damage records a Siege; decided once per core.
+            UUID consentNation = consentByCore.computeIfAbsent(core.id(), ignored -> java.util.Optional.ofNullable(
+                    consentDefenderOn(attribution, level, target, core))).orElse(null);
+            if (consentNation == null || !protectedTarget(level, target)) return false;
+            if (prompted.add(core.id())) WarConsentService.refuse(level.getServer(), attribution.actorId(), consentNation);
+            return true;
         }
 
         /** Same effect as {@link SiegeService#recordAttack(AttackAttribution, ServerLevel, BlockPos, boolean)}. */
         public SiegeSavedData.AttemptResult record(BlockPos target, boolean effectiveDamage) {
             if (!attributed) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
             TerritorySavedData.CoreRecord core = controllingCore(level, target);
-            if (core == null) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+            if (core == null) {
+                if (effectiveDamage) com.ruskserver.moveearth_addtional.s2.vehicle.VehicleHitNotifier
+                        .hit(level, target, attribution);
+                return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
+            }
             CoreAttempts attempts = attemptsByCore.computeIfAbsent(core.id(), ignored -> new CoreAttempts());
             if (SiegeBatchPolicy.repeats(attempts.attempted, attempts.effective, effectiveDamage)) {
                 return attempts.replay(level, effectiveDamage);
@@ -757,6 +869,7 @@ public final class SiegeService {
         /** Forgets every cached answer; call after anything changed a core's health or state. */
         public void coreStateChanged() {
             blockedByCore.clear();
+            consentByCore.clear();
             attemptsByCore.clear();
         }
 

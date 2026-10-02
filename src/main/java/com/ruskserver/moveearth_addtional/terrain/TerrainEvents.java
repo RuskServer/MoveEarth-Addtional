@@ -125,8 +125,8 @@ public final class TerrainEvents {
             Path perWorld = TerrainConfig.perWorldDirectory(server);
             Path shared = TerrainConfig.sharedDirectory();
             throw new IllegalStateException("Failed to load terrain tiles from " + root.toAbsolutePath()
-                    + ". They are read from " + perWorld.toAbsolutePath() + " when that exists, and"
-                    + " otherwise from " + shared.toAbsolutePath() + "."
+                    + ". They are read from " + perWorld.toAbsolutePath() + " when it holds tiles"
+                    + " (or cannot be read), and otherwise from " + shared.toAbsolutePath() + "."
                     + " Unpack the tile archive into one of those so that a tile_0_0 directory"
                     + " holding tile.json ends up inside it, or disable the custom terrain.", exception);
         }

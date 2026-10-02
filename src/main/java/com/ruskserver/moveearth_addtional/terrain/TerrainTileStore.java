@@ -40,6 +40,21 @@ public final class TerrainTileStore {
     static final int SEARCH_DEPTH = 3;
 
     /**
+     * Whether {@code root} holds at least one tile. An empty directory does not
+     * count, so it cannot hide tiles kept in the shared location. One that cannot
+     * be read does: falling back to other tiles would quietly generate a different
+     * world, so loading from it is left to fail loudly instead.
+     */
+    public static boolean holdsTiles(Path root) {
+        if (!Files.isDirectory(root)) return false;
+        try {
+            return !findTiles(root).isEmpty();
+        } catch (IOException | java.io.UncheckedIOException exception) {
+            return true;
+        }
+    }
+
+    /**
      * Tile directories at or below {@code root}, nearest first.
      *
      * <p>A directory is a tile if it holds tile.json. The search goes a few

@@ -5,10 +5,12 @@ import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RecoveryDispatch
 import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RequestPrisonerScreenPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_RequestRecoveryDispatchPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_SiegeActionPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.siege.C2S_WarConsentPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchSnapshotPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_WarConsentPromptPacket;
 import com.ruskserver.moveearth_addtional.network.common.C2SPacketGate;
 import net.neoforged.neoforge.network.registration.HandlerThread;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -29,5 +31,8 @@ public final class SiegePayloads {
         c2s.playToServer(C2S_RecoveryDispatchActionPacket.TYPE, C2S_RecoveryDispatchActionPacket.STREAM_CODEC, C2SPacketGate.heavy(C2S_RecoveryDispatchActionPacket::handle));
         registrar.playToClient(S2C_RecoveryDispatchSnapshotPacket.TYPE, S2C_RecoveryDispatchSnapshotPacket.STREAM_CODEC, S2C_RecoveryDispatchSnapshotPacket::handle);
         registrar.playToClient(S2C_RecoveryDispatchActionResultPacket.TYPE, S2C_RecoveryDispatchActionResultPacket.STREAM_CODEC, S2C_RecoveryDispatchActionResultPacket::handle);
+        // Confirming opens war on a nation: the tight budget of server-wide actions; the server also requires a recent prompt.
+        c2s.playToServer(C2S_WarConsentPacket.TYPE, C2S_WarConsentPacket.STREAM_CODEC, C2SPacketGate.sensitive(C2S_WarConsentPacket::handle));
+        registrar.playToClient(S2C_WarConsentPromptPacket.TYPE, S2C_WarConsentPromptPacket.STREAM_CODEC, S2C_WarConsentPromptPacket::handle);
     }
 }

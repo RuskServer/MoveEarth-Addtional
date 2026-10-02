@@ -112,7 +112,8 @@ public final class RecoveryService {
             int walls = data.weighted(before.id())
                     ? ReinforcementSavedData.get(level).recoveryHealth(level, before.pos(), before.originalRadius(),
                         data.wallLimit(before.id()), false, pos -> TerritorySavedData.get(server)
-                                .allowsReinforcement(server, before.nationId(), before.dimension(), pos)).health()
+                                .allowsEstablishedReinforcement(server, before.nationId(), before.dimension(), pos))
+                                .health()
                     : countHealthyWalls(level, before.pos(), before.originalRadius(), before.wallTarget());
             RecoveryObjectivePolicy.Progress progress = RecoveryObjectivePolicy.evaluate(resealed,
                     before.wallTarget(), walls, before.upkeepPaid());

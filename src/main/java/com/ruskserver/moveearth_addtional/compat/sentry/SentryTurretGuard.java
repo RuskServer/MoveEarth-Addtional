@@ -2,9 +2,11 @@ package com.ruskserver.moveearth_addtional.compat.sentry;
 
 import com.ruskserver.moveearth_addtional.CompatEventHandler;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
+import com.tacz.guns.api.DefaultAssets;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.event.common.GunShootEvent;
 import com.tacz.guns.api.item.IGun;
+import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.gun.FireMode;
 import com.tacz.guns.resource.pojo.data.gun.BulletData;
 import com.tacz.guns.resource.pojo.data.gun.ExplosionData;
@@ -65,6 +67,25 @@ public final class SentryTurretGuard {
         if (iGun == null) return false;
         return TimelessAPI.getCommonGunIndex(iGun.getGunId(gun))
                 .map(index -> allowed(index.getGunData()))
+                .orElse(false)
+                && !hitChangingAttachment(iGun, gun);
+    }
+
+    /** Installed or built-in attachments that change the hits, such as ammo mods. */
+    private static boolean hitChangingAttachment(IGun iGun, ItemStack gun) {
+        for (AttachmentType type : AttachmentType.values()) {
+            if (type == AttachmentType.NONE) continue;
+            if (changesHits(iGun.getAttachmentId(gun, type)) || changesHits(iGun.getBuiltInAttachmentId(gun, type))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean changesHits(net.minecraft.resources.ResourceLocation attachment) {
+        if (attachment == null || DefaultAssets.isEmptyAttachmentId(attachment)) return false;
+        return TimelessAPI.getCommonAttachmentIndex(attachment)
+                .map(index -> SentryTurretRules.attachmentChangesHits(index.getData().getModifier().keySet()))
                 .orElse(false);
     }
 

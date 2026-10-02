@@ -27,35 +27,37 @@ import java.util.UUID;
 public final class SableAssemblyExclusions {
     private SableAssemblyExclusions() { }
 
-    /** Blocks that stay behind, and how many of each reason, for the caller's log line. */
-    public record Result(List<BlockPos> kept, int fixtures, int foreign) {
-        public boolean removedAny() { return fixtures > 0 || foreign > 0; }
+    /** Blocks that are lifted, and how many stay behind per reason. */
+    public record Result(List<BlockPos> kept, VehicleAssemblyPolicy.Tally tally) {
+        public boolean removedAny() { return tally.any(); }
     }
 
-    public static Result filter(ServerLevel level, BlockPos anchor, Iterable<BlockPos> positions,
-                                TagKey<Block> deposits) {
+    /**
+     * @param origin      where the assembly was started (the assembler); decides the assembling side
+     * @param actorNation nation of the player who started it, or null; only used to tell the
+     *                    nation's own blocks apart from foreign ones among those left behind
+     */
+    public static Result filter(ServerLevel level, BlockPos origin, Iterable<BlockPos> positions,
+                                TagKey<Block> deposits, UUID actorNation) {
         Owners owners = new Owners(level);
-        UUID assemblingSide = owners.at(anchor).orElse(null);
+        UUID assemblingSide = owners.at(origin).orElse(null);
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
         TerritorySavedData territories = TerritorySavedData.get(level.getServer());
         VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
         ResourceLocation dimension = level.dimension().location();
         List<BlockPos> kept = new ArrayList<>();
-        int fixtures = 0;
-        int foreign = 0;
+        VehicleAssemblyPolicy.Tally tally = VehicleAssemblyPolicy.Tally.EMPTY;
         for (BlockPos raw : positions) {
             BlockPos pos = raw.immutable();
             AssemblyExclusionPolicy.Kind kind = kind(level, pos, deposits, reinforcements, territories,
                     vehicles, dimension);
             UUID owner = kind == AssemblyExclusionPolicy.Kind.NATION_PROTECTED ? owners.at(pos).orElse(null) : null;
-            if (AssemblyExclusionPolicy.excluded(kind, owner, assemblingSide)) {
-                if (kind == AssemblyExclusionPolicy.Kind.FIXTURE) fixtures++;
-                else foreign++;
-                continue;
-            }
-            kept.add(pos);
+            VehicleAssemblyPolicy.Placement placement = VehicleAssemblyPolicy.place(kind, owner, assemblingSide,
+                    actorNation);
+            if (placement == VehicleAssemblyPolicy.Placement.KEPT) kept.add(pos);
+            else tally = tally.with(placement);
         }
-        return new Result(kept, fixtures, foreign);
+        return new Result(kept, tally);
     }
 
     private static AssemblyExclusionPolicy.Kind kind(ServerLevel level, BlockPos pos, TagKey<Block> deposits,
@@ -65,6 +67,7 @@ public final class SableAssemblyExclusions {
         BlockState state = level.getBlockState(pos);
         if (state.is(deposits) || state.is(ModBlocks.TERRITORY_CORE.get())
                 || state.is(ModBlocks.MARKET_STATION.get()) || state.is(ModBlocks.STORAGE_WRECKAGE.get())
+                || state.is(ModBlocks.PRISON_INTAKE.get())
                 || territories.core(dimension, pos).isPresent()) {
             return AssemblyExclusionPolicy.Kind.FIXTURE;
         }

@@ -51,10 +51,13 @@ public final class MachineBreaking {
      * Territory and vehicle cores take damage only through the siege and vehicle
      * damage rules; a drill would skip their HP, the siege timer and the owner's
      * warning, and a vehicle core's record would be left pointing at nothing.
+     * A prison intake is freed only by a rescue; a drill would release everyone
+     * held there without one.
      */
     private static boolean isCore(net.minecraft.world.level.block.state.BlockState state) {
         return state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.TERRITORY_CORE.get())
-                || state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.VEHICLE_CORE.get());
+                || state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.VEHICLE_CORE.get())
+                || state.is(com.ruskserver.moveearth_addtional.block.ModBlocks.PRISON_INTAKE.get());
     }
 
     /**

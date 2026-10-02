@@ -5,7 +5,14 @@ public final class TerritoryReinforcementAccessPolicy {
     private TerritoryReinforcementAccessPolicy() {
     }
 
-    public static boolean canManage(boolean effectivelyControlled, boolean configuringReservation) {
-        return effectivelyControlled || configuringReservation;
+    /**
+     * @param effectivelyControlled the chunk is inside the nation's effective territory
+     * @param configuringReservation the chunk is reserved by one of its configuring cores
+     * @param lapsedButUnclaimed the chunk was reserved by a configuring core whose hour ran
+     *                           out, and no other nation has claimed it since
+     */
+    public static boolean canManage(boolean effectivelyControlled, boolean configuringReservation,
+                                    boolean lapsedButUnclaimed) {
+        return effectivelyControlled || configuringReservation || lapsedButUnclaimed;
     }
 }

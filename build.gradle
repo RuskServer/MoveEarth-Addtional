@@ -642,6 +642,8 @@ tasks.register('buildPlayerJar') {
     dependsOn verifyPlayerDistribution
 }
 
+// assemble is the everyday build, so it runs every distribution check: a server JAR
+// without the terrain noise settings would generate new chunks without their climate.
 tasks.named('assemble') {
-    dependsOn verifyPackagedDiscordRuntime, verifyPlayerDistribution
+    dependsOn verifyPackagedDiscordRuntime, verifyPlayerDistribution, verifyServerTerrain
 }

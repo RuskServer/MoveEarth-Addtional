@@ -105,7 +105,7 @@ public final class ReinforcementEvents {
      * actor's nation, territory owners (chunk-granular) and alliance answers are looked up once. Vehicle
      * ownership is still resolved per block.
      */
-    static final class FriendlyFire {
+    public static final class FriendlyFire {
         private final ServerLevel level;
         private final java.util.UUID own;
         private final Map<Long, java.util.Optional<java.util.UUID>> territoryOwners = new HashMap<>();
@@ -122,7 +122,7 @@ public final class ReinforcementEvents {
          * attributed to its vehicle's or territory's nation) or the actor has no nation, the attacking
          * nation recorded in the attribution.
          */
-        FriendlyFire(SiegeService.AttackAttribution attribution, ServerLevel level) {
+        public FriendlyFire(SiegeService.AttackAttribution attribution, ServerLevel level) {
             this.level = level;
             java.util.UUID actorNation = attribution == null || attribution.actorId() == null ? null
                     : com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
@@ -130,7 +130,7 @@ public final class ReinforcementEvents {
             this.own = actorNation != null ? actorNation : attribution == null ? null : attribution.nationId();
         }
 
-        boolean friendly(BlockPos pos) {
+        public boolean friendly(BlockPos pos) {
             if (own == null) return false;
             var server = level.getServer();
             java.util.UUID owner = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology.at(level, pos)

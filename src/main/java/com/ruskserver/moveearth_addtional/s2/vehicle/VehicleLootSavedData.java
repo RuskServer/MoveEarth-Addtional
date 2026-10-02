@@ -43,9 +43,11 @@ public final class VehicleLootSavedData extends SavedData {
             setDirty();
             return false;
         }
-        UUID nation = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
+        NationSavedData nations = NationSavedData.get(player.server);
+        UUID nation = nations.nationIdFor(player.getUUID()).orElse(null);
+        // An alliance made after the kill does not turn salvage of a friend's wreck into a right.
         return grant.individualAttacker() ? grant.attackerId().equals(player.getUUID())
-                : grant.attackerId().equals(nation);
+                : grant.attackerId().equals(nation) && !nations.isAllied(nation, grant.ownerNation());
     }
 
     public Grant grant(UUID vehicleId) { return grants.get(vehicleId); }

@@ -58,6 +58,9 @@ public final class LocalChatPresentation {
                 name.append(bracketed(roleName).withColor(ROLE_COLOR));
             }
         }
+        if (com.ruskserver.moveearth_addtional.s2.live.LiveStreamService.isLive(sender)) {
+            name.append(com.ruskserver.moveearth_addtional.s2.live.LiveStreamService.prefix());
+        }
         name.append(Component.literal(sender.getGameProfile().getName()).withColor(NAME_COLOR));
         return ChatType.bind(CHAT_TYPE, sender.level().registryAccess(), name);
     }

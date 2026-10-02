@@ -23,9 +23,15 @@ public final class VehicleCoreHealthService {
         VehicleSavedData data = VehicleSavedData.get(level.getServer());
         VehicleSavedData.VehicleRecord before = data.at(level.dimension().location(), pos).orElse(null);
         if (before == null || amount <= 0) return before;
+        // Own and allied fire never wears a vehicle core down, like reinforcement friendly fire.
+        if (attack != null && VehicleProtection.friendly(level.getServer(), attack, before.nationId())) return before;
+        int applied = com.ruskserver.moveearth_addtional.s2.siege.OfflineDefenseService
+                .scale(level, pos, amount).appliedDamage();
+        if (applied <= 0) return before;
         data.recordHit(before.id(), level.getServer().overworld().getGameTime());
-        VehicleSavedData.VehicleRecord after = data.damage(before.id(), amount);
+        VehicleSavedData.VehicleRecord after = data.damage(before.id(), applied);
         if (after == null || after.health() == before.health()) return after;
+        VehicleHitNotifier.hit(level, after, attack);
         if (level.getBlockEntity(pos) instanceof VehicleCoreBlockEntity blockEntity) blockEntity.bind(after);
         level.sendParticles(ParticleTypes.ELECTRIC_SPARK, pos.getX() + 0.5D, pos.getY() + 0.7D,
                 pos.getZ() + 0.5D, Math.min(28, 6 + amount / 4), 0.3D, 0.25D, 0.3D, 0.08D);
@@ -42,7 +48,11 @@ public final class VehicleCoreHealthService {
         java.util.UUID actor = attack == null ? null : attack.actorId();
         java.util.UUID attackerId = attackerNation != null ? attackerNation : actor;
         boolean individual = attackerNation == null;
-        if (attackerId != null) VehicleLootSavedData.get(level.getServer()).open(vehicle.id(),
+        // Salvage rights go to an enemy only: never to the owner's own or an allied nation.
+        boolean friendly = attack != null && (VehicleProtection.friendly(level.getServer(), attack, vehicle.nationId())
+                || attackerNation != null && com.ruskserver.moveearth_addtional.s2.nation.NationSavedData
+                .get(level.getServer()).isAllied(attackerNation, vehicle.nationId()));
+        if (attackerId != null && !friendly) VehicleLootSavedData.get(level.getServer()).open(vehicle.id(),
                 vehicle.nationId(), attackerId, individual, OpenTimeService.now(level.getServer()));
         WarHistorySavedData.get(level.getServer()).append(OpenTimeService.now(level.getServer()),
                 WarHistorySavedData.Type.VEHICLE_DESTROYED, WarHistorySavedData.Visibility.PUBLIC,

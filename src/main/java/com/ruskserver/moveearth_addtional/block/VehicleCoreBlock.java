@@ -53,7 +53,7 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
             return;
         }
         SableVehicleTopology.Placement placement = SableVehicleTopology.placement(serverLevel, pos);
-        if (!TerritorySavedData.get(player.server).allowsReinforcement(player.server, nationId,
+        if (!TerritorySavedData.get(player.server).allowsEstablishedReinforcement(player.server, nationId,
                 level.dimension().location(), placement.worldPos())) {
             player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
                     "message.moveearth_addtional.vehicle_core.requires_shipyard")));
@@ -82,7 +82,13 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
         if (!isMoving && !VehicleAssemblyGuard.isMoving(pos) && !state.is(newState.getBlock())
                 && level instanceof ServerLevel serverLevel
                 && level.getBlockEntity(pos) instanceof VehicleCoreBlockEntity core) {
-            VehicleSavedData.get(serverLevel.getServer()).remove(core.vehicleId());
+            VehicleSavedData vehicles = VehicleSavedData.get(serverLevel.getServer());
+            // Only the copy the record points at owns it; breaking a stray duplicate must not delete the vehicle.
+            boolean recordedHere = vehicles.vehicle(core.vehicleId())
+                    .map(record -> record.dimension().equals(serverLevel.dimension().location())
+                            && record.corePos().equals(pos))
+                    .orElse(false);
+            if (recordedHere) vehicles.remove(core.vehicleId());
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }

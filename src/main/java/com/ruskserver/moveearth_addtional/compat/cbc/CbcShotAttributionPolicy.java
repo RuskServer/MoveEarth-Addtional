@@ -9,7 +9,8 @@ import java.util.function.Supplier;
  * <ol>
  *   <li>the real player controlling the cannon (fake players never count);</li>
  *   <li>the real player who placed the cannon mount, online or not: whoever installs an automatic gun
- *       answers for it;</li>
+ *       answers for it, while still in the nation they placed it for and the gun stands on that nation's
+ *       or an ally's vehicle or land, or in the wilderness ({@link #placerAnswers});</li>
  *   <li>no player, but the nation owning the vehicle the mount is on;</li>
  *   <li>no player, but the nation controlling the territory where the mount stands.</li>
  * </ol>
@@ -45,6 +46,24 @@ public final class CbcShotAttributionPolicy {
         UUID territory = territoryNation == null ? null : territoryNation.get();
         if (territory != null) return new Decision(Basis.TERRITORY_NATION, null, territory);
         return Decision.NONE;
+    }
+
+    /**
+     * Whether the recorded placer still answers for an unmanned cannon. A placer who has since changed
+     * nation does not: a spy who set up a nation's guns and then defected would otherwise turn every
+     * automatic shot into an attack by their new nation, on the old one's own land. Nor does one whose
+     * gun now stands on another nation's vehicle or land, unless that nation is their own or an ally.
+     *
+     * @param nationAtPlacement the placer's nation when the mount was placed (null: none, or not recorded)
+     * @param recorded          whether the placement nation was recorded at all
+     * @param placerNationNow   the placer's nation now, or null
+     * @param locationOwner     nation owning the vehicle, else the territory, where the mount stands, or null
+     * @param locationAllied    whether {@code locationOwner} is allied with {@code placerNationNow}
+     */
+    public static boolean placerAnswers(boolean recorded, UUID nationAtPlacement, UUID placerNationNow,
+                                        UUID locationOwner, boolean locationAllied) {
+        if (!recorded || !java.util.Objects.equals(nationAtPlacement, placerNationNow)) return false;
+        return locationOwner == null || locationOwner.equals(placerNationNow) || locationAllied;
     }
 
     /** CBC damage with neither an actor nor a nation must leave reinforcement and cores untouched. */

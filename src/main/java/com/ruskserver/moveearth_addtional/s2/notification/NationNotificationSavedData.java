@@ -751,7 +751,8 @@ public final class NationNotificationSavedData extends SavedData {
         DISPATCH_CANCELLED,
         RIVAL_UPDATED,
         DIGEST,
-        TERRITORY_INTRUSION
+        TERRITORY_INTRUSION,
+        VEHICLE_ATTACKED
     }
 
     public record Delivery(UUID id, UUID nationId, EventType type, ResourceLocation dimension,

@@ -25,7 +25,7 @@ Createの機構美 × CBCの重砲撃 × TaCZの銃撃戦 を統合する、<br>
 MoveEarth-Addtional は、Minecraft 1.21.1 (NeoForge) 上で稼働する大規模マルチプレイ国家戦略・工業戦争統合MODです。<br>
 Create の歯車と動力機構、Create Big Cannons の重砲撃、TaCZ の戦術銃撃戦、Sable / Create Aeronautics の物理移動体を一つのゲーム進行へとシームレスに結びつけ、プレイヤー主導の国家運営とリアルタイム攻城戦を実現します。
 
-現在の宣言バージョンは `3.1.0` です。最新の変更内容については [変更履歴](changelog.md) を参照してください。
+現在の宣言バージョンは `3.3.0` です。最新の変更内容については [変更履歴](changelog.md) を参照してください。
 
 ---
 
@@ -118,10 +118,13 @@ graph TD
 
 | MOD | 推奨バージョン | 役割 |
 |---|---|---|
-| **Create** | 6.0.10以上 | 工業・回転力・機構基盤 |
+| **Create** | 6.0.x（6.0.10以上） | 工業・回転力・機構基盤 |
 | **TaCZ** | 1.1.8以上 | 銃火器・弾薬・戦術戦闘 |
-| **Sable** | 2.0.3以上 | 物理挙動・移動体基盤 |
+| **Sable** | 2.0.x（2.0.3以上） | 物理挙動・移動体基盤 |
 | **Create Aeronautics** | 1.3.0以上 | 航空機・飛行船建造 |
+| **Mekanism** | 10.7.19 | 後半の工業・核分裂・MekaSuit（レシピと解放順はMoveEarthが調整） |
+| **Mekanism Generators** | 10.7.19 | 発電・核融合設備（MoveEarthが一部を無効化） |
+| **Create: Electro Energetics** | 任意のバージョン | 電圧・電流を模擬する電力網（Createの回転力との変換を含む） |
 
 > [!TIP]
 > - **通貨**: 国庫、維持費、取引所には MoveEarth 独自の **Trade Credit (TC)** 台帳を使用します。Lightman's Currency への依存は完全に撤去されており、不要です。
@@ -203,6 +206,7 @@ Antique Atlas、Immersive Minimaps、Oaks Minimap、Project Minimap HUD
 | `display.toml` | HUDの表示、重撃シールドのフラッシュ、死亡画面、実況・通知の音量 |
 | `scope-pip.toml` | PiPスコープの有効化、レンズ解像度・補間・更新頻度、最低倍率 |
 | `particles.toml` | CBCパーティクルの計測と装飾砲煙の上限 |
+| `upscale.toml` | アンチエイリアス（SMAA）とアップスケーリング（FSR 1.0）のモード・品質・エッジ検出・シャープネス |
 
 **専用サーバーの運用**（`config/moveearth/server/`）
 
@@ -218,6 +222,7 @@ Antique Atlas、Immersive Minimaps、Oaks Minimap、Project Minimap HUD
 | `s2-territory.toml` | 国家設立コスト、領土サイズ、防壁補強HP、維持費周期、Siegeルール |
 | `recovery-dispatch.toml` | 敗北国家の主権復興・派遣ミッション |
 | `market.toml` | 市場取引の緊急停止 |
+| `economy-guard.toml` | 放置中の職業収入の停止秒数、新規アカウント扱いの活動時間（`newAccountActiveHours`）と1日の送金上限 |
 | `chat.toml` | 近接チャットの配信半径（既定値: 100） |
 | `schedule.toml` | 開放時間外（専用サーバーのみ）に昼夜・天候サイクルを止めるか（既定値: true）。Ecliptic Seasons の季節も開放中にしか進まなくなる |
 | `nether-gate.toml` | ゲート生成器（応力・最低回転数・チャージ時間・開門半径）、ネザーゲート戦（制限時間・敵数・体力／攻撃倍率・引き戻し半径・シャード数）、ブレイズロッド精製装置（応力・最低回転数・1本あたりの時間） |
