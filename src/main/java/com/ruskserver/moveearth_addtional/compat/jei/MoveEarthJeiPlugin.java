@@ -65,6 +65,7 @@ public final class MoveEarthJeiPlugin implements IModPlugin {
 
     @Override
     public void onRuntimeAvailable(IJeiRuntime runtime) {
+        JeiWikiBridge.runtime(runtime);
         IIngredientManager ingredients = runtime.getIngredientManager();
         List<ItemStack> hidden = ingredients.getAllItemStacks().stream()
                 .filter(stack -> {
@@ -73,5 +74,10 @@ public final class MoveEarthJeiPlugin implements IModPlugin {
                 })
                 .toList();
         if (!hidden.isEmpty()) ingredients.removeIngredientsAtRuntime(VanillaTypes.ITEM_STACK, hidden);
+    }
+
+    @Override
+    public void onRuntimeUnavailable() {
+        JeiWikiBridge.runtime(null);
     }
 }

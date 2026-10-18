@@ -37,6 +37,11 @@ public class Moveearth_addtional {
         ConfigFileLayout.migrateGameDirectories(FMLPaths.CONFIGDIR.get(),
                         FMLPaths.GAMEDIR.get().resolve("defaultconfigs"))
                 .forEach(line -> LOGGER.info("[MoveEarth] Config layout: {}", line));
+        com.ruskserver.moveearth_addtional.tracks.TrackRegistry.register(modEventBus);
+        modContainer.registerConfig(ModConfig.Type.SERVER,
+                com.ruskserver.moveearth_addtional.tracks.TrackConfig.SPEC, ConfigFileLayout.WORLD + "tracks.toml");
+        modEventBus.addListener((net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent event) ->
+                event.enqueueWork(com.ruskserver.moveearth_addtional.tracks.TrackSystem::register));
         if (FMLEnvironment.dist == Dist.DEDICATED_SERVER) {
             // Before registering: a startup config is loaded on the spot.
             modEventBus.addListener(net.neoforged.fml.event.config.ModConfigEvent.Loading.class,

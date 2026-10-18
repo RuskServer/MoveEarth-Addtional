@@ -2,9 +2,11 @@ package com.ruskserver.moveearth_addtional.s2.vehicle;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -38,5 +40,41 @@ public final class VehicleIdentityPolicy {
             if (candidate != null && !recordExists.test(candidate)) stale.add(candidate);
         }
         return stale;
+    }
+    /**
+     * The vehicle governing one body of a connected chain. A vehicle governs only while its core's body is in
+     * the chain; ids carried by fragments that split off the core are ownership, not governance. Among the
+     * vehicles whose core is present, the body's own id wins: two crafts tied by a rope or docking connector
+     * each keep their own, where counting both for the whole chain used to strip both of protection.
+     *
+     * @param ownBody    the body asked about
+     * @param bound      vehicle id carried by each body of the chain that has one
+     * @param chain      every body of the chain
+     * @param coreBodyOf the body a live vehicle's core sits on, or null when the record is gone or its core is
+     *                   not on a body
+     */
+    public static Optional<UUID> governing(UUID ownBody, Map<UUID, UUID> bound, Set<UUID> chain,
+                                           Function<UUID, UUID> coreBodyOf) {
+        Set<UUID> present = new LinkedHashSet<>();
+        for (UUID vehicle : bound.values()) {
+            UUID coreBody = vehicle == null ? null : coreBodyOf.apply(vehicle);
+            if (coreBody != null && chain.contains(coreBody)) present.add(vehicle);
+        }
+        UUID own = bound.get(ownBody);
+        if (own != null && present.contains(own)) return Optional.of(own);
+        return present.size() == 1 ? Optional.of(present.iterator().next()) : Optional.empty();
+    }
+
+    /**
+     * Whether a body carrying {@code carried} should be handed to {@code governing}: the id is dead, or it is a
+     * same-nation vehicle whose core is not in this chain (a fragment rejoined to, or re-cored as, another craft).
+     * Another nation's live id is never taken over.
+     */
+    public static boolean rebindable(UUID carried, UUID governing, boolean carriedLive, UUID carriedCoreBody,
+                                     Set<UUID> chain, UUID carriedNation, UUID governingNation) {
+        if (carried == null || carried.equals(governing)) return false;
+        if (!carriedLive) return true;
+        return (carriedCoreBody == null || !chain.contains(carriedCoreBody))
+                && carriedNation != null && carriedNation.equals(governingNation);
     }
 }

@@ -44,10 +44,6 @@ public final class ScopePipRenderer {
     private static double insideFov;
     private static boolean composited;
     /** Eligible frames seen; with a lens update interval above 1, only every Nth redraws the lens. */
-    private static int lensFrame;
-    /** The lens holds a finished image of {@link #lensOptic}, reusable on skipped frames. */
-    private static boolean lensFresh;
-    private static ResourceLocation lensOptic;
     private static int lensFilter = -1;
     private static int cachedStencilFramebuffer = -1;
     private static int cachedStencilWidth;
@@ -149,7 +145,6 @@ public final class ScopePipRenderer {
         insideFov = 0;
         normalFov = Double.NaN;
         if (!eligibleSafely(timer)) {
-            lensFresh = false;
             if (!ScopePipConfig.ENABLED.get() || failed || Minecraft.getInstance().level == null
                     || reason.equals("iris_experimental_disabled")) release();
             return;
@@ -167,17 +162,11 @@ public final class ScopePipRenderer {
             }
             applyLensFilter();
             active = true;
-            if (reuseLens()) {
-                ready = true;
-                return;
-            }
-            lensFresh = false;
+            // Redrawn every frame: a lens image a frame old lags behind the turn it shows.
             renderingLens = true;
             lens.clear(Minecraft.ON_OSX);
             lens.bindWrite(true);
             ScopePipIrisBridge.renderLens(renderWorld);
-            lensFresh = true;
-            lensOptic = activeOptic;
             ready = true;
         } catch (RuntimeException exception) {
             failed = true;
@@ -189,13 +178,6 @@ public final class ScopePipRenderer {
             renderingLens = false;
             main.bindWrite(true);
         }
-    }
-
-    /** True when this frame can show the previous lens image instead of drawing the world again. */
-    private static boolean reuseLens() {
-        int interval = ScopePipConfig.UPDATE_INTERVAL.get();
-        lensFrame = (lensFrame + 1) % 6; // divisible by every allowed interval
-        return interval > 1 && lensFresh && activeOptic.equals(lensOptic) && lensFrame % interval != 0;
     }
 
     private static void applyLensFilter() {
@@ -298,8 +280,6 @@ public final class ScopePipRenderer {
 
     private static void release() {
         cachedStencilFramebuffer = -1;
-        lensFresh = false;
-        lensOptic = null;
         lensFilter = -1;
         ScopePipIrisBridge.release();
         if (lens != null) {

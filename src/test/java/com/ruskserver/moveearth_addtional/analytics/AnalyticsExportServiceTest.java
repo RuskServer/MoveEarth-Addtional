@@ -7,6 +7,8 @@ import com.ruskserver.moveearth_addtional.analytics.model.ServerPerformanceSampl
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.query.export.AnalyticsExportService;
+import com.ruskserver.moveearth_addtional.analytics.query.export.ExportRowSink;
+import com.ruskserver.moveearth_addtional.analytics.query.export.ExportTable;
 import com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue;
 import com.ruskserver.moveearth_addtional.analytics.storage.SqliteAnalyticsStorageEngine;
 import org.junit.jupiter.api.AfterEach;
@@ -16,8 +18,10 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -107,5 +111,59 @@ public class AnalyticsExportServiceTest {
         List<String> profileLines = Files.readAllLines(profileFile);
         assertTrue(profileLines.getFirst().startsWith("session_id,started_at,finished_at,trigger"));
         assertTrue(profileLines.get(1).contains("manual,minecraft:overworld,5,-2"));
+    }
+
+    @Test
+    public void testTableExportAddsPlayerNames() throws Exception {
+        AnalyticsExportService.TableExport export = AnalyticsExportService.INSTANCE.exportTableToDirAsync(
+                tempDir.resolve("tables"), AnalyticsExportService.ExportFormat.CSV, TimeWindow.DAYS_7,
+                ExportTable.PLAYER_5M).get();
+        List<String> lines = Files.readAllLines(export.path());
+        assertTrue(lines.getFirst().startsWith("bucket_at,player_uuid,last_known_name,dimension"));
+        assertEquals(1, export.rows());
+        assertFalse(export.truncated());
+        assertTrue(lines.get(1).contains("ExportPlayer"));
+    }
+
+    @Test
+    public void testEveryTableExportsAsJsonl() throws Exception {
+        for (ExportTable table : ExportTable.values()) {
+            AnalyticsExportService.TableExport export = AnalyticsExportService.INSTANCE.exportTableToDirAsync(
+                    tempDir.resolve("jsonl_" + table.id()), AnalyticsExportService.ExportFormat.JSONL,
+                    TimeWindow.ALL_TIME, table).get();
+            assertTrue(Files.exists(export.path()), table.id());
+            assertEquals(export.rows(), Files.readAllLines(export.path()).size(), table.id());
+        }
+    }
+
+    @Test
+    public void testRowLimitIsReportedAsTruncation() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        engine.writeBatch(List.of(new AnalyticsEventQueue.SessionStartEvent(
+                UUID.randomUUID(), UUID.randomUUID(), "SecondPlayer", now - 900L)));
+        List<Object[]> rows = new ArrayList<>();
+        boolean truncated = engine.exportTable(ExportTable.PLAYERS, 0L, now, 1, new ExportRowSink() {
+            @Override public void columns(List<String> columns) { }
+            @Override public void row(Object[] values) { rows.add(values); }
+        });
+        assertTrue(truncated);
+        assertEquals(1, rows.size());
+    }
+
+    @Test
+    public void testAllExportZipsEveryFileWithAReadme() throws Exception {
+        Path zip = AnalyticsExportService.INSTANCE.exportAllToZipAsync(
+                tempDir.resolve("all"), AnalyticsExportService.ExportFormat.CSV, TimeWindow.DAYS_7).get();
+        try (ZipFile file = new ZipFile(zip.toFile())) {
+            List<String> names = file.stream().map(entry -> entry.getName()).toList();
+            assertTrue(names.contains("README.txt"));
+            assertEquals(ExportTable.values().length + 5 + 1, names.size(), names.toString());
+            for (ExportTable table : ExportTable.values()) {
+                assertTrue(names.stream().anyMatch(name -> name.startsWith(table.id() + "_")), table.id());
+            }
+        }
+        try (var leftovers = Files.list(tempDir.resolve("all"))) {
+            assertEquals(1, leftovers.count(), "only the zip remains");
+        }
     }
 }

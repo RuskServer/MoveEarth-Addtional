@@ -159,6 +159,7 @@ public final class ReinforcementEvents {
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         ReinforcementEntry entry = data.get(event.getPos()).orElse(null);
         if (entry == null) return;
+        com.ruskserver.moveearth_addtional.s2.siege.TerritoryBreakSiege.reinforcedBreak(level, event.getPos());
         net.minecraft.network.chat.Component blocked = SiegeService.attackBlockReason(player, level, event.getPos());
         if (blocked != null) {
             event.setCanceled(true);
@@ -283,7 +284,7 @@ public final class ReinforcementEvents {
             var vehicleCore = vehicles.at(dimension, pos).orElse(null);
             if (vehicleCore != null) {
                 if (!preHandled && cbc && !unattributedCbc) {
-                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers.get())) return true;
+                    if (blastBarriers.blocked(blastOrigin, pos)) return true;
                     com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
                             level, pos, SiegeDamageService.configuredCoreDamage(munition), attack);
                 }
@@ -294,7 +295,7 @@ public final class ReinforcementEvents {
                 if (preHandled || unattributedCbc) return true;
                 siege.record(pos, false);
                 if (cbc) {
-                    if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers.get())) return true;
+                    if (blastBarriers.blocked(blastOrigin, pos)) return true;
                     int beforeHealth = core.health();
                     TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, pos,
                             SiegeDamageService.configuredTerritoryCoreDamage(munition, pos.equals(explosionCenter)));
@@ -308,7 +309,7 @@ public final class ReinforcementEvents {
             ReinforcementEntry entry = data.get(pos).orElse(null);
             if (entry == null) return false;
             if (preHandled) return true;
-            if (ReinforcementBlastOcclusion.blocked(blastOrigin, pos, blastBarriers.get())) return true;
+            if (blastBarriers.blocked(blastOrigin, pos)) return true;
             siege.record(pos, false);
             if (!entry.enabled()) {
                 data.remove(pos);
@@ -344,13 +345,22 @@ public final class ReinforcementEvents {
      * <p>The set must describe the walls as they stood before the blast. Callers keep that true by asking
      * for it before their first change to reinforcement data or blocks: every branch of a blast handler that
      * damages or removes reinforcement tests occlusion first.
+     *
+     * <p>Walls are kept per frame. A vehicle's blocks live in its plot, far from the
+     * world position of the blast, and Sable hands them to the blast list in plot coordinates: testing a
+     * world-space origin against a plot-space target (with walls gathered around the world origin) ran the ray
+     * off toward the plot and decided cover by chance. Each target is tested in its own body's frame, the blast
+     * origin carried into it through the body's pose, against that body's walls.
      */
     public static final class BlastBarriers {
+        private record Frame(net.minecraft.world.phys.Vec3 origin, Set<BlockPos> barriers) { }
+
         private final ServerLevel level;
         private final ReinforcementSavedData data;
         private final BlockPos center;
         private final int radius;
         private Set<BlockPos> barriers;
+        private final Map<java.util.UUID, Frame> bodies = new HashMap<>();
 
         public BlastBarriers(ServerLevel level, ReinforcementSavedData data, BlockPos center, int radius) {
             this.level = level;
@@ -359,9 +369,44 @@ public final class ReinforcementEvents {
             this.radius = radius;
         }
 
+        /** Walls around the blast centre, in the centre's own frame. */
         public Set<BlockPos> get() {
             if (barriers == null) barriers = ReinforcementBlastOcclusion.barriersAround(level, data, center, radius);
             return barriers;
+        }
+
+        /** Whether a reinforced wall shields {@code target} from a blast at {@code origin}. */
+        public boolean blocked(net.minecraft.world.phys.Vec3 origin, BlockPos target) {
+            Frame frame = frame(origin, target);
+            return frame == null ? ReinforcementBlastOcclusion.blocked(origin, target, get())
+                    : ReinforcementBlastOcclusion.blocked(frame.origin(), target, frame.barriers());
+        }
+
+        /** The blast origin in {@code target}'s frame, or {@code origin} itself when they share one. */
+        public net.minecraft.world.phys.Vec3 originFor(net.minecraft.world.phys.Vec3 origin, BlockPos target) {
+            Frame frame = frame(origin, target);
+            return frame == null ? origin : frame.origin();
+        }
+
+        private Frame frame(net.minecraft.world.phys.Vec3 origin, BlockPos target) {
+            try {
+                var targetBody = dev.ryanhcode.sable.Sable.HELPER.getContaining(level, target);
+                var originBody = dev.ryanhcode.sable.Sable.HELPER.getContaining(level, BlockPos.containing(origin));
+                if (targetBody == originBody) return null;
+                net.minecraft.world.phys.Vec3 world = originBody == null ? origin
+                        : originBody.logicalPose().transformPosition(origin);
+                if (targetBody == null) {
+                    return bodies.computeIfAbsent(new java.util.UUID(0L, 0L), ignored -> new Frame(world,
+                            ReinforcementBlastOcclusion.barriersAround(level, data, BlockPos.containing(world), radius)));
+                }
+                return bodies.computeIfAbsent(targetBody.getUniqueId(), ignored -> {
+                    net.minecraft.world.phys.Vec3 local = targetBody.logicalPose().transformPositionInverse(world);
+                    return new Frame(local, ReinforcementBlastOcclusion.barriersAround(
+                            level, data, BlockPos.containing(local), radius));
+                });
+            } catch (RuntimeException | LinkageError unavailable) {
+                return null;
+            }
         }
     }
 

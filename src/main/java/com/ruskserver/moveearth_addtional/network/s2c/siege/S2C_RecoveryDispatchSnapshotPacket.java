@@ -12,7 +12,7 @@ import java.util.UUID;
 
 public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTick, UUID ownNationId, boolean member,
         boolean admin, boolean canManageSiege, boolean canManageTreasury, boolean canManageDispatch,
-        boolean canManageDiplomacy, long fundBalance, long fundReserved, RecoveryView recovery,
+        boolean canManageDiplomacy, long fundBalance, long fundReserved, Settings settings, RecoveryView recovery,
         List<ContractView> contracts, List<NationOption> nations, List<CoreOption> cores,
         List<HistoryView> history, List<FundReview> fundReviews) implements CustomPacketPayload {
     private static final int MAX_ROWS = 256;
@@ -22,6 +22,7 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
             StreamCodec.of(S2C_RecoveryDispatchSnapshotPacket::write, S2C_RecoveryDispatchSnapshotPacket::read);
 
     public S2C_RecoveryDispatchSnapshotPacket {
+        if (settings == null) settings = Settings.DISABLED;
         contracts = contracts == null ? List.of() : List.copyOf(contracts);
         nations = nations == null ? List.of() : List.copyOf(nations);
         cores = cores == null ? List.of() : List.copyOf(cores);
@@ -35,6 +36,7 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
         buffer.writeBoolean(value.canManageSiege); buffer.writeBoolean(value.canManageTreasury);
         buffer.writeBoolean(value.canManageDispatch); buffer.writeBoolean(value.canManageDiplomacy);
         buffer.writeVarLong(value.fundBalance); buffer.writeVarLong(value.fundReserved);
+        value.settings.write(buffer);
         buffer.writeBoolean(value.recovery != null); if (value.recovery != null) value.recovery.write(buffer);
         writeList(buffer, value.contracts, (target, row) -> row.write(target));
         writeList(buffer, value.nations, (target, row) -> row.write(target));
@@ -49,9 +51,10 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
         boolean siege = buffer.readBoolean(); boolean treasury = buffer.readBoolean();
         boolean dispatch = buffer.readBoolean(); boolean diplomacy = buffer.readBoolean();
         long balance = buffer.readVarLong(); long reserved = buffer.readVarLong();
+        Settings settings = Settings.read(buffer);
         RecoveryView recovery = buffer.readBoolean() ? RecoveryView.read(buffer) : null;
         return new S2C_RecoveryDispatchSnapshotPacket(open, tick, ownNation, member, admin, siege, treasury,
-                dispatch, diplomacy, balance, reserved, recovery, readList(buffer, ContractView::read),
+                dispatch, diplomacy, balance, reserved, settings, recovery, readList(buffer, ContractView::read),
                 readList(buffer, NationOption::read), readList(buffer, CoreOption::read),
                 readList(buffer, HistoryView::read), readList(buffer, FundReview::read));
     }
@@ -78,36 +81,57 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
                                int supportPercent, boolean resealed, int healthyWalls, int wallTarget,
                                boolean upkeepPaid, long aidUsed, long aidReserved,
                                UUID attackerNationId, String attackerName,
-                               String rivalName, boolean protectionWaived) {
+                               String rivalName, boolean protectionWaived, long resealRemainingTicks,
+                               boolean weightedWalls, boolean protectionActive, long settlementTruceTicks) {
+        /** {@link #resealRemainingTicks} while the capital core is not sealed, so the clock has not started. */
+        public static final long RESEAL_NOT_STARTED = -1L;
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeVarLong(revision); b.writeUtf(state, 24);
             b.writeVarLong(remainingTicks); b.writeVarInt(supportPercent); b.writeBoolean(resealed);
             b.writeVarInt(healthyWalls); b.writeVarInt(wallTarget); b.writeBoolean(upkeepPaid);
             b.writeVarLong(aidUsed); b.writeVarLong(aidReserved); writeUuid(b, attackerNationId);
             b.writeUtf(attackerName == null ? "" : attackerName, 64); b.writeUtf(rivalName == null ? "" : rivalName, 64);
-            b.writeBoolean(protectionWaived); }
+            b.writeBoolean(protectionWaived); b.writeVarLong(Math.max(-1L, resealRemainingTicks) + 1L);
+            b.writeBoolean(weightedWalls); b.writeBoolean(protectionActive);
+            b.writeVarLong(Math.max(0L, settlementTruceTicks)); }
         static RecoveryView read(FriendlyByteBuf b) { return new RecoveryView(b.readUUID(), b.readVarLong(),
                 b.readUtf(24), b.readVarLong(), b.readVarInt(), b.readBoolean(), b.readVarInt(), b.readVarInt(),
                 b.readBoolean(), b.readVarLong(), b.readVarLong(), readUuid(b), b.readUtf(64),
-                b.readUtf(64), b.readBoolean()); }
+                b.readUtf(64), b.readBoolean(), b.readVarLong() - 1L, b.readBoolean(), b.readBoolean(),
+                b.readVarLong()); }
+    }
+    /**
+     * Which parts of recovery and dispatch the server has switched on, and their limits, so the screen
+     * can leave out what does not exist rather than offer buttons the server refuses.
+     */
+    public record Settings(boolean fundEnabled, boolean dispatchEnabled, boolean dispatchMoneyEnabled,
+                           int dispatchMaxMinutes, boolean subsidyNeedsAdmin, boolean rivalEnabled) {
+        public static final Settings DISABLED = new Settings(false, false, false, 0, false, false);
+        void write(FriendlyByteBuf b) { b.writeBoolean(fundEnabled); b.writeBoolean(dispatchEnabled);
+            b.writeBoolean(dispatchMoneyEnabled); b.writeVarInt(Math.max(0, dispatchMaxMinutes));
+            b.writeBoolean(subsidyNeedsAdmin); b.writeBoolean(rivalEnabled); }
+        static Settings read(FriendlyByteBuf b) { return new Settings(b.readBoolean(), b.readBoolean(),
+                b.readBoolean(), b.readVarInt(), b.readBoolean(), b.readBoolean()); }
     }
     public record ContractView(UUID id, long revision, String state, String employer, String provider,
                                String side, String target, List<String> participants, int consentCount,
                                long pricePerMinute, long maximumTicks, long billedTicks,
                                long requestedSubsidy, long ownEscrow, long subsidyEscrow, boolean employerApproved,
                                boolean providerApproved, boolean subsidyApproved, boolean viewerParticipant,
-                               boolean viewerConsented, String endReason) {
+                               boolean viewerConsented, String endReason, boolean viewerEmployer,
+                               boolean viewerProvider) {
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeVarLong(revision); b.writeUtf(state, 32);
             b.writeUtf(employer, 64); b.writeUtf(provider, 64); b.writeUtf(side, 16); b.writeUtf(target, 96);
             writeList(b, participants, (buf, text) -> buf.writeUtf(text, 64)); b.writeVarInt(consentCount);
             b.writeVarLong(pricePerMinute); b.writeVarLong(maximumTicks); b.writeVarLong(billedTicks);
             b.writeVarLong(requestedSubsidy); b.writeVarLong(ownEscrow); b.writeVarLong(subsidyEscrow); b.writeBoolean(employerApproved);
             b.writeBoolean(providerApproved); b.writeBoolean(subsidyApproved); b.writeBoolean(viewerParticipant);
-            b.writeBoolean(viewerConsented); b.writeUtf(endReason == null ? "" : endReason, 64); }
+            b.writeBoolean(viewerConsented); b.writeUtf(endReason == null ? "" : endReason, 64);
+            b.writeBoolean(viewerEmployer); b.writeBoolean(viewerProvider); }
         static ContractView read(FriendlyByteBuf b) { return new ContractView(b.readUUID(), b.readVarLong(),
                 b.readUtf(32), b.readUtf(64), b.readUtf(64), b.readUtf(16), b.readUtf(96),
                 readList(b, value -> value.readUtf(64)), b.readVarInt(), b.readVarLong(), b.readVarLong(),
                 b.readVarLong(), b.readVarLong(), b.readVarLong(), b.readVarLong(), b.readBoolean(), b.readBoolean(),
-                b.readBoolean(), b.readBoolean(), b.readBoolean(), b.readUtf(64)); }
+                b.readBoolean(), b.readBoolean(), b.readBoolean(), b.readUtf(64), b.readBoolean(), b.readBoolean()); }
     }
     public record NationOption(UUID id, String name, String tag, List<MemberOption> members) {
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeUtf(name, 64); b.writeUtf(tag, 16);

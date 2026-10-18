@@ -48,6 +48,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private static final DateTimeFormatter LAST_SEEN_FORMAT =
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm");
     private static S2HubTab lastTab = S2HubTab.OVERVIEW;
+    private static final int MIN_FIT_WIDTH = 620;
+    private static final int MIN_FIT_HEIGHT = 330;
     private static int nextRequestId;
 
     /**
@@ -81,6 +83,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     private boolean leaveConfirmation;
     /** Allied nation whose territory grants are being edited in the overlay; null when closed. */
     private UUID allyPermissionsNationId;
+    private final NationProfileOverlay nationProfile = new NationProfileOverlay();
     private int allyPermissionsScroll;
     private static final int ALLY_ROW_HEIGHT = 26;
     /** The hub refreshes itself; a background reply must never reopen a hub the player has left. */
@@ -107,6 +110,9 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         clampScroll();
         invitationIndex = Math.min(invitationIndex, Math.max(0, snapshot.invitations().size() - 1));
         if (allyPermissionsNationId != null && allyRelation() == null) allyPermissionsNationId = null;
+        // A profile of a nation that has gone, or seen from a nation the viewer has left, is closed.
+        if (nationProfile.isOpen() && snapshot.diplomacy().stream()
+                .noneMatch(view -> view.nationId().equals(nationProfile.nationId()))) nationProfile.close();
         clampAllyScroll();
     }
 
@@ -129,6 +135,13 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return recent;
     }
 
+    /** Opens the hub from the tab strip of another screen, at the page last viewed. */
+    static void requestFromTab() {
+        // Its reply opens the hub; it must not be taken for a stale background refresh.
+        backgroundRefreshSentAt = 0L;
+        PacketDistributor.sendToServer(new C2S_RequestS2HubPacket(lastTab));
+    }
+
     @Override
     public void tick() {
         if (++ticksSinceRefresh >= AUTO_REFRESH_TICKS && pendingRequestId < 0 && backgroundRefreshSentAt == 0L) {
@@ -148,6 +161,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     protected void init() {
+        // Narrower than this and the hub's lists and buttons start to crowd.
+        HubTabs.fit(this, MIN_FIT_WIDTH, MIN_FIT_HEIGHT);
         Rect bounds = memberSearchBounds(hubLayout().content());
         memberSearch = new EditBox(font, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
                 Component.translatable("screen.moveearth_addtional.s2.members.search"));
@@ -237,14 +252,22 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                     && kickTargetId == null && surrenderTargetId == null
                     && !vaultChangeConfirmation && !leaveConfirmation);
         }
+        HubTabs.render(graphics, font, width, HubTabs.Tab.NATION, mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
 
+        // Text is batched and drawn after every fill, so the page's text would show through a modal drawn
+        // later. Flushing it now and drawing the modals in front keeps the page behind them.
+        graphics.flush();
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 400.0F);
         if (kickTargetId != null) drawKickConfirmation(graphics, mouseX, mouseY);
         if (surrenderTargetId != null) drawSurrenderConfirmation(graphics, mouseX, mouseY);
         if (vaultChangeConfirmation) drawVaultConfirmation(graphics, mouseX, mouseY);
         if (leaveConfirmation) drawLeaveConfirmation(graphics, mouseX, mouseY);
         if (allyPermissionsNationId != null) drawAllyPermissions(graphics, mouseX, mouseY);
+        if (nationProfile.isOpen()) drawNationProfile(graphics, mouseX, mouseY);
         if (toastTicks > 0 && toast != null) drawToast(graphics, font, width, height, toast, toastColor);
+        graphics.pose().popPose();
     }
 
     /** Top right of the unaffiliated card, clear of its title and bottom buttons at any width. */
@@ -370,6 +393,12 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         if (!snapshot.sieges().isEmpty()) items.add(new HomeItem(Component.translatable(
                 "screen.moveearth_addtional.s2.home.attention.siege", snapshot.sieges().size()), DANGER, view,
                 () -> selectPage(S2HubNavigation.Page.SIEGES)));
+        S2NationSnapshot.CapitalWall wall = snapshot.home().capitalWall();
+        if (wall.warn()) items.add(new HomeItem(Component.translatable(
+                "screen.moveearth_addtional.s2.home.attention.capital_wall", wall.layers(), wall.target(),
+                wall.weakKnown() ? Component.translatable("screen.moveearth_addtional.s2.home.attention.capital_wall.weak",
+                        wall.weakX(), wall.weakY(), wall.weakZ()) : Component.empty()),
+                wall.layers() <= 1 ? DANGER : GOLD, view, () -> selectPage(S2HubNavigation.Page.TERRITORY)));
         long incomingPeace = snapshot.peaceProposals().stream().filter(S2NationSnapshot.PeaceView::incoming).count();
         if (incomingPeace > 0) items.add(new HomeItem(Component.translatable(
                 "screen.moveearth_addtional.s2.home.attention.peace", incomingPeace), GOLD, view,
@@ -460,16 +489,43 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     private void drawRecoveryEntry(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
-        Rect card = new Rect(content.x(), content.y() + 12, content.width(), Math.min(112, content.height()));
+        Rect card = new Rect(content.x(), content.y() + 4, content.width(), Math.min(52, content.height()));
         drawCard(graphics, card, SUCCESS, false, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.recovery.title"),
-                card.x() + 14, card.y() + 14, SUCCESS, false);
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.recovery.subtitle"),
-                card.x() + 14, card.y() + 34, MUTED, false);
+                card.x() + 14, card.y() + 10, SUCCESS, false);
+        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                        "screen.moveearth_addtional.recovery.hub.detail").getString(), card.width() - 28),
+                card.x() + 14, card.y() + 27, MUTED, false);
         Rect open = recoveryEntryBounds(content);
         drawButton(graphics, font, open,
                 Component.translatable("screen.moveearth_addtional.recovery.open"), SUCCESS,
                 open.contains(mouseX, mouseY), true);
+        // What holds the viewer's own nation right now, so a fall's aftermath reads at a glance.
+        int y = open.bottom() + 10;
+        if (y + 12 > content.bottom()) return;
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.recovery.hub.own"),
+                content.x() + 2, y, ACCENT, false);
+        y += 14;
+        var own = snapshot.protections().stream().filter(S2NationSnapshot.ProtectionView::own).toList();
+        if (own.isEmpty()) {
+            if (y + 10 <= content.bottom()) graphics.drawString(font,
+                    Component.translatable("screen.moveearth_addtional.recovery.hub.own.none"),
+                    content.x() + 2, y, MUTED, false);
+            return;
+        }
+        for (S2NationSnapshot.ProtectionView protection : own) {
+            Rect row = new Rect(content.x(), y, content.width(), 34);
+            if (row.bottom() > content.bottom()) break;
+            int color = protection.kind() == S2NationSnapshot.ProtectionKind.RECOVERY_RESTRICTION ? GOLD : SUCCESS;
+            drawCard(graphics, row, color, false, false);
+            graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(protectionKey(protection)
+                            + ".title", "", protection.count()).getString(), row.width() - 26),
+                    row.x() + 12, row.y() + 6, TEXT, false);
+            graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(protectionKey(protection)
+                            + ".detail", openDuration(protection.remainingTicks())).getString(), row.width() - 26),
+                    row.x() + 12, row.y() + 19, color, false);
+            y += 38;
+        }
     }
 
     private void drawMembers(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
@@ -523,6 +579,13 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             String nation = relation.nationTag().isBlank() ? relation.nationName()
                     : "[" + relation.nationTag() + "] " + relation.nationName();
             graphics.drawString(font, nation, card.x() + 13, card.y() + 8, TEXT, false);
+            Component badge = protectionBadge(relation.nationId());
+            if (badge != null) {
+                int badgeX = card.x() + 13 + font.width(nation) + 8;
+                int badgeRoom = card.right() - (canManageDiplomacy() ? 196 : 12) - badgeX;
+                if (badgeRoom > 30) graphics.drawString(font,
+                        font.plainSubstrByWidth(badge.getString(), badgeRoom), badgeX, card.y() + 8, GOLD, false);
+            }
             Component stateText = relation.allianceEnding()
                     ? Component.translatable(relation.allianceEndByViewer()
                             ? "screen.moveearth_addtional.diplomacy.alliance_ending_own"
@@ -670,7 +733,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         Rect list = diplomacyListBounds(content);
         if ((!includeSieges || snapshot.sieges().isEmpty())
                 && (!includePeace || snapshot.peaceProposals().isEmpty())
-                && (!includeTruces || snapshot.truces().isEmpty())
+                && (!includeTruces || snapshot.truces().isEmpty() && snapshot.protections().isEmpty())
                 && (!includePrisoners || snapshot.prisoners().isEmpty())) {
             String emptyKey = includePeace ? "screen.moveearth_addtional.s2.diplomacy.peace.empty"
                     : includePrisoners ? "screen.moveearth_addtional.prisoner.list.empty"
@@ -726,6 +789,24 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                             "screen.moveearth_addtional.peace.truce_remaining",
                             formatTicks(truce.remainingTicks())),
                     card.x() + 13, card.y() + 31, SUCCESS, false);
+        }
+        for (S2NationSnapshot.ProtectionView protection : snapshot.protections()) {
+            Rect card = siegeCard(list, row++);
+            if (card.bottom() <= list.y() || card.y() >= list.bottom()) continue;
+            int color = protection.kind() == S2NationSnapshot.ProtectionKind.FAILED_LOCKOUT ? DANGER : GOLD;
+            drawCard(graphics, card, color, false, card.contains(mouseX, mouseY));
+            String nation = protection.own()
+                    ? Component.translatable("screen.moveearth_addtional.protection.own_nation").getString()
+                    : protection.nationTag().isBlank() ? protection.nationName()
+                    : "[" + protection.nationTag() + "] " + protection.nationName();
+            int textWidth = card.width() - 26;
+            graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                            protectionKey(protection) + ".title", nation, protection.count()).getString(), textWidth),
+                    card.x() + 13, card.y() + 12, TEXT, false);
+            graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                            protectionKey(protection) + ".detail", openDuration(protection.remainingTicks()))
+                            .getString(), textWidth),
+                    card.x() + 13, card.y() + 31, color, false);
         }
         }
         if (includePrisoners) {
@@ -955,7 +1036,9 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (HubTabs.mouseClicked(font, width, HubTabs.Tab.NATION, mouseX, mouseY, button)) return true;
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+        if (nationProfile.isOpen()) return nationProfile.click(mouseX, mouseY, width, height);
         if (allyPermissionsNationId != null) {
             clickAllyPermissions(mouseX, mouseY);
             return true;
@@ -1192,6 +1275,21 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.RELATIONS) {
+            Rect list = diplomacyListBounds(content);
+            if (list.contains(mouseX, mouseY)) {
+                for (int index = 0; index < snapshot.diplomacy().size(); index++) {
+                    S2NationSnapshot.DiplomacyView relation = snapshot.diplomacy().get(index);
+                    Rect card = diplomacyCard(list, index);
+                    if (!card.contains(mouseX, mouseY)) continue;
+                    // A click on a button, even a disabled one, is not a click on the nation.
+                    if (canManageDiplomacy() && (diplomacyPrimaryBounds(card).contains(mouseX, mouseY)
+                            || diplomacySecondaryBounds(card).contains(mouseX, mouseY))) return true;
+                    nationProfile.show(relation.nationId(), relation.nationName());
+                    return true;
+                }
+            }
+        }
         if ((navigation.page() == S2HubNavigation.Page.PEACE
                 || navigation.page() == S2HubNavigation.Page.SIEGES
                 || navigation.page() == S2HubNavigation.Page.PRISONERS)
@@ -1219,7 +1317,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                         return true;
                     }
                 }
-                row += snapshot.truces().size();
+                row += snapshot.truces().size() + snapshot.protections().size();
                 }
                 if (navigation.page() == S2HubNavigation.Page.PRISONERS) {
                 for (S2NationSnapshot.PrisonerView prisoner : snapshot.prisoners()) {
@@ -1249,11 +1347,15 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 }
             }
         }
+        if (snapshot.member() && navigation.page() == S2HubNavigation.Page.PEACE && openProfileFromPeace(content, mouseX, mouseY)) {
+            return true;
+        }
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (nationProfile.isOpen()) return nationProfile.scroll(mouseX, mouseY, scrollY, width, height);
         if (allyPermissionsNationId != null) {
             S2NationSnapshot.DiplomacyView relation = allyRelation();
             Rect list = allyMemberListBounds(allyModalBounds());
@@ -1399,8 +1501,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
     }
 
     private static Rect recoveryEntryBounds(Rect content) {
-        return new Rect(content.x() + 14, Math.min(content.bottom() - 30, content.y() + 78),
-                Math.max(1, content.width() - 28), 22);
+        return new Rect(content.x(), Math.min(content.bottom() - 24, content.y() + 62),
+                Math.max(1, Math.min(220, content.width())), 22);
     }
 
     private static Rect invitationBounds(Rect content) {
@@ -1546,7 +1648,8 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             case MEMBERS -> visibleMembers().size();
             case ROLES -> snapshot.roles().size();
             case RELATIONS -> snapshot.diplomacy().size();
-            case PEACE -> snapshot.peaceProposals().size() + snapshot.truces().size();
+            case PEACE -> snapshot.peaceProposals().size() + snapshot.truces().size()
+                    + snapshot.protections().size();
             case SIEGES -> snapshot.sieges().size();
             case PRISONERS -> snapshot.prisoners().size();
             default -> 0;
@@ -1806,6 +1909,78 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         return Component.translatable("screen.moveearth_addtional.open_time.duration", minutes / 60L, minutes % 60L);
     }
 
+    /** The protection to show beside another nation in the relations list: the one that bars most. */
+    /** Called with another nation's profile from the server. */
+    public void acceptNationProfile(com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationProfilePacket packet) {
+        nationProfile.accept(packet);
+    }
+
+    private void drawNationProfile(GuiGraphics graphics, int mouseX, int mouseY) {
+        S2NationSnapshot.DiplomacyView relation = snapshot.diplomacy().stream()
+                .filter(view -> view.nationId().equals(nationProfile.nationId())).findFirst().orElse(null);
+        Component relationText;
+        int color;
+        if (relation == null) {
+            relationText = Component.literal("自国");
+            color = ACCENT;
+        } else {
+            color = relation.state() == S2NationSnapshot.DiplomacyState.ALLIED ? SUCCESS
+                    : relation.state() == S2NationSnapshot.DiplomacyState.HOSTILE ? DANGER : ACCENT;
+            relationText = Component.literal("自国との関係: ").append(relation.allianceEnding()
+                    ? Component.translatable(relation.allianceEndByViewer()
+                            ? "screen.moveearth_addtional.diplomacy.alliance_ending_own"
+                            : "screen.moveearth_addtional.diplomacy.alliance_ending_other",
+                    openDuration(relation.allianceEndRemainingTicks()))
+                    : Component.translatable(diplomacyStateKey(relation.state())));
+        }
+        nationProfile.render(graphics, font, width, height, mouseX, mouseY, relationText, color,
+                protectionBadge(nationProfile.nationId()));
+    }
+
+    /** A row of the peace page, outside its buttons, opens the other nation's profile. */
+    private boolean openProfileFromPeace(Rect content, double mouseX, double mouseY) {
+        Rect list = diplomacyListBounds(content);
+        if (!list.contains(mouseX, mouseY)) return false;
+        int row = 0;
+        for (S2NationSnapshot.PeaceView peace : snapshot.peaceProposals()) {
+            Rect card = siegeCard(list, row++);
+            if (!card.contains(mouseX, mouseY)) continue;
+            if (canManageDiplomacy() && (peaceAcceptBounds(card).contains(mouseX, mouseY)
+                    || peace.incoming() && peaceRejectBounds(card).contains(mouseX, mouseY))) return true;
+            nationProfile.show(peace.opponentNationId(), peace.opponentName());
+            return true;
+        }
+        for (S2NationSnapshot.TruceView truce : snapshot.truces()) {
+            if (siegeCard(list, row++).contains(mouseX, mouseY)) {
+                nationProfile.show(truce.opponentNationId(), truce.opponentName());
+                return true;
+            }
+        }
+        for (S2NationSnapshot.ProtectionView protection : snapshot.protections()) {
+            if (siegeCard(list, row++).contains(mouseX, mouseY) && !protection.own()) {
+                nationProfile.show(protection.nationId(), protection.nationName());
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Component protectionBadge(java.util.UUID nationId) {
+        S2NationSnapshot.ProtectionView strongest = null;
+        for (S2NationSnapshot.ProtectionView protection : snapshot.protections()) {
+            if (protection.own() || !protection.nationId().equals(nationId)) continue;
+            if (strongest == null || protection.kind().ordinal() < strongest.kind().ordinal()) strongest = protection;
+        }
+        if (strongest == null) return null;
+        return Component.translatable(protectionKey(strongest) + ".badge", strongest.count(),
+                openDuration(strongest.remainingTicks()));
+    }
+
+    private static String protectionKey(S2NationSnapshot.ProtectionView protection) {
+        return "screen.moveearth_addtional.protection." + (protection.own() ? "own." : "")
+                + protection.kind().name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     private static String diplomacyStateKey(S2NationSnapshot.DiplomacyState state) {
         return "screen.moveearth_addtional.diplomacy.state." + state.name().toLowerCase(java.util.Locale.ROOT);
     }
@@ -1826,6 +2001,10 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && nationProfile.isOpen()) {
+            nationProfile.close();
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && allyPermissionsNationId != null) {
             allyPermissionsNationId = null;
             return true;

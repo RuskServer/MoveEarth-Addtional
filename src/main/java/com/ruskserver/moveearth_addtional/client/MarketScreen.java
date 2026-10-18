@@ -47,6 +47,7 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
     }
 
     @Override protected void init() {
+        HubTabs.fit(this, W, H);
         int x = left(), y = top();
         search = new MoveEarthTextField(font, x + 15, y + 98, 251, 24, Component.literal("商品検索"));
         search.setHint(Component.literal("商品名で検索"));
@@ -130,6 +131,7 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
         drawDetail(g, mx, my);
         if (!snapshot.result().isBlank()) g.drawString(font, fit(resultText(snapshot.result()), 570), x + 18, y + H - 13,
                 snapshot.result().contains("しました") || snapshot.result().contains("更新") ? SUCCESS : DANGER, false);
+        HubTabs.render(g, font, width, HubTabs.Tab.MARKET, mx, my);
         super.render(g, mx, my, partial);
     }
 
@@ -210,6 +212,7 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
     }
 
     @Override public boolean mouseClicked(double mx, double my, int button) {
+        if (HubTabs.mouseClicked(font, width, HubTabs.Tab.MARKET, mx, my, button)) return true;
         if (button != 0) return super.mouseClicked(mx, my, button);
         int x = left(), y = top();
         if (inside(mx, my, x + W - 37, y + 10, 20, 20)) { onClose(); return true; }
@@ -332,7 +335,7 @@ public final class MarketScreen extends Screen implements SuppressesChatOverlay 
         try { return Integer.parseInt(text); } catch (NumberFormatException ignored) { return 0; }
     }
     private int left() { return (width - W) / 2; }
-    private int top() { return (height - H) / 2; }
+    private int top() { return HubTabs.panelTop(height, H); }
     private String fit(String value, int pixels) { return font.plainSubstrByWidth(value, pixels); }
 
     /**

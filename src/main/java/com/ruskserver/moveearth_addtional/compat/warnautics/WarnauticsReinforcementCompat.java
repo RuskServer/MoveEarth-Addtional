@@ -5,7 +5,6 @@ import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementSavedData;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementService;
-import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementBlastOcclusion;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.SiegeDamageService;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.WarnauticsWeaponDamage;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
@@ -140,7 +139,7 @@ public final class WarnauticsReinforcementCompat {
             }
         }
         snapshotRadius = Math.min(64, snapshotRadius);
-        Set<BlockPos> blastBarriers = ReinforcementBlastOcclusion.barriersAround(
+        var blastBarriers = new com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEvents.BlastBarriers(
                 level, reinforcements, centerPos, snapshotRadius);
         var dimension = level.dimension().location();
         boolean warehouseDimension = warehouses.protectsAnyIn(dimension);
@@ -172,16 +171,22 @@ public final class WarnauticsReinforcementCompat {
             }
             var vehicleCore = vehicles.at(dimension, pos).orElse(null);
             if (vehicleCore != null) {
-                if (ReinforcementBlastOcclusion.blocked(center, pos, blastBarriers)) {
-                    iterator.remove();
-                    continue;
-                }
-                int coreDamage = SiegeDamageService.configuredWarnauticsCoreDamage(kind);
-                if (kind != WarnauticsWeaponDamage.Kind.C4 || pos.equals(c4Primary)) {
+                iterator.remove();
+                // As with CBC, a bomb nobody answers for wears no core down: it would pass every truce and
+                // friendly-fire check, and leave a wreck no salvage right was granted on.
+                if (attribution == null || !WarnauticsWeaponDamage.canDamageCore(kind)
+                        || blastBarriers.blocked(center, pos)) continue;
+                int maximum = SiegeDamageService.configuredWarnauticsCoreDamage(kind);
+                // Scaled by distance like a territory core, measured in the craft's own frame.
+                int coreDamage = kind == WarnauticsWeaponDamage.Kind.C4
+                        ? (pos.equals(c4Primary) ? maximum : 0)
+                        : WarnauticsWeaponDamage.distanceScaledDamage(maximum,
+                        blastBarriers.originFor(center, pos).distanceTo(pos.getCenter()),
+                        S2TerritoryConfig.warnauticsCoreRadius());
+                if (coreDamage > 0) {
                     com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCoreHealthService.damage(
                             level, pos, coreDamage, attribution);
                 }
-                iterator.remove();
                 continue;
             }
 
@@ -191,7 +196,7 @@ public final class WarnauticsReinforcementCompat {
                         .wreckStorage(level, pos, attribution)) iterator.remove();
                 continue;
             }
-            if (ReinforcementBlastOcclusion.blocked(center, pos, blastBarriers)) {
+            if (blastBarriers.blocked(center, pos)) {
                 iterator.remove();
                 protectedStates.put(pos.immutable(), level.getBlockState(pos));
                 continue;
@@ -250,7 +255,7 @@ public final class WarnauticsReinforcementCompat {
 
     private static void damageExposedCores(ServerLevel level, Vec3 center, WarnauticsWeaponDamage.Kind kind,
                                            SiegeService.AttackBatch siege, BlockPos c4Primary,
-                                           Set<BlockPos> blastBarriers) {
+                                           com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEvents.BlastBarriers blastBarriers) {
         if (!WarnauticsWeaponDamage.canDamageCore(kind)) return;
         if (kind == WarnauticsWeaponDamage.Kind.C4 && c4Primary == null) return;
         int maximum = SiegeDamageService.configuredWarnauticsCoreDamage(kind);
@@ -262,7 +267,7 @@ public final class WarnauticsReinforcementCompat {
                 .coresNear(level.dimension().location(), centerPos, (int) Math.ceil(radius))) {
             if (core.state() != TerritorySavedData.CoreState.EXPOSED || core.health() <= 0
                     || siege.truceBlocks(core.pos())) continue;
-            if (ReinforcementBlastOcclusion.blocked(center, core.pos(), blastBarriers)) continue;
+            if (blastBarriers.blocked(center, core.pos())) continue;
             int damage = kind == WarnauticsWeaponDamage.Kind.C4
                     ? (core.pos().equals(c4Primary) ? maximum : 0)
                     : WarnauticsWeaponDamage.distanceScaledDamage(

@@ -24,6 +24,11 @@ public record NotificationPresentation(String title, String description,
                 add(fields, "攻撃側", arg(args, 0, "不明"));
                 add(fields, "防衛側", arg(args, 1, nationName));
             }
+            case SIEGE_INITIAL_STARTED -> {
+                add(fields, "攻撃側", arg(args, 0, "不明"));
+                add(fields, "防衛側", arg(args, 1, nationName));
+                add(fields, "準備時間", arg(args, 2, "?"));
+            }
             case CORE_DAMAGED, CORE_FALLEN -> {
                 String current = arg(args, 0, "?");
                 String maximum = arg(args, 1, "?");
@@ -48,6 +53,7 @@ public record NotificationPresentation(String title, String description,
                 String maximum = arg(args, 2, "?");
                 add(fields, "車両コア耐久値", current + " / " + maximum + healthPercent(current, maximum));
             }
+            case VEHICLE_DESTROYED -> add(fields, "原因", arg(args, 0, "不明"));
             case TERRITORY_OCCUPIED -> {
                 add(fields, "旧所有国", arg(args, 0, "不明"));
                 add(fields, "占領国", arg(args, 1, nationName));
@@ -70,8 +76,9 @@ public record NotificationPresentation(String title, String description,
 
     public static NotificationSeverity severity(NationNotificationSavedData.EventType type) {
         return switch (type) {
-            case SIEGE_STARTED, CORE_DAMAGED, CORE_FALLEN, TERRITORY_LOST -> NotificationSeverity.URGENT;
-            case SIEGE_INITIAL_STARTED, TERRITORY_EXPOSED, UPKEEP_WARNING,
+            case SIEGE_INITIAL_STARTED, SIEGE_STARTED, CORE_DAMAGED, CORE_FALLEN,
+                    TERRITORY_LOST, VEHICLE_DESTROYED -> NotificationSeverity.URGENT;
+            case TERRITORY_EXPOSED, UPKEEP_WARNING,
                     COUNTEROFFENSIVE_STARTED, COUNTEROFFENSIVE_FAILED, RECOVERY_STARTED,
                     DISPATCH_ACTIVATED, TERRITORY_INTRUSION, VEHICLE_ATTACKED -> NotificationSeverity.WARNING;
             default -> NotificationSeverity.NORMAL;
@@ -79,7 +86,8 @@ public record NotificationPresentation(String title, String description,
     }
 
     public static boolean mandatory(NationNotificationSavedData.EventType type) {
-        return type == NationNotificationSavedData.EventType.SIEGE_STARTED
+        return type == NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED
+                || type == NationNotificationSavedData.EventType.SIEGE_STARTED
                 || type == NationNotificationSavedData.EventType.CORE_FALLEN
                 || type == NationNotificationSavedData.EventType.TERRITORY_LOST;
     }
@@ -112,6 +120,7 @@ public record NotificationPresentation(String title, String description,
             case DIGEST -> "国家通知のまとめ";
             case TERRITORY_INTRUSION -> "領土内のブロックが壊されています";
             case VEHICLE_ATTACKED -> "車両が攻撃されています";
+            case VEHICLE_DESTROYED -> "車両が失われました";
             case SYSTEM -> "MoveEarthからのお知らせ";
         };
     }

@@ -21,6 +21,10 @@ public enum GameEventType {
     TUTORIAL_SKIPPED("tutorial.skipped", "チュートリアルのスキップ"),
     TUTORIAL_RESTARTED("tutorial.restarted", "チュートリアルの再開"),
 
+    // In-game wiki: detail is how it was opened (tab, key, held_item, item) and the item, or the page shown
+    WIKI_OPENED("wiki.opened", "ゲーム内Wikiを開いた"),
+    WIKI_PAGE_VIEWED("wiki.page_viewed", "ゲーム内Wikiのページ表示"),
+
     // War
     SIEGE_INITIAL("siege.initial", "初動ロック開始"),
     SIEGE_ROLLING("siege.rolling", "ローリングSiege開始"),

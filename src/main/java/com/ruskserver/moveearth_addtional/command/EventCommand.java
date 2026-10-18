@@ -22,7 +22,9 @@ public final class EventCommand {
     @SubscribeEvent
     public static void register(RegisterCommandsEvent event) {
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
+        // An explicit requirement: on the Bukkit-based server a root without one is limited to operators.
         dispatcher.register(Commands.literal("event")
+                .requires(source -> source.hasPermission(0))
                 .executes(context -> open(context.getSource().getPlayerOrException()))
                 .then(Commands.literal("status").executes(context -> status(context.getSource())))
                 .then(Commands.literal("top").executes(context -> top(context.getSource())))

@@ -101,6 +101,17 @@ The Delayed Chunk Cache tracking-view design was adapted from
 The incorporated implementation is distributed by this project under the
 GNU General Public License version 3.
 
+## Trackwork crawler track concept
+
+The crawler track blocks were conceptually inspired by **Trackwork**, created
+by **Endalion**: Create-powered track blocks that drive a physics body. The
+implementation was written independently for Sable; no Trackwork code, models,
+textures or other assets are incorporated.
+
+- Source: https://github.com/Endalion/trackwork
+- License: MIT (code); Trackwork's assets are All Rights Reserved and are not
+  used by this project
+
 ## SQLite JDBC Driver
 
 The SQLite JDBC driver (`org.xerial:sqlite-jdbc`) is licensed under the
@@ -200,6 +211,29 @@ supplied by the target modpack; no Ponder code or assets are bundled here.
 
 - Component: Ponder 2.4.0 for Minecraft 1.21.1
 - License: as published by the Create team
+
+## Menu click and hover audio (CC0)
+
+`assets/moveearth_addtional/sounds/ui/click.ogg` and `ui/hover.ogg` are
+level-matched, faded mono versions of the following CC0 recordings:
+
+- el_boss, UI Button Click: https://freesound.org/people/el_boss/sounds/677861/
+- steaq, UI hover item: https://freesound.org/people/steaq/sounds/757328/
+
+Processing recipe: `tools/ui_sounds/process_ui_sounds.py`.
+CC0: https://creativecommons.org/publicdomain/zero/1.0/
+
+## Track running audio (CC0)
+
+`assets/moveearth_addtional/sounds/tracks/running.ogg` is a filtered,
+crossfaded mix of the following CC0 recordings:
+
+- martian, heavy metal trolley rolling rumbling: https://freesound.org/people/martian/sounds/216605/
+- Garuda1982, assembly line industry mechanics click sound effect: https://freesound.org/people/Garuda1982/sounds/575231/
+- exuberate, Metal Ripple - machine like: https://freesound.org/people/exuberate/sounds/581258/
+
+Processing recipe: `tools/tracks/process_audio.py`, cleaned balanced variant.
+CC0: https://creativecommons.org/publicdomain/zero/1.0/
 
 ## Third-party dependencies
 

@@ -34,6 +34,11 @@ public final class TerritoryMapRenderer {
     private static final float FILL_Z = -0.014F;
     private static final float BORDER_Z = -0.017F;
     private static final float CORE_Z = -0.019F;
+    /** Above territory borders, below core markers and labels. */
+    private static final float WAREHOUSE_Z = -0.018F;
+    /** A Warehouse is 37 by 17 blocks, about two pixels at the coarsest map scale; never drawn smaller than this. */
+    private static final float WAREHOUSE_MIN_PIXELS = 2.6F;
+    private static final int REMEMBERED_WAREHOUSE_RGB = 0xC8CCD2;
     private static final float LABEL_SCALE = 0.42F;
     /** Beyond this an item-frame label is about two pixels tall at 1080p. */
     static final double LABEL_DISTANCE = 12.0D;
@@ -56,6 +61,12 @@ public final class TerritoryMapRenderer {
 
     public static void render(PoseStack poseStack, MultiBufferSource buffers, MapItemSavedData mapData,
                               boolean inItemFrame) {
+        renderTerritories(poseStack, buffers, mapData, inItemFrame);
+        renderWarehouses(poseStack.last().pose(), buffers, mapData, inItemFrame);
+    }
+
+    private static void renderTerritories(PoseStack poseStack, MultiBufferSource buffers, MapItemSavedData mapData,
+                                          boolean inItemFrame) {
         ResourceLocation dimension = mapData.dimension.location();
         TerritoryMapClientState.requestIfStale(dimension);
         if (!TerritoryMapClientState.enabled()) return;
@@ -89,6 +100,51 @@ public final class TerritoryMapRenderer {
         if (!projected.labels().isEmpty() && labelsVisible(inItemFrame, matrix)) {
             renderLabels(matrix, buffers, projected.labels());
         }
+    }
+
+    /**
+     * Warehouses this client has been near ({@link WarehouseMapClientState}): those in range in the colour of
+     * what stepping in does, as their force field shows it, the rest as a plain outline where they were found.
+     * There are few of them, so they are projected each frame rather than cached.
+     */
+    private static void renderWarehouses(Matrix4f matrix, MultiBufferSource buffers, MapItemSavedData mapData,
+                                         boolean inItemFrame) {
+        List<WarehouseMapMemory.Site> sites = WarehouseMapClientState.sites(mapData.dimension.location());
+        if (sites.isEmpty()) return;
+        float thickness = mapData.scale >= 3 ? 1.0F : 0.72F;
+        VertexConsumer vertices = null;
+        List<Label> labels = new ArrayList<>();
+        Font font = Minecraft.getInstance().font;
+        for (WarehouseMapMemory.Site site : sites) {
+            TerritoryMapProjection.ProjectedRect rect = TerritoryMapProjection.projectBlocks(
+                    mapData.centerX, mapData.centerZ, mapData.scale, site.minX(), site.minZ(),
+                    site.minX() + com.ruskserver.moveearth_addtional.warehouse.WarehouseSitePolicy.WIDTH,
+                    site.minZ() + com.ruskserver.moveearth_addtional.warehouse.WarehouseSitePolicy.LENGTH,
+                    WAREHOUSE_MIN_PIXELS);
+            if (!rect.visible()) continue;
+            if (vertices == null) vertices = buffers.getBuffer(RenderType.debugQuads());
+            var state = WarehouseMapClientState.liveState(site);
+            int rgb = state == null ? REMEMBERED_WAREHOUSE_RGB : state.color() & 0xFFFFFF;
+            quad(vertices, matrix, rect.minX(), rect.minY(), rect.maxX(), rect.maxY(), WAREHOUSE_Z,
+                    rgb | (state == null ? 40 : 72) << 24);
+            int border = rgb | 235 << 24;
+            quad(vertices, matrix, rect.minX(), rect.minY(), rect.maxX(),
+                    Math.min(rect.maxY(), rect.minY() + thickness), WAREHOUSE_Z, border);
+            quad(vertices, matrix, rect.minX(), Math.max(rect.minY(), rect.maxY() - thickness),
+                    rect.maxX(), rect.maxY(), WAREHOUSE_Z, border);
+            quad(vertices, matrix, rect.minX(), rect.minY(),
+                    Math.min(rect.maxX(), rect.minX() + thickness), rect.maxY(), WAREHOUSE_Z, border);
+            quad(vertices, matrix, Math.max(rect.minX(), rect.maxX() - thickness), rect.minY(),
+                    rect.maxX(), rect.maxY(), WAREHOUSE_Z, border);
+            if (mapData.scale <= 2) {
+                FormattedCharSequence text = Component.translatable("map.moveearth_addtional.warehouse")
+                        .getVisualOrderText();
+                float width = font.width(text) * LABEL_SCALE;
+                labels.add(new Label((rect.minX() + rect.maxX()) / 2.0F - width / 2.0F, rect.maxY() + 1.2F, text,
+                        rgb | 255 << 24));
+            }
+        }
+        if (!labels.isEmpty() && labelsVisible(inItemFrame, matrix)) renderLabels(matrix, buffers, labels);
     }
 
     /** Hand-held and screen maps always show labels; framed ones only within {@link #LABEL_DISTANCE}. */

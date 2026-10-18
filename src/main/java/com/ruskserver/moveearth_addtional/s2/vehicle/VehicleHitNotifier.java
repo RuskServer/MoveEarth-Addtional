@@ -47,6 +47,8 @@ public final class VehicleHitNotifier {
         boolean individual = side == null && attack != null && attack.actorId() != null;
         UUID attacker = side != null ? side : individual ? attack.actorId() : UNKNOWN_ATTACKER;
         if (vehicle.nationId().equals(attacker)) return;
+        com.ruskserver.moveearth_addtional.s2.siege.TruceAggressionService.vehicleHit(server,
+                attack == null ? null : attack.actorId(), side, vehicle.nationId());
         long now = System.currentTimeMillis();
         Key key = new Key(vehicle.id(), attacker);
         Long last = LAST_NOTICE.get(key);

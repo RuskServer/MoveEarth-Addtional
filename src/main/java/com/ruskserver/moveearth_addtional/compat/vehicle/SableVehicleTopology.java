@@ -25,57 +25,140 @@ import java.util.UUID;
 /** Resolves one vehicle core across Sable bodies connected by hinges, bearings and swivels. */
 public final class SableVehicleTopology {
     private static final String VEHICLE_ID = "MoveEarthVehicleId";
+    /**
+     * The nation a body belongs to, kept beside the vehicle id. The id stops meaning anything once its record is
+     * gone (the core was broken or the craft lost), but the hull and its cargo are still that nation's: without
+     * this, storage on a wreck or a split-off fragment answered to nobody and locked for everyone.
+     */
+    private static final String NATION_ID = "MoveEarthVehicleNation";
     private SableVehicleTopology() { }
+
+    /** One connected chain as seen from one of its bodies. */
+    private record Chain(ServerSubLevel own, Set<UUID> bodies, Map<ServerSubLevel, UUID> bound) {
+        Map<UUID, UUID> boundByBody() {
+            Map<UUID, UUID> result = new LinkedHashMap<>();
+            bound.forEach((body, vehicle) -> result.put(body.getUniqueId(), vehicle));
+            return result;
+        }
+    }
+
+    private static Chain chain(ServerSubLevel own) {
+        Set<UUID> bodies = new LinkedHashSet<>();
+        Map<ServerSubLevel, UUID> bound = new LinkedHashMap<>();
+        for (SubLevel body : SubLevelHelper.getConnectedChain(own)) {
+            if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
+            bodies.add(body.getUniqueId());
+            UUID vehicle = boundVehicleId(serverBody);
+            if (vehicle != null) bound.put(serverBody, vehicle);
+        }
+        return new Chain(own, bodies, bound);
+    }
+
+    private static UUID coreBodyOf(VehicleSavedData vehicles, UUID vehicle) {
+        return vehicles.vehicle(vehicle).map(VehicleSavedData.VehicleRecord::subLevelId).orElse(null);
+    }
 
     public static Optional<VehicleContext> at(ServerLevel level, BlockPos plotPos) {
         SubLevel containing = Sable.HELPER.getContaining(level, plotPos);
-        if (!(containing instanceof ServerSubLevel serverSubLevel)) return Optional.empty();
-        Set<UUID> bodies = new LinkedHashSet<>();
-        Map<ServerSubLevel, UUID> bound = new LinkedHashMap<>();
-        for (SubLevel body : SubLevelHelper.getConnectedChain(serverSubLevel)) {
-            if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
-            bodies.add(body.getUniqueId());
-            CompoundTag userData = serverBody.getUserDataTag();
-            if (userData == null) continue;
-            if (userData.hasUUID(VEHICLE_ID)) bound.put(serverBody, userData.getUUID(VEHICLE_ID));
-        }
+        if (!(containing instanceof ServerSubLevel serverSubLevel) || serverSubLevel.isRemoved()) return Optional.empty();
+        Chain chain = chain(serverSubLevel);
         VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
-        // Ids left behind by a dismantled core no longer govern the craft (see VehicleIdentityPolicy).
-        UUID vehicleId = VehicleIdentityPolicy.resolve(bound.values(), id -> vehicles.vehicle(id).isPresent())
-                .orElse(null);
+        // Detached armored fragments keep their owner, but not protection: only a chain holding the core is governed.
+        Map<UUID, UUID> boundByBody = chain.boundByBody();
+        UUID vehicleId = VehicleIdentityPolicy.governing(serverSubLevel.getUniqueId(), boundByBody,
+                chain.bodies(), vehicle -> coreBodyOf(vehicles, vehicle)).orElse(null);
         if (vehicleId == null) return Optional.empty();
         VehicleSavedData.VehicleRecord record = vehicles.vehicle(vehicleId).orElse(null);
-        // Detached armored fragments retain metadata, but not protection: the chain must still contain the core body.
-        if (record == null || record.subLevelId() == null || !bodies.contains(record.subLevelId())) {
-            return Optional.empty();
+        if (record == null) return Optional.empty();
+        rebindStale(chain, record, vehicles);
+        // Bodies of another vehicle tied on by a rope or docking connector are not part of this one.
+        Set<UUID> own = new LinkedHashSet<>();
+        for (UUID body : chain.bodies()) {
+            UUID carried = boundByBody.get(body);
+            if (carried == null || carried.equals(vehicleId) || vehicles.vehicle(carried).isEmpty()) own.add(body);
         }
-        rebindStale(bound, vehicleId, vehicles);
-        return Optional.of(new VehicleContext(record, Set.copyOf(bodies)));
+        return Optional.of(new VehicleContext(record, Set.copyOf(own)));
     }
 
-    /** Moves bodies still carrying a dismantled core's id onto the live vehicle now governing their chain. */
-    private static void rebindStale(Map<ServerSubLevel, UUID> bound, UUID vehicleId, VehicleSavedData vehicles) {
-        Set<UUID> stale = VehicleIdentityPolicy.stale(bound.values(), id -> vehicles.vehicle(id).isPresent());
-        if (stale.isEmpty()) return;
-        for (Map.Entry<ServerSubLevel, UUID> entry : bound.entrySet()) {
-            if (stale.contains(entry.getValue()) && !entry.getKey().isRemoved()) bind(entry.getKey(), vehicleId);
+    /**
+     * Hands bodies of the chain to the vehicle now governing it: those still carrying a dismantled core's id, and
+     * same-nation fragments whose own core is elsewhere. Another nation's live id is never taken over.
+     */
+    private static void rebindStale(Chain chain, VehicleSavedData.VehicleRecord governing, VehicleSavedData vehicles) {
+        for (Map.Entry<ServerSubLevel, UUID> entry : chain.bound().entrySet()) {
+            UUID carried = entry.getValue();
+            var carriedRecord = vehicles.vehicle(carried).orElse(null);
+            if (!entry.getKey().isRemoved() && VehicleIdentityPolicy.rebindable(carried, governing.id(),
+                    carriedRecord != null, carriedRecord == null ? null : carriedRecord.subLevelId(), chain.bodies(),
+                    carriedRecord == null ? null : carriedRecord.nationId(), governing.nationId())) {
+                bind(entry.getKey(), governing.id(), governing.nationId());
+            }
         }
     }
 
-    public static void bind(ServerSubLevel subLevel, UUID vehicleId) {
+    /** The vehicle id a body carries, live or not; null when it carries none. */
+    public static UUID boundVehicleId(ServerSubLevel subLevel) {
+        CompoundTag userData = subLevel.getUserDataTag();
+        return userData != null && userData.hasUUID(VEHICLE_ID) ? userData.getUUID(VEHICLE_ID) : null;
+    }
+
+    /** The nation stamped on a body, whether or not its vehicle still exists; null when none was. */
+    public static UUID taggedNation(ServerSubLevel subLevel) {
+        CompoundTag userData = subLevel.getUserDataTag();
+        return userData != null && userData.hasUUID(NATION_ID) ? userData.getUUID(NATION_ID) : null;
+    }
+
+    /**
+     * The nation a body belongs to, governed or not: its live vehicle's, or else the nation stamped on it while
+     * that nation exists. Null for a body no nation ever owned.
+     */
+    public static UUID owningNation(ServerLevel level, ServerSubLevel subLevel) {
+        UUID vehicle = boundVehicleId(subLevel);
+        var record = vehicle == null ? null : VehicleSavedData.get(level.getServer()).vehicle(vehicle).orElse(null);
+        if (record != null) return record.nationId();
+        UUID tagged = taggedNation(subLevel);
+        return tagged != null && com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
+                .nation(tagged).isPresent() ? tagged : null;
+    }
+
+    /** The nation the body at {@code plotPos} belongs to (see {@link #owningNation(ServerLevel, ServerSubLevel)}). */
+    public static UUID owningNation(ServerLevel level, BlockPos plotPos) {
+        return Sable.HELPER.getContaining(level, plotPos) instanceof ServerSubLevel body && !body.isRemoved()
+                ? owningNation(level, body) : null;
+    }
+
+    /** Whether the body carries the id of a vehicle that still exists. */
+    public static boolean boundToLiveVehicle(ServerLevel level, ServerSubLevel subLevel) {
+        UUID vehicle = boundVehicleId(subLevel);
+        return vehicle != null && VehicleSavedData.get(level.getServer()).vehicle(vehicle).isPresent();
+    }
+
+    /** Binds a body to a vehicle and stamps the vehicle's nation on it. */
+    public static void bind(ServerLevel level, ServerSubLevel subLevel, UUID vehicleId) {
+        bind(subLevel, vehicleId, VehicleSavedData.get(level.getServer()).vehicle(vehicleId)
+                .map(VehicleSavedData.VehicleRecord::nationId).orElse(null));
+    }
+
+    private static void bind(ServerSubLevel subLevel, UUID vehicleId, UUID nationId) {
         CompoundTag current = subLevel.getUserDataTag();
         CompoundTag tag = current == null ? new CompoundTag() : current.copy();
         tag.putUUID(VEHICLE_ID, vehicleId);
+        if (nationId != null) tag.putUUID(NATION_ID, nationId);
+        subLevel.setUserDataTag(tag);
+    }
+
+    /** Stamps a nation on a body that has no vehicle, keeping a split-off piece its owner's. */
+    public static void tagNation(ServerSubLevel subLevel, UUID nationId) {
+        if (nationId == null || nationId.equals(taggedNation(subLevel))) return;
+        CompoundTag current = subLevel.getUserDataTag();
+        CompoundTag tag = current == null ? new CompoundTag() : current.copy();
+        tag.putUUID(NATION_ID, nationId);
         subLevel.setUserDataTag(tag);
     }
 
     /** Binds a body that no live vehicle governs yet; one bound to a live vehicle keeps it. */
     public static void bindIfUnbound(ServerLevel level, ServerSubLevel subLevel, UUID vehicleId) {
-        CompoundTag current = subLevel.getUserDataTag();
-        if (current == null || !current.hasUUID(VEHICLE_ID)
-                || VehicleSavedData.get(level.getServer()).vehicle(current.getUUID(VEHICLE_ID)).isEmpty()) {
-            bind(subLevel, vehicleId);
-        }
+        if (!boundToLiveVehicle(level, subLevel)) bind(level, subLevel, vehicleId);
     }
 
     /** Resolves plot-space placement to the craft's current physical world position. */
@@ -93,25 +176,20 @@ public final class SableVehicleTopology {
     }
 
     /**
-     * Whether a core placed at {@code plotPos} may bind its craft; false when a live
-     * core already governs any connected body (see {@link
-     * com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCorePlacementPolicy}).
-     * Placement outside a Sable body always may.
+     * Whether a core placed at {@code plotPos} by {@code placerNation} may bind its craft; false when a live
+     * core already governs any connected body, or a body still carries another nation's live vehicle (see
+     * {@link com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCorePlacementPolicy}). Placement outside a
+     * Sable body always may.
      */
-    public static boolean mayBindPlacedCore(ServerLevel level, BlockPos plotPos) {
+    public static boolean mayBindPlacedCore(ServerLevel level, BlockPos plotPos, UUID placerNation) {
         SubLevel containing = Sable.HELPER.getContaining(level, plotPos);
         if (!(containing instanceof ServerSubLevel serverSubLevel)) return true;
-        Set<UUID> bodies = new LinkedHashSet<>();
-        java.util.Map<UUID, UUID> bound = new java.util.HashMap<>();
-        for (SubLevel body : SubLevelHelper.getConnectedChain(serverSubLevel)) {
-            if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
-            bodies.add(body.getUniqueId());
-            CompoundTag userData = serverBody.getUserDataTag();
-            if (userData != null && userData.hasUUID(VEHICLE_ID)) bound.put(body.getUniqueId(), userData.getUUID(VEHICLE_ID));
-        }
+        Chain chain = chain(serverSubLevel);
         VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
-        return com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCorePlacementPolicy.mayBind(bodies, bound,
-                vehicle -> vehicles.vehicle(vehicle).map(VehicleSavedData.VehicleRecord::subLevelId).orElse(null));
+        return com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCorePlacementPolicy.mayBind(chain.bodies(),
+                chain.boundByBody(), vehicle -> coreBodyOf(vehicles, vehicle),
+                vehicle -> vehicles.vehicle(vehicle).map(VehicleSavedData.VehicleRecord::nationId).orElse(null),
+                placerNation);
     }
 
     /** Attaches a core placed directly onto an already assembled Sable body. */
@@ -119,18 +197,14 @@ public final class SableVehicleTopology {
                                                                  VehicleSavedData.VehicleRecord record) {
         Placement placement = placement(level, plotPos);
         if (placement.subLevel() == null) return record;
-        bind(placement.subLevel(), record.id());
         VehicleSavedData vehicles = VehicleSavedData.get(level.getServer());
-        // Turrets and other joined bodies still carry the dismantled predecessor's id; hand them to this core.
-        Map<ServerSubLevel, UUID> bound = new LinkedHashMap<>();
-        for (SubLevel body : SubLevelHelper.getConnectedChain(placement.subLevel())) {
-            if (!(body instanceof ServerSubLevel serverBody) || body.isRemoved()) continue;
-            CompoundTag userData = serverBody.getUserDataTag();
-            if (userData != null && userData.hasUUID(VEHICLE_ID)) bound.put(serverBody, userData.getUUID(VEHICLE_ID));
-        }
-        rebindStale(bound, record.id(), vehicles);
-        return vehicles.move(record.id(), level.dimension().location(),
+        VehicleSavedData.VehicleRecord moved = vehicles.move(record.id(), level.dimension().location(),
                 plotPos, placement.subLevel().getUniqueId());
+        if (moved == null) return record;
+        bind(placement.subLevel(), moved.id(), moved.nationId());
+        // Turrets and other joined bodies still carry the dismantled predecessor's id; hand them to this core.
+        rebindStale(chain(placement.subLevel()), moved, vehicles);
+        return moved;
     }
 
     public static double distanceSquared(ServerLevel level, Entity entity, BlockPos pos) {

@@ -17,13 +17,14 @@ public class ModCreativeModeTabs {
                     .title(Component.translatable("itemGroup.moveearth_addtional"))
                     .icon(() -> new ItemStack(ModItems.PLAYER_DETECTOR.get()))
                     .displayItems((parameters, output) -> {
+                        com.ruskserver.moveearth_addtional.tracks.TrackRegistry.WHEEL_ITEMS
+                                .forEach(item -> output.accept(item.get()));
                         output.accept(ModItems.PLAYER_DETECTOR.get());
                         output.accept(ModItems.TERRITORY_CORE.get());
                         output.accept(ModItems.VEHICLE_CORE.get());
                         output.accept(ModItems.MARKET_STATION.get());
                         output.accept(ModItems.PRISON_INTAKE.get());
                         output.accept(ModItems.RESTRAINTS.get());
-                        output.accept(ModItems.WEAPON_CRATE.get());
                         output.accept(ModItems.GAS_MASK.get());
                         output.accept(ModItems.CARBON_FILTER.get());
                         output.accept(ModItems.MEKA_ARMOR_MATERIAL.get());

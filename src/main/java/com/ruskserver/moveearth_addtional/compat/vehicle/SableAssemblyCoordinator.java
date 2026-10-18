@@ -44,7 +44,7 @@ public final class SableAssemblyCoordinator {
     private SableAssemblyCoordinator() { }
 
     private record Inspection(SableAssemblyExclusions.Result filtered, VehicleAssemblyPolicy.Binding binding,
-                              int liftedCores, int liftedReinforced, boolean fromWorld) {
+                              int liftedCores, int liftedReinforced, boolean fromWorld, UUID inheritedNation) {
         VehicleAssemblyPolicy.Refusal refusal() {
             return VehicleAssemblyPolicy.refusal(filtered.tally(), binding);
         }
@@ -67,11 +67,27 @@ public final class SableAssemblyCoordinator {
                 cores.add(core.vehicleId());
             }
         }
-        boolean fromWorld = !(Sable.HELPER.getContaining(level, origin) instanceof ServerSubLevel);
-        UUID inherited = fromWorld ? null
-                : SableVehicleTopology.at(level, origin).map(context -> context.vehicle().id()).orElse(null);
+        ServerSubLevel source = Sable.HELPER.getContaining(level, origin) instanceof ServerSubLevel body
+                && !body.isRemoved() ? body : null;
+        boolean fromWorld = source == null;
+        UUID inherited = fromWorld ? null : inheritedVehicle(level, origin, source, vehicles);
+        UUID inheritedNation = fromWorld ? null : SableVehicleTopology.owningNation(level, source);
         return new Inspection(filtered, VehicleAssemblyPolicy.binding(cores, inherited), cores.size(), reinforced,
-                fromWorld);
+                fromWorld, inheritedNation);
+    }
+
+    /**
+     * The vehicle a piece lifted out of {@code source} belongs to: the one governing the source's chain, or else
+     * the live vehicle the source body itself carries. A split cuts its pieces out one by one, and once the piece
+     * holding the core has gone its record no longer sits in the source's chain; asking only who governs the
+     * chain then left every later piece, and the hull itself, belonging to nobody.
+     */
+    private static UUID inheritedVehicle(ServerLevel level, BlockPos origin, ServerSubLevel source,
+                                         VehicleSavedData vehicles) {
+        UUID governing = SableVehicleTopology.at(level, origin).map(context -> context.vehicle().id()).orElse(null);
+        if (governing != null) return governing;
+        UUID carried = SableVehicleTopology.boundVehicleId(source);
+        return carried != null && vehicles.vehicle(carried).isPresent() ? carried : null;
     }
 
     /**
@@ -103,15 +119,30 @@ public final class SableAssemblyCoordinator {
         BlockPos origin = request == null ? anchor.immutable() : request.origin();
         ServerPlayer actor = request == null ? null : request.actor();
         Inspection inspection = inspect(level, origin, positions, actor);
+        if (!inspection.fromWorld()
+                && dev.ryanhcode.sable.Sable.HELPER.getContaining(level, origin) instanceof ServerSubLevel splitting) {
+            // A body coming apart: record what the vehicle carried while it was still whole.
+            com.ruskserver.moveearth_addtional.s2.vehicle.VehicleCargoBackup.beforeSplit(level, splitting);
+        }
+        // The rules that keep blocks in place are about lifting them off the land. A body that splits
+        // or is assembled from inside another body has no ground to leave a block on: holding one back
+        // only strands it in the old body's plot, and when it was the whole piece Sable is handed an
+        // empty set and crashes the server. Such moves go through unfiltered.
+        boolean filter = inspection.fromWorld() && inspection.filtered().removedAny()
+                && !inspection.filtered().kept().isEmpty();
+        if (inspection.fromWorld() && inspection.filtered().removedAny() && !filter) {
+            Moveearth_addtional.LOGGER.warn("Sable assembly at {} would have lifted nothing once protected blocks were left; lifting them all",
+                    origin);
+        }
         VehicleAssemblyPolicy.Tally tally = inspection.filtered().tally();
-        if (tally.any()) {
+        if (filter) {
             Moveearth_addtional.LOGGER.info("Sable assembly at {} left {} fixed, {} foreign and {} own protected block(s) in place",
                     origin, tally.fixtures(), tally.foreign(), tally.own());
             notifyNearby(level, origin, actor, MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.vehicle_assembly.left_behind",
                     tally.total(), tally.fixtures(), tally.foreign() + tally.own())));
         }
-        if (inspection.binding().conflicting()) {
+        if (inspection.binding().vehicleId() == null && inspection.binding().conflicting()) {
             // Only reachable where nobody could refuse (Sable commands and splits, or cores that
             // reached the set after Simulated's review): bind neither, so neither record governs.
             Moveearth_addtional.LOGGER.warn("Sable assembly at {} contains conflicting vehicle cores ({}); the body was not bound",
@@ -119,11 +150,11 @@ public final class SableAssemblyCoordinator {
             notifyNearby(level, origin, actor, MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.vehicle_assembly.cores_unbound")));
         }
-        Iterable<BlockPos> lifted = inspection.filtered().removedAny() ? inspection.filtered().kept() : positions;
+        Iterable<BlockPos> lifted = filter ? inspection.filtered().kept() : positions;
         ArrayDeque<AssemblyState> stack = ASSEMBLIES.get();
         if (stack.size() >= STALE_STACK_LIMIT) stack.clear();
         stack.push(new AssemblyState(lifted, origin, inspection.binding(), inspection.liftedReinforced(),
-                inspection.fromWorld(), request));
+                inspection.fromWorld(), request, inspection.inheritedNation()));
         return lifted;
     }
 
@@ -131,8 +162,14 @@ public final class SableAssemblyCoordinator {
     public static void finish(ServerLevel level, Iterable<BlockPos> lifted, ServerSubLevel subLevel) {
         AssemblyState state = pop(lifted);
         if (state == null || subLevel == null) return;
+        if (!state.fromWorld()) {
+            // A piece split off a raid airship belongs to the same raid, and goes when it ends.
+            com.ruskserver.moveearth_addtional.raid.RaidShipSweeper.inherit(level, state.origin(), subLevel);
+        }
         UUID vehicleId = state.binding().vehicleId();
-        if (vehicleId != null) SableVehicleTopology.bind(subLevel, vehicleId);
+        if (vehicleId != null) SableVehicleTopology.bind(level, subLevel, vehicleId);
+        // A piece with no vehicle still belongs to whoever owned the body it came from.
+        else SableVehicleTopology.tagNation(subLevel, state.inheritedNation());
         if (state.fromWorld() && VehicleAssemblyPolicy.reinforcementInactive(state.liftedReinforced(), vehicleId)) {
             notifyNearby(level, state.origin(), state.request() == null ? null : state.request().actor(),
                     MoveEarthMessage.warning(Component.translatable(

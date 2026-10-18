@@ -13,7 +13,9 @@ import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NationTreasuryP
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_NotificationActionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_OnboardingActionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestNationNotificationsPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestNationProfilePacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_RequestS2HubPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationProfilePacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_S2HubActionPacket;
 import com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_UpdateNationNotificationsPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_CloseOnboardingPacket;
@@ -35,6 +37,8 @@ public final class NationPayloads {
         // C2S handlers run on the network thread only for the rate-limit check; see C2SPacketGate.
         PayloadRegistrar c2s = registrar.executesOn(HandlerThread.NETWORK);
         c2s.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2SPacketGate.request(C2S_RequestS2HubPacket::handle));
+        c2s.playToServer(C2S_RequestNationProfilePacket.TYPE, C2S_RequestNationProfilePacket.STREAM_CODEC, C2SPacketGate.request(C2S_RequestNationProfilePacket::handle));
+        registrar.playToClient(S2C_NationProfilePacket.TYPE, S2C_NationProfilePacket.STREAM_CODEC, S2C_NationProfilePacket::handle);
         c2s.playToServer(C2S_S2HubActionPacket.TYPE, C2S_S2HubActionPacket.STREAM_CODEC, C2SPacketGate.request(C2S_S2HubActionPacket::handle));
         registrar.playToClient(S2C_S2HubSnapshotPacket.TYPE, S2C_S2HubSnapshotPacket.STREAM_CODEC, S2C_S2HubSnapshotPacket::handle);
         registrar.playToClient(S2C_NationNameplatesPacket.TYPE, S2C_NationNameplatesPacket.STREAM_CODEC, S2C_NationNameplatesPacket::handle);

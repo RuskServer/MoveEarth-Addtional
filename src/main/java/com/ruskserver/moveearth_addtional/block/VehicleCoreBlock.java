@@ -60,7 +60,7 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
             serverLevel.destroyBlock(pos, true);
             return;
         }
-        if (!SableVehicleTopology.mayBindPlacedCore(serverLevel, pos)) {
+        if (!SableVehicleTopology.mayBindPlacedCore(serverLevel, pos, nationId)) {
             player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
                     "message.moveearth_addtional.vehicle_core.already_bound")));
             serverLevel.destroyBlock(pos, true);
@@ -88,7 +88,11 @@ public final class VehicleCoreBlock extends Block implements EntityBlock {
                     .map(record -> record.dimension().equals(serverLevel.dimension().location())
                             && record.corePos().equals(pos))
                     .orElse(false);
-            if (recordedHere) vehicles.remove(core.vehicleId());
+            if (recordedHere) {
+                vehicles.remove(core.vehicleId());
+                com.ruskserver.moveearth_addtional.s2.vehicle.VehicleLootSavedData.get(serverLevel.getServer())
+                        .revoke(core.vehicleId());
+            }
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }

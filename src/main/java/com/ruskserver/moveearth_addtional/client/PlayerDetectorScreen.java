@@ -1,540 +1,332 @@
 package com.ruskserver.moveearth_addtional.client;
 
-import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_UpdateWhitelistPacket;
-import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_ConfigurePaymentPacket;
-import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_SetDetectorNamePacket;
-import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_UpdateDetectorManagerPacket;
+import com.ruskserver.moveearth_addtional.block.entity.PlayerDetectorBlockEntity;
+import com.ruskserver.moveearth_addtional.client.ui.MoveEarthTextField;
+import com.ruskserver.moveearth_addtional.client.ui.ScreenFit;
 import com.ruskserver.moveearth_addtional.client.ui.SuppressesChatOverlay;
 import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_ConfigurePaymentPacket;
+import com.ruskserver.moveearth_addtional.network.c2s.other.C2S_SetDetectorNamePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_DetectorStatePacket;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
-
-import java.util.List;
+import org.lwjgl.glfw.GLFW;
 
 import static com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi.*;
 
+/**
+ * The player detector's screen: who owns it and hears its alerts, whether it is running and what pays for it,
+ * and its name. Follows the S2 Hub / PvP visual and interaction design ({@link com.ruskserver.moveearth_addtional.client.ui.MoveEarthUi}).
+ */
 @OnlyIn(Dist.CLIENT)
 public class PlayerDetectorScreen extends Screen implements SuppressesChatOverlay {
+    private static final int TOAST_DURATION_TICKS = 100;
 
-    private final BlockPos detectorPos;
-    private String detectorName;
-    private final String ownerName;
-    private final boolean ownerAccess;
-    private List<String> whitelist;
-    private List<String> managers;
-    private List<String> onlinePlayers;
-    private EditBox nameInput;
-    private EditBox detectorNameInput;
-    private EditBox managerInput;
-    private String detectorNameStatus = "";
-    private int detectorNameStatusColor = 0xAAAAAA;
-    private String managerStatus = "";
-    private int managerStatusColor = 0xAAAAAA;
+    private S2C_DetectorStatePacket state;
+    private MoveEarthTextField nameInput;
+    private String status = "";
+    private int statusColor = MUTED;
+    private int toastTicks = 0;
 
-    private int activeTab; // 0: ホワイトリスト, 1: 維持費・決済, 2: 名称, 3: 権限管理
-
-    private int whitelistPage = 0;
-    private int onlinePage = 0;
-    private int managerPage = 0;
-    private int managerOnlinePage = 0;
-    private static final int ITEMS_PER_PAGE = 5;
-
-    // 決済データ
-    private BlockPos blockPos = null;
-    private boolean isPaymentActive = false;
-    private long nextPaymentTime = 0L;
-    private long placedTime = 0L;
-    private long ownerBalance;
-
-    public PlayerDetectorScreen(
-            Component title,
-            BlockPos detectorPos,
-            String detectorName,
-            String ownerName,
-            boolean ownerAccess,
-            List<String> whitelist,
-            List<String> managers,
-            List<String> onlinePlayers
-    ) {
-        super(title);
-        this.detectorPos = detectorPos;
-        this.detectorName = detectorName;
-        this.blockPos = detectorPos;
-        this.ownerName = ownerName;
-        this.ownerAccess = ownerAccess;
-        this.whitelist = whitelist;
-        this.managers = managers;
-        this.onlinePlayers = onlinePlayers;
-        this.activeTab = ownerAccess ? 2 : 0;
+    public PlayerDetectorScreen(S2C_DetectorStatePacket state) {
+        super(Component.literal("プレイヤー検知ブロック"));
+        this.state = state;
+        if (!state.message().isEmpty()) {
+            this.status = state.message();
+            this.statusColor = state.success() ? SUCCESS : DANGER;
+            this.toastTicks = TOAST_DURATION_TICKS;
+        }
     }
 
-    public void updateData(BlockPos pos, List<String> whitelist, List<String> onlinePlayers) {
-        if (!this.detectorPos.equals(pos)) {
-            return;
+    /** A refresh from the server after renaming or paying, with the outcome to show. */
+    public void update(S2C_DetectorStatePacket next) {
+        if (!next.pos().equals(this.state.pos())) return;
+        this.state = next;
+        if (!next.message().isEmpty()) {
+            this.status = next.message();
+            this.statusColor = next.success() ? SUCCESS : DANGER;
+            this.toastTicks = TOAST_DURATION_TICKS;
         }
-        this.whitelist = whitelist;
-        this.onlinePlayers = onlinePlayers;
-        int maxWhitelistPage = Math.max(0, (this.whitelist.size() - 1) / ITEMS_PER_PAGE);
-        if (this.whitelistPage > maxWhitelistPage) {
-            this.whitelistPage = maxWhitelistPage;
-        }
-        int maxOnlinePage = Math.max(0, (this.onlinePlayers.size() - 1) / ITEMS_PER_PAGE);
-        if (this.onlinePage > maxOnlinePage) {
-            this.onlinePage = maxOnlinePage;
-        }
-        rebuildWidgets();
-    }
-
-    public void updateManagers(BlockPos pos, List<String> managers, boolean success, String message) {
-        if (!this.detectorPos.equals(pos) || !this.ownerAccess) {
-            return;
-        }
-        this.managers = managers;
-        int maxManagerPage = Math.max(0, (this.managers.size() - 1) / ITEMS_PER_PAGE);
-        if (this.managerPage > maxManagerPage) {
-            this.managerPage = maxManagerPage;
-        }
-        this.managerStatus = message;
-        this.managerStatusColor = success ? 0x55FF55 : 0xFF5555;
-        rebuildWidgets();
-    }
-
-    public void updatePaymentData(BlockPos pos, boolean isActive, long nextPaymentTime, long placedTime,
-                                  long ownerBalance) {
-        this.blockPos = pos;
-        this.isPaymentActive = isActive;
-        this.nextPaymentTime = nextPaymentTime;
-        this.placedTime = placedTime;
-        this.ownerBalance = ownerBalance;
-        rebuildWidgets();
-    }
-
-    public void updateDetectorName(BlockPos pos, boolean success, String detectorName, String message) {
-        if (!this.detectorPos.equals(pos)) {
-            return;
-        }
-        if (success) {
-            this.detectorName = detectorName;
-        }
-        this.detectorNameStatus = message;
-        this.detectorNameStatusColor = success ? 0x55FF55 : 0xFF5555;
         rebuildWidgets();
     }
 
     @Override
     protected void init() {
+        ScreenFit.fit(this, PlayerDetectorScreenLayout.FIT_WIDTH, PlayerDetectorScreenLayout.FIT_HEIGHT);
         super.init();
+        PlayerDetectorScreenLayout.Layout layout = PlayerDetectorScreenLayout.calculate(this.width, this.height);
 
-        int windowWidth = 400;
-        int windowHeight = 260;
-        int leftPos = (this.width - windowWidth) / 2;
-        int topPos = (this.height - windowHeight) / 2;
+        if (this.state.canManage()) {
+            this.nameInput = new MoveEarthTextField(
+                    this.font,
+                    layout.nameInput(),
+                    Component.literal("検知ブロック名称")
+            ).focusBorder(GOLD);
+            this.nameInput.setMaxLength(DetectorNamePolicy.MAX_LENGTH);
+            this.nameInput.setValue(this.state.name());
+            this.nameInput.setHint(Component.literal("名称未設定"));
+            addRenderableWidget(this.nameInput);
+        } else {
+            this.nameInput = null;
+        }
+    }
 
-        // 管理者にはホワイトリストだけを表示し、所有者専用操作はGUI上からも隠す。
-        Button whitelistTabBtn = Button.builder(Component.literal(this.activeTab == 0 ? "▶ ホワイトリスト ◀" : "ホワイトリスト"), b -> {
-            this.activeTab = 0;
-            rebuildWidgets();
-        }).bounds(leftPos + (this.ownerAccess ? 92 : 10), topPos + 25, this.ownerAccess ? 108 : 380, 20).build();
-        addRenderableWidget(whitelistTabBtn);
+    private void saveName(String value) {
+        DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(value);
+        if (!validation.valid()) {
+            this.status = validation.errorMessage();
+            this.statusColor = DANGER;
+            this.toastTicks = TOAST_DURATION_TICKS;
+            return;
+        }
+        this.status = "保存しています…";
+        this.statusColor = GOLD;
+        this.toastTicks = 40;
+        PacketDistributor.sendToServer(new C2S_SetDetectorNamePacket(this.state.pos(), validation.normalized()));
+    }
 
-        if (this.ownerAccess) {
-            addRenderableWidget(Button.builder(Component.literal(this.activeTab == 2 ? "▶ 名称 ◀" : "名称"), b -> {
-                this.activeTab = 2;
-                rebuildWidgets();
-            }).bounds(leftPos + 10, topPos + 25, 78, 20).build());
+    private boolean canPayToRestart(long now) {
+        return this.state.canManage()
+                && PlayerDetectorScreenLayout.stopped(this.state.active(), this.state.nextPaymentTime(), now);
+    }
 
-            addRenderableWidget(Button.builder(Component.literal(this.activeTab == 3 ? "▶ 権限管理 ◀" : "権限管理"), b -> {
-                this.activeTab = 3;
-                rebuildWidgets();
-            }).bounds(leftPos + 204, topPos + 25, 94, 20).build());
+    private boolean canSaveName() {
+        return this.state.canManage() && this.nameInput != null;
+    }
 
-            addRenderableWidget(Button.builder(Component.literal(this.activeTab == 1 ? "▶ 維持費 ◀" : "維持費"), b -> {
-                this.activeTab = 1;
-                rebuildWidgets();
-            }).bounds(leftPos + 302, topPos + 25, 88, 20).build());
+    private boolean canResetName() {
+        if (!this.state.canManage()) return false;
+        String currentInput = this.nameInput != null ? this.nameInput.getValue() : "";
+        return !this.state.name().isEmpty() || !currentInput.isEmpty();
+    }
+
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // The screen draws its own translucent backdrop, so operators can keep the surroundings visible.
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        drawBackground(graphics, this.width, this.height);
+        PlayerDetectorScreenLayout.Layout layout = PlayerDetectorScreenLayout.calculate(this.width, this.height);
+        Rect panel = layout.panel();
+        drawPanel(graphics, panel);
+
+        // Header: S2 Hub / PvP standard left-aligned title + subtitle + top-right close button.
+        String displayName = this.state.name().isBlank() ? "名称未設定" : this.state.name();
+        BlockPos pos = this.state.pos();
+        graphics.drawString(this.font, "プレイヤー検知ブロック「" + displayName + "」",
+                panel.x() + 16, panel.y() + 10, TEXT, false);
+        String subtitle = String.format("座標 %d, %d, %d  •  検知半径 %.0fm",
+                pos.getX(), pos.getY(), pos.getZ(), PlayerDetectorBlockEntity.DETECTION_RANGE);
+        graphics.drawString(this.font, subtitle, panel.x() + 16, panel.y() + 22, MUTED, false);
+        drawClose(graphics, this.font, layout.close(), layout.close().contains(mouseX, mouseY));
+
+        // 1. Owner and who hears the alerts.
+        Rect ownerCard = layout.ownerCard();
+        drawCard(graphics, ownerCard, ACCENT, true, false);
+        String ownerBadge = this.state.nationOwned() ? "国家所有" : "個人所有";
+        graphics.drawString(this.font, ownerBadge, ownerCard.x() + 12, ownerCard.y() + 6, ACCENT, false);
+        int ownerNameX = ownerCard.x() + 12 + this.font.width(ownerBadge) + 10;
+        graphics.drawString(this.font, this.state.owner(), ownerNameX, ownerCard.y() + 6, TEXT, false);
+        drawWrapped(
+                graphics,
+                this.font,
+                Component.literal(this.state.nationOwned()
+                        ? "侵入警告はオンラインの国民全員に届きます。同盟国のメンバーは訪問者として扱い、警告しません。"
+                        : "侵入警告は所有者だけに届きます。国家に加入すると、この検知ブロックは国家の所有に移行します。"),
+                ownerCard.x() + 12,
+                ownerCard.y() + 19,
+                ownerCard.width() - 24,
+                MUTED
+        );
+
+        // 2. Running state, upkeep, balance, and payment control.
+        long now = System.currentTimeMillis();
+        int stateColor = PlayerDetectorScreenLayout.stateColor(
+                this.state.active(), this.state.placedTime(), this.state.nextPaymentTime(), now);
+        Rect upkeepCard = layout.upkeepCard();
+        drawCard(graphics, upkeepCard, stateColor, true, false);
+        graphics.drawString(
+                this.font,
+                "稼働状態: " + PlayerDetectorScreenLayout.stateText(
+                        this.state.active(), this.state.placedTime(), this.state.nextPaymentTime(), now),
+                upkeepCard.x() + 12,
+                upkeepCard.y() + 7,
+                stateColor,
+                false
+        );
+        graphics.drawString(
+                this.font,
+                PlayerDetectorScreenLayout.upkeepSummaryText(),
+                upkeepCard.x() + 12,
+                upkeepCard.y() + 21,
+                MUTED,
+                false
+        );
+        graphics.drawString(
+                this.font,
+                (this.state.nationOwned() ? "国庫残高: " : "口座残高: ")
+                        + PlayerDetectorScreenLayout.money(this.state.balance()),
+                upkeepCard.x() + 12,
+                upkeepCard.y() + 34,
+                TEXT,
+                false
+        );
+
+        // Progress bar for warmup or remaining paid cycle.
+        Rect bar = layout.progressBar();
+        graphics.fill(bar.x(), bar.y(), bar.right(), bar.bottom(), BAR_BACKGROUND);
+        float ratio = PlayerDetectorScreenLayout.progressRatio(
+                this.state.active(), this.state.placedTime(), this.state.nextPaymentTime(), now);
+        int fillWidth = Math.round(bar.width() * ratio);
+        if (fillWidth > 0) {
+            graphics.fill(bar.x(), bar.y(), bar.x() + fillWidth, bar.bottom(), stateColor);
+        }
+        drawBorder(graphics, bar, BORDER);
+
+        if (!this.state.canManage()) {
+            graphics.drawString(
+                    this.font,
+                    "※ 再開と名称変更には拠点操作または国庫管理の権限が必要です",
+                    upkeepCard.x() + 12,
+                    upkeepCard.y() + 56,
+                    MUTED,
+                    false
+            );
         }
 
-        if (this.activeTab == 0) {
-            // --- タブ 0: ホワイトリスト設定 ---
-            this.nameInput = new EditBox(this.font, leftPos + 10, topPos + 50, 120, 20, Component.literal("プレイヤー名"));
-            this.nameInput.setMaxLength(16);
-            addRenderableWidget(this.nameInput);
+        Rect payRect = layout.payButton();
+        boolean payEnabled = canPayToRestart(now);
+        String payLabel = PlayerDetectorScreenLayout.stopped(this.state.active(), this.state.nextPaymentTime(), now)
+                ? (this.state.nationOwned()
+                        ? "国庫で再開 (" + PlayerDetectorBlockEntity.UPKEEP_COST + " TC)"
+                        : "支払って再開 (" + PlayerDetectorBlockEntity.UPKEEP_COST + " TC)")
+                : "稼働中";
+        drawButton(
+                graphics,
+                this.font,
+                payRect,
+                Component.literal(payLabel),
+                payEnabled ? SUCCESS : ACCENT,
+                payEnabled && payRect.contains(mouseX, mouseY),
+                payEnabled
+        );
 
-            addRenderableWidget(Button.builder(Component.literal("追加"), b -> {
-                String name = this.nameInput.getValue().trim();
-                if (!name.isEmpty()) {
-                    PacketDistributor.sendToServer(new C2S_UpdateWhitelistPacket(this.detectorPos, name, true));
+        // 3. Detector name.
+        Rect nameCard = layout.nameCard();
+        drawCard(graphics, nameCard, GOLD, true, false);
+        graphics.drawString(
+                this.font,
+                "名称（最大" + DetectorNamePolicy.MAX_LENGTH + "文字・侵入警告に表示）",
+                nameCard.x() + 12,
+                nameCard.y() + 7,
+                GOLD,
+                false
+        );
+        if (this.state.canManage()) {
+            Rect saveRect = layout.saveButton();
+            boolean saveEnabled = canSaveName();
+            drawButton(
+                    graphics,
+                    this.font,
+                    saveRect,
+                    Component.literal("保存"),
+                    GOLD,
+                    saveEnabled && saveRect.contains(mouseX, mouseY),
+                    saveEnabled
+            );
+
+            Rect resetRect = layout.resetButton();
+            boolean resetEnabled = canResetName();
+            drawButton(
+                    graphics,
+                    this.font,
+                    resetRect,
+                    Component.literal("未設定に戻す"),
+                    MUTED,
+                    resetEnabled && resetRect.contains(mouseX, mouseY),
+                    resetEnabled
+            );
+        } else {
+            graphics.drawString(this.font, displayName, nameCard.x() + 12, nameCard.y() + 25, TEXT, false);
+        }
+
+        // Footer close button.
+        Rect footerClose = layout.footerClose();
+        drawButton(
+                graphics,
+                this.font,
+                footerClose,
+                Component.literal("閉じる"),
+                MUTED,
+                footerClose.contains(mouseX, mouseY),
+                true
+        );
+
+        super.render(graphics, mouseX, mouseY, partialTick);
+
+        if (this.toastTicks > 0 && !this.status.isEmpty()) {
+            drawToast(graphics, this.font, this.width, this.height, Component.literal(this.status), this.statusColor);
+        }
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0) {
+            PlayerDetectorScreenLayout.Layout layout = PlayerDetectorScreenLayout.calculate(this.width, this.height);
+            if (layout.close().contains(mouseX, mouseY) || layout.footerClose().contains(mouseX, mouseY)) {
+                onClose();
+                return true;
+            }
+            long now = System.currentTimeMillis();
+            if (canPayToRestart(now) && layout.payButton().contains(mouseX, mouseY)) {
+                this.status = "維持費の支払いを送信しています…";
+                this.statusColor = GOLD;
+                this.toastTicks = 40;
+                PacketDistributor.sendToServer(new C2S_ConfigurePaymentPacket(this.state.pos()));
+                return true;
+            }
+            if (canSaveName() && layout.saveButton().contains(mouseX, mouseY)) {
+                saveName(this.nameInput.getValue());
+                return true;
+            }
+            if (canResetName() && layout.resetButton().contains(mouseX, mouseY)) {
+                if (this.nameInput != null) {
                     this.nameInput.setValue("");
                 }
-            }).bounds(leftPos + 135, topPos + 50, 55, 20).build());
-
-            int listStartY = topPos + 75;
-
-            // 左カラム: ホワイトリスト一覧
-            int whitelistStartIdx = this.whitelistPage * ITEMS_PER_PAGE;
-            int whitelistEndIdx = Math.min(whitelistStartIdx + ITEMS_PER_PAGE, this.whitelist.size());
-            for (int i = whitelistStartIdx; i < whitelistEndIdx; i++) {
-                String name = this.whitelist.get(i);
-                int btnY = listStartY + (i - whitelistStartIdx) * 22;
-                addRenderableWidget(Button.builder(Component.literal("除籍"), b -> {
-                    PacketDistributor.sendToServer(new C2S_UpdateWhitelistPacket(this.detectorPos, name, false));
-                }).bounds(leftPos + 135, btnY, 55, 20).build());
+                saveName("");
+                return true;
             }
-
-            Button prevWhitelistBtn = Button.builder(Component.literal("<"), b -> {
-                if (this.whitelistPage > 0) {
-                    this.whitelistPage--;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 10, listStartY + 5 * 22, 20, 20).build();
-            prevWhitelistBtn.active = this.whitelistPage > 0;
-            addRenderableWidget(prevWhitelistBtn);
-
-            Button nextWhitelistBtn = Button.builder(Component.literal(">"), b -> {
-                if ((this.whitelistPage + 1) * ITEMS_PER_PAGE < this.whitelist.size()) {
-                    this.whitelistPage++;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 170, listStartY + 5 * 22, 20, 20).build();
-            nextWhitelistBtn.active = (this.whitelistPage + 1) * ITEMS_PER_PAGE < this.whitelist.size();
-            addRenderableWidget(nextWhitelistBtn);
-
-            // 右カラム: オンラインプレイヤー
-            int onlineStartIdx = this.onlinePage * ITEMS_PER_PAGE;
-            int onlineEndIdx = Math.min(onlineStartIdx + ITEMS_PER_PAGE, this.onlinePlayers.size());
-            for (int i = onlineStartIdx; i < onlineEndIdx; i++) {
-                String name = this.onlinePlayers.get(i);
-                int btnY = listStartY + (i - onlineStartIdx) * 22;
-                boolean alreadyIn = this.whitelist.contains(name);
-
-                Button addBtn = Button.builder(alreadyIn ? Component.literal("登録済") : Component.literal("追加"), b -> {
-                    if (!alreadyIn) {
-                        PacketDistributor.sendToServer(new C2S_UpdateWhitelistPacket(this.detectorPos, name, true));
-                    }
-                }).bounds(leftPos + 335, btnY, 55, 20).build();
-                addBtn.active = !alreadyIn;
-                addRenderableWidget(addBtn);
-            }
-
-            Button prevOnlineBtn = Button.builder(Component.literal("<"), b -> {
-                if (this.onlinePage > 0) {
-                    this.onlinePage--;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 210, listStartY + 5 * 22, 20, 20).build();
-            prevOnlineBtn.active = this.onlinePage > 0;
-            addRenderableWidget(prevOnlineBtn);
-
-            Button nextOnlineBtn = Button.builder(Component.literal(">"), b -> {
-                if ((this.onlinePage + 1) * ITEMS_PER_PAGE < this.onlinePlayers.size()) {
-                    this.onlinePage++;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 370, listStartY + 5 * 22, 20, 20).build();
-            nextOnlineBtn.active = (this.onlinePage + 1) * ITEMS_PER_PAGE < this.onlinePlayers.size();
-            addRenderableWidget(nextOnlineBtn);
-
-            this.nameInput.setFocused(false);
-        } else if (this.activeTab == 1) {
-            // --- タブ 1: 維持費決済設定 ---
-            int payY = topPos + 115;
-
-            Button activateBtn = Button.builder(Component.literal("支払 / 有効化"), b -> {
-                PacketDistributor.sendToServer(new C2S_ConfigurePaymentPacket(this.blockPos));
-            }).bounds(leftPos + 145, topPos + 160, 110, 20).build();
-            
-            boolean isExpiredOrInactive = !this.isPaymentActive || (System.currentTimeMillis() >= this.nextPaymentTime);
-            activateBtn.active = (blockPos != null) && isExpiredOrInactive;
-            addRenderableWidget(activateBtn);
-        } else if (this.activeTab == 2) {
-            this.detectorNameInput = new EditBox(
-                    this.font,
-                    leftPos + 50,
-                    topPos + 88,
-                    300,
-                    20,
-                    Component.literal("検知ブロック名称")
-            );
-            this.detectorNameInput.setMaxLength(DetectorNamePolicy.MAX_LENGTH);
-            this.detectorNameInput.setValue(this.detectorName);
-            addRenderableWidget(this.detectorNameInput);
-
-            addRenderableWidget(Button.builder(Component.literal("名称を保存"), b -> {
-                DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(this.detectorNameInput.getValue());
-                if (!validation.valid()) {
-                    this.detectorNameStatus = validation.errorMessage();
-                    this.detectorNameStatusColor = 0xFF5555;
-                    return;
-                }
-                this.detectorNameStatus = "保存しています…";
-                this.detectorNameStatusColor = 0xFFFF55;
-                PacketDistributor.sendToServer(new C2S_SetDetectorNamePacket(this.detectorPos, validation.normalized()));
-            }).bounds(leftPos + 90, topPos + 125, 100, 20).build());
-
-            addRenderableWidget(Button.builder(Component.literal("未設定へ戻す"), b -> {
-                this.detectorNameStatus = "保存しています…";
-                this.detectorNameStatusColor = 0xFFFF55;
-                PacketDistributor.sendToServer(new C2S_SetDetectorNamePacket(this.detectorPos, ""));
-            }).bounds(leftPos + 210, topPos + 125, 100, 20).build());
-        } else if (this.activeTab == 3 && this.ownerAccess) {
-            this.managerInput = new EditBox(
-                    this.font,
-                    leftPos + 10,
-                    topPos + 50,
-                    120,
-                    20,
-                    Component.literal("管理者名")
-            );
-            this.managerInput.setMaxLength(16);
-            addRenderableWidget(this.managerInput);
-
-            addRenderableWidget(Button.builder(Component.literal("付与"), b -> {
-                String name = this.managerInput.getValue().trim();
-                if (!name.isEmpty()) {
-                    PacketDistributor.sendToServer(new C2S_UpdateDetectorManagerPacket(this.detectorPos, name, true));
-                    this.managerInput.setValue("");
-                }
-            }).bounds(leftPos + 135, topPos + 50, 55, 20).build());
-
-            int listStartY = topPos + 75;
-            int managerStartIdx = this.managerPage * ITEMS_PER_PAGE;
-            int managerEndIdx = Math.min(managerStartIdx + ITEMS_PER_PAGE, this.managers.size());
-            for (int i = managerStartIdx; i < managerEndIdx; i++) {
-                String name = this.managers.get(i);
-                int btnY = listStartY + (i - managerStartIdx) * 22;
-                addRenderableWidget(Button.builder(Component.literal("解除"), b ->
-                        PacketDistributor.sendToServer(new C2S_UpdateDetectorManagerPacket(this.detectorPos, name, false))
-                ).bounds(leftPos + 135, btnY, 55, 20).build());
-            }
-
-            Button prevManagerBtn = Button.builder(Component.literal("<"), b -> {
-                if (this.managerPage > 0) {
-                    this.managerPage--;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 10, listStartY + 5 * 22, 20, 20).build();
-            prevManagerBtn.active = this.managerPage > 0;
-            addRenderableWidget(prevManagerBtn);
-
-            Button nextManagerBtn = Button.builder(Component.literal(">"), b -> {
-                if ((this.managerPage + 1) * ITEMS_PER_PAGE < this.managers.size()) {
-                    this.managerPage++;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 170, listStartY + 5 * 22, 20, 20).build();
-            nextManagerBtn.active = (this.managerPage + 1) * ITEMS_PER_PAGE < this.managers.size();
-            addRenderableWidget(nextManagerBtn);
-
-            int onlineStartIdx = this.managerOnlinePage * ITEMS_PER_PAGE;
-            int onlineEndIdx = Math.min(onlineStartIdx + ITEMS_PER_PAGE, this.onlinePlayers.size());
-            for (int i = onlineStartIdx; i < onlineEndIdx; i++) {
-                String name = this.onlinePlayers.get(i);
-                int btnY = listStartY + (i - onlineStartIdx) * 22;
-                boolean unavailable = this.managers.stream().anyMatch(name::equalsIgnoreCase)
-                        || this.ownerName.equalsIgnoreCase(name);
-                Button grantButton = Button.builder(
-                        Component.literal(unavailable ? "登録済" : "付与"),
-                        b -> PacketDistributor.sendToServer(
-                                new C2S_UpdateDetectorManagerPacket(this.detectorPos, name, true))
-                ).bounds(leftPos + 335, btnY, 55, 20).build();
-                grantButton.active = !unavailable;
-                addRenderableWidget(grantButton);
-            }
-
-            Button prevManagerOnlineBtn = Button.builder(Component.literal("<"), b -> {
-                if (this.managerOnlinePage > 0) {
-                    this.managerOnlinePage--;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 210, listStartY + 5 * 22, 20, 20).build();
-            prevManagerOnlineBtn.active = this.managerOnlinePage > 0;
-            addRenderableWidget(prevManagerOnlineBtn);
-
-            Button nextManagerOnlineBtn = Button.builder(Component.literal(">"), b -> {
-                if ((this.managerOnlinePage + 1) * ITEMS_PER_PAGE < this.onlinePlayers.size()) {
-                    this.managerOnlinePage++;
-                    rebuildWidgets();
-                }
-            }).bounds(leftPos + 370, listStartY + 5 * 22, 20, 20).build();
-            nextManagerOnlineBtn.active = (this.managerOnlinePage + 1) * ITEMS_PER_PAGE < this.onlinePlayers.size();
-            addRenderableWidget(nextManagerOnlineBtn);
         }
-
-        // 閉じるボタン
-        addRenderableWidget(Button.builder(Component.literal("閉じる"), b -> this.onClose())
-                .bounds(leftPos + 160, topPos + 230, 80, 20).build());
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
-    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // This screen draws its own translucent backdrop. Avoid Screen's default
-        // world blur so detector operators can keep the surroundings visible.
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.nameInput != null && this.nameInput.isFocused()
+                && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)) {
+            saveName(this.nameInput.getValue());
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        drawBackground(guiGraphics, this.width, this.height);
-
-        int windowWidth = 400;
-        int windowHeight = 260;
-        int leftPos = (this.width - windowWidth) / 2;
-        int topPos = (this.height - windowHeight) / 2;
-
-        drawPanel(guiGraphics, new Rect(leftPos, topPos, windowWidth, windowHeight));
-
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-
-        // タイトル
-        String displayName = this.detectorName.isBlank() ? "名称未設定" : this.detectorName;
-        String roleSuffix = this.ownerAccess ? "" : " [拠点管理者]";
-        guiGraphics.drawCenteredString(this.font, "プレイヤー検知ブロック「" + displayName + "」" + roleSuffix, leftPos + 200, topPos + 8, 0xFFFFFF);
-
-        if (this.activeTab == 0) {
-            // --- タブ 0: ホワイトリスト設定 ---
-            guiGraphics.fill(leftPos + 200, topPos + 50, leftPos + 201, topPos + 190, 0xFF333333);
-
-            // カラム名
-            guiGraphics.drawString(this.font, "ホワイトリスト", leftPos + 10, topPos + 75, 0xFFBB00);
-            guiGraphics.drawString(this.font, "オンラインプレイヤー", leftPos + 210, topPos + 75, 0xFFBB00);
-
-            int listStartY = topPos + 75;
-
-            // 左カラム: ホワイトリストプレイヤー
-            int whitelistStartIdx = this.whitelistPage * ITEMS_PER_PAGE;
-            int whitelistEndIdx = Math.min(whitelistStartIdx + ITEMS_PER_PAGE, this.whitelist.size());
-            for (int i = whitelistStartIdx; i < whitelistEndIdx; i++) {
-                String name = this.whitelist.get(i);
-                int textY = listStartY + (i - whitelistStartIdx) * 22 + 6;
-                guiGraphics.drawString(this.font, name, leftPos + 10, textY, 0xFFFFFF);
-            }
-
-            int maxWhitelistPage = Math.max(1, (this.whitelist.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE);
-            String whitelistPageStr = (this.whitelistPage + 1) + "/" + maxWhitelistPage;
-            guiGraphics.drawCenteredString(this.font, whitelistPageStr, leftPos + 100, listStartY + 5 * 22 + 6, 0xAAAAAA);
-
-            // 右カラム: オンラインプレイヤー
-            int onlineStartIdx = this.onlinePage * ITEMS_PER_PAGE;
-            int onlineEndIdx = Math.min(onlineStartIdx + ITEMS_PER_PAGE, this.onlinePlayers.size());
-            for (int i = onlineStartIdx; i < onlineEndIdx; i++) {
-                String name = this.onlinePlayers.get(i);
-                int textY = listStartY + (i - onlineStartIdx) * 22 + 6;
-                guiGraphics.drawString(this.font, name, leftPos + 210, textY, 0xFFFFFF);
-            }
-
-            int maxOnlinePage = Math.max(1, (this.onlinePlayers.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE);
-            String onlinePageStr = (this.onlinePage + 1) + "/" + maxOnlinePage;
-            guiGraphics.drawCenteredString(this.font, onlinePageStr, leftPos + 300, listStartY + 5 * 22 + 6, 0xAAAAAA);
-        } else if (this.activeTab == 1) {
-            // --- タブ 1: 維持費決済設定 ---
-            // カード風の枠
-            guiGraphics.fill(leftPos + 20, topPos + 55, leftPos + 380, topPos + 190, 0xFF222222);
-            guiGraphics.fill(leftPos + 20, topPos + 55, leftPos + 380, topPos + 56, 0xFF555555);
-
-            // コスト説明
-            guiGraphics.drawCenteredString(this.font, "維持費用: 2時間ごとに 5 ゴールド", leftPos + 200, topPos + 65, 0xFFBB00);
-
-            // ステータス表示
-            String statusText;
-            int statusColor;
-            long currentTime = System.currentTimeMillis();
-            long warmUpRemaining = (this.placedTime + 20 * 60 * 1000L) - currentTime;
-
-            if (this.isPaymentActive && warmUpRemaining > 0) {
-                long minutes = (warmUpRemaining / (1000 * 60)) % 60;
-                long seconds = (warmUpRemaining / 1000) % 60;
-                statusText = String.format("準備中 (残り %02d:%02d)", minutes, seconds);
-                statusColor = 0xFFFF55;
-            } else if (this.isPaymentActive) {
-                long remaining = this.nextPaymentTime - currentTime;
-                if (remaining <= 0) {
-                    statusText = "停止中 (期限切れ)";
-                    statusColor = 0xFF5555;
-                } else {
-                    long hours = (remaining / (1000 * 60 * 60)) % 24;
-                    long minutes = (remaining / (1000 * 60)) % 60;
-                    long seconds = (remaining / 1000) % 60;
-                    statusText = String.format("稼働中 (%02d:%02d:%02d)", hours, minutes, seconds);
-                    statusColor = 0x55FF55;
-                }
-            } else {
-                statusText = "停止中 (維持費未払)";
-                statusColor = 0xFF5555;
-            }
-
-            guiGraphics.drawCenteredString(this.font, "稼働状態: " + statusText, leftPos + 200, topPos + 85, statusColor);
-
-            // 口座選択のラベル
-            guiGraphics.drawCenteredString(this.font, "所有者残高: " + ownerBalance + " / 維持費: 5 / 2時間",
-                    leftPos + 200, topPos + 121, 0xFFFFFF);
-        } else if (this.activeTab == 2) {
-            guiGraphics.fill(leftPos + 20, topPos + 55, leftPos + 380, topPos + 180, 0xFF222222);
-            guiGraphics.fill(leftPos + 20, topPos + 55, leftPos + 380, topPos + 56, 0xFF555555);
-            guiGraphics.drawCenteredString(this.font, "所有者: " + this.ownerName, leftPos + 200, topPos + 63, 0xAAAAAA);
-            guiGraphics.drawCenteredString(this.font, "検知ブロックの名称（最大" + DetectorNamePolicy.MAX_LENGTH + "文字）", leftPos + 200, topPos + 76, 0xFFBB00);
-            guiGraphics.drawCenteredString(this.font, "侵入警告と分析画面で、この名称を表示します。", leftPos + 200, topPos + 153, 0xAAAAAA);
-            if (!this.detectorNameStatus.isEmpty()) {
-                guiGraphics.drawCenteredString(this.font, this.detectorNameStatus, leftPos + 200, topPos + 166, this.detectorNameStatusColor);
-            }
-        } else if (this.activeTab == 3 && this.ownerAccess) {
-            guiGraphics.fill(leftPos + 200, topPos + 50, leftPos + 201, topPos + 190, 0xFF333333);
-            guiGraphics.drawString(this.font, "拠点管理者", leftPos + 10, topPos + 75, 0xFFBB00);
-            guiGraphics.drawString(this.font, "オンラインプレイヤー", leftPos + 210, topPos + 75, 0xFFBB00);
-
-            int listStartY = topPos + 75;
-            int managerStartIdx = this.managerPage * ITEMS_PER_PAGE;
-            int managerEndIdx = Math.min(managerStartIdx + ITEMS_PER_PAGE, this.managers.size());
-            for (int i = managerStartIdx; i < managerEndIdx; i++) {
-                String name = this.managers.get(i);
-                int textY = listStartY + (i - managerStartIdx) * 22 + 6;
-                guiGraphics.drawString(this.font, name, leftPos + 10, textY, 0xFFFFFF);
-            }
-            int maxManagerPage = Math.max(1, (this.managers.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE);
-            guiGraphics.drawCenteredString(
-                    this.font,
-                    (this.managerPage + 1) + "/" + maxManagerPage,
-                    leftPos + 100,
-                    listStartY + 5 * 22 + 6,
-                    0xAAAAAA
-            );
-
-            int onlineStartIdx = this.managerOnlinePage * ITEMS_PER_PAGE;
-            int onlineEndIdx = Math.min(onlineStartIdx + ITEMS_PER_PAGE, this.onlinePlayers.size());
-            for (int i = onlineStartIdx; i < onlineEndIdx; i++) {
-                String name = this.onlinePlayers.get(i);
-                int textY = listStartY + (i - onlineStartIdx) * 22 + 6;
-                guiGraphics.drawString(this.font, name, leftPos + 210, textY, 0xFFFFFF);
-            }
-            int maxOnlinePage = Math.max(1, (this.onlinePlayers.size() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE);
-            guiGraphics.drawCenteredString(
-                    this.font,
-                    (this.managerOnlinePage + 1) + "/" + maxOnlinePage,
-                    leftPos + 300,
-                    listStartY + 5 * 22 + 6,
-                    0xAAAAAA
-            );
-            guiGraphics.drawCenteredString(
-                    this.font,
-                    "管理者は全検知器のホワイトリストだけを編集できます。",
-                    leftPos + 200,
-                    topPos + 205,
-                    0xAAAAAA
-            );
-            if (!this.managerStatus.isEmpty()) {
-                guiGraphics.drawCenteredString(
-                        this.font,
-                        this.managerStatus,
-                        leftPos + 200,
-                        topPos + 217,
-                        this.managerStatusColor
-                );
-            }
+    public void tick() {
+        super.tick();
+        if (this.toastTicks > 0) {
+            this.toastTicks--;
         }
+    }
+
+    @Override
+    public boolean isPauseScreen() {
+        return false;
     }
 }

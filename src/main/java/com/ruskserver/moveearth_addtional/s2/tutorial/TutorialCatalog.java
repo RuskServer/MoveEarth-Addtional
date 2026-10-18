@@ -3,7 +3,7 @@ package com.ruskserver.moveearth_addtional.s2.tutorial;
 import java.util.List;
 
 /**
- * The first-session tutorial: twelve concrete goals from the nation hub to the
+ * The first-session tutorial: fourteen concrete goals from the nation hub to the
  * first brass ingot. Each step is complete once its advancement is done, so
  * steps finished early, in any order, are skipped over. A {@link #deferred}
  * step does not hold back the ones after it: it is shown only once nothing
@@ -38,7 +38,11 @@ public final class TutorialCatalog {
             // Deferred, so a player still waiting on an application or starting in the wilderness
             // carries on with the rest instead of seeing only this goal.
             new Step("nation", Kind.NATION, "", "", ""),
+            // Early: the wiki answers what the rest of the tutorial leaves out, and the atlas is the
+            // only way to see where nations' territory lies before walking into it.
+            step("wiki", "tutorial/wiki_opened", "minecraft:book"),
             step("region", "tutorial/region_viewed", ""),
+            step("atlas", "tutorial/atlas_mapped", "map_atlases:atlas"),
             step("rest", "getting_started/rest", "minecraft:campfire"),
             step("andesite_alloy", "industry/andesite_alloy", "create:andesite_alloy"),
             step("andesite_casing", "tutorial/andesite_casing", "create:andesite_casing"),

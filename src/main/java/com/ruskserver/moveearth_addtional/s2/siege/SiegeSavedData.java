@@ -285,6 +285,17 @@ public final class SiegeSavedData extends SavedData {
         return coreId != null && coreTruces.getOrDefault(coreId, 0L) > 0L;
     }
 
+    public java.util.List<UUID> nationsUnderTruce() {
+        return nationTruces.entrySet().stream().filter(entry -> entry.getValue() > 0L).map(Map.Entry::getKey).toList();
+    }
+
+    /** Ends a nation's rebuilding truce early; true when it had one. */
+    public boolean endNationSettlementTruce(UUID nationId) {
+        if (nationId == null || nationTruces.remove(nationId) == null) return false;
+        setDirty();
+        return true;
+    }
+
     public long nationSettlementTruceRemaining(UUID nationId) {
         return nationId == null ? 0L : nationTruces.getOrDefault(nationId, 0L);
     }

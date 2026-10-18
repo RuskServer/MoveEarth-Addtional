@@ -45,9 +45,12 @@ public final class VehicleLootSavedData extends SavedData {
         }
         NationSavedData nations = NationSavedData.get(player.server);
         UUID nation = nations.nationIdFor(player.getUUID()).orElse(null);
-        // An alliance made after the kill does not turn salvage of a friend's wreck into a right.
-        return grant.individualAttacker() ? grant.attackerId().equals(player.getUUID())
-                : grant.attackerId().equals(nation) && !nations.isAllied(nation, grant.ownerNation());
+        // An alliance made after the kill does not turn salvage of a friend's wreck into a right, whether the
+        // kill was a nation's or a then nationless player's who has since joined the owner or its ally.
+        boolean friendNow = nation != null && (nation.equals(grant.ownerNation())
+                || nations.isAllied(nation, grant.ownerNation()));
+        return !friendNow && (grant.individualAttacker() ? grant.attackerId().equals(player.getUUID())
+                : grant.attackerId().equals(nation));
     }
 
     public Grant grant(UUID vehicleId) { return grants.get(vehicleId); }
@@ -58,6 +61,21 @@ public final class VehicleLootSavedData extends SavedData {
         return grant != null && VehicleCoreDismantlePolicy.salvageHeldByOthers(true, grant.expiresOpenTick(),
                 OpenTimeService.now(player.server), grant.individualAttacker(), grant.attackerId(),
                 player.getUUID(), playerNation);
+    }
+
+    /** Whether salvage of this wreck is still running, for anyone. */
+    public boolean live(UUID vehicleId, long nowOpenTick) {
+        Grant grant = vehicleId == null ? null : grants.get(vehicleId);
+        return grant != null && nowOpenTick < grant.expiresOpenTick();
+    }
+
+    /** Drops expired grants and grants of vehicles that no longer exist; both used to stay saved forever. */
+    public int prune(long nowOpenTick, java.util.function.Predicate<UUID> vehicleExists) {
+        int before = grants.size();
+        grants.values().removeIf(grant -> nowOpenTick >= grant.expiresOpenTick() || !vehicleExists.test(grant.vehicleId()));
+        int removed = before - grants.size();
+        if (removed > 0) setDirty();
+        return removed;
     }
 
     public void revoke(UUID vehicleId) {

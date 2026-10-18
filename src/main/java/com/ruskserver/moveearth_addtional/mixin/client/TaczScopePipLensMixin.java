@@ -2,6 +2,8 @@ package com.ruskserver.moveearth_addtional.mixin.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.ruskserver.moveearth_addtional.client.scope.ScopePipRenderer;
+import com.ruskserver.moveearth_addtional.client.scope.ScopeShadowRenderer;
+import com.tacz.guns.client.model.bedrock.BedrockPart;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
@@ -19,9 +21,17 @@ public abstract class TaczScopePipLensMixin {
     @Shadow(remap = false) private ItemStack attachmentItem;
     @Shadow(remap = false) private ItemStack currentGunItem;
     @Shadow(remap = false) protected List<Boolean> isScopeOcular;
+    @Shadow(remap = false) protected List<List<BedrockPart>> ocularNodePaths;
     @Inject(method = "renderOcularAndDivision", at = @At("HEAD"), remap = false)
     private void moveearth$drawLens(PoseStack pose, ItemDisplayContext context, RenderType type,
                                    int light, int overlay, boolean selective, CallbackInfo callback) {
         if (context.firstPerson()) ScopePipRenderer.composite(currentGunItem, attachmentItem, isScopeOcular, selective);
+    }
+
+    /** After TaCZ has stencilled the eyepieces: shade them with the scope shadow. */
+    @Inject(method = "renderOcularAndDivision", at = @At("TAIL"), remap = false)
+    private void moveearth$drawScopeShadow(PoseStack pose, ItemDisplayContext context, RenderType type,
+                                          int light, int overlay, boolean selective, CallbackInfo callback) {
+        if (context.firstPerson()) ScopeShadowRenderer.render(pose, ocularNodePaths, isScopeOcular, currentGunItem);
     }
 }

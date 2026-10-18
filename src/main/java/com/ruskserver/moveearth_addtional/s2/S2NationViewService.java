@@ -196,7 +196,63 @@ public final class S2NationViewService {
                 territories.vaultChangeCooldown(nation.id()), sieges, peaceProposals, truces, prisoners,
                 members, roles, diplomacy,
                 java.util.List.of(), candidates, notificationAttention(player, data, nation.id()),
-                homeStatus(player, data, nation.id()));
+                homeStatus(player, data, nation.id()),
+                protections(player, data, nation, territories, siegeData));
+    }
+
+    /**
+     * Every limit on attacking the viewer's nation should know about: other nations whose capital or
+     * outposts fell and are held by the settlement truce, cores the viewer's side failed a siege on, and
+     * the viewer's own nation under the same truces or recovering under protection. Players could only
+     * learn of these by being refused, so a nation that had fallen once looked like any other target.
+     */
+    private static java.util.List<S2NationSnapshot.ProtectionView> protections(
+            ServerPlayer player, NationSavedData data, NationSavedData.Nation nation,
+            TerritorySavedData territories, SiegeSavedData siegeData) {
+        java.util.Map<UUID, java.util.List<TerritorySavedData.CoreRecord>> coresByNation = new java.util.HashMap<>();
+        for (TerritorySavedData.CoreRecord core : territories.cores()) {
+            coresByNation.computeIfAbsent(core.nationId(), id -> new java.util.ArrayList<>()).add(core);
+        }
+        java.util.List<S2NationSnapshot.ProtectionView> result = new java.util.ArrayList<>();
+        for (NationSavedData.Nation other : data.nations().values()) {
+            boolean own = other.id().equals(nation.id());
+            long capital = siegeData.nationSettlementTruceRemaining(other.id());
+            if (capital > 0L) result.add(new S2NationSnapshot.ProtectionView(other.id(), other.name(), other.tag(),
+                    S2NationSnapshot.ProtectionKind.CAPITAL_REBUILDING, own, 1, capital));
+            int outposts = 0;
+            long outpostLongest = 0L;
+            int locked = 0;
+            long lockedLongest = 0L;
+            for (TerritorySavedData.CoreRecord core : coresByNation.getOrDefault(other.id(), java.util.List.of())) {
+                long truce = siegeData.coreSettlementTruceRemaining(core.id());
+                if (truce > 0L) {
+                    outposts++;
+                    outpostLongest = Math.max(outpostLongest, truce);
+                }
+                if (own) continue;
+                long lockout = Math.max(siegeData.failedAttackCooldownTicks(nation.id(), false, core.id()),
+                        siegeData.failedAttackCooldownTicks(player.getUUID(), true, core.id()));
+                if (lockout > 0L) {
+                    locked++;
+                    lockedLongest = Math.max(lockedLongest, lockout);
+                }
+            }
+            if (outposts > 0) result.add(new S2NationSnapshot.ProtectionView(other.id(), other.name(), other.tag(),
+                    S2NationSnapshot.ProtectionKind.OUTPOSTS, own, outposts, outpostLongest));
+            if (locked > 0) result.add(new S2NationSnapshot.ProtectionView(other.id(), other.name(), other.tag(),
+                    S2NationSnapshot.ProtectionKind.FAILED_LOCKOUT, false, locked, lockedLongest));
+        }
+        long now = com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server);
+        var recoveries = com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData.get(player.server);
+        recoveries.eligibleForNation(nation.id(), now)
+                .filter(episode -> !recoveries.protectionWaived(episode.id()))
+                .ifPresent(episode -> result.add(new S2NationSnapshot.ProtectionView(nation.id(), nation.name(),
+                        nation.tag(), S2NationSnapshot.ProtectionKind.RECOVERY_RESTRICTION, true, 1,
+                        episode.expiresAt() - now)));
+        result.sort(Comparator.comparing(S2NationSnapshot.ProtectionView::own).reversed()
+                .thenComparing(S2NationSnapshot.ProtectionView::kind)
+                .thenComparingLong(S2NationSnapshot.ProtectionView::remainingTicks));
+        return result;
     }
 
     private static S2NationSnapshot.DiplomacyView diplomacyView(NationSavedData data, UUID viewerNation,
@@ -236,7 +292,22 @@ public final class S2NationViewService {
         boolean overdue = upkeep != null && upkeep.overdueSince() > 0L;
         int applications = nations.can(player.getUUID(), S2Permission.MANAGE_MEMBERS)
                 ? nations.joinApplicationsFor(nationId).size() : 0;
-        return new S2NationSnapshot.HomeStatus(treasury, dueIn, overdue, applications);
+        return new S2NationSnapshot.HomeStatus(treasury, dueIn, overdue, applications,
+                capitalWall(player, nationId));
+    }
+
+    /** The capital's wall when it is thinner than the target, for the hub home's warning. */
+    private static S2NationSnapshot.CapitalWall capitalWall(ServerPlayer player, java.util.UUID nationId) {
+        var capital = com.ruskserver.moveearth_addtional.s2.territory.CapitalWallService
+                .capital(player.server, nationId).orElse(null);
+        if (capital == null) return S2NationSnapshot.CapitalWall.FINE;
+        var wall = com.ruskserver.moveearth_addtional.s2.territory.CapitalWallSavedData.get(player.server)
+                .get(capital.id()).orElse(null);
+        int target = com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.capitalWallLayerTarget();
+        if (wall == null || wall.layers() == 0 || !wall.below(target)) return S2NationSnapshot.CapitalWall.FINE;
+        var weak = wall.weakPoints().isEmpty() ? null : wall.weakPoints().getFirst();
+        return new S2NationSnapshot.CapitalWall(wall.layers(), target, weak != null,
+                weak == null ? 0 : weak.getX(), weak == null ? 0 : weak.getY(), weak == null ? 0 : weak.getZ());
     }
 
     private static com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention notificationAttention(

@@ -42,6 +42,61 @@ public final class TerritoryClosureService {
         });
     }
 
+    /** Starts counting the wall layers of a sealed core ({@link TerritoryWallLayerSearch}). */
+    static TerritoryWallLayerSearch.Session beginWallLayers(ServerLevel level, BlockPos corePos,
+                                                           int horizontalRange, int verticalRange, int cap) {
+        ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
+        SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
+        return new TerritoryWallLayerSearch.Session(
+                new TerritoryClosureSearch.Cell(corePos.getX(), corePos.getY(), corePos.getZ()),
+                new TerritoryClosureSearch.WorldView() {
+                    @Override
+                    public boolean isLoaded(TerritoryClosureSearch.Cell cell) {
+                        return level.hasChunkAt(pos(cell));
+                    }
+
+                    @Override
+                    public boolean isBarrier(TerritoryClosureSearch.Cell cell) {
+                        return isReinforcedBarrier(level, reinforcements, sieges, pos(cell));
+                    }
+                }, horizontalRange, verticalRange, cap);
+    }
+
+    /** Starts finding every hole of a core that is not sealed ({@link TerritoryClosureDiagnosis}). */
+    static TerritoryClosureDiagnosis.Session beginDiagnosis(ServerLevel level, BlockPos corePos) {
+        ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
+        SiegeSavedData sieges = SiegeSavedData.get(level.getServer());
+        return new TerritoryClosureDiagnosis.Session(
+                new TerritoryClosureSearch.Cell(corePos.getX(), corePos.getY(), corePos.getZ()),
+                new TerritoryClosureDiagnosis.View() {
+                    @Override
+                    public boolean isLoaded(TerritoryClosureSearch.Cell cell) {
+                        return level.hasChunkAt(pos(cell));
+                    }
+
+                    @Override
+                    public boolean isBarrier(TerritoryClosureSearch.Cell cell) {
+                        return isReinforcedBarrier(level, reinforcements, sieges, pos(cell));
+                    }
+
+                    @Override
+                    public boolean isEmpty(TerritoryClosureSearch.Cell cell) {
+                        BlockPos pos = pos(cell);
+                        return level.getBlockState(pos).getCollisionShape(level, pos).isEmpty();
+                    }
+                }, TerritoryClosureScanner.SEARCH_RANGE);
+    }
+
+    /** Whether the block at {@code pos} counts toward a closure right now. */
+    static boolean isClosureBarrier(ServerLevel level, BlockPos pos) {
+        return isReinforcedBarrier(level, ReinforcementSavedData.get(level),
+                SiegeSavedData.get(level.getServer()), pos);
+    }
+
+    private static BlockPos pos(TerritoryClosureSearch.Cell cell) {
+        return new BlockPos(cell.x(), cell.y(), cell.z());
+    }
+
     public static TerritoryClosureScanner.Result scanAndUpdate(ServerLevel level, BlockPos corePos) {
         TerritoryClosureScanner.Result result = scan(level, corePos);
         applyResult(level, corePos, result);

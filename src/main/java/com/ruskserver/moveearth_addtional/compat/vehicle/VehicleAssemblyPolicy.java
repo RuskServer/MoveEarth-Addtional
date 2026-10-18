@@ -92,7 +92,9 @@ public final class VehicleAssemblyPolicy {
         if (liftedCores.size() > 1) return new Binding(null, Refusal.MULTIPLE_CORES);
         if (liftedCores.isEmpty()) return new Binding(inherited, Refusal.NONE);
         UUID core = liftedCores.iterator().next();
-        if (inherited != null && !inherited.equals(core)) return new Binding(null, Refusal.CORE_CONFLICT);
+        // Refused where it can be; where it cannot (a split), the lifted core is the craft's identity, so the
+        // piece follows its core rather than being left bound to neither.
+        if (inherited != null && !inherited.equals(core)) return new Binding(core, Refusal.CORE_CONFLICT);
         return new Binding(core, Refusal.NONE);
     }
 

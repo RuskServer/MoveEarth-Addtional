@@ -18,7 +18,7 @@ public class IntrusionTracker {
         final String dimension;
         final String detectorPosHash;
         String detectorName;
-        @Nullable final UUID groupOwnerUuid;
+        @Nullable UUID groupOwnerUuid;
 
         // 進行中の侵入者UUIDセット (退域検知用)
         final Set<UUID> activeIntruders = new HashSet<>();
@@ -70,6 +70,8 @@ public class IntrusionTracker {
         DetectorState state = detectorStates.computeIfAbsent(detectorPosHash,
                 k -> new DetectorState(dimension, detectorPosHash, detectorName, groupOwnerUuid));
         state.detectorName = detectorName;
+        // A player's detector passes to the nation they join, and its activity goes with it.
+        state.groupOwnerUuid = groupOwnerUuid;
 
         double elapsedMinutes = 0.0;
         if (state.lastScanTimeMs > 0L) {

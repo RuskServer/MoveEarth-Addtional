@@ -454,8 +454,16 @@ public class AnalyticsWebServer {
                             .exportChunkProfilesToDirAsync(tempExportDir, format, window).get();
                     case "events", "game_events" -> AnalyticsExportService.INSTANCE
                             .exportGameEventsToDirAsync(tempExportDir, format, window, params.get("type_prefix")).get();
-                    default -> AnalyticsExportService.INSTANCE
-                            .exportPlayersToDirAsync(tempExportDir, format, window).get();
+                    case "all" -> AnalyticsExportService.INSTANCE
+                            .exportAllToZipAsync(tempExportDir, format, window).get();
+                    default -> {
+                        var table = com.ruskserver.moveearth_addtional.analytics.query.export.ExportTable.byId(type);
+                        yield table.isPresent()
+                                ? AnalyticsExportService.INSTANCE
+                                        .exportTableToDirAsync(tempExportDir, format, window, table.get()).get().path()
+                                : AnalyticsExportService.INSTANCE
+                                        .exportPlayersToDirAsync(tempExportDir, format, window).get();
+                    }
                 };
 
                 exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + exportFile.getFileName() + "\"");

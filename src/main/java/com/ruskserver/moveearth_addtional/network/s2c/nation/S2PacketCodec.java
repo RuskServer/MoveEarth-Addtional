@@ -17,6 +17,7 @@ final class S2PacketCodec {
     private static final int MAX_PEACE_PROPOSALS = 32;
     private static final int MAX_TRUCES = 64;
     private static final int MAX_PRISONERS = 256;
+    private static final int MAX_PROTECTIONS = 256;
 
     private S2PacketCodec() {
     }
@@ -150,6 +151,24 @@ final class S2PacketCodec {
         buffer.writeLong(value.home().upkeepDueInMillis());
         buffer.writeBoolean(value.home().upkeepOverdue());
         buffer.writeVarInt(value.home().pendingApplications());
+        var wall = value.home().capitalWall();
+        buffer.writeVarInt(wall.layers() + 1);
+        buffer.writeVarInt(wall.target());
+        buffer.writeBoolean(wall.weakKnown());
+        buffer.writeInt(wall.weakX());
+        buffer.writeInt(wall.weakY());
+        buffer.writeInt(wall.weakZ());
+        buffer.writeVarInt(Math.min(value.protections().size(), MAX_PROTECTIONS));
+        for (int index = 0; index < Math.min(value.protections().size(), MAX_PROTECTIONS); index++) {
+            var protection = value.protections().get(index);
+            buffer.writeUUID(protection.nationId());
+            buffer.writeUtf(protection.nationName(), 64);
+            buffer.writeUtf(protection.nationTag(), 12);
+            buffer.writeByte(protection.kind().ordinal());
+            buffer.writeBoolean(protection.own());
+            buffer.writeVarInt(protection.count());
+            buffer.writeVarLong(protection.remainingTicks());
+        }
     }
 
     static S2NationSnapshot readSnapshot(FriendlyByteBuf buffer) {
@@ -257,13 +276,23 @@ final class S2PacketCodec {
         var attention = com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention
                 .at(buffer.readUnsignedByte());
         S2NationSnapshot.HomeStatus home = new S2NationSnapshot.HomeStatus(buffer.readVarLong(),
-                buffer.readLong(), buffer.readBoolean(), buffer.readVarInt());
+                buffer.readLong(), buffer.readBoolean(), buffer.readVarInt(),
+                new S2NationSnapshot.CapitalWall(buffer.readVarInt() - 1, buffer.readVarInt(), buffer.readBoolean(),
+                        buffer.readInt(), buffer.readInt(), buffer.readInt()));
+        int protectionCount = checkedSize(buffer.readVarInt(), MAX_PROTECTIONS, "protection");
+        List<S2NationSnapshot.ProtectionView> protections = new ArrayList<>(protectionCount);
+        for (int index = 0; index < protectionCount; index++) {
+            protections.add(new S2NationSnapshot.ProtectionView(buffer.readUUID(), buffer.readUtf(64),
+                    buffer.readUtf(12), S2NationSnapshot.ProtectionKind.fromNetworkId(buffer.readUnsignedByte()),
+                    buffer.readBoolean(), nonNegative(buffer.readVarInt(), "protection count"),
+                    Math.max(0L, buffer.readVarLong())));
+        }
         return new S2NationSnapshot(revision, playerName, serverAdmin, member,
                 nationName, nationTag, roleName, ownerName, permissions, onlineMembers, totalMembers,
                 territoryChunks, activeCores, upkeep, siegeStatus, vaultConfigured, vaultDimension,
                 vaultChunkX, vaultChunkZ, vaultChangeCooldownTicks, sieges, peace, truces, prisoners,
                 members, roles, diplomacy,
-                invitations, candidates, attention, home);
+                invitations, candidates, attention, home, protections);
     }
 
     private static int checkedSize(int value, int maximum, String name) {

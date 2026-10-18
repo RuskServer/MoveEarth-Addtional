@@ -1,8 +1,9 @@
 package com.ruskserver.moveearth_addtional.block.entity;
 
-import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
 import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
+import com.ruskserver.moveearth_addtional.detector.DetectorAccessPolicy;
 import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
+import com.ruskserver.moveearth_addtional.detector.DetectorOwnership;
 import com.ruskserver.moveearth_addtional.detector.LoadedDetectorRegistry;
 import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -37,6 +38,9 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public static final double DETECTION_RANGE = 100.0D;
     public static final long WARMUP_DURATION_MS = 20 * 60 * 1000L;
+    public static final long UPKEEP_COST = 2L;
+    public static final int UPKEEP_CYCLE_HOURS = 24;
+    public static final long UPKEEP_INTERVAL_MS = UPKEEP_CYCLE_HOURS * 60L * 60L * 1000L;
 
     private static final String DUMMY_TAG = "MoveEarthDetectorDummy";
     private static final String DUMMY_BLOCK_POS_TAG = "MoveEarthDetectorBlockPos";
@@ -45,6 +49,14 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     private UUID ownerUUID;
     private String ownerName;
+    /** The nation that owns the detector, or null while a player with no nation owns it. */
+    private UUID ownerNation;
+    /**
+     * Whether someone with the nation's rights has agreed to its upkeep from the treasury, by placing it,
+     * claiming it or restarting it. A player's detector that passed to the nation when they joined has not,
+     * so it runs out its paid time and then waits for someone with the rights to restart it.
+     */
+    private boolean treasuryApproved;
     private String detectorName = "";
     private int tickCounter = 0;
 
@@ -77,6 +89,26 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public UUID getOwnerUUID() {
         return this.ownerUUID;
+    }
+
+    public UUID getOwnerNation() {
+        return this.ownerNation;
+    }
+
+    public void setOwnerNation(UUID ownerNation, boolean treasuryApproved) {
+        this.ownerNation = ownerNation;
+        this.treasuryApproved = treasuryApproved;
+        this.setChanged();
+    }
+
+    /** Leaves the detector ownerless and stopped, for the next player to claim. */
+    public void release() {
+        this.ownerUUID = null;
+        this.ownerName = null;
+        this.ownerNation = null;
+        this.treasuryApproved = false;
+        this.isActive = false;
+        this.setChanged();
     }
 
     public String getOwnerName() {
@@ -154,6 +186,8 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (tag.contains("OwnerName")) {
             this.ownerName = tag.getString("OwnerName");
         }
+        this.ownerNation = tag.hasUUID("OwnerNation") ? tag.getUUID("OwnerNation") : null;
+        this.treasuryApproved = tag.getBoolean("TreasuryApproved");
         if (tag.contains("DetectorName")) {
             DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(tag.getString("DetectorName"));
             this.detectorName = validation.valid() ? validation.normalized() : "";
@@ -180,6 +214,10 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         }
         if (this.ownerName != null) {
             tag.putString("OwnerName", this.ownerName);
+        }
+        tag.putBoolean("TreasuryApproved", this.treasuryApproved);
+        if (this.ownerNation != null) {
+            tag.putUUID("OwnerNation", this.ownerNation);
         }
         if (!this.detectorName.isEmpty()) {
             tag.putString("DetectorName", this.detectorName);
@@ -224,7 +262,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         if (blockEntity.tickCounter >= 100) { // 5秒周期 (100 ticks)
             blockEntity.tickCounter = 0;
 
-            if (blockEntity.ownerUUID == null) {
+            if (!DetectorOwnership.settle(serverLevel.getServer(), blockEntity)) {
                 blockEntity.clearPrivateGlows(serverLevel);
                 return;
             }
@@ -238,16 +276,23 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
             }
 
             // 維持費支払い期限のチェックと自動引き落とし
+            if (blockEntity.isActive && currentTime >= blockEntity.nextPaymentTime
+                    && blockEntity.ownerNation != null && !blockEntity.treasuryApproved) {
+                // Nobody with the rights has agreed to pay for it from the treasury yet.
+                blockEntity.isActive = false;
+                blockEntity.setChanged();
+                notifyApprovalNeeded(serverLevel, blockEntity);
+            }
             if (blockEntity.isActive && currentTime >= blockEntity.nextPaymentTime) {
                 UUID chargeId = UUID.nameUUIDFromBytes(("detector:" + serverLevel.dimension().location()
                         + ":" + pos.asLong() + ":" + blockEntity.nextPaymentTime).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 EconomyLedgerSavedData.Result charge = EconomyLedgerSavedData.get(serverLevel.getServer()).transfer(chargeId,
-                        EconomyLedgerSavedData.Account.player(blockEntity.ownerUUID), null, 5L,
+                        DetectorOwnership.account(blockEntity), null, UPKEEP_COST,
                         "detector_upkeep");
                 boolean paySuccess = charge == EconomyLedgerSavedData.Result.APPLIED
                         || charge == EconomyLedgerSavedData.Result.ALREADY_APPLIED;
                 if (paySuccess) {
-                    blockEntity.nextPaymentTime = currentTime + 2 * 60 * 60 * 1000L;
+                    blockEntity.nextPaymentTime = currentTime + UPKEEP_INTERVAL_MS;
                     blockEntity.setChanged();
                 }
 
@@ -271,8 +316,9 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                 return;
             }
 
-            // 所有者の最新ホワイトリストデータを取得
-            PlayerWhitelistSavedData whitelistData = PlayerWhitelistSavedData.get(serverLevel);
+            com.ruskserver.moveearth_addtional.s2.nation.NationSavedData nations =
+                    com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(serverLevel.getServer());
+            List<ServerPlayer> watchers = DetectorOwnership.watchers(serverLevel.getServer(), blockEntity);
 
             // 周囲100ブロック以内のプレイヤーをスキャン
             double range = DETECTION_RANGE;
@@ -289,9 +335,14 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                 if (dist <= range) {
                     String targetName = player.getScoreboardName();
 
-                    // 所有者およびホワイトリストに入っているプレイヤーは除外
-                    if (player.getUUID().equals(blockEntity.ownerUUID) || whitelistData.isWhitelisted(blockEntity.ownerUUID, player.getUUID())) {
+                    // 国民（個人所有なら所有者）は身内、同盟国の人は訪問者として警告しない
+                    DetectorAccessPolicy.Relation relation = DetectorOwnership.relation(nations, blockEntity, player);
+                    if (relation == DetectorAccessPolicy.Relation.MEMBER) {
                         currentMembers.add(player.getUUID());
+                        continue;
+                    }
+                    if (relation == DetectorAccessPolicy.Relation.VISITOR) {
+                        currentVisitors.add(player.getUUID());
                         continue;
                     }
 
@@ -310,9 +361,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
                     boolean alertDue = currentTime - blockEntity.lastIntruderAlerts.getOrDefault(player.getUUID(), 0L)
                             >= ALERT_INTERVAL_MS;
-                    for (ServerPlayer viewer : serverLevel.getServer().getPlayerList().getPlayers()) {
-                        if (!viewer.getUUID().equals(blockEntity.ownerUUID)
-                                && !whitelistData.isWhitelisted(blockEntity.ownerUUID, viewer.getUUID())) continue;
+                    for (ServerPlayer viewer : watchers) {
                         if (alertDue) viewer.sendSystemMessage(chatMessage);
                         if (dist <= 30.0 && viewer.level() == serverLevel && viewer != player) {
                             blockEntity.sendPrivateGlowPacket(viewer, player, true);
@@ -322,7 +371,8 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     if (alertDue) blockEntity.lastIntruderAlerts.put(player.getUUID(), currentTime);
                 }
             }
-            blockEntity.lastIntruderAlerts.keySet().retainAll(currentIntruders);
+            // Kept for the full interval, not just while in range: someone pacing the edge is not re-announced.
+            blockEntity.lastIntruderAlerts.values().removeIf(at -> currentTime - at >= ALERT_INTERVAL_MS);
             blockEntity.privateGlows.removeIf(pair -> {
                 if (currentGlows.contains(pair)) return false;
                 ServerPlayer viewer = serverLevel.getServer().getPlayerList().getPlayer(pair.viewer());
@@ -340,7 +390,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                     serverLevel.dimension().location().toString(),
                     posHash,
                     blockEntity.getDetectorDisplayName(),
-                    blockEntity.ownerUUID,
+                    blockEntity.ownerNation != null ? blockEntity.ownerNation : blockEntity.ownerUUID,
                     currentMembers,
                     currentVisitors,
                     currentIntruders,
@@ -629,13 +679,26 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     private record GlowPair(UUID viewer, UUID target) {}
 
+    public void approveTreasury() {
+        this.treasuryApproved = true;
+        this.setChanged();
+    }
+
+    private static void notifyApprovalNeeded(ServerLevel level, PlayerDetectorBlockEntity blockEntity) {
+        for (ServerPlayer player : DetectorOwnership.watchers(level.getServer(), blockEntity)) {
+            if (!DetectorOwnership.mayManage(player, blockEntity)) continue;
+            player.sendSystemMessage(MoveEarthMessage.warning("【" + blockEntity.getDetectorDisplayName()
+                    + "】国民が持ち込んだ検知ブロックの支払い期間が終わりました。国庫から払い続けるには、権限のある人が検知器の画面で再開してください。"));
+        }
+    }
+
     private void notifyOwnerOfPaymentFailure(ServerLevel level, PlayerDetectorBlockEntity blockEntity) {
-        if (blockEntity.ownerUUID != null) {
-            ServerPlayer player = level.getServer().getPlayerList().getPlayer(blockEntity.ownerUUID);
-            if (player != null) {
-                player.sendSystemMessage(MoveEarthMessage.error("【" + blockEntity.getDetectorDisplayName()
-                        + "】維持費（5 TC）の引き落としに失敗したため、検知機能が停止しました。GUIから口座残高の確認または支払い口座の再設定を行ってください。"));
-            }
+        String account = blockEntity.ownerNation != null ? "国庫" : "口座";
+        for (ServerPlayer player : DetectorOwnership.watchers(level.getServer(), blockEntity)) {
+            if (!DetectorOwnership.mayManage(player, blockEntity)) continue;
+            player.sendSystemMessage(MoveEarthMessage.error("【" + blockEntity.getDetectorDisplayName()
+                    + "】" + account + "から維持費（" + UPKEEP_COST + " TC）を引き落とせなかったため、検知機能が停止しました。"
+                    + account + "に入金してから、検知器の画面で再開してください。"));
         }
     }
 }

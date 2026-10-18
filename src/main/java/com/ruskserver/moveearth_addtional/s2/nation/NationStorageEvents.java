@@ -72,7 +72,8 @@ public final class NationStorageEvents {
     public static void onUseEntity(PlayerInteractEvent.EntityInteract event) {
         if (!(event.getEntity() instanceof ServerPlayer player)
                 || !event.getTarget().getType().is(STORAGE_ENTITIES)
-                || canUse(player, event.getTarget().blockPosition())) return;
+                || canUse(player, event.getTarget().blockPosition())
+                || structureLoot(player, event.getTarget())) return;
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.FAIL);
         notify(player);
@@ -82,7 +83,8 @@ public final class NationStorageEvents {
     public static void onUseEntitySpecific(PlayerInteractEvent.EntityInteractSpecific event) {
         if (!(event.getEntity() instanceof ServerPlayer player)
                 || !event.getTarget().getType().is(STORAGE_ENTITIES)
-                || canUse(player, event.getTarget().blockPosition())) return;
+                || canUse(player, event.getTarget().blockPosition())
+                || structureLoot(player, event.getTarget())) return;
         event.setCanceled(true);
         event.setCancellationResult(InteractionResult.FAIL);
         notify(player);
@@ -106,7 +108,10 @@ public final class NationStorageEvents {
         try {
             var vehicle = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
                     .at(player.serverLevel(), event.getPos()).orElse(null);
-            if (vehicle != null) nation = vehicle.vehicle().nationId();
+            UUID owner = vehicle != null ? vehicle.vehicle().nationId()
+                    : com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
+                    .owningNation(player.serverLevel(), event.getPos());
+            if (owner != null) nation = owner;
         } catch (RuntimeException | LinkageError ignored) { }
         NationStorageOwnershipSavedData.get(player.server).put(player.level().dimension().location(),
                 event.getPos(), nation);
@@ -121,6 +126,7 @@ public final class NationStorageEvents {
             return;
         }
         NationStorageOwnershipSavedData.get(player.server).remove(player.level().dimension().location(), event.getPos());
+        StructureLootSavedData.get(player.server).forget(player.level().dimension().location(), event.getPos());
     }
 
     @SubscribeEvent
@@ -185,7 +191,62 @@ public final class NationStorageEvents {
         if (loot.formerOwner() != null) return loot.allowed() || loot.formerOwner().equals(nationId);
         return canPlace(player, pos)
                 || com.ruskserver.moveearth_addtional.s2.vehicle.VehicleLootSavedData.get(player.server)
-                .canLoot(player, player.serverLevel(), pos);
+                .canLoot(player, player.serverLevel(), pos)
+                || structureLoot(player, pos);
+    }
+
+    /**
+     * A structure's loot chest or barrel in the wilderness ({@link StructureLootPolicy}). Only reached
+     * for storage no existing nation owns. One still carrying its loot table is remembered here, before
+     * opening rolls the loot and clears it.
+     */
+    private static boolean structureLoot(ServerPlayer player, BlockPos pos) {
+        var level = player.serverLevel();
+        var dimension = level.dimension().location();
+        StructureLootSavedData remembered = StructureLootSavedData.get(player.server);
+        if (onVehicle(level, pos)
+                || TerritorySavedData.get(player.server).controllingNation(player.server, dimension, pos).isPresent()) {
+            return false;
+        }
+        boolean known = remembered.remembers(dimension, pos);
+        boolean pending = level.getBlockEntity(pos) instanceof net.minecraft.world.RandomizableContainer container
+                && container.getLootTable() != null;
+        // Storage a structure filled from its template has no loot table; it is found by its structure.
+        // Looked up once: the storage is remembered after.
+        boolean inStructure = !known && !pending && level.getBlockState(pos).is(STORAGE_BLOCKS)
+                && insideStructure(level, pos);
+        boolean allowed = StructureLootPolicy.openToAll(false, false, false, pending, known, inStructure);
+        if (allowed && !known) remembered.remember(dimension, pos);
+        return allowed;
+    }
+
+    /** A structure's chest minecart in the wilderness, such as a mineshaft's. */
+    private static boolean structureLoot(ServerPlayer player, net.minecraft.world.entity.Entity target) {
+        if (!(target instanceof net.minecraft.world.entity.vehicle.ContainerEntity container)) return false;
+        var level = player.serverLevel();
+        BlockPos pos = target.blockPosition();
+        StructureLootSavedData remembered = StructureLootSavedData.get(player.server);
+        boolean pending = container.getLootTable() != null;
+        boolean allowed = StructureLootPolicy.openToAll(false, onVehicle(level, pos),
+                TerritorySavedData.get(player.server).controllingNation(player.server, level.dimension().location(), pos)
+                        .isPresent(),
+                pending, remembered.remembers(target.getUUID()), false);
+        if (allowed && pending) remembered.remember(target.getUUID());
+        return allowed;
+    }
+
+    private static boolean insideStructure(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
+        var structures = level.structureManager();
+        return structures.hasAnyStructureAt(pos)
+                && structures.getStructureWithPieceAt(pos, structure -> true).isValid();
+    }
+
+    private static boolean onVehicle(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
+        try {
+            return com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology.at(level, pos).isPresent();
+        } catch (LinkageError unavailable) {
+            return false;
+        }
     }
 
     /**
@@ -292,15 +353,23 @@ public final class NationStorageEvents {
     private static boolean canPlaceOwn(ServerPlayer player, BlockPos pos) {
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
         if (player.hasPermissions(2)) return true;
+        BlockPos landPos = pos;
         try {
             var vehicle = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
                     .at(player.serverLevel(), pos).orElse(null);
             if (vehicle != null) return vehicle.vehicle().nationId().equals(nationId);
+            // A body no core governs (a wreck, a split-off fragment) is still its nation's; one that never
+            // belonged to anyone answers to the land it stands on, not to its plot far outside every border.
+            UUID owner = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
+                    .owningNation(player.serverLevel(), pos);
+            if (owner != null) return owner.equals(nationId);
+            landPos = com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology
+                    .placement(player.serverLevel(), pos).worldPos();
         } catch (LinkageError unavailable) {
             // Optional Sable is absent; ordinary territorial storage rules still apply.
         }
         boolean ownTerritory = nationId != null && TerritorySavedData.get(player.server).allowsStorage(
-                player.server, nationId, player.level().dimension().location(), pos);
+                player.server, nationId, player.level().dimension().location(), landPos);
         return NationStoragePolicy.canUseStorage(nationId != null, ownTerritory, player.hasPermissions(2));
     }
 

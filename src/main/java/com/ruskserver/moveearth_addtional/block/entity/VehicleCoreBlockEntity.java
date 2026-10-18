@@ -33,8 +33,11 @@ public final class VehicleCoreBlockEntity extends BlockEntity {
      * bearing, gantry or anything else that carries the block and sets it down
      * elsewhere leaves the record on the old spot; damage and explosions then no
      * longer find the core, and a single blast removes it as an ordinary block.
-     * Loading at a new spot moves the record here, unless the old spot still
-     * holds this same core (a copy), and binds it to a Sable body it landed on.
+     * Loading at a new spot moves the record here once the old spot is loaded
+     * and no longer holds this core, and binds it to a Sable body it landed on.
+     * While the old spot is unloaded nothing can be told: a copy (a creative
+     * pick-block, a block set down by a machine) must not take the record from
+     * a core that is merely out of range.
      */
     @Override
     public void onLoad() {
@@ -57,12 +60,13 @@ public final class VehicleCoreBlockEntity extends BlockEntity {
                 .bindIfUnbound(serverLevel, body, vehicleId);
     }
 
+    /** Whether the recorded spot still holds this core, or cannot be checked because it is unloaded. */
     private boolean stillAtRecordedSpot(ServerLevel here, VehicleSavedData.VehicleRecord record) {
         ServerLevel recorded = here.getServer().getLevel(
                 net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.DIMENSION,
                         record.dimension()));
-        return recorded != null && recorded.isLoaded(record.corePos())
-                && recorded.getBlockEntity(record.corePos()) instanceof VehicleCoreBlockEntity other
+        if (recorded == null || !recorded.isLoaded(record.corePos())) return true;
+        return recorded.getBlockEntity(record.corePos()) instanceof VehicleCoreBlockEntity other
                 && other != this && vehicleId.equals(other.vehicleId);
     }
 

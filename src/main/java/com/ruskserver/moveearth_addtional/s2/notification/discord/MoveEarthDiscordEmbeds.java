@@ -175,6 +175,7 @@ public final class MoveEarthDiscordEmbeds {
             case DIGEST -> new EventPresentation("国家通知のまとめ", ACCENT);
             case TERRITORY_INTRUSION -> new EventPresentation("領土内での破壊", WARNING);
             case VEHICLE_ATTACKED -> new EventPresentation("車両への攻撃", WARNING);
+            case VEHICLE_DESTROYED -> new EventPresentation("車両の喪失", DANGER);
             case SYSTEM -> new EventPresentation("システム通知", ACCENT);
         };
     }

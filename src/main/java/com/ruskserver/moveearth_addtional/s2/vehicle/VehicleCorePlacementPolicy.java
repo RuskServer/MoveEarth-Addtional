@@ -30,4 +30,23 @@ public final class VehicleCorePlacementPolicy {
         }
         return true;
     }
+    /**
+     * As {@link #mayBind(Set, Map, Function)}, and a core may not claim a body still carrying another nation's
+     * live vehicle id: a fragment split off a craft stays its owner's, so another nation cannot set it in its
+     * own shipyard and re-core it as its own.
+     *
+     * @param nationOf     the nation of a live vehicle, or null when its record is gone
+     * @param placerNation the nation placing the core
+     */
+    public static boolean mayBind(Set<UUID> bodies, Map<UUID, UUID> boundVehicles,
+                                  Function<UUID, UUID> coreBodyOf, Function<UUID, UUID> nationOf,
+                                  UUID placerNation) {
+        if (!mayBind(bodies, boundVehicles, coreBodyOf)) return false;
+        for (UUID body : bodies) {
+            UUID vehicle = boundVehicles.get(body);
+            UUID owner = vehicle == null ? null : nationOf.apply(vehicle);
+            if (owner != null && !owner.equals(placerNation)) return false;
+        }
+        return true;
+    }
 }

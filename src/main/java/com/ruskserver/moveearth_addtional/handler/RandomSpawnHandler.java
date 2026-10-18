@@ -831,38 +831,26 @@ public final class RandomSpawnHandler {
         int worldSurfaceY = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, localX, localZ) + 1;
         BlockPos result = findSafeNear(level, x, z, motionBlockingY);
         if (result == null && worldSurfaceY != motionBlockingY) result = findSafeNear(level, x, z, worldSurfaceY);
-        return result == null || onStructure(level, chunk, result) ? null : result;
+        return result == null || !naturalGround(level.getBlockState(result.below())) ? null : result;
     }
 
     /**
-     * Whether a spot stands on or inside a generated structure. The heightmap's top
-     * block is a building's roof wherever one stands, so a player could arrive on
-     * a ruined tower with no way down but the fall, or inside a Warehouse; such
-     * columns are treated as having no safe surface. Both the feet and the block
-     * underfoot are checked, since a roof's top layer is the last row inside the
-     * building's piece and the feet stand just above it.
+     * Whether a spot stands on natural terrain. The heightmap's top block is a
+     * building's roof wherever one stands, so a player could arrive on a ruined
+     * tower with no way down but the fall, or on a Warehouse; roofs and floors are
+     * planks, bricks, stairs and slabs, never the ground blocks listed here.
      *
-     * <p>Never loads a chunk: this also runs while chunks load, and a structure's
-     * start can sit several chunks away. Only the column's own chunk references
-     * are read, and a start chunk that is not loaded yet counts as covered, so an
-     * unknown spot is passed over rather than risked.
+     * <p>Judged from the block underfoot alone, so it needs nothing beyond the
+     * column's own chunk. Asking the structure manager instead meant reading each
+     * referenced structure's start chunk, which a spawn search does not load; with
+     * deposits and small decorations referenced almost everywhere, nearly every
+     * candidate came back unknown and was dropped, and first joins timed out.
      */
-    private static boolean onStructure(ServerLevel level, LevelChunk chunk, BlockPos feet) {
-        var references = chunk.getAllReferences();
-        if (references.isEmpty()) return false;
-        BlockPos below = feet.below();
-        var structures = level.structureManager();
-        for (var entry : references.entrySet()) {
-            for (long packed : entry.getValue()) {
-                LevelChunk startChunk = level.getChunkSource().getChunkNow(
-                        ChunkPos.getX(packed), ChunkPos.getZ(packed));
-                if (startChunk == null) return true;
-                var start = startChunk.getStartForStructure(entry.getKey());
-                if (start != null && start.isValid() && (structures.structureHasPieceAt(feet, start)
-                        || structures.structureHasPieceAt(below, start))) return true;
-            }
-        }
-        return false;
+    private static boolean naturalGround(BlockState floor) {
+        return floor.is(net.minecraft.tags.BlockTags.OVERWORLD_CARVER_REPLACEABLES)
+                || floor.is(net.minecraft.tags.BlockTags.SNOW)
+                || floor.is(net.minecraft.tags.BlockTags.ICE)
+                || floor.is(net.minecraft.world.level.block.Blocks.CLAY);
     }
 
     static List<BlockPos> mappingSurfaces(ServerLevel level, LevelChunk chunk) {

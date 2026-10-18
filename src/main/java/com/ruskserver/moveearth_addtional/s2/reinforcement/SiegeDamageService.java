@@ -176,7 +176,7 @@ public final class SiegeDamageService {
                 intercepted = true;
                 continue;
             }
-            if (ReinforcementBlastOcclusion.blocked(blastOrigin, located.pos(), blastBarriers.get())) {
+            if (blastBarriers.blocked(blastOrigin, located.pos())) {
                 intercepted = true;
                 continue;
             }
@@ -225,7 +225,7 @@ public final class SiegeDamageService {
                     || core.state() != TerritorySavedData.CoreState.EXPOSED || core.health() <= 0) continue;
             intercepted = true;
             if (!attributed || siege.truceBlocks(core.pos())) continue;
-            if (ReinforcementBlastOcclusion.blocked(blastOrigin, core.pos(), blastBarriers.get())) continue;
+            if (blastBarriers.blocked(blastOrigin, core.pos())) continue;
             siege.record(core.pos(), false);
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, core.pos(), configuredTerritoryCoreDamage(kind, core.pos().equals(center)));

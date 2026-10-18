@@ -44,6 +44,7 @@ public final class SableAirshipController {
             BoundingBox3i bounds = boundsOf(blocks);
             ServerSubLevel subLevel = SubLevelAssemblyHelper.assembleBlocks(level, anchor, blocks, bounds);
             subLevel.setName("MoveEarth Raid #" + raidId);
+            com.ruskserver.moveearth_addtional.raid.RaidShipSweeper.tag(subLevel, raidId);
             ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
             if (container != null) container.physicsSystem().getPipeline().resetVelocity(subLevel);
             return Optional.of(subLevel.getUniqueId());

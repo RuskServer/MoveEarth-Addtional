@@ -46,6 +46,9 @@ public class ModItems {
     public static final DeferredHolder<Item, Item> WEAPON_CRATE = ITEMS.register("weapon_crate",
             () -> new WeaponCrateItem(new Item.Properties().stacksTo(16).rarity(net.minecraft.world.item.Rarity.RARE)));
 
+    public static final DeferredHolder<Item, Item> PVP_MAP_WAND = ITEMS.register("pvp_map_wand",
+            () -> new PvpMapWandItem(new Item.Properties().stacksTo(1).rarity(net.minecraft.world.item.Rarity.EPIC)));
+
     public static final DeferredHolder<Item, Item> GAS_MASK = ITEMS.register("gas_mask",
             () -> new com.ruskserver.moveearth_addtional.oxygen.GasMaskItem(new Item.Properties().durability(240).rarity(net.minecraft.world.item.Rarity.UNCOMMON)));
 

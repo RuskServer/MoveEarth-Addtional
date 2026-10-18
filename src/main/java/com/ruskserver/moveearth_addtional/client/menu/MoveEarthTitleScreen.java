@@ -15,10 +15,8 @@ import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
-import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.FormattedCharSequence;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.client.gui.ModListScreen;
@@ -68,7 +66,8 @@ public final class MoveEarthTitleScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         boolean reducedMotion = StartupClientConfig.reducedMotion();
-        animatedBackground.render(graphics, width, height, !reducedMotion);
+        if (reducedMotion) animatedBackground.render(graphics, width, height, false);
+        else animatedBackground.render(graphics, width, height, true, mouseX, mouseY);
         graphics.fillGradient(0, 0, width, height, 0x35000000, 0xA0000000);
 
         MoveEarthTitleMenuLayout.Layout layout = layout();
@@ -337,7 +336,7 @@ public final class MoveEarthTitleScreen extends Screen {
     }
 
     private void playClick() {
-        minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        com.ruskserver.moveearth_addtional.client.ui.UiSounds.click();
     }
 
     private MoveEarthTitleMenuLayout.Layout layout() {

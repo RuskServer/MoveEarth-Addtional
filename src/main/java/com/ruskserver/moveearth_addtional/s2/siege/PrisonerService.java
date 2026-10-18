@@ -343,6 +343,7 @@ public final class PrisonerService {
             player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.prisoner.imprisoned_captive", nationName(captor.server, owner),
                     formatTicks(custody.remainingTicks()))));
+            com.ruskserver.moveearth_addtional.s2.presence.HiddenAdvancementService.imprisoned(player);
         }
         else captive.discard();
         CombatTagService.releaseBody(captor.server, custody.playerId(), false);

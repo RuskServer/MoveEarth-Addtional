@@ -78,7 +78,12 @@ public final class RecoveryDispatchViewService {
                 episode.aidUsed(), episode.aidReserved(), episode.individualAttacker() ? null : episode.attackerId(),
                 episode.individualAttacker() ? "" : nationName(nations, episode.attackerId()),
                 nationName(nations, episode.rivalNation()),
-                recoveryData.protectionWaived(episode.id()));
+                recoveryData.protectionWaived(episode.id()), resealRemaining(episode, now),
+                recoveryData.weighted(episode.id()),
+                recoveryData.eligibleForNation(nationId, now).filter(value -> value.id().equals(episode.id()))
+                        .isPresent() && !recoveryData.protectionWaived(episode.id()),
+                com.ruskserver.moveearth_addtional.s2.siege.SiegeSavedData.get(player.server)
+                        .nationSettlementTruceRemaining(nationId));
         List<S2C_RecoveryDispatchSnapshotPacket.ContractView> contracts = admin
                 ? DispatchContractSavedData.get(player.server).all().stream()
                 .map(value -> contractView(nations, player, value)).toList()
@@ -114,11 +119,28 @@ public final class RecoveryDispatchViewService {
                 admin || nations.can(player.getUUID(), S2Permission.MANAGE_TREASURY),
                 admin || nations.can(player.getUUID(), S2Permission.MANAGE_DISPATCH),
                 admin || nations.can(player.getUUID(), S2Permission.MANAGE_DIPLOMACY),
-                fund.balance(), fund.reserved(), recovery, contracts, nationOptions, cores, history, reviews));
+                fund.balance(), fund.reserved(), new S2C_RecoveryDispatchSnapshotPacket.Settings(
+                        com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.fundEnabled(),
+                        com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.dispatchEnabled(),
+                        com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.dispatchMoneyEnabled(),
+                        (int) (com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.dispatchMaxOpenTicks() / 1_200L),
+                        com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.dispatchSubsidyApprovalRequired(),
+                        com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.rivalEnabled()),
+                recovery, contracts, nationOptions, cores, history, reviews));
+    }
+
+    /** Open time until the capital counts as resealed: 0 once it has, -1 while its core is not sealed. */
+    static long resealRemaining(NationRecoverySavedData.Episode episode, long now) {
+        if (episode.resealed()) return 0L;
+        if (episode.resealStartedAt() <= 0L)
+            return S2C_RecoveryDispatchSnapshotPacket.RecoveryView.RESEAL_NOT_STARTED;
+        return Math.max(1L, episode.resealStartedAt()
+                + com.ruskserver.moveearth_addtional.config.RecoveryDispatchConfig.resealOpenTicks() - now);
     }
 
     private static S2C_RecoveryDispatchSnapshotPacket.ContractView contractView(NationSavedData nations,
             ServerPlayer viewer, DispatchContractSavedData.Contract value) {
+        UUID viewerNation = nations.nationIdFor(viewer.getUUID()).orElse(null);
         return new S2C_RecoveryDispatchSnapshotPacket.ContractView(value.id(), value.revision(), value.state().name(),
                 nationName(nations, value.employerNation()), nationName(nations, value.providerNation()),
                 value.side().name(), coreName(value.targetCoreId()),
@@ -127,7 +149,7 @@ public final class RecoveryDispatchViewService {
                 value.billedTicks().values().stream().mapToLong(Long::longValue).sum(), value.requestedSubsidy(), value.ownEscrow(),
                 value.subsidyEscrow(), value.employerApproved(), value.providerApproved(), value.subsidyApproved(),
                 value.participants().contains(viewer.getUUID()), value.consents().contains(viewer.getUUID()),
-                value.endReason());
+                value.endReason(), value.employerNation().equals(viewerNation), value.providerNation().equals(viewerNation));
     }
 
     private static String coreName(UUID id) { return id == null ? "" : id.toString().substring(0, 8); }
@@ -230,7 +252,14 @@ public final class RecoveryDispatchViewService {
         UUID own = nations.nationIdFor(player.getUUID()).orElse(null);
         return episode != null && episode.revision() == expectedRevision && episode.nationId().equals(own)
                 && (player.hasPermissions(2) || nations.can(player.getUUID(), S2Permission.MANAGE_SIEGE))
-                && NationRecoverySavedData.get(player.server).waiveProtection(episodeId);
+                && NationRecoverySavedData.get(player.server).waiveProtection(episodeId)
+                && endTruce(player, own);
+    }
+
+    /** Giving up the protection to attack again gives up the truce on the nation's own land with it. */
+    private static boolean endTruce(ServerPlayer player, UUID nationId) {
+        com.ruskserver.moveearth_addtional.s2.siege.TruceAggressionService.waived(player.server, nationId);
+        return true;
     }
 
     private static boolean setRival(ServerPlayer player, UUID episodeId, UUID rival, long expectedRevision) {

@@ -1479,6 +1479,43 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
     }
 
     @Override
+    public boolean exportTable(com.ruskserver.moveearth_addtional.analytics.query.export.ExportTable table,
+                               long fromEpochSec, long toEpochSec, int limit,
+                               com.ruskserver.moveearth_addtional.analytics.query.export.ExportRowSink sink)
+            throws Exception {
+        Path path = dbPath;
+        if (path == null || !isOpen()) return false;
+        // WAL なので別接続で読める。書き込み側の接続とロックを使わず、大きな書き出しでも記録を止めない。
+        try (Connection reader = DriverManager.getConnection("jdbc:sqlite:" + path.toAbsolutePath())) {
+            try (Statement stmt = reader.createStatement()) {
+                stmt.execute("PRAGMA query_only = 1;");
+                stmt.execute("PRAGMA busy_timeout = 5000;");
+            }
+            try (PreparedStatement ps = reader.prepareStatement(table.sql())) {
+                ps.setLong(1, table.bound(fromEpochSec));
+                ps.setLong(2, table.bound(toEpochSec));
+                ps.setInt(3, Math.max(1, limit) + 1);
+                try (ResultSet rs = ps.executeQuery()) {
+                    ResultSetMetaData meta = rs.getMetaData();
+                    int count = meta.getColumnCount();
+                    List<String> columns = new ArrayList<>(count);
+                    for (int i = 1; i <= count; i++) columns.add(meta.getColumnLabel(i));
+                    sink.columns(columns);
+                    int written = 0;
+                    while (rs.next()) {
+                        if (written >= limit) return true;
+                        Object[] values = new Object[count];
+                        for (int i = 1; i <= count; i++) values[i - 1] = rs.getObject(i);
+                        sink.row(values);
+                        written++;
+                    }
+                    return false;
+                }
+            }
+        }
+    }
+
+    @Override
     public synchronized List<ServerPerformanceSample> queryServerPerformance(
             TimeWindow window, int limit, long currentEpochSec) throws SQLException {
         if (connection == null || connection.isClosed()) return Collections.emptyList();

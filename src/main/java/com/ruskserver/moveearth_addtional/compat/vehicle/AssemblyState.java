@@ -11,6 +11,8 @@ import net.minecraft.core.BlockPos;
  * @param liftedReinforced reinforced blocks in {@code lifted}
  * @param fromWorld       lifted from the plain world rather than split off another body
  * @param request         Simulated request behind it, or null
+ * @param inheritedNation nation owning the body it was lifted out of, or null
  */
 public record AssemblyState(Iterable<BlockPos> lifted, BlockPos origin, VehicleAssemblyPolicy.Binding binding,
-                            int liftedReinforced, boolean fromWorld, AssemblyRequests.Request request) { }
+                            int liftedReinforced, boolean fromWorld, AssemblyRequests.Request request,
+                            java.util.UUID inheritedNation) { }

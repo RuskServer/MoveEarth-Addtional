@@ -118,6 +118,40 @@ public final class GlStateCache {
         return GL11.glGetInteger(GL11.GL_STENCIL_VALUE_MASK);
     }
 
+    /** The cached stencil operations: fail, depth-fail and depth-pass, as {@code glStencilOp} takes them. */
+    public static void stencilOps(int[] out) {
+        Field[] fields = StencilOps.FIELDS;
+        if (fields != null) {
+            try {
+                for (int i = 0; i < 3; i++) out[i] = fields[i].getInt(StencilOps.STATE);
+                return;
+            } catch (IllegalAccessException ignored) { }
+        }
+        out[0] = GL11.glGetInteger(GL11.GL_STENCIL_FAIL);
+        out[1] = GL11.glGetInteger(GL11.GL_STENCIL_PASS_DEPTH_FAIL);
+        out[2] = GL11.glGetInteger(GL11.GL_STENCIL_PASS_DEPTH_PASS);
+    }
+
+    /** Stencil-op handles, resolved apart from {@link Handles} so a failure here costs only these. */
+    private static final class StencilOps {
+        private static final Object STATE;
+        private static final Field[] FIELDS;
+
+        static {
+            Object state = null;
+            Field[] fields = null;
+            try {
+                state = Handles.staticField("STENCIL");
+                fields = new Field[] {Handles.field(state, "fail"), Handles.field(state, "zfail"),
+                        Handles.field(state, "zpass")};
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                fields = null;
+            }
+            STATE = state;
+            FIELDS = fields;
+        }
+    }
+
     /** Resolved field handles; {@code null} as a whole when any of them could not be resolved. */
     private record Handles(Object blendMode, Object depth, Object depthMode, Object cullMode, Object scissorMode,
                            Object colorMask, Object stencilFunc, Object[] textures,

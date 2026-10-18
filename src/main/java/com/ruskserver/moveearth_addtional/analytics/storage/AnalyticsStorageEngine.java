@@ -148,6 +148,16 @@ public interface AnalyticsStorageEngine extends AutoCloseable {
     List<com.ruskserver.moveearth_addtional.analytics.query.dto.EconomyHistoryPointDto> queryEconomyHistory(
             long fromEpochSec, long toEpochSec) throws Exception;
 
+    /**
+     * 許可リストの生テーブルを、期間内の古い順に {@code sink} へ流す。書き込みを止めないよう
+     * 専用の読み取り接続で読む。
+     *
+     * @return 上限 {@code limit} に達して、期間内の行をすべては流さなかったか
+     */
+    boolean exportTable(com.ruskserver.moveearth_addtional.analytics.query.export.ExportTable table,
+                        long fromEpochSec, long toEpochSec, int limit,
+                        com.ruskserver.moveearth_addtional.analytics.query.export.ExportRowSink sink) throws Exception;
+
     @Override
     void close() throws Exception;
 }

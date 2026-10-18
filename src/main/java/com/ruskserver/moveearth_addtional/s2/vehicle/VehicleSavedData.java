@@ -84,8 +84,35 @@ public final class VehicleSavedData extends SavedData {
         return Optional.empty();
     }
 
+    /**
+     * Vehicles a nation keeps up. A destroyed one (core at 0 HP) is not billed: its owner cannot dismantle it
+     * while damaged nor repair it while upkeep is suspended, so counting it left a nation already behind on
+     * upkeep paying for wrecks it had no way to be rid of.
+     */
     public int count(UUID nationId) {
-        return (int) vehicles.values().stream().filter(value -> value.nationId().equals(nationId)).count();
+        return (int) vehicles.values().stream()
+                .filter(value -> value.nationId().equals(nationId) && value.health() > 0).count();
+    }
+
+    /** Every record, for the integrity sweep. */
+    public java.util.List<VehicleRecord> all() {
+        return java.util.List.copyOf(vehicles.values());
+    }
+
+    /**
+     * Brings back the record of a core block that still stands but lost its record to a fault, under its own id
+     * so the block, its body and any salvage keep matching.
+     */
+    public VehicleRecord restore(UUID id, UUID nationId, UUID placedBy, ResourceLocation dimension, BlockPos corePos,
+                                 UUID subLevelId) {
+        if (id == null || nationId == null || vehicles.containsKey(id)) return vehicles.get(id);
+        int health = S2TerritoryConfig.vehicleCoreHealth();
+        VehicleRecord record = new VehicleRecord(id, nationId, placedBy == null ? new UUID(0L, 0L) : placedBy,
+                dimension, corePos.immutable(), subLevelId, health, health);
+        vehicles.put(id, record);
+        index(record);
+        setDirty();
+        return record;
     }
 
     public VehicleRecord move(UUID id, ResourceLocation dimension, BlockPos corePos, UUID subLevelId) {

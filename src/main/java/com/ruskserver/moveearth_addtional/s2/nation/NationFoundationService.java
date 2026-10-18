@@ -79,6 +79,7 @@ public final class NationFoundationService {
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_CITIZEN);
         com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player,
                 com.ruskserver.moveearth_addtional.advancement.ModCriteria.NATION_FOUNDED);
+        com.ruskserver.moveearth_addtional.s2.presence.HiddenAdvancementService.nationFounded(player, nationId);
         com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_FOUNDED, player, nationId, 0L, name);
         return new Result(Status.CREATED, nations.revision(), registered.core());
     }

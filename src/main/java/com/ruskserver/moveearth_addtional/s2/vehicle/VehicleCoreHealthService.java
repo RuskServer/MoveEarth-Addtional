@@ -61,5 +61,19 @@ public final class VehicleCoreHealthService {
                         vehicle.dimension().toString(), vehicle.corePos().toShortString()));
         com.ruskserver.moveearth_addtional.s2.siege.PrisonerVehicleTransportService
                 .onVehicleDestroyed(level.getServer(), vehicle.id());
+        // The hit notice is limited to one per attacker every few minutes, so the kill itself often said nothing.
+        var nations = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer());
+        String attackerName = attackerId == null ? "?"
+                : SiegeService.attackerName(level.getServer(), nations, attackerId, individual);
+        BlockPos where = VehicleProtection.worldPos(level, vehicle.corePos());
+        com.ruskserver.moveearth_addtional.s2.notification.NationNotificationService.publish(level.getServer(),
+                java.util.List.of(vehicle.nationId()),
+                com.ruskserver.moveearth_addtional.s2.notification.NationNotificationSavedData.EventType.VEHICLE_DESTROYED,
+                vehicle.dimension(), where,
+                // Literal: v3.7 is server-only, and clients without its language file would show the key.
+                net.minecraft.network.chat.Component.literal("自国の車両のコアが" + attackerName + "に破壊されました（地点 "
+                        + where.getX() + ", " + where.getY() + ", " + where.getZ()
+                        + "）。修理するまで、相手は30分間その積み荷を回収できます"),
+                java.util.List.of(attackerName + "による撃破"));
     }
 }

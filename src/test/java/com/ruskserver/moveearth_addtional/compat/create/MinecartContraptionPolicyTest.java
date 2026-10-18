@@ -13,42 +13,59 @@ class MinecartContraptionPolicyTest {
     private static final UUID ENEMY = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
     @Test
-    void assemblyIsLimitedToCompactUnprotectedHomeFreight() {
+    void assemblyTakesOnlyOwnLandAndCompactUnprotectedFreight() {
         assertEquals(MinecartContraptionPolicy.AssemblyFailure.NONE,
-                MinecartContraptionPolicy.assemblyFailure(true, true, 256, 16, false, false));
-        assertEquals(MinecartContraptionPolicy.AssemblyFailure.NO_HOME_TERRITORY,
-                MinecartContraptionPolicy.assemblyFailure(false, true, 1, 0, false, false));
-        assertEquals(MinecartContraptionPolicy.AssemblyFailure.CROSSES_TERRITORY,
-                MinecartContraptionPolicy.assemblyFailure(true, false, 1, 0, false, false));
+                MinecartContraptionPolicy.assemblyFailure(true, 256, 16, false, false));
+        assertEquals(MinecartContraptionPolicy.AssemblyFailure.FOREIGN_BLOCK,
+                MinecartContraptionPolicy.assemblyFailure(false, 1, 0, false, false));
         assertEquals(MinecartContraptionPolicy.AssemblyFailure.TOO_LARGE,
-                MinecartContraptionPolicy.assemblyFailure(true, true, 257, 0, false, false));
+                MinecartContraptionPolicy.assemblyFailure(true, 257, 0, false, false));
         assertEquals(MinecartContraptionPolicy.AssemblyFailure.TOO_MANY_CONTAINERS,
-                MinecartContraptionPolicy.assemblyFailure(true, true, 16, 17, false, false));
+                MinecartContraptionPolicy.assemblyFailure(true, 16, 17, false, false));
         assertEquals(MinecartContraptionPolicy.AssemblyFailure.REINFORCED_BLOCK,
-                MinecartContraptionPolicy.assemblyFailure(true, true, 16, 1, true, false));
+                MinecartContraptionPolicy.assemblyFailure(true, 16, 1, true, false));
         assertEquals(MinecartContraptionPolicy.AssemblyFailure.PROTECTED_BLOCK,
-                MinecartContraptionPolicy.assemblyFailure(true, true, 16, 1, false, true));
+                MinecartContraptionPolicy.assemblyFailure(true, 16, 1, false, true));
     }
 
     @Test
-    void assemblerPlacementRequiresHomeNationTerritoryManagement() {
-        assertTrue(MinecartContraptionPolicy.canPlaceAssembler(HOME, HOME, true));
-        assertFalse(MinecartContraptionPolicy.canPlaceAssembler(HOME, HOME, false));
-        assertFalse(MinecartContraptionPolicy.canPlaceAssembler(HOME, ENEMY, true));
-        assertFalse(MinecartContraptionPolicy.canPlaceAssembler(null, HOME, true));
+    void ownLandIsTheOwnersOrNobodys() {
+        assertTrue(MinecartContraptionPolicy.ownLand(HOME, HOME));
+        assertTrue(MinecartContraptionPolicy.ownLand(HOME, null));
+        assertTrue(MinecartContraptionPolicy.ownLand(null, null));
+        assertFalse(MinecartContraptionPolicy.ownLand(HOME, ENEMY));
+        assertFalse(MinecartContraptionPolicy.ownLand(null, HOME));
     }
 
     @Test
-    void unloadingAllowsHomeAndWildernessButNotForeignTerritory() {
-        assertTrue(MinecartContraptionPolicy.canDisassemble(HOME, HOME));
-        assertTrue(MinecartContraptionPolicy.canDisassemble(HOME, null));
-        assertFalse(MinecartContraptionPolicy.canDisassemble(HOME, ENEMY));
-        assertFalse(MinecartContraptionPolicy.canDisassemble(null, HOME));
+    void anyCitizenPlacesAnAssemblerAtHomeAndAnyoneOnUnheldLand() {
+        assertTrue(MinecartContraptionPolicy.canPlaceAssembler(HOME, HOME));
+        assertTrue(MinecartContraptionPolicy.canPlaceAssembler(HOME, null));
+        assertTrue(MinecartContraptionPolicy.canPlaceAssembler(null, null));
+        assertFalse(MinecartContraptionPolicy.canPlaceAssembler(HOME, ENEMY));
+        assertFalse(MinecartContraptionPolicy.canPlaceAssembler(null, HOME));
     }
 
     @Test
-    void workDevicesStopOnlyInsideForeignControlledLand() {
+    void unloadingAllowsOwnAndUnheldLandButNotAnotherNations() {
+        assertTrue(MinecartContraptionPolicy.canUnload(true, HOME, HOME, true));
+        assertTrue(MinecartContraptionPolicy.canUnload(true, HOME, null, false));
+        assertFalse(MinecartContraptionPolicy.canUnload(true, HOME, ENEMY, true));
+        assertFalse(MinecartContraptionPolicy.canUnload(true, HOME, ENEMY, false));
+        assertFalse(MinecartContraptionPolicy.canUnload(true, null, HOME, true));
+    }
+
+    @Test
+    void anOlderCartWithNoOwnerUnloadsAtAnyAssemblerOnce() {
+        assertTrue(MinecartContraptionPolicy.canUnload(false, null, HOME, true));
+        assertTrue(MinecartContraptionPolicy.canUnload(false, null, null, false));
+        assertFalse(MinecartContraptionPolicy.canUnload(false, null, HOME, false));
+    }
+
+    @Test
+    void workDevicesStopOnLandThatIsNotTheCartsOwn() {
         assertTrue(MinecartContraptionPolicy.suspendWorkActors(HOME, ENEMY, true));
+        assertTrue(MinecartContraptionPolicy.suspendWorkActors(null, HOME, true));
         assertFalse(MinecartContraptionPolicy.suspendWorkActors(HOME, HOME, true));
         assertFalse(MinecartContraptionPolicy.suspendWorkActors(HOME, null, true));
         assertFalse(MinecartContraptionPolicy.suspendWorkActors(HOME, ENEMY, false));

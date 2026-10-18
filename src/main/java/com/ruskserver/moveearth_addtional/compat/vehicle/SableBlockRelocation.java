@@ -77,7 +77,28 @@ public final class SableBlockRelocation {
         if (!changed.isEmpty()) {
             ReinforcementService.syncChangedNearbyManagers(pending.destination(), changed);
         }
+        moveStorageOwners(pending);
         moveCoreRecords(pending);
+    }
+
+    /**
+     * Storage keeps the nation it was placed for. The record is keyed by position, so a chest lifted into a
+     * plot, split off into another body or set back down used to lose its owner on the way.
+     */
+    private static void moveStorageOwners(Pending pending) {
+        var owners = com.ruskserver.moveearth_addtional.s2.nation.NationStorageOwnershipSavedData
+                .get(pending.destination().getServer());
+        var from = pending.source().dimension().location();
+        var to = pending.destination().dimension().location();
+        Map<BlockPos, UUID> carried = new LinkedHashMap<>();
+        for (Map.Entry<BlockPos, BlockPos> move : pending.moves().entrySet()) {
+            UUID owner = owners.owner(from, move.getKey());
+            if (owner != null) carried.put(move.getValue(), owner);
+        }
+        if (carried.isEmpty()) return;
+        // All sources first: a destination may be another move's source.
+        for (BlockPos source : pending.moves().keySet()) owners.remove(from, source);
+        carried.forEach((destination, owner) -> owners.put(to, destination, owner));
     }
 
     private static void moveCoreRecords(Pending pending) {

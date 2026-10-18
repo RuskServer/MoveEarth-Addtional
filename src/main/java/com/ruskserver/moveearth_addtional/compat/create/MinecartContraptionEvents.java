@@ -1,7 +1,6 @@
 package com.ruskserver.moveearth_addtional.compat.create;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.s2.S2Permission;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.s2.territory.TerritorySavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
@@ -15,7 +14,7 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 
 import java.util.UUID;
 
-/** Makes cart assemblers managed national infrastructure instead of disposable raid tools. */
+/** Keeps cart assemblers on their placer's own land or on land no nation holds. */
 @EventBusSubscriber(modid = Moveearth_addtional.MODID, bus = EventBusSubscriber.Bus.GAME)
 public final class MinecartContraptionEvents {
     private MinecartContraptionEvents() {
@@ -33,8 +32,7 @@ public final class MinecartContraptionEvents {
         UUID controllingNation = TerritorySavedData.get(level.getServer())
                 .controllingNation(level.getServer(), level.dimension().location(), event.getPos())
                 .orElse(null);
-        if (MinecartContraptionPolicy.canPlaceAssembler(actorNation, controllingNation,
-                nations.can(player.getUUID(), S2Permission.MANAGE_TERRITORY))) return;
+        if (MinecartContraptionPolicy.canPlaceAssembler(actorNation, controllingNation)) return;
 
         event.setCanceled(true);
         player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(

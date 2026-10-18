@@ -34,4 +34,18 @@ class TerritoryMapProjectionTest {
         assertEquals(80.0F, point.x());
         assertEquals(56.0F, point.y());
     }
+
+    @Test
+    void blockAreasGrowToTheMinimumAndClipToTheMap() {
+        var exact = TerritoryMapProjection.projectBlocks(0, 0, 0, 0, 0, 37, 17, 2.6F);
+        org.junit.jupiter.api.Assertions.assertEquals(64.0F, exact.minX(), 1.0E-4F);
+        org.junit.jupiter.api.Assertions.assertEquals(101.0F, exact.maxX(), 1.0E-4F);
+        org.junit.jupiter.api.Assertions.assertTrue(exact.visible());
+        var coarse = TerritoryMapProjection.projectBlocks(0, 0, 4, 0, 0, 37, 17, 2.6F);
+        org.junit.jupiter.api.Assertions.assertTrue(coarse.maxY() - coarse.minY() >= 2.59F);
+        var edge = TerritoryMapProjection.projectBlocks(0, 0, 0, 60, 0, 97, 17, 2.6F);
+        org.junit.jupiter.api.Assertions.assertEquals(128.0F, edge.maxX(), 1.0E-4F);
+        var outside = TerritoryMapProjection.projectBlocks(0, 0, 0, 500, 500, 537, 517, 2.6F);
+        org.junit.jupiter.api.Assertions.assertFalse(outside.visible());
+    }
 }

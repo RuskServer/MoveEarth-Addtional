@@ -1,10 +1,11 @@
 package com.ruskserver.moveearth_addtional.network.c2s.other;
 
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorNamePacket;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.entity.PlayerDetectorBlockEntity;
 import com.ruskserver.moveearth_addtional.detector.DetectorNamePolicy;
+import com.ruskserver.moveearth_addtional.detector.DetectorOwnership;
+import com.ruskserver.moveearth_addtional.detector.DetectorScreenSync;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -13,7 +14,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 /** Requests a server-authoritative rename of one owned detector block. */
 public record C2S_SetDetectorNamePacket(BlockPos pos, String detectorName) implements CustomPacketPayload {
@@ -44,19 +44,20 @@ public record C2S_SetDetectorNamePacket(BlockPos pos, String detectorName) imple
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
-            DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(this.detectorName);
-            if (!validation.valid()) {
-                sendResult(player, false, "", validation.errorMessage());
-                return;
-            }
-
             ServerLevel level = player.serverLevel();
             if (!level.hasChunkAt(this.pos)
                     || player.position().distanceToSqr(Vec3.atCenterOf(this.pos)) > MAX_INTERACTION_DISTANCE_SQR
-                    || !(level.getBlockEntity(this.pos) instanceof PlayerDetectorBlockEntity detector)
-                    || detector.getOwnerUUID() == null
-                    || !detector.getOwnerUUID().equals(player.getUUID())) {
-                sendResult(player, false, "", "この検知ブロックの名称を変更する権限がありません。");
+                    || !(level.getBlockEntity(this.pos) instanceof PlayerDetectorBlockEntity detector)) {
+                return;
+            }
+            DetectorOwnership.settle(player.server, detector);
+            if (!DetectorOwnership.mayManage(player, detector)) {
+                DetectorScreenSync.refresh(player, detector, false, "この検知ブロックの名称を変更する権限がありません。");
+                return;
+            }
+            DetectorNamePolicy.Validation validation = DetectorNamePolicy.validate(this.detectorName);
+            if (!validation.valid()) {
+                DetectorScreenSync.refresh(player, detector, false, validation.errorMessage());
                 return;
             }
 
@@ -64,14 +65,7 @@ public record C2S_SetDetectorNamePacket(BlockPos pos, String detectorName) imple
             String message = validation.normalized().isEmpty()
                     ? "検知ブロックの名称を未設定へ戻しました。"
                     : "検知ブロックの名称を「" + validation.normalized() + "」に変更しました。";
-            sendResult(player, true, detector.getDetectorName(), message);
+            DetectorScreenSync.refresh(player, detector, true, message);
         });
-    }
-
-    private void sendResult(ServerPlayer player, boolean success, String detectorName, String message) {
-        PacketDistributor.sendToPlayer(
-                player,
-                new S2C_SyncDetectorNamePacket(this.pos, success, detectorName, message)
-        );
     }
 }

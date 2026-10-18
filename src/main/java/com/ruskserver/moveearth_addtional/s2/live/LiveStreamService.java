@@ -46,7 +46,9 @@ public final class LiveStreamService {
 
     @SubscribeEvent
     public static void onRegisterCommands(RegisterCommandsEvent event) {
+        // An explicit requirement: on the Bukkit-based server a root without one is limited to operators.
         event.getDispatcher().register(Commands.literal("live")
+                .requires(source -> source.hasPermission(0))
                 .executes(context -> toggle(context.getSource().getPlayerOrException())));
     }
 

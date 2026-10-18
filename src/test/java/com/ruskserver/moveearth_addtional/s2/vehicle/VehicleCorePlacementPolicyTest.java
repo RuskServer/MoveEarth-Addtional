@@ -38,4 +38,21 @@ class VehicleCorePlacementPolicyTest {
         assertTrue(VehicleCorePlacementPolicy.mayBind(Set.of(hull), Map.of(hull, vehicle),
                 id -> UUID.randomUUID()));
     }
+
+    @Test
+    void anotherNationsFragmentCannotBeReCoredButItsOwnCan() {
+        UUID hull = UUID.randomUUID();
+        UUID vehicle = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID rival = UUID.randomUUID();
+        UUID elsewhere = UUID.randomUUID();
+        // The vehicle's core went with another piece, so nothing governs this hull any more.
+        assertFalse(VehicleCorePlacementPolicy.mayBind(Set.of(hull), Map.of(hull, vehicle), id -> elsewhere,
+                id -> owner, rival));
+        assertTrue(VehicleCorePlacementPolicy.mayBind(Set.of(hull), Map.of(hull, vehicle), id -> elsewhere,
+                id -> owner, owner));
+        // A dead id belongs to no one.
+        assertTrue(VehicleCorePlacementPolicy.mayBind(Set.of(hull), Map.of(hull, vehicle), id -> null,
+                id -> null, rival));
+    }
 }

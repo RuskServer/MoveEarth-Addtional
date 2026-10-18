@@ -295,6 +295,111 @@ sourceSets.main.resources.srcDir generateModMetadata
 // To avoid having to run "generateModMetadata" manually, make it run on every project reload
 neoForge.ideSyncTask generateModMetadata
 
+// The in-game wiki is the website's own Markdown, fetched at build time so the wiki repository stays the
+// one place it is written. Mermaid diagrams come as the PNGs the site's CI renders for this
+// (npm run ingame in moveearth-web); the game draws the voxel and rounds diagrams itself.
+//   -PwikiLocal          use the sibling ../moveearth-web checkout instead (for unpublished edits)
+//   -PwikiLocal=<path>   use that checkout
+//   -PwikiSkip           bundle no wiki (faster offline builds)
+// A failed download leaves the wiki empty and the build going: the game says the wiki is missing.
+def wikiRepository = 'RuskLabo/moveearth-web'
+def wikiSite = 'https://rusklabo.github.io/moveearth-web'
+def wikiOutput = layout.buildDirectory.dir('generated/wiki')
+var fetchWiki = tasks.register('fetchWiki') {
+    group = 'build'
+    description = 'Fetches the latest wiki Markdown and Mermaid diagram PNGs for the in-game wiki.'
+    def localValue = project.findProperty('wikiLocal')
+    def localCheckout = !project.hasProperty('wikiLocal') ? null
+            : (localValue == null || localValue == '' || localValue == 'true' ? file('../moveearth-web') : file(localValue))
+    def skip = project.hasProperty('wikiSkip')
+    def outputDir = wikiOutput
+    outputs.dir(outputDir)
+    outputs.upToDateWhen { false }
+    doLast {
+        def root = outputDir.get().asFile.toPath()
+        if (java.nio.file.Files.exists(root)) {
+            java.nio.file.Files.walk(root).sorted(Comparator.reverseOrder()).forEach { java.nio.file.Files.delete(it) }
+        }
+        def base = root.resolve('assets/moveearth_addtional/wiki')
+        def pages = base.resolve('pages')
+        def mermaid = base.resolve('mermaid')
+        java.nio.file.Files.createDirectories(pages)
+        java.nio.file.Files.createDirectories(mermaid)
+        if (skip) return
+        def fetch = { String url ->
+            def connection = new URL(url).openConnection()
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.setRequestProperty('User-Agent', 'MoveEarth-Addtional build')
+            connection.inputStream.withCloseable { it.readAllBytes() }
+        }
+        def write = { java.nio.file.Path target, byte[] bytes ->
+            if (!target.normalize().startsWith(base)) return
+            java.nio.file.Files.createDirectories(target.parent)
+            java.nio.file.Files.write(target, bytes)
+        }
+        def markdown = { String name -> name.endsWith('.md') || name.endsWith('.mdx') }
+        String source
+        if (localCheckout != null) {
+            def sidebar = localCheckout.toPath().resolve('src/sidebar.json')
+            if (java.nio.file.Files.isRegularFile(sidebar)) write(base.resolve('sidebar.json'), java.nio.file.Files.readAllBytes(sidebar))
+            def docs = localCheckout.toPath().resolve('src/content/docs')
+            java.nio.file.Files.walk(docs).filter { java.nio.file.Files.isRegularFile(it) && markdown(it.toString()) }
+                    .forEach { write(pages.resolve(docs.relativize(it).toString()), java.nio.file.Files.readAllBytes(it)) }
+            def rendered = localCheckout.toPath().resolve('public/ingame/mermaid')
+            if (java.nio.file.Files.isDirectory(rendered)) {
+                java.nio.file.Files.list(rendered).filter { it.fileName.toString() ==~ /[0-9a-f]{16}\.png|index\.json/ }
+                        .forEach { write(mermaid.resolve(it.fileName.toString()), java.nio.file.Files.readAllBytes(it)) }
+            }
+            source = "local ${localCheckout}"
+        } else {
+            try {
+                def archive = fetch("https://codeload.github.com/${wikiRepository}/zip/refs/heads/master")
+                new java.util.zip.ZipInputStream(new ByteArrayInputStream(archive)).withCloseable { input ->
+                    for (def entry = input.nextEntry; entry != null; entry = input.nextEntry) {
+                        if (entry.name.endsWith('/src/sidebar.json') && entry.name.count('/') == 2) {
+                            write(base.resolve('sidebar.json'), input.readAllBytes())
+                            continue
+                        }
+                        def marker = '/src/content/docs/'
+                        int at = entry.name.indexOf(marker)
+                        if (entry.directory || at < 0 || !markdown(entry.name)) continue
+                        write(pages.resolve(entry.name.substring(at + marker.length())), input.readAllBytes())
+                    }
+                }
+                source = "https://github.com/${wikiRepository} master"
+            } catch (Exception failure) {
+                logger.warn("In-game wiki: could not fetch the wiki pages (${failure.message}); this build has none.")
+                return
+            }
+            try {
+                def indexBytes = fetch("${wikiSite}/ingame/mermaid/index.json")
+                write(mermaid.resolve('index.json'), indexBytes)
+                def index = new groovy.json.JsonSlurper().parse(indexBytes)
+                (index.diagrams ?: [:]).keySet().findAll { it ==~ /[0-9a-f]{16}/ }.each { key ->
+                    try {
+                        write(mermaid.resolve("${key}.png"), fetch("${wikiSite}/ingame/mermaid/${key}.png"))
+                    } catch (Exception failure) {
+                        logger.warn("In-game wiki: could not fetch Mermaid diagram ${key}: ${failure.message}")
+                    }
+                }
+            } catch (Exception failure) {
+                logger.warn("In-game wiki: no Mermaid diagram PNGs (${failure.message}); they show as a link to the site.")
+            }
+        }
+        // The PNGs are twice their display size; smooth scaling keeps them from turning jagged when drawn smaller.
+        java.nio.file.Files.list(mermaid).filter { it.fileName.toString().endsWith('.png') }.toList().each {
+            java.nio.file.Files.writeString(it.resolveSibling(it.fileName.toString() + '.mcmeta'),
+                    '{"texture":{"blur":true,"clamp":true}}\n')
+        }
+        long count = java.nio.file.Files.walk(pages).filter { java.nio.file.Files.isRegularFile(it) }.count()
+        long diagrams = java.nio.file.Files.list(mermaid).filter { it.fileName.toString().endsWith('.png') }.count()
+        logger.lifecycle("In-game wiki: ${count} page(s), ${diagrams} Mermaid diagram(s) from ${source}")
+        java.nio.file.Files.writeString(base.resolve('source.txt'), "${source}\n${java.time.Instant.now()}\n")
+    }
+}
+sourceSets.main.resources.srcDir fetchWiki
+
 // Example configuration to allow publishing using the maven-publish plugin
 publishing {
     publications {

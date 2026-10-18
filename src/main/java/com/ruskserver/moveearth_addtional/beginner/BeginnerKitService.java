@@ -4,6 +4,10 @@ import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAmmo;
 import com.tacz.guns.api.item.IGun;
+import com.google.gson.JsonObject;
+import com.mojang.serialization.JsonOps;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
@@ -21,6 +25,7 @@ public final class BeginnerKitService {
     public static final int MAX_PLAY_TIME_TICKS = 8 * 60 * 60 * 20;
     public static final int RESERVE_AMMO_COUNT = 8;
     public static final int FOOD_COUNT = 16;
+    public static final int ATLAS_EMPTY_MAPS = 32;
 
     private static final String NBT_KEY_GRANTED = "MoveEarthBeginnerKitGranted";
     // Keep the automatic kit independent from optional external GunPacks. Kar98 and
@@ -29,6 +34,12 @@ public final class BeginnerKitService {
             ResourceLocation.fromNamespaceAndPath("tacz", "kar98");
     private static final ResourceLocation STARTER_AMMO_ID =
             ResourceLocation.fromNamespaceAndPath("tacz", "792x57");
+    // Map Atlases is not a compile dependency: its atlas and the component that stores its blank maps
+    // are looked up by id, and the blank maps are written through the component's own codec.
+    private static final ResourceLocation ATLAS_ID =
+            ResourceLocation.fromNamespaceAndPath("map_atlases", "atlas");
+    private static final ResourceLocation ATLAS_EMPTY_MAPS_ID =
+            ResourceLocation.fromNamespaceAndPath("map_atlases", "empty_maps");
 
     private BeginnerKitService() {
     }
@@ -96,7 +107,34 @@ public final class BeginnerKitService {
                     player.getGameProfile().getName());
         }
         kit.add(new ItemStack(Items.COOKED_BEEF, FOOD_COUNT));
+        ItemStack atlas = createStarterAtlas();
+        if (!atlas.isEmpty()) kit.add(atlas);
         return List.copyOf(kit);
+    }
+
+    /**
+     * An atlas already holding blank maps, so it starts mapping from the first step while it sits in the
+     * hotbar. Nation territory is drawn on maps, and few players found the atlas on their own: crafting
+     * one, and the compass every blank map costs, kept most of them without any map at all.
+     */
+    private static ItemStack createStarterAtlas() {
+        if (!BuiltInRegistries.ITEM.containsKey(ATLAS_ID)) return ItemStack.EMPTY;
+        ItemStack atlas = new ItemStack(BuiltInRegistries.ITEM.get(ATLAS_ID));
+        DataComponentType<?> emptyMaps = BuiltInRegistries.DATA_COMPONENT_TYPE.get(ATLAS_EMPTY_MAPS_ID);
+        JsonObject counts = new JsonObject();
+        counts.addProperty("vanilla", ATLAS_EMPTY_MAPS);
+        if (emptyMaps == null || !setFromJson(atlas, emptyMaps, counts)) {
+            Moveearth_addtional.LOGGER.warn("Map Atlases blank-map storage was not found; the starter kit leaves the atlas out.");
+            return ItemStack.EMPTY;
+        }
+        return atlas;
+    }
+
+    private static <T> boolean setFromJson(ItemStack stack, DataComponentType<T> type, JsonObject value) {
+        if (type.codec() == null) return false;
+        var parsed = type.codec().parse(JsonOps.INSTANCE, value).result();
+        parsed.ifPresent(component -> stack.set(type, component));
+        return parsed.isPresent();
     }
 
     private static ItemStack createStarterGun() {

@@ -5,13 +5,13 @@ import java.util.function.Supplier;
 import net.neoforged.fml.ModList;
 
 /** Optional public API query. Cache reflection metadata, never cache the changing pack state. */
-final class UpscaleIrisState {
-    enum State { ABSENT, INACTIVE, ACTIVE, UNKNOWN }
+public final class UpscaleIrisState {
+    public enum State { ABSENT, INACTIVE, ACTIVE, UNKNOWN }
     private static Supplier<Boolean> query;
 
     private UpscaleIrisState() { }
 
-    static State current() {
+    public static State current() {
         boolean present = ModList.get().isLoaded("iris");
         return state(present, () -> {
             if (query == null) {

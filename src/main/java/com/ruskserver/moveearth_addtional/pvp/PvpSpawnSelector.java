@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
+import com.ruskserver.moveearth_addtional.pvp.map.PvpMapDefinition;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -114,6 +115,11 @@ public final class PvpSpawnSelector {
 
         recordRecentSpawn(bestCandidate, server);
         return bestCandidate;
+    }
+
+    /** Counts a spawn the player chose themselves, so the automatic pick spreads around it. */
+    void record(BlockPos pos, MinecraftServer server) {
+        recordRecentSpawn(pos, server);
     }
 
     private void recordRecentSpawn(BlockPos pos, MinecraftServer server) {

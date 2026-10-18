@@ -44,6 +44,7 @@ public final class S2ClientKeys {
         event.register(TOGGLE_REINFORCEMENT_OVERLAY);
         event.register(TOGGLE_MAP_TERRITORIES);
         event.register(OPEN_PRISONERS);
+        event.register(com.ruskserver.moveearth_addtional.client.wiki.WikiKeys.OPEN_WIKI);
     }
 
     public static void clientTick() {
@@ -66,6 +67,7 @@ public final class S2ClientKeys {
                 PacketDistributor.sendToServer(new C2S_RequestS2HubPacket(S2HubTab.OVERVIEW));
             }
         }
+        com.ruskserver.moveearth_addtional.client.wiki.WikiKeys.clientTick();
         while (OPEN_PRISONERS.consumeClick()) {
             if (minecraft.player != null && minecraft.screen == null) {
                 PacketDistributor.sendToServer(new C2S_RequestPrisonerScreenPacket(null));

@@ -30,6 +30,11 @@ public final class StatsScreen extends Screen {
     }
 
     @Override
+    protected void init() {
+        HubTabs.fit(this, PANEL_WIDTH, PANEL_HEIGHT);
+    }
+
+    @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // 独自背景を描画するため、Minecraft標準の背景ブラーは適用しない。
     }
@@ -38,9 +43,9 @@ public final class StatsScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fillGradient(0, 0, width, height, 0xD0080B10, 0xE010151D);
         int panelWidth = Math.min(PANEL_WIDTH, width - 20);
-        int panelHeight = Math.min(PANEL_HEIGHT, height - 20);
+        int panelHeight = Math.min(PANEL_HEIGHT, HubTabs.maxPanelHeight(height));
         int left = (width - panelWidth) / 2;
-        int top = (height - panelHeight) / 2;
+        int top = HubTabs.panelTop(height, panelHeight);
         graphics.fill(left, top, left + panelWidth, top + panelHeight, PANEL);
         drawBorder(graphics, left, top, panelWidth, panelHeight, 0xFF354150);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.stats.heading"), left + 16, top + 14, TEXT, false);
@@ -87,6 +92,7 @@ public final class StatsScreen extends Screen {
                 formatDamage(stats.damageDealt()), formatDamage(stats.damageTaken()), formatNumber(stats.jumps())).getString();
         graphics.drawCenteredString(font, footer, cardsLeft + (cardsRight - cardsLeft) / 2,
                 firstY + (cardHeight + gap) * 3 + 2, MUTED);
+        HubTabs.render(graphics, font, width, HubTabs.Tab.STATS, mouseX, mouseY);
     }
 
     private void drawCard(GuiGraphics graphics, int x, int y, int width, int height, int mouseX, int mouseY,
@@ -139,10 +145,11 @@ public final class StatsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (HubTabs.mouseClicked(font, width, HubTabs.Tab.STATS, mouseX, mouseY, button)) return true;
         int panelWidth = Math.min(PANEL_WIDTH, width - 20);
-        int panelHeight = Math.min(PANEL_HEIGHT, height - 20);
+        int panelHeight = Math.min(PANEL_HEIGHT, HubTabs.maxPanelHeight(height));
         int left = (width - panelWidth) / 2;
-        int top = (height - panelHeight) / 2;
+        int top = HubTabs.panelTop(height, panelHeight);
         if (button == 0 && mouseX >= left + panelWidth - 28 && mouseX < left + panelWidth - 8
                 && mouseY >= top + 8 && mouseY < top + 28) {
             onClose();

@@ -63,6 +63,24 @@ public class AnalyticsQueryService {
     }
 
     /**
+     * 生テーブルを期間内の古い順に流す（呼び出し側のスレッドで実行する）。分析が無効なら何も流さない。
+     *
+     * @return 上限に達して途中で切ったか
+     */
+    public boolean exportTable(com.ruskserver.moveearth_addtional.analytics.query.export.ExportTable table,
+                               TimeWindow window, int limit,
+                               com.ruskserver.moveearth_addtional.analytics.query.export.ExportRowSink sink)
+            throws Exception {
+        AnalyticsStorageEngine engine = getStorageEngine();
+        if (engine == null || !engine.isOpen()) {
+            sink.columns(java.util.List.of());
+            return false;
+        }
+        long now = System.currentTimeMillis() / 1000L;
+        return engine.exportTable(table, window.getStartEpochSec(now), now, limit, sink);
+    }
+
+    /**
      * プレイヤーのサマリーKPIを非同期で取得
      */
     public CompletableFuture<Optional<PlayerSummaryDto>> getPlayerSummaryAsync(UUID playerUuid, TimeWindow window) {

@@ -1,5 +1,13 @@
 package com.ruskserver.moveearth_addtional.client;
 
+import com.ruskserver.moveearth_addtional.client.pvp.PvpClientState;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpDeployScreen;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpHardpointClientState;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpLoadoutEditorScreen;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpMapVoteScreen;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpScreen;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpTacticalClient;
+import com.ruskserver.moveearth_addtional.client.pvp.PvpTaskScreen;
 import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_BalanceSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.market.S2C_MarketSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationApplicationsPacket;
@@ -9,35 +17,30 @@ import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_OpenNationNotif
 import com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_S2HubSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_AnnouncementPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_JobsLeaderboardPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_KillcamReplayPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenDetectorScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_DetectorStatePacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenJobsScreenPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenLoadoutEditorPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenPvpScreenPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenPvpTasksPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_OpenLoadoutEditorPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_OpenPvpScreenPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_OpenPvpTasksPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenStatsScreenPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenTerritoryCoreScreenPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpEntryStatePacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpHudPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpKillcamPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpResultPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpTeamPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpZonePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpEntryStatePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpHudPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpKillcamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpTeamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpZonePacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementDeltaPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_ReinforcementSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_S2ActionResultPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_StartMapVotePacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorManagersPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorNamePacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorPaymentPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncLoadoutsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_StartMapVotePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_SyncLoadoutsPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncOxygenPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncWhitelistPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryClosurePacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryCoreHealthPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryMapPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_TerritoryPreviewPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_UpdateMapVotePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_UpdateMapVotePacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerActionResultPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_PrisonerSnapshotPacket;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_RecoveryDispatchActionResultPacket;
@@ -213,6 +216,7 @@ public class ClientPacketHandler {
     }
 
     public static void handlePvpEntryState(S2C_PvpEntryStatePacket packet) {
+        PvpClientState.setHosting(packet.hosting());
         if (Minecraft.getInstance().screen instanceof PvpScreen screen) {
             screen.updateEntryState(packet.joined(), packet.active(), packet.hosting(),
                     packet.matchRunning(), packet.entryCount());
@@ -235,10 +239,33 @@ public class ClientPacketHandler {
     public static void handleWarehouseZones(
             com.ruskserver.moveearth_addtional.network.s2c.other.S2C_WarehouseZonesPacket packet) {
         WarehouseZoneRenderer.update(packet);
+        WarehouseMapClientState.update(packet);
+    }
+
+    public static void handleNationProfile(com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_NationProfilePacket packet) {
+        if (Minecraft.getInstance().screen instanceof S2HubScreen screen) screen.acceptNationProfile(packet);
     }
 
     public static void handlePvpTeam(S2C_PvpTeamPacket packet) {
         PvpClientState.updateAllies(packet.allies());
+    }
+
+    public static void handlePvpDeploy(com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpDeployPacket packet) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!packet.open()) {
+            if (minecraft.screen instanceof PvpDeployScreen) minecraft.setScreen(null);
+            return;
+        }
+        if (minecraft.screen instanceof PvpDeployScreen deploy) deploy.update(packet);
+        else minecraft.setScreen(new PvpDeployScreen(packet));
+    }
+
+    public static void handlePvpAllyPositions(com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpAllyPositionsPacket packet) {
+        PvpTacticalClient.updateAllies(packet.allies());
+    }
+
+    public static void handlePvpTacticalMap(com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpTacticalMapPacket packet) {
+        PvpTacticalClient.accept(packet);
     }
 
     public static void handlePvpKillcam(S2C_PvpKillcamPacket packet) {
@@ -263,60 +290,17 @@ public class ClientPacketHandler {
         AnnouncementOverlay.showAnnouncement(packet.message());
     }
 
-    public static void handleOpenDetectorScreen(S2C_OpenDetectorScreenPacket packet) {
-        Minecraft.getInstance().setScreen(new PlayerDetectorScreen(
-                Component.literal("プレイヤー検知ブロック設定"),
-                packet.pos(),
-                packet.detectorName(),
-                packet.ownerName(),
-                packet.ownerAccess(),
-                packet.whitelist(),
-                packet.managers(),
-                packet.onlinePlayers()
-        ));
-    }
-
-    public static void handleSyncWhitelist(S2C_SyncWhitelistPacket packet) {
+    public static void handleDetectorState(S2C_DetectorStatePacket packet) {
         Screen screen = Minecraft.getInstance().screen;
-        if (screen instanceof PlayerDetectorScreen detectorScreen) {
-            detectorScreen.updateData(packet.pos(), packet.whitelist(), packet.onlinePlayers());
-        }
-    }
-
-    public static void handleSyncDetectorManagers(S2C_SyncDetectorManagersPacket packet) {
-        Screen screen = Minecraft.getInstance().screen;
-        if (screen instanceof PlayerDetectorScreen detectorScreen) {
-            detectorScreen.updateManagers(packet.pos(), packet.managers(), packet.success(), packet.message());
-        }
-    }
-
-    public static void handleSyncDetectorPayment(S2C_SyncDetectorPaymentPacket packet) {
-        Screen screen = Minecraft.getInstance().screen;
-        if (screen instanceof PlayerDetectorScreen detectorScreen) {
-            detectorScreen.updatePaymentData(
-                    packet.pos(),
-                    packet.isActive(),
-                    packet.nextPaymentTime(),
-                    packet.placedTime(),
-                    packet.ownerBalance()
-            );
+        if (packet.open()) {
+            Minecraft.getInstance().setScreen(new PlayerDetectorScreen(packet));
+        } else if (screen instanceof PlayerDetectorScreen detectorScreen) {
+            detectorScreen.update(packet);
         }
     }
 
     public static void handleOxygenSync(S2C_SyncOxygenPacket packet) {
         OxygenClientState.update(packet);
-    }
-
-    public static void handleSyncDetectorName(S2C_SyncDetectorNamePacket packet) {
-        Screen screen = Minecraft.getInstance().screen;
-        if (screen instanceof PlayerDetectorScreen detectorScreen) {
-            detectorScreen.updateDetectorName(
-                    packet.pos(),
-                    packet.success(),
-                    packet.detectorName(),
-                    packet.message()
-            );
-        }
     }
 
     public static void handleSyncLoadouts(S2C_SyncLoadoutsPacket packet) {
@@ -353,7 +337,4 @@ public class ClientPacketHandler {
         }
     }
 
-    public static void handleKillcamReplay(S2C_KillcamReplayPacket packet) {
-        PvpClientState.startReplay(packet);
-    }
 }

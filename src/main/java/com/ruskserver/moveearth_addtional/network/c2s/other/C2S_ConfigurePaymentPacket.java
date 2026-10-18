@@ -1,18 +1,17 @@
 package com.ruskserver.moveearth_addtional.network.c2s.other;
 
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorPaymentPacket;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.block.entity.PlayerDetectorBlockEntity;
 import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
-import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
+import com.ruskserver.moveearth_addtional.detector.DetectorOwnership;
+import com.ruskserver.moveearth_addtional.detector.DetectorScreenSync;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
-import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
@@ -31,8 +30,13 @@ public record C2S_ConfigurePaymentPacket(BlockPos pos) implements CustomPacketPa
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)
                     || !ServerPacketGuards.canAccessLoadedBlock(player, pos, 64.0D)
-                    || !(player.serverLevel().getBlockEntity(pos) instanceof PlayerDetectorBlockEntity detector)
-                    || !player.getUUID().equals(detector.getOwnerUUID())) return;
+                    || !(player.serverLevel().getBlockEntity(pos) instanceof PlayerDetectorBlockEntity detector)) return;
+            DetectorOwnership.settle(player.server, detector);
+            if (!DetectorOwnership.mayManage(player, detector) || detector.getOwnerUUID() == null
+                    && detector.getOwnerNation() == null) {
+                DetectorScreenSync.refresh(player, detector, false, "この検知ブロックの維持費を払う権限がありません。");
+                return;
+            }
             long now = System.currentTimeMillis();
             if (detector.isActive() && now < detector.getNextPaymentTime()) return;
             EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.getServer());
@@ -40,18 +44,19 @@ public record C2S_ConfigurePaymentPacket(BlockPos pos) implements CustomPacketPa
                     + ":" + pos.asLong() + ":" + detector.getPlacedTime() + ":" + detector.getNextPaymentTime())
                     .getBytes(StandardCharsets.UTF_8));
             EconomyLedgerSavedData.Result result = ledger.transfer(chargeId,
-                    EconomyLedgerSavedData.Account.player(player.getUUID()), null, 5L, "detector_activation");
+                    DetectorOwnership.account(detector), null, PlayerDetectorBlockEntity.UPKEEP_COST, "detector_activation");
+            String account = detector.getOwnerNation() != null ? "国庫" : "口座";
             if (result == EconomyLedgerSavedData.Result.APPLIED
                     || result == EconomyLedgerSavedData.Result.ALREADY_APPLIED) {
                 detector.setActive(true);
-                detector.setNextPaymentTime(now + 2 * 60 * 60 * 1000L);
-                player.sendSystemMessage(MoveEarthMessage.success("検知器を2時間有効化しました（5支払済み）。"));
+                if (detector.getOwnerNation() != null) detector.approveTreasury();
+                detector.setNextPaymentTime(now + PlayerDetectorBlockEntity.UPKEEP_INTERVAL_MS);
+                DetectorScreenSync.refresh(player, detector, true,
+                        "検知器を" + PlayerDetectorBlockEntity.UPKEEP_CYCLE_HOURS + "時間有効化しました（"
+                                + account + "から" + PlayerDetectorBlockEntity.UPKEEP_COST + " TC支払済み）。");
             } else {
-                player.sendSystemMessage(MoveEarthMessage.error("残高不足のため検知器を有効化できません。"));
+                DetectorScreenSync.refresh(player, detector, false, account + "の残高が足りないため、検知器を有効化できません。");
             }
-            PacketDistributor.sendToPlayer(player, new S2C_SyncDetectorPaymentPacket(pos,
-                    detector.isActive(), detector.getNextPaymentTime(), detector.getPlacedTime(),
-                    ledger.balance(EconomyLedgerSavedData.Account.player(player.getUUID()))));
         });
     }
 }

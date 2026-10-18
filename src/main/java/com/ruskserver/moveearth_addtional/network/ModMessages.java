@@ -6,6 +6,7 @@ import com.ruskserver.moveearth_addtional.network.common.registration.SiegePaylo
 import com.ruskserver.moveearth_addtional.network.common.registration.MarketPayloads;
 import com.ruskserver.moveearth_addtional.network.common.registration.VehiclePayloads;
 import com.ruskserver.moveearth_addtional.network.common.registration.OtherPayloads;
+import com.ruskserver.moveearth_addtional.network.common.registration.PvpPayloads;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -16,11 +17,12 @@ public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
         // One protocol per release: clients from another MoveEarth version are refused at login.
-        final PayloadRegistrar registrar = event.registrar("3.3");
+        final PayloadRegistrar registrar = event.registrar("3.6");
         NationPayloads.register(registrar);
         SiegePayloads.register(registrar);
         MarketPayloads.register(registrar);
         VehiclePayloads.register(registrar);
         OtherPayloads.register(registrar);
+        PvpPayloads.register(registrar);
     }
 }

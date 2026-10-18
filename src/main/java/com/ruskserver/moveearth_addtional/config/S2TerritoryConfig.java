@@ -29,6 +29,8 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue CAPITAL_CORE_HEALTH;
     private static final ModConfigSpec.IntValue OUTPOST_CORE_HEALTH;
     private static final ModConfigSpec.IntValue CORE_REGEN_DELAY_SECONDS;
+    private static final ModConfigSpec.IntValue CAPITAL_WALL_LAYER_TARGET;
+    private static final ModConfigSpec.IntValue CAPITAL_WALL_SEARCH_RANGE;
     private static final ModConfigSpec.IntValue CORE_REGEN_INTERVAL_SECONDS;
     private static final ModConfigSpec.DoubleValue CORE_REGEN_PERCENT;
     private static final ModConfigSpec.DoubleValue OVERDUE_DAMAGE_MULTIPLIER;
@@ -128,6 +130,15 @@ public final class S2TerritoryConfig {
         CORE_REGEN_DELAY_SECONDS = BUILDER.defineInRange("regenDelaySeconds", 300, 0, 86400);
         CORE_REGEN_INTERVAL_SECONDS = BUILDER.defineInRange("regenIntervalSeconds", 60, 1, 3600);
         CORE_REGEN_PERCENT = BUILDER.defineInRange("regenPercentPerInterval", 1.0D, 0.0D, 100.0D);
+        CAPITAL_WALL_LAYER_TARGET = BUILDER.comment(
+                "Layers of wall a capital should have at its thinnest point. Below this its nation is warned",
+                "in the hub, once at login and when a siege breaks a layer. Counted up to 4.")
+                .defineInRange("capitalWallLayerTarget", 2, 1, 4);
+        CAPITAL_WALL_SEARCH_RANGE = BUILDER.comment(
+                "Furthest horizontal distance, in blocks, at which a wall still counts as a capital's layer.",
+                "The count reaches to the edge of the capital's territory, up to this. Larger costs more work",
+                "per count; 80 covers a capital of the largest radius.")
+                .defineInRange("capitalWallSearchRange", 80, 32, 96);
         BUILDER.pop();
 
         BUILDER.push("sableSafety");
@@ -380,6 +391,8 @@ public final class S2TerritoryConfig {
     public static long siegeCounterCaptureTicks() { return SIEGE_COUNTER_CAPTURE_SECONDS.getAsInt() * 20L; }
     public static int siegeCounterRadiusBlocks() { return SIEGE_COUNTER_RADIUS_BLOCKS.getAsInt(); }
     public static double siegeCounterRecoveryPercent() { return SIEGE_COUNTER_RECOVERY_PERCENT.getAsDouble(); }
+    public static int capitalWallSearchRange() { return CAPITAL_WALL_SEARCH_RANGE.getAsInt(); }
+    public static int capitalWallLayerTarget() { return CAPITAL_WALL_LAYER_TARGET.getAsInt(); }
     public static long siegeSettlementTruceTicks() { return SIEGE_SETTLEMENT_TRUCE_SECONDS.getAsInt() * 20L; }
     public static long siegeLootWindowTicks() { return SIEGE_LOOT_WINDOW_MINUTES.getAsInt() * 60L * 20L; }
     public static double siegeSettlementRecoveryPercent() { return SIEGE_SETTLEMENT_RECOVERY_PERCENT.getAsDouble(); }

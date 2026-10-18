@@ -1,14 +1,29 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
+import com.ruskserver.moveearth_addtional.pvp.deploy.PvpDeployPolicy;
+import com.ruskserver.moveearth_addtional.pvp.deploy.PvpTacticalMap;
+import com.ruskserver.moveearth_addtional.pvp.deploy.PvpTacticalSavedData;
+import com.ruskserver.moveearth_addtional.pvp.deploy.PvpTacticalScanner;
+import com.ruskserver.moveearth_addtional.pvp.loadout.PvpLoadoutDefinition;
+import com.ruskserver.moveearth_addtional.pvp.loadout.PvpLoadoutSavedData;
+import com.ruskserver.moveearth_addtional.pvp.map.PvpArenaSavedData;
+import com.ruskserver.moveearth_addtional.pvp.map.PvpMapDefinition;
+import com.ruskserver.moveearth_addtional.pvp.map.PvpMapGeometry;
+import com.ruskserver.moveearth_addtional.pvp.map.PvpMapSavedData;
+import com.ruskserver.moveearth_addtional.pvp.map.PvpMapVoteManager;
+import com.ruskserver.moveearth_addtional.pvp.reward.PvpRewardData;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.ModSounds;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpEntryStatePacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpHudPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpKillcamPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpResultPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpTeamPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_PvpZonePacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncLoadoutsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpAllyPositionsPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpDeployPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpEntryStatePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpTacticalMapPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpHudPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpKillcamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpResultPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpTeamPacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_PvpZonePacket;
+import com.ruskserver.moveearth_addtional.network.s2c.pvp.S2C_SyncLoadoutsPacket;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.IAttachment;
@@ -78,8 +93,19 @@ public final class PvpMatchManager {
     private final Map<UUID, MatchStats> matchStats = new HashMap<>();
     private final Map<UUID, KillAnnouncementState> killAnnouncements = new HashMap<>();
     private final Map<UUID, UUID> lastKillerByVictim = new HashMap<>();
+    /**
+     * What a player set up last life and keeps into the next: each gun's fire mode by gun id, the hotbar slot
+     * in hand, and the deploy point chosen. The kit is built anew at every deploy, which used to put every gun
+     * back on its default fire mode and the selection back on the first slot.
+     */
+    private final Map<UUID, Map<ResourceLocation, com.tacz.guns.api.item.gun.FireMode>> fireModes = new HashMap<>();
+    private final Map<UUID, Integer> heldSlots = new HashMap<>();
+    private final Map<UUID, Long> lastDeployPoints = new HashMap<>();
+    /** Ticks each active player has spent outside the battle area in a row. */
+    private final Map<UUID, Integer> outOfBounds = new HashMap<>();
     private PvpPhase phase = PvpPhase.IDLE;
     private PvpMapDefinition activeMap;
+    private PvpMapGeometry.Box activeBounds;
     private int redScore;
     private int blueScore;
     private int ticksLeft;
@@ -97,7 +123,14 @@ public final class PvpMatchManager {
     private final PvpChangeGate<HudKey> hudGate = new PvpChangeGate<>(0);
     private final PvpChangeGate<S2C_PvpZonePacket> zoneGate = new PvpChangeGate<>(ZONE_KEEPALIVE_TICKS);
 
-    private PvpMatchManager() {}
+    private PvpMatchManager() {
+        // A scan finished during a match reaches the players already on its deploy screen.
+        PvpTacticalScanner.INSTANCE.onFinished((server, map) -> {
+            if (activeMap == null || !activeMap.id().equals(map.mapId())) return;
+            S2C_PvpTacticalMapPacket packet = S2C_PvpTacticalMapPacket.of(map);
+            forEachPlayer(server, true, player -> PacketDistributor.sendToPlayer(player, packet));
+        });
+    }
 
     public boolean isParticipant(ServerPlayer player) { return teams.containsKey(player.getUUID()); }
     public boolean isQueued(ServerPlayer player) { return isParticipant(player) && !isActive(player); }
@@ -183,6 +216,7 @@ public final class PvpMatchManager {
         teams.remove(id);
         loadoutSelections.remove(id);
         respawns.remove(id);
+        outOfBounds.remove(id);
         if (wasActive) restore(player);
         clearClientState(player);
 
@@ -255,6 +289,9 @@ public final class PvpMatchManager {
             return;
         }
         this.activeMap = selectedMap;
+        // Only an area an admin set is enforced; one derived from the spawns may cut through the arena.
+        this.activeBounds = selectedMap.hasOwnBounds() ? selectedMap.bounds() : null;
+        ensureTacticalMap(server, selectedMap);
 
         PvpSessionSavedData sessions = PvpSessionSavedData.get(server);
         matchStats.clear();
@@ -380,9 +417,162 @@ public final class PvpMatchManager {
         applyPvpMaxHealth(player);
         assignScoreboardTeam(player, team(player));
         giveKit(player, selectedLoadout(player));
+        restoreKitSettings(player);
         resetVitals(player);
         BlockPos spawn = PvpSpawnSelector.INSTANCE.selectSpawn(player, map, team(player), player.server);
         teleport(player, arena, spawn);
+        PvpTacticalSavedData.get(player.server).get(map.id())
+                .ifPresent(tactical -> PacketDistributor.sendToPlayer(player, S2C_PvpTacticalMapPacket.of(tactical)));
+        // The opening deploy: the screen shows the whole map before the player picks where to start.
+        RespawnState state = new RespawnState(0, player.getX(), player.getY(), player.getZ(),
+                player.getYRot(), player.getXRot());
+        state.first = true;
+        holdForDeploy(player, state);
+        openDeploy(player, state);
+    }
+
+    /** Scans the map's battle area when it has no tactical map yet, or one of a different area. */
+    private static void ensureTacticalMap(MinecraftServer server, PvpMapDefinition map) {
+        PvpMapGeometry.Box box = map.bounds();
+        PvpTacticalMap tactical = PvpTacticalSavedData.get(server).get(map.id()).orElse(null);
+        boolean current = tactical != null && tactical.originX() == box.minX() && tactical.originZ() == box.minZ()
+                && tactical.baseY() == box.minY()
+                && tactical.width() == PvpMapGeometry.cells(box.width(), tactical.cellSize())
+                && tactical.depth() == PvpMapGeometry.cells(box.depth(), tactical.cellSize());
+        if (!current && !PvpTacticalScanner.INSTANCE.scanning(map.id())) PvpTacticalScanner.INSTANCE.request(map, null);
+    }
+
+    /** Puts a player into the waiting state of the deploy screen: a still, untouchable spectator. */
+    private void holdForDeploy(ServerPlayer player, RespawnState state) {
+        respawns.put(player.getUUID(), state);
+        outOfBounds.remove(player.getUUID());
+        player.setHealth(player.getMaxHealth());
+        player.removeAllEffects();
+        player.setInvulnerable(true);
+        player.setDeltaMovement(0, 0, 0);
+        player.setGameMode(GameType.SPECTATOR);
+        player.setCamera(player);
+    }
+
+    private void openDeploy(ServerPlayer player, RespawnState state) {
+        // The point chosen last life stays chosen, as long as it is still one of this team's.
+        long last = lastDeployPoints.getOrDefault(player.getUUID(), S2C_PvpDeployPacket.NO_POINT);
+        if (state.chosenPoint == S2C_PvpDeployPacket.NO_POINT && activeMap.deployPoints(team(player)).stream()
+                .anyMatch(point -> point.id() == last)) state.chosenPoint = last;
+        state.deploying = true;
+        state.autoTicks = PvpDeployPolicy.AUTO_DEPLOY_TICKS;
+        sendDeploy(player, state);
+        sendAllyPositions(player);
+    }
+
+    private void sendDeploy(ServerPlayer player, RespawnState state) {
+        PvpTeam team = team(player);
+        List<S2C_PvpDeployPacket.Point> points = new ArrayList<>();
+        for (PvpMapDefinition.DeployPoint point : activeMap.deployPoints(team)) {
+            points.add(new S2C_PvpDeployPacket.Point(point.id(), point.name(), point.pos().getX(), point.pos().getY(),
+                    point.pos().getZ(), pointDangerous(player.server, team, point.pos())));
+        }
+        PacketDistributor.sendToPlayer(player, new S2C_PvpDeployPacket(true, activeMap.id(), activeMap.displayName(), state.first, state.autoTicks,
+                team == null ? 0 : team.ordinal(), points, state.chosenPoint, selectedLoadoutId(player),
+                !state.first, Mth.floor(state.x), Mth.floor(state.z),
+                state.hasKiller, Mth.floor(state.killerX), Mth.floor(state.killerZ)));
+    }
+
+    /** Teammates on the field, for the deploy screen's map; enemies are never sent. */
+    private void sendAllyPositions(ServerPlayer viewer) {
+        PvpTeam team = team(viewer);
+        List<S2C_PvpAllyPositionsPacket.Ally> allies = new ArrayList<>();
+        for (ServerPlayer other : participants(viewer.server, true)) {
+            if (other == viewer || team(other) != team || respawns.containsKey(other.getUUID())
+                    || !other.level().dimension().equals(ARENA)) continue;
+            allies.add(new S2C_PvpAllyPositionsPacket.Ally(other.getGameProfile().getName(),
+                    Mth.floor(other.getX()), Mth.floor(other.getZ()), other.getYRot()));
+        }
+        PacketDistributor.sendToPlayer(viewer, new S2C_PvpAllyPositionsPacket(allies));
+    }
+
+    private boolean pointDangerous(MinecraftServer server, PvpTeam team, BlockPos pos) {
+        double nearest = Double.MAX_VALUE;
+        for (ServerPlayer other : participants(server, true)) {
+            if (team(other) == team || respawns.containsKey(other.getUUID())
+                    || !other.level().dimension().equals(ARENA)) continue;
+            nearest = Math.min(nearest, other.distanceToSqr(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D));
+        }
+        return PvpDeployPolicy.dangerous(nearest);
+    }
+
+    /**
+     * The deploy screen's choice: remembered for the automatic deploy, and acted on at once when the player
+     * pressed deploy.
+     */
+    public void requestDeploy(ServerPlayer player, long pointId, String loadoutId, boolean now) {
+        RespawnState state = respawns.get(player.getUUID());
+        if (phase != PvpPhase.RUNNING || activeMap == null || state == null || !isActive(player)) return;
+        PvpLoadoutSavedData.get(player.server).getById(loadoutId)
+                .ifPresent(loadout -> loadoutSelections.put(player.getUUID(), loadout.id()));
+        boolean teamPoint = activeMap.deployPoints(team(player)).stream().anyMatch(point -> point.id() == pointId);
+        state.chosenPoint = teamPoint ? pointId : S2C_PvpDeployPacket.NO_POINT;
+        lastDeployPoints.put(player.getUUID(), state.chosenPoint);
+        if (now && state.deploying) {
+            respawns.remove(player.getUUID());
+            deploy(player, state);
+        }
+    }
+
+    private void rememberKitSettings(ServerPlayer player) {
+        Map<ResourceLocation, com.tacz.guns.api.item.gun.FireMode> modes =
+                fireModes.computeIfAbsent(player.getUUID(), ignored -> new HashMap<>());
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            IGun gun = IGun.getIGunOrNull(stack);
+            if (gun == null) continue;
+            com.tacz.guns.api.item.gun.FireMode mode = gun.getFireMode(stack);
+            if (mode != null && mode != com.tacz.guns.api.item.gun.FireMode.UNKNOWN) modes.put(gun.getGunId(stack), mode);
+        }
+        heldSlots.put(player.getUUID(), player.getInventory().selected);
+    }
+
+    private void restoreKitSettings(ServerPlayer player) {
+        Map<ResourceLocation, com.tacz.guns.api.item.gun.FireMode> modes = fireModes.getOrDefault(player.getUUID(), Map.of());
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            IGun gun = IGun.getIGunOrNull(stack);
+            if (gun == null) continue;
+            com.tacz.guns.api.item.gun.FireMode mode = modes.get(gun.getGunId(stack));
+            if (mode != null) gun.setFireMode(stack, mode);
+        }
+        int held = heldSlots.getOrDefault(player.getUUID(), 0);
+        player.getInventory().selected = held >= 0 && held < 9 ? held : 0;
+        player.connection.send(new net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket(player.getInventory().selected));
+    }
+
+    /** Leaves the deploy screen for the field: the chosen point when it is safe, otherwise the usual pick. */
+    private void deploy(ServerPlayer player, RespawnState state) {
+        MinecraftServer server = player.server;
+        player.setCamera(player);
+        player.setGameMode(GameType.SURVIVAL);
+        player.setInvulnerable(false);
+        player.removeAllEffects();
+        resetVitals(player);
+        rememberKitSettings(player);
+        player.getInventory().clearContent();
+        giveKit(player, selectedLoadout(player));
+        restoreKitSettings(player);
+        PvpTeam team = team(player);
+        BlockPos chosen = activeMap.deployPoints(team).stream()
+                .filter(point -> point.id() == state.chosenPoint)
+                .map(PvpMapDefinition.DeployPoint::pos)
+                .findFirst().orElse(null);
+        BlockPos spawn;
+        if (PvpDeployPolicy.useChosen(chosen != null, chosen != null && pointDangerous(server, team, chosen))) {
+            spawn = chosen;
+            PvpSpawnSelector.INSTANCE.record(spawn, server);
+        } else {
+            if (chosen != null) player.sendSystemMessage(MoveEarthMessage.warning("選んだ出撃地点に敵が迫っていたため、別の地点へ出撃しました。"));
+            spawn = PvpSpawnSelector.INSTANCE.selectSpawn(player, activeMap, team, server);
+        }
+        teleport(player, server.getLevel(ARENA), spawn);
+        PacketDistributor.sendToPlayer(player, S2C_PvpDeployPacket.closed());
     }
 
     public void stop(MinecraftServer server) {
@@ -431,12 +621,6 @@ public final class PvpMatchManager {
         }
         if (phase != PvpPhase.RUNNING || activeMap == null) return;
         
-        for (ServerPlayer player : participants(server, true)) {
-            if (!respawns.containsKey(player.getUUID())) {
-                PvpReplayTracker.INSTANCE.record(player);
-            }
-        }
-        
         if (--ticksLeft <= 0) {
             finish(server, winnerText(), scoreWinner());
             return;
@@ -447,6 +631,7 @@ public final class PvpMatchManager {
         }
 
         tickRespawns(server);
+        tickBattleArea(server);
         if (count(PvpTeam.RED, true) == 0 || count(PvpTeam.BLUE, true) == 0) {
             finish(server, "対戦相手がいないため試合終了", winnerFromRemainingTeams());
             return;
@@ -534,9 +719,18 @@ public final class PvpMatchManager {
         double targetX = killer == null ? victim.getX() : killer.getX();
         double targetY = killer == null ? victim.getEyeY() : killer.getEyeY();
         double targetZ = killer == null ? victim.getZ() : killer.getZ();
-        float yaw = lookYaw(victim.getX(), victim.getZ(), targetX, targetZ);
-        float pitch = lookPitch(victim.getX(), victim.getEyeY(), victim.getZ(), targetX, targetY, targetZ);
-        respawns.put(victim.getUUID(), new RespawnState(RESPAWN_TICKS, victim.getX(), victim.getY(), victim.getZ(), yaw, pitch));
+        // With no killer there is nothing to face: the view stays as it was.
+        float yaw = killer == null ? victim.getYRot() : lookYaw(victim.getX(), victim.getZ(), targetX, targetZ);
+        float pitch = killer == null ? victim.getXRot()
+                : lookPitch(victim.getX(), victim.getEyeY(), victim.getZ(), targetX, targetY, targetZ);
+        RespawnState respawn = new RespawnState(RESPAWN_TICKS, victim.getX(), victim.getY(), victim.getZ(), yaw, pitch);
+        if (killer != null) {
+            respawn.hasKiller = true;
+            respawn.killerX = killer.getX();
+            respawn.killerZ = killer.getZ();
+        }
+        respawns.put(victim.getUUID(), respawn);
+        outOfBounds.remove(victim.getUUID());
 
         victim.setHealth(victim.getMaxHealth());
         victim.setAbsorptionAmount(0.0F);
@@ -549,34 +743,23 @@ public final class PvpMatchManager {
 
         String killerName = killer == null ? "不明" : killer.getGameProfile().getName();
         UUID killerId = killer == null ? new UUID(0L, 0L) : killer.getUUID();
-        PacketDistributor.sendToPlayer(victim,
-                new S2C_PvpKillcamPacket(killerId, killerName, targetX, targetY, targetZ, RESPAWN_TICKS));
-
+        String weaponName = "";
+        int streak = 0;
         if (killer != null) {
-            String weaponName = "メインウェポン";
-            List<String> attachments = new ArrayList<>();
             ItemStack mainHand = killer.getMainHandItem();
             IGun gun = IGun.getIGunOrNull(mainHand);
             if (gun != null) {
-                ResourceLocation gunId = gun.getGunId(mainHand);
-                weaponName = gunId.getPath().replace('_', ' ').toUpperCase(Locale.ROOT);
+                weaponName = gun.getGunId(mainHand).getPath().replace('_', ' ').toUpperCase(Locale.ROOT);
             } else if (!mainHand.isEmpty()) {
                 weaponName = mainHand.getHoverName().getString();
             }
-
-            int streak = 0;
-            KillAnnouncementState state = killAnnouncements.get(killer.getUUID());
-            if (state != null) streak = state.streak;
-
-            float distance = (float) victim.distanceTo(killer);
-            List<PvpReplayFrame> kFrames = PvpReplayTracker.INSTANCE.getHistory(killer.getUUID());
-            List<PvpReplayFrame> vFrames = PvpReplayTracker.INSTANCE.getHistory(victim.getUUID());
-
-            PacketDistributor.sendToPlayer(victim, new com.ruskserver.moveearth_addtional.network.s2c.other.S2C_KillcamReplayPacket(
-                    killerId, killerName, victim.getUUID(), victim.getGameProfile().getName(),
-                    kFrames, vFrames, killer.getHealth(), killer.getMaxHealth(),
-                    weaponName, attachments, distance, false, streak, RESPAWN_TICKS));
+            KillAnnouncementState announced = killAnnouncements.get(killer.getUUID());
+            if (announced != null) streak = announced.streak;
         }
+        PacketDistributor.sendToPlayer(victim, new S2C_PvpKillcamPacket(killerId, killerName, targetX, targetY, targetZ,
+                RESPAWN_TICKS, weaponName, killer == null ? 0.0F : killer.getHealth(),
+                killer == null ? 0.0F : killer.getMaxHealth(), killer == null ? 0.0F : (float) victim.distanceTo(killer),
+                streak));
 
         Component notice = Component.literal(victim.getGameProfile().getName() + " は " + killerName + " に倒された");
         broadcastToParticipants(victim.server, notice);
@@ -597,8 +780,10 @@ public final class PvpMatchManager {
         PacketDistributor.sendToPlayer(player, new S2C_SyncLoadoutsPacket(PvpLoadoutSavedData.get(player.server).getAll()));
 
         if (isActive(player)) return;
-        // A fresh login has no PvP screen state; forget what an earlier session was sent.
+        // A fresh login has no PvP screen state; forget what an earlier session was sent, and send it anew so
+        // the hub's PvP tab shows for someone joining during an event.
         entryStateSync.forget(player.getUUID());
+        syncEntryState(player.server);
         PvpSessionSavedData stored = PvpSessionSavedData.get(player.server);
         if (!stored.contains(player.getUUID())) return;
         if (PvpRestoreMarker.restored(player, stored.token(player.getUUID()))) {
@@ -622,28 +807,58 @@ public final class PvpMatchManager {
 
     private void tickRespawns(MinecraftServer server) {
         if (activeMap == null) return;
-        Iterator<Map.Entry<UUID, RespawnState>> iterator = respawns.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<UUID, RespawnState> entry = iterator.next();
+        int now = server.getTickCount();
+        List<Map.Entry<UUID, RespawnState>> due = new ArrayList<>();
+        for (Map.Entry<UUID, RespawnState> entry : respawns.entrySet()) {
             RespawnState state = entry.getValue();
             ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
             if (player == null) continue;
-            if (state.ticks > 1) {
-                state.ticks--;
-                if (player.level().dimension().equals(ARENA)) {
-                    player.teleportTo(player.serverLevel(), state.x, state.y, state.z, state.yaw, state.pitch);
+            if (player.level().dimension().equals(ARENA)) {
+                player.teleportTo(player.serverLevel(), state.x, state.y, state.z, state.yaw, state.pitch);
+            }
+            if (!state.deploying) {
+                // The killcam plays first; the deploy screen opens when it ends.
+                if (--state.ticks <= 1) openDeploy(player, state);
+                continue;
+            }
+            if (--state.autoTicks <= 0) {
+                due.add(entry);
+                continue;
+            }
+            if (now % 10 == 0) sendDeploy(player, state);
+            if (now % 5 == 0) sendAllyPositions(player);
+        }
+        for (Map.Entry<UUID, RespawnState> entry : due) {
+            respawns.remove(entry.getKey());
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            if (player != null) deploy(player, entry.getValue());
+        }
+    }
+
+    /** Warns a player who leaves the battle area, then hurts them every second until they return. */
+    private void tickBattleArea(MinecraftServer server) {
+        if (activeBounds == null) return;
+        for (ServerPlayer player : participants(server, true)) {
+            UUID id = player.getUUID();
+            if (respawns.containsKey(id) || !player.level().dimension().equals(ARENA)
+                    || activeBounds.containsXZ(player.getBlockX(), player.getBlockZ())) {
+                if (outOfBounds.remove(id) != null) {
+                    player.displayClientMessage(Component.literal("戦闘エリアに戻りました").withStyle(ChatFormatting.GREEN), true);
                 }
                 continue;
             }
-            iterator.remove();
-            player.setCamera(player);
-            player.setGameMode(GameType.SURVIVAL);
-            player.setInvulnerable(false);
-            player.removeAllEffects();
-            resetVitals(player);
-            refillGuns(player, selectedLoadout(player));
-            BlockPos spawn = PvpSpawnSelector.INSTANCE.selectSpawn(player, activeMap, team(player), server);
-            teleport(player, server.getLevel(ARENA), spawn);
+            int ticks = outOfBounds.merge(id, 1, Integer::sum);
+            int left = PvpDeployPolicy.outOfBoundsSecondsLeft(ticks);
+            player.displayClientMessage(Component.literal(left > 0
+                    ? "戦闘エリア外です！ " + left + "秒以内に戻ってください"
+                    : "戦闘エリア外: ダメージを受けています").withStyle(ChatFormatting.RED, ChatFormatting.BOLD), true);
+            if (ticks == 1) player.playNotifySound(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_BASS.value(),
+                    SoundSource.MASTER, 1.0F, 0.6F);
+            if (PvpDeployPolicy.outOfBoundsDamage(ticks)) {
+                // Counts as being hurt, or the out-of-combat regeneration would heal it straight back.
+                lastDamageTicks.put(id, server.getTickCount());
+                player.hurt(player.damageSources().outOfBorder(), PvpDeployPolicy.OUT_OF_BOUNDS_DAMAGE);
+            }
         }
     }
 
@@ -653,7 +868,12 @@ public final class PvpMatchManager {
         announceMatchResult(server, winner);
         phase = PvpPhase.FINISHED;
         ticksLeft = FINISHED_TICKS;
+        for (UUID id : respawns.keySet()) {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player != null) PacketDistributor.sendToPlayer(player, S2C_PvpDeployPacket.closed());
+        }
         respawns.clear();
+        outOfBounds.clear();
         forEachPlayer(server, true, player -> {
             player.setCamera(player);
             player.setInvulnerable(true);
@@ -1120,6 +1340,7 @@ public final class PvpMatchManager {
         PacketDistributor.sendToPlayer(player, S2C_PvpZonePacket.inactive());
         PacketDistributor.sendToPlayer(player, new S2C_PvpTeamPacket(List.of()));
         PacketDistributor.sendToPlayer(player, S2C_PvpResultPacket.clear());
+        PacketDistributor.sendToPlayer(player, S2C_PvpDeployPacket.closed());
     }
 
     private void recordZoneForTeam(MinecraftServer server, PvpTeam team, PvpMapDefinition map) {
@@ -1230,7 +1451,10 @@ public final class PvpMatchManager {
 
     private void resetRuntime() {
         phase = PvpPhase.IDLE;
+        lastDeployPoints.clear();
         activeMap = null;
+        activeBounds = null;
+        outOfBounds.clear();
         redScore = blueScore = ticksLeft = syncTicker = 0;
         zoneState = PvpZoneState.NEUTRAL;
         zoneRedPlayers = zoneBluePlayers = 0;
@@ -1247,7 +1471,6 @@ public final class PvpMatchManager {
         zoneGate.reset();
         PvpMapVoteManager.INSTANCE.cancelVote();
         PvpSpawnSelector.INSTANCE.clear();
-        PvpReplayTracker.INSTANCE.clear();
     }
 
     private static final class KillAnnouncementState {
@@ -1266,6 +1489,14 @@ public final class PvpMatchManager {
         int ticks;
         final double x, y, z;
         final float yaw, pitch;
+        /** Whether the deploy screen is open, after the killcam. */
+        boolean deploying;
+        int autoTicks;
+        long chosenPoint = S2C_PvpDeployPacket.NO_POINT;
+        /** The opening deploy of a match or a join, with no death behind it. */
+        boolean first;
+        boolean hasKiller;
+        double killerX, killerZ;
 
         private RespawnState(int ticks, double x, double y, double z, float yaw, float pitch) {
             this.ticks = ticks;

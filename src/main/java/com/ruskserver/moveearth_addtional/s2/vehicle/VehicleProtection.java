@@ -68,6 +68,8 @@ public final class VehicleProtection {
      */
     public static UUID attackerSide(MinecraftServer server, SiegeService.AttackAttribution attack) {
         if (attack == null) return null;
+        // A mercenary fights for the nation that hired them, not for their own.
+        if (attack.frozen() && attack.contractId() != null && attack.nationId() != null) return attack.nationId();
         UUID actorNation = attack.actorId() == null ? null
                 : NationSavedData.get(server).nationIdFor(attack.actorId()).orElse(null);
         return actorNation != null ? actorNation : attack.nationId();

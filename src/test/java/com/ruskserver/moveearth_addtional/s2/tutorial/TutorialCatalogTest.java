@@ -28,7 +28,7 @@ class TutorialCatalogTest {
     @Test
     void stepsEndAtBrassAndHaveUniqueIds() {
         List<TutorialCatalog.Step> steps = TutorialCatalog.STEPS;
-        assertEquals(12, steps.size());
+        assertEquals(14, steps.size());
         assertEquals("brass", steps.getLast().id());
         assertEquals(steps.size(), new HashSet<>(steps.stream().map(TutorialCatalog.Step::id).toList()).size());
     }

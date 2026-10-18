@@ -52,6 +52,7 @@ public final class BalanceScreen extends Screen implements SuppressesChatOverlay
     }
 
     @Override protected void init() {
+        HubTabs.fit(this, W, H);
         amount = new MoveEarthTextField(font, left() + 391, top() + 270, 198, 24,
                 Component.literal("送金額"));
         amount.setValue("1");
@@ -86,6 +87,7 @@ public final class BalanceScreen extends Screen implements SuppressesChatOverlay
         if (!snapshot.result().isBlank()) g.drawString(font,
                 font.plainSubstrByWidth(snapshot.result(), W - 36), x + 18, y + H - 13,
                 snapshot.success() ? SUCCESS : DANGER, false);
+        HubTabs.render(g, font, width, HubTabs.Tab.BALANCE, mx, my);
         super.render(g, mx, my, partial);
     }
 
@@ -150,6 +152,7 @@ public final class BalanceScreen extends Screen implements SuppressesChatOverlay
     }
 
     @Override public boolean mouseClicked(double mx, double my, int button) {
+        if (HubTabs.mouseClicked(font, width, HubTabs.Tab.BALANCE, mx, my, button)) return true;
         if (button != 0) return super.mouseClicked(mx, my, button);
         int x = left(), y = top();
         if (inside(mx, my, x + W - 37, y + 11, 20, 20)) { onClose(); return true; }
@@ -219,7 +222,7 @@ public final class BalanceScreen extends Screen implements SuppressesChatOverlay
         drawButton(g, font, bounds, Component.literal(label), accent, bounds.contains(mx, my), enabled);
     }
     private int left() { return (width - W) / 2; }
-    private int top() { return (height - H) / 2; }
+    private int top() { return HubTabs.panelTop(height, H); }
     private static boolean inside(double mx, double my, int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }

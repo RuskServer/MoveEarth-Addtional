@@ -31,6 +31,9 @@ public final class TerritoryClosureRecheckManager {
     private static final ArrayDeque<CoreKey> ACTIVE_ORDER = new ArrayDeque<>();
     private static final Map<CoreKey, List<ValidationRequest>> VALIDATION_REQUESTS = new LinkedHashMap<>();
     private static final int MAX_REQUESTS_PER_CORE = 16;
+    /** Hole finding after a requested check comes out open; it has its own budget beside the scans. */
+    private static final int MAX_DIAGNOSIS_CELLS_PER_TICK = 4_096;
+    private static final Map<CoreKey, Diagnosis> DIAGNOSES = new LinkedHashMap<>();
 
     private TerritoryClosureRecheckManager() {
     }
@@ -95,6 +98,8 @@ public final class TerritoryClosureRecheckManager {
 
     public static void tick(MinecraftServer server) {
         long now = server.getTickCount();
+        tickDiagnoses(server);
+        CapitalWallService.tick(server);
         for (CoreKey key : QUEUE.pollDue(now, MAX_NEW_SCANS_PER_TICK)) {
             ServerLevel level = findLevel(server, key.dimension());
             if (level == null) {
@@ -109,6 +114,8 @@ public final class TerritoryClosureRecheckManager {
             }
             ACTIVE.put(key, TerritoryClosureService.begin(level, key.pos()));
             ACTIVE_ORDER.addLast(key);
+            // Something changed since the holes were being looked for; the new scan starts that over.
+            DIAGNOSES.remove(key);
         }
 
         int remainingBudget = MAX_CELLS_PER_TICK;
@@ -135,7 +142,14 @@ public final class TerritoryClosureRecheckManager {
             ACTIVE.remove(key);
             TerritoryClosureScanner.Result result = progress.result();
             TerritoryClosureService.applyResult(level, key.pos(), result);
-            completeValidationRequests(server, level, key, result);
+            CapitalWallService.onClosureResult(level, core, result);
+            if (VALIDATION_REQUESTS.containsKey(key)
+                    && (result.status() == TerritoryClosureScanner.Status.OPEN
+                    || result.status() == TerritoryClosureScanner.Status.LIMIT_EXCEEDED)) {
+                DIAGNOSES.put(key, new Diagnosis(TerritoryClosureService.beginDiagnosis(level, key.pos()), result));
+            } else {
+                completeValidationRequests(server, level, key, result);
+            }
             if (core.state() == TerritorySavedData.CoreState.EXPOSED && result.sealed()) {
                 TerritorySavedData.CoreRecord active = TerritorySavedData.get(server)
                         .core(key.dimension(), key.pos()).orElse(core);
@@ -147,7 +161,33 @@ public final class TerritoryClosureRecheckManager {
         }
     }
 
+    private static void tickDiagnoses(MinecraftServer server) {
+        var iterator = DIAGNOSES.entrySet().iterator();
+        if (!iterator.hasNext()) return;
+        var entry = iterator.next();
+        CoreKey key = entry.getKey();
+        ServerLevel level = findLevel(server, key.dimension());
+        if (level == null || !VALIDATION_REQUESTS.containsKey(key)
+                || TerritorySavedData.get(server).core(key.dimension(), key.pos()).isEmpty()) {
+            iterator.remove();
+            rejectValidationRequests(server, key, S2C_TerritoryClosurePacket.Status.NOT_FOUND);
+            return;
+        }
+        TerritoryClosureDiagnosis.Result found = entry.getValue().session().advance(MAX_DIAGNOSIS_CELLS_PER_TICK);
+        if (found == null) return;
+        iterator.remove();
+        completeDiagnosis(server, level, key, entry.getValue().scan(), found);
+    }
+
+    /** Queues an ordinary recheck of {@code core}, as a change near it would. */
+    public static void scheduleCheck(MinecraftServer server, TerritorySavedData.CoreRecord core) {
+        CoreKey key = new CoreKey(core.dimension(), core.pos());
+        if (!ACTIVE.containsKey(key)) QUEUE.schedule(key, server.getTickCount());
+    }
+
     public static void clear() {
+        CapitalWallService.clear();
+        DIAGNOSES.clear();
         QUEUE.clear();
         ACTIVE.clear();
         ACTIVE_ORDER.clear();
@@ -191,6 +231,76 @@ public final class TerritoryClosureRecheckManager {
                     key.dimension(), key.pos(), request.requestId(), result, core.state(),
                     TerritoryClosureService.unreinforcedLeakBlocks(level, result)));
         }
+    }
+
+    private static void completeDiagnosis(MinecraftServer server, ServerLevel level, CoreKey key,
+                                          TerritoryClosureScanner.Result scan,
+                                          TerritoryClosureDiagnosis.Result found) {
+        boolean nothingNew = found.status() == TerritoryClosureDiagnosis.Status.OPEN && found.holes().isEmpty()
+                || found.status() == TerritoryClosureDiagnosis.Status.SEALED
+                && scan.status() != TerritoryClosureScanner.Status.LIMIT_EXCEEDED;
+        if (nothingNew) {
+            completeValidationRequests(server, level, key, scan);
+            return;
+        }
+        List<ValidationRequest> requests = VALIDATION_REQUESTS.remove(key);
+        if (requests == null) return;
+        TerritorySavedData.CoreRecord core = TerritorySavedData.get(server).core(key.dimension(), key.pos()).orElse(null);
+        Map<BlockPos, List<BlockPos>> paths = new java.util.HashMap<>();
+        List<TerritoryClosureReport.Hole> holes = new java.util.ArrayList<>();
+        for (int i = 0; i < found.holes().size(); i++) {
+            BlockPos pos = blockPos(found.holes().get(i));
+            // A hole fixed while the diagnosis ran is no longer one.
+            if (TerritoryClosureService.isClosureBarrier(level, pos)) continue;
+            holes.add(TerritoryClosureReport.classify(level, pos));
+            paths.put(pos, found.paths().get(i).stream().map(TerritoryClosureRecheckManager::blockPos).toList());
+        }
+        for (ValidationRequest request : requests) {
+            var player = server.getPlayerList().getPlayer(request.playerId());
+            if (player == null) continue;
+            if (!authorised(server, core, request, player)) {
+                PacketDistributor.sendToPlayer(player, S2C_TerritoryClosurePacket.rejected(
+                        key.dimension(), key.pos(), request.requestId(),
+                        S2C_TerritoryClosurePacket.Status.DENIED));
+                continue;
+            }
+            S2C_TerritoryClosurePacket packet;
+            if (found.status() == TerritoryClosureDiagnosis.Status.UNLOADED) {
+                packet = new S2C_TerritoryClosurePacket(key.dimension(), key.pos(), request.requestId(),
+                        S2C_TerritoryClosurePacket.Status.UNLOADED, core.state(), scan.visited(), List.of(), List.of());
+            } else if (found.status() == TerritoryClosureDiagnosis.Status.SEALED) {
+                // Closed all round, but more space inside than the closure search may cover.
+                packet = new S2C_TerritoryClosurePacket(key.dimension(), key.pos(), request.requestId(),
+                        S2C_TerritoryClosurePacket.Status.LIMIT_EXCEEDED, core.state(), scan.visited(),
+                        List.of(), List.of());
+                TerritoryClosureReport.sendTooLarge(player);
+            } else if (holes.isEmpty()) {
+                packet = new S2C_TerritoryClosurePacket(key.dimension(), key.pos(), request.requestId(),
+                        S2C_TerritoryClosurePacket.Status.OPEN, core.state(), scan.visited(), List.of(), List.of());
+            } else {
+                List<TerritoryClosureReport.Hole> sorted = TerritoryClosureReport.nearestFirst(holes, player);
+                // The overlay draws the way to the nearest hole and marks every hole.
+                packet = new S2C_TerritoryClosurePacket(key.dimension(), key.pos(), request.requestId(),
+                        S2C_TerritoryClosurePacket.Status.OPEN, core.state(), scan.visited(),
+                        paths.get(sorted.getFirst().pos()),
+                        sorted.stream().map(TerritoryClosureReport.Hole::pos).toList());
+                TerritoryClosureReport.send(player, sorted, found.complete());
+            }
+            PacketDistributor.sendToPlayer(player, packet);
+        }
+    }
+
+    private static boolean authorised(MinecraftServer server, TerritorySavedData.CoreRecord core,
+                                      ValidationRequest request, net.minecraft.server.level.ServerPlayer player) {
+        NationSavedData nations = NationSavedData.get(server);
+        UUID currentNation = nations.nationIdFor(player.getUUID()).orElse(null);
+        return core != null && currentNation != null && currentNation.equals(request.nationId())
+                && currentNation.equals(core.nationId())
+                && nations.can(player.getUUID(), S2Permission.MANAGE_TERRITORY);
+    }
+
+    private static BlockPos blockPos(TerritoryClosureSearch.Cell cell) {
+        return new BlockPos(cell.x(), cell.y(), cell.z());
     }
 
     private static void rejectValidationRequests(MinecraftServer server, CoreKey key,
@@ -240,4 +350,6 @@ public final class TerritoryClosureRecheckManager {
     }
 
     private record ValidationRequest(UUID playerId, UUID nationId, int requestId) { }
+
+    private record Diagnosis(TerritoryClosureDiagnosis.Session session, TerritoryClosureScanner.Result scan) { }
 }

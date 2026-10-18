@@ -1,5 +1,6 @@
 package com.ruskserver.moveearth_addtional.pvp;
 
+import com.ruskserver.moveearth_addtional.pvp.deploy.PvpTacticalScanner;
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.tacz.guns.api.event.common.EntityHurtByGunEvent;
 import com.tacz.guns.api.event.common.GunDamageSourcePart;
@@ -78,6 +79,7 @@ public final class PvpEvents {
             PENDING_BLOCK_RESTORES.clear();
         }
         PvpMatchManager.INSTANCE.tick(event.getServer());
+        PvpTacticalScanner.INSTANCE.tick(event.getServer());
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
@@ -199,5 +201,6 @@ public final class PvpEvents {
     public static void onServerStopped(ServerStoppedEvent event) {
         PENDING_BLOCK_RESTORES.clear();
         PvpMatchManager.INSTANCE.serverStopped();
+        PvpTacticalScanner.INSTANCE.clear();
     }
 }

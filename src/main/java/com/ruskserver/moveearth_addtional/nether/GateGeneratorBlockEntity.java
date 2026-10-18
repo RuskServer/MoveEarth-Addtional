@@ -220,7 +220,12 @@ public final class GateGeneratorBlockEntity extends KineticBlockEntity {
         double leash = NetherGateConfig.fightLeash();
         mobs.removeIf(id -> {
             Entity entity = server.getEntity(id);
-            if (entity == null || !entity.isAlive()) return true;
+            if (entity == null) {
+                // Gone without dying, so no final blow was struck: an earlier kill must not take the shards.
+                NetherGateMobs.LAST_ATTACKER.remove(encounterId);
+                return true;
+            }
+            if (!entity.isAlive()) return true;
             if (entity.distanceToSqr(worldPosition.getCenter()) > leash * leash) {
                 BlockPos back = NetherGateMobs.spawnPosition(server, worldPosition, server.random,
                         entity instanceof net.minecraft.world.entity.monster.Blaze);
@@ -266,6 +271,7 @@ public final class GateGeneratorBlockEntity extends KineticBlockEntity {
     private enum Outcome { CLEARED, TIMED_OUT, INTERRUPTED, NO_ENEMIES, ABANDONED, DESERTED }
 
     private void endEncounter(ServerLevel server, Outcome outcome) {
+        UUID lastAttacker = encounterId == null ? null : NetherGateMobs.LAST_ATTACKER.remove(encounterId);
         for (UUID id : mobs) {
             Entity entity = server.getEntity(id);
             if (entity != null) entity.discard();
@@ -281,14 +287,12 @@ public final class GateGeneratorBlockEntity extends KineticBlockEntity {
             case CLEARED -> {
                 int shards = NetherGateConfig.fightShards();
                 if (shards > 0) {
-                    ItemEntity drop = new ItemEntity(server, worldPosition.getX() + 0.5D, worldPosition.getY() + 1.2D,
-                            worldPosition.getZ() + 0.5D, new ItemStack(NetherGateRegistry.NETHER_SHARD.get(), shards));
-                    drop.setDeltaMovement(0.0D, 0.2D, 0.0D);
-                    server.addFreshEntity(drop);
+                    reward(server, lastAttacker, shards);
+                } else {
+                    notifyNearby(server, MoveEarthMessage.success(Component.translatable(
+                            "message.moveearth_addtional.nether_gate.cleared", shards)));
                 }
                 server.playSound(null, worldPosition, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.BLOCKS, 1.0F, 1.0F);
-                notifyNearby(server, MoveEarthMessage.success(Component.translatable(
-                        "message.moveearth_addtional.nether_gate.cleared", shards)));
                 participants(server).forEach(player -> com.ruskserver.moveearth_addtional.advancement.ModCriteria.trigger(player, com.ruskserver.moveearth_addtional.advancement.ModCriteria.NETHER_GATE_CLEARED));
             }
             case TIMED_OUT -> notifyNearby(server, MoveEarthMessage.error(Component.translatable(
@@ -305,6 +309,42 @@ public final class GateGeneratorBlockEntity extends KineticBlockEntity {
         server.playSound(null, worldPosition, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0F, 0.6F);
         publish(Status.IDLE, NetherGateConfig.gateChargeWork());
         setChanged();
+    }
+
+    /** Hands the shards to the last attacker, or the nearest citizen, or drops them on the generator. */
+    private void reward(ServerLevel server, UUID lastAttacker, int shards) {
+        NationSavedData nations = NationSavedData.get(server.getServer());
+        ServerPlayer attacker = lastAttacker == null ? null : server.getServer().getPlayerList().getPlayer(lastAttacker);
+        UUID attackerNation = attacker == null ? null : nations.nationIdFor(attacker.getUUID()).orElse(null);
+        boolean friendly = ownerNation != null && attackerNation != null
+                && (ownerNation.equals(attackerNation) || nations.isAllied(ownerNation, attackerNation));
+        ServerPlayer citizen = participants(server).stream()
+                .filter(player -> !player.isSpectator() && player.isAlive())
+                .filter(player -> ownerNation != null
+                        && ownerNation.equals(nations.nationIdFor(player.getUUID()).orElse(null)))
+                .min(java.util.Comparator.comparingDouble(player -> player.distanceToSqr(worldPosition.getCenter())))
+                .orElse(null);
+        ItemStack stack = new ItemStack(NetherGateRegistry.NETHER_SHARD.get(), shards);
+        switch (NetherGateReward.recipient(attacker != null, friendly, citizen != null)) {
+            case LAST_ATTACKER -> {
+                net.neoforged.neoforge.items.ItemHandlerHelper.giveItemToPlayer(attacker, stack);
+                notifyNearby(server, MoveEarthMessage.success(Component.translatable(
+                        "message.moveearth_addtional.nether_gate.cleared_last_attacker", attacker.getDisplayName(), shards)));
+            }
+            case NEAREST_CITIZEN -> {
+                net.neoforged.neoforge.items.ItemHandlerHelper.giveItemToPlayer(citizen, stack);
+                notifyNearby(server, MoveEarthMessage.success(Component.translatable(
+                        "message.moveearth_addtional.nether_gate.cleared_nearest_citizen", citizen.getDisplayName(), shards)));
+            }
+            case GENERATOR -> {
+                ItemEntity drop = new ItemEntity(server, worldPosition.getX() + 0.5D, worldPosition.getY() + 1.2D,
+                        worldPosition.getZ() + 0.5D, stack);
+                drop.setDeltaMovement(0.0D, 0.2D, 0.0D);
+                server.addFreshEntity(drop);
+                notifyNearby(server, MoveEarthMessage.success(Component.translatable(
+                        "message.moveearth_addtional.nether_gate.cleared", shards)));
+            }
+        }
     }
 
     private List<ServerPlayer> participants(ServerLevel server) {

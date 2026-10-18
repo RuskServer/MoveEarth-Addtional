@@ -42,6 +42,11 @@ public final class JobsScreen extends Screen implements SuppressesChatOverlay {
         this.packet = packet;
     }
 
+    @Override
+    protected void init() {
+        HubTabs.fit(this, W, H);
+    }
+
     public void update(S2C_OpenJobsScreenPacket updated) {
         this.packet = updated;
         selected = Mth.clamp(selected, 0, Math.max(0, entries() - 1));
@@ -75,6 +80,7 @@ public final class JobsScreen extends Screen implements SuppressesChatOverlay {
         drawCard(g, new Rect(x + 270, y + 68, W - 282, H - 80), ACCENT, false, false);
         drawList(g, mouseX, mouseY);
         drawJob(g, mouseX, mouseY);
+        HubTabs.render(g, font, width, HubTabs.Tab.JOBS, mouseX, mouseY);
         super.render(g, mouseX, mouseY, partialTick);
     }
 
@@ -162,6 +168,7 @@ public final class JobsScreen extends Screen implements SuppressesChatOverlay {
     }
 
     @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (HubTabs.mouseClicked(font, width, HubTabs.Tab.JOBS, mouseX, mouseY, button)) return true;
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
         if (closeBounds().contains(mouseX, mouseY)) { onClose(); return true; }
         for (int i = 0; i < 2; i++) {
@@ -204,7 +211,7 @@ public final class JobsScreen extends Screen implements SuppressesChatOverlay {
 
     private int entries() { return packet.jobs().size(); }
     private int left() { return (width - W) / 2; }
-    private int top() { return (height - H) / 2; }
+    private int top() { return HubTabs.panelTop(height, H); }
     private String fit(String value, int pixels) { return font.plainSubstrByWidth(value, pixels); }
 
     private Rect closeBounds() { return new Rect(left() + W - 36, top() + 10, 20, 20); }

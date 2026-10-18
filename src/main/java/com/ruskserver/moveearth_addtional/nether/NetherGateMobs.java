@@ -45,6 +45,8 @@ public final class NetherGateMobs {
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "nether_gate_damage");
     /** Fights running in this server session; anything else tagged is stale. */
     static final Map<UUID, BlockPos> ACTIVE = new ConcurrentHashMap<>();
+    /** The player who killed each encounter's most recent enemy; the last one standing decides who takes the shards. */
+    static final Map<UUID, UUID> LAST_ATTACKER = new ConcurrentHashMap<>();
 
     private NetherGateMobs() { }
 
@@ -112,6 +114,17 @@ public final class NetherGateMobs {
     }
 
     @SubscribeEvent
+    public static void onDeath(net.neoforged.neoforge.event.entity.living.LivingDeathEvent event) {
+        if (event.getEntity().level().isClientSide() || !tagged(event.getEntity())) return;
+        UUID encounter = event.getEntity().getPersistentData().getUUID(ENCOUNTER_TAG);
+        if (!ACTIVE.containsKey(encounter)) return;
+        net.minecraft.server.level.ServerPlayer attacker =
+                com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.attacker(event.getSource());
+        if (attacker != null) LAST_ATTACKER.put(encounter, attacker.getUUID());
+        else LAST_ATTACKER.remove(encounter);
+    }
+
+    @SubscribeEvent
     public static void onDrops(LivingDropsEvent event) {
         if (tagged(event.getEntity())) event.setCanceled(true);
     }
@@ -124,6 +137,7 @@ public final class NetherGateMobs {
     @SubscribeEvent
     public static void onServerStopped(ServerStoppedEvent event) {
         ACTIVE.clear();
+        LAST_ATTACKER.clear();
         NetherGateBattles.clear();
     }
 

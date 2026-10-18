@@ -46,6 +46,7 @@ public final class MoveEarthUi {
 
     public static void drawCard(GuiGraphics graphics, Rect bounds, int accent,
                                 boolean selected, boolean hovered) {
+        if (hovered && !selected) UiSounds.hoveredControl(bounds);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
                 selected ? CARD_SELECTED : hovered ? CARD_HOVER : CARD);
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + (selected ? 4 : 2), bounds.bottom(),
@@ -55,6 +56,7 @@ public final class MoveEarthUi {
 
     public static void drawButton(GuiGraphics graphics, Font font, Rect bounds, Component label,
                                   int accent, boolean hovered, boolean enabled) {
+        if (hovered && enabled) UiSounds.hoveredControl(bounds);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
                 hovered && enabled ? CARD_HOVER : CARD);
         graphics.fill(bounds.x(), bounds.y(), bounds.x() + 3, bounds.bottom(),
@@ -72,6 +74,7 @@ public final class MoveEarthUi {
     public static void drawChoice(GuiGraphics graphics, Font font, Rect bounds, Component label,
                                   int accent, boolean selected, boolean hovered, boolean enabled) {
         boolean active = hovered && enabled && !selected;
+        if (active) UiSounds.hoveredControl(bounds);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
                 selected ? CARD_SELECTED : active ? CARD_HOVER : CARD);
         drawBorder(graphics, bounds, selected ? (enabled ? accent : BORDER_HOVER) : active ? BORDER_HOVER : BORDER);
@@ -106,6 +109,7 @@ public final class MoveEarthUi {
 
     public static void drawTab(GuiGraphics graphics, Font font, Rect bounds, Component label,
                                boolean selected, boolean hovered) {
+        if (hovered && !selected) UiSounds.hoveredControl(bounds);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
                 selected ? 0xFF26394A : hovered ? CARD_HOVER : CARD);
         graphics.fill(bounds.x(), bounds.bottom() - 3, bounds.right(), bounds.bottom(),
@@ -116,6 +120,7 @@ public final class MoveEarthUi {
     }
 
     public static void drawClose(GuiGraphics graphics, Font font, Rect bounds, boolean hovered) {
+        if (hovered) UiSounds.hoveredControl(bounds);
         graphics.drawCenteredString(font, "×", bounds.x() + bounds.width() / 2,
                 bounds.y() + Math.max(1, (bounds.height() - 8) / 2), hovered ? DANGER : MUTED);
     }

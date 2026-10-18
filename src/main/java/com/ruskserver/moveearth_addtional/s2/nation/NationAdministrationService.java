@@ -121,6 +121,7 @@ public final class NationAdministrationService {
         NationSavedData.NationAdminResult result = nations.disband(actor.getUUID(), expectedRevision,
                 com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(actor.server));
         if (!result.success()) return result;
+        com.ruskserver.moveearth_addtional.s2.presence.HiddenAdvancementService.nationDisbanded(actor, nationId);
         com.ruskserver.moveearth_addtional.analytics.event.GameEvents.player(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.NATION_DISSOLVED, actor, nationId, 0L, null);
 
         ledger.removeEmptyNationAccount(nationId);

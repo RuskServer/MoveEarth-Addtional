@@ -65,12 +65,14 @@ public class TimeRestrictionHandler {
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (rejectsLogin(player)) {
+            com.ruskserver.moveearth_addtional.s2.presence.HiddenAdvancementService.turnedAway(player);
             disconnectForSchedule(player);
         } else if (player.server.isDedicatedServer()) {
             // New players otherwise learned the schedule only from the 22:30 closing countdown.
             player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.info(
                     net.minecraft.network.chat.Component.translatable("message.moveearth_addtional.server.open_hours",
                             ServerSchedule.OPEN_HOUR, ServerSchedule.CLOSE_HOUR, ServerSchedule.CLOSE_HOUR)));
+            com.ruskserver.moveearth_addtional.s2.presence.HiddenAdvancementService.loggedIn(player);
         }
     }
 
@@ -102,6 +104,7 @@ public class TimeRestrictionHandler {
                 // a snapshot so the backing list is not modified while its iterator is active.
                 List<ServerPlayer> players = new ArrayList<>(server.getPlayerList().getPlayers());
                 for (ServerPlayer player : players) {
+                    com.ruskserver.moveearth_addtional.s2.presence.AfkAdvancementService.closedOn(player);
                     disconnectForSchedule(player);
                 }
             }

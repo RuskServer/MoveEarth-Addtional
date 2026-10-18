@@ -39,7 +39,8 @@ public record S2NationSnapshot(
         List<InvitationView> invitations,
         List<CandidateView> inviteCandidates,
         com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention notificationAttention,
-        HomeStatus home) {
+        HomeStatus home,
+        List<ProtectionView> protections) {
 
     public S2NationSnapshot {
         if (home == null) home = HomeStatus.EMPTY;
@@ -67,6 +68,7 @@ public record S2NationSnapshot(
         diplomacy = diplomacy == null ? List.of() : List.copyOf(diplomacy);
         invitations = invitations == null ? List.of() : List.copyOf(invitations);
         inviteCandidates = inviteCandidates == null ? List.of() : List.copyOf(inviteCandidates);
+        protections = protections == null ? List.of() : List.copyOf(protections);
     }
 
     public S2NationSnapshot(long revision, String playerName, boolean serverAdmin, boolean member,
@@ -81,7 +83,7 @@ public record S2NationSnapshot(
                 upkeep, siegeStatus, false, "", 0, 0, 0L, sieges, List.of(), List.of(), List.of(), members, roles,
                 diplomacy, invitations, inviteCandidates,
                 com.ruskserver.moveearth_addtional.s2.notification.NotificationAttention.NONE,
-                HomeStatus.EMPTY);
+                HomeStatus.EMPTY, List.of());
     }
 
     /**
@@ -89,12 +91,35 @@ public record S2NationSnapshot(
      * built, so client and server clocks never need to agree; 0 means no upkeep is scheduled.
      * {@code pendingApplications} is only filled for members who can decide them.
      */
-    public record HomeStatus(long treasury, long upkeepDueInMillis, boolean upkeepOverdue, int pendingApplications) {
-        public static final HomeStatus EMPTY = new HomeStatus(0L, 0L, false, 0);
+    public record HomeStatus(long treasury, long upkeepDueInMillis, boolean upkeepOverdue, int pendingApplications,
+                             CapitalWall capitalWall) {
+        public static final HomeStatus EMPTY = new HomeStatus(0L, 0L, false, 0, CapitalWall.FINE);
 
         public HomeStatus {
             treasury = Math.max(0L, treasury);
             pendingApplications = Math.max(0, pendingApplications);
+            if (capitalWall == null) capitalWall = CapitalWall.FINE;
+        }
+
+        public HomeStatus(long treasury, long upkeepDueInMillis, boolean upkeepOverdue, int pendingApplications) {
+            this(treasury, upkeepDueInMillis, upkeepOverdue, pendingApplications, CapitalWall.FINE);
+        }
+    }
+
+    /**
+     * The capital's wall at its thinnest point when it is below {@code target} layers; {@code layers} is -1
+     * when there is nothing to warn about (thick enough, open, not counted yet, or no capital).
+     */
+    public record CapitalWall(int layers, int target, boolean weakKnown, int weakX, int weakY, int weakZ) {
+        public static final CapitalWall FINE = new CapitalWall(-1, 0, false, 0, 0, 0);
+
+        public CapitalWall {
+            layers = Math.max(-1, layers);
+            target = Math.max(0, target);
+        }
+
+        public boolean warn() {
+            return layers >= 1 && layers < target;
         }
     }
 
@@ -231,6 +256,38 @@ public record S2NationSnapshot(
             opponentTag = safe(opponentTag);
             goldCompensation = Math.max(0L, goldCompensation);
             remainingTicks = Math.max(0L, remainingTicks);
+        }
+    }
+
+    /**
+     * A limit on attacking that the viewer should be able to see. {@code own} marks one on the viewer's
+     * own nation; otherwise {@code nationId} is the other nation it concerns. {@code count} is the number
+     * of cores it covers (1 for a whole nation), and {@code remainingTicks} counts server-open time.
+     */
+    public record ProtectionView(UUID nationId, String nationName, String nationTag, ProtectionKind kind,
+                                 boolean own, int count, long remainingTicks) {
+        public ProtectionView {
+            if (nationId == null) nationId = new UUID(0L, 0L);
+            nationName = safe(nationName);
+            nationTag = safe(nationTag);
+            if (kind == null) kind = ProtectionKind.CAPITAL_REBUILDING;
+            count = Math.max(1, count);
+            remainingTicks = Math.max(0L, remainingTicks);
+        }
+    }
+
+    public enum ProtectionKind {
+        /** The nation's capital fell: none of its land may be damaged until the rebuilding truce ends. */
+        CAPITAL_REBUILDING,
+        /** Outposts that fell are held by a settlement truce and may not be damaged. */
+        OUTPOSTS,
+        /** The viewer's side failed a siege on these cores and may not attack them again yet. */
+        FAILED_LOCKOUT,
+        /** The viewer's nation is recovering under protection and cannot start sieges. */
+        RECOVERY_RESTRICTION;
+
+        public static ProtectionKind fromNetworkId(int id) {
+            return id >= 0 && id < values().length ? values()[id] : CAPITAL_REBUILDING;
         }
     }
 

@@ -60,8 +60,11 @@ public final class PrisonerVehicleTransportService {
                     "message.moveearth_addtional.prisoner.transport.unloaded")));
             return;
         }
-        VehicleSavedData.VehicleRecord vehicle = VehicleSavedData.get(captor.server)
+        VehicleSavedData.VehicleRecord recorded = VehicleSavedData.get(captor.server)
                 .vehicle(core.vehicleId()).orElse(null);
+        // Only the core the record points at is the vehicle; a stray copy elsewhere must not load a captive into it.
+        VehicleSavedData.VehicleRecord vehicle = recorded != null && recorded.corePos().equals(event.getPos())
+                && recorded.dimension().equals(captor.level().dimension().location()) ? recorded : null;
         UUID nation = NationSavedData.get(captor.server).nationIdFor(captor.getUUID()).orElse(null);
         Entity captive = PrisonerService.findCustodyEntity(captor.server, custody.playerId());
         double distance = captive == null ? Double.MAX_VALUE
@@ -107,6 +110,11 @@ public final class PrisonerVehicleTransportService {
             Entity captive = PrisonerService.findCustodyEntity(server, transport.captiveId());
             ServerPlayer captor = server.getPlayerList().getPlayer(transport.captorId());
             if (captive == null || captor == null || captor.level() != level) continue;
+            // A captive in another dimension would be moved within its own: unload instead of misplacing them.
+            if (captive.level() != level) {
+                transports.unload(transport.captiveId());
+                continue;
+            }
             var placement = SableVehicleTopology.placement(level, vehicle.corePos());
             if (captor.distanceToSqr(placement.worldPos().getCenter()) > 144.0D) {
                 transports.unload(transport.captiveId());

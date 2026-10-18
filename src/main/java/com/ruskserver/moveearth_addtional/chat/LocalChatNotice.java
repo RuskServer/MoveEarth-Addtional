@@ -18,6 +18,7 @@ public final class LocalChatNotice {
     private LocalChatNotice() { }
 
     public static void nobodyHeard(ServerPlayer sender, int radius) {
+        com.ruskserver.moveearth_addtional.s2.presence.HiddenAdvancementService.talkedToNobody(sender);
         long now = System.currentTimeMillis();
         Long last = LAST.get(sender.getUUID());
         if (last != null && now - last < INTERVAL_MILLIS) return;

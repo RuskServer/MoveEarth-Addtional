@@ -10,6 +10,7 @@ public class ModSounds {
     public static final DeferredRegister<SoundEvent> SOUND_EVENTS = DeferredRegister.create(BuiltInRegistries.SOUND_EVENT, Moveearth_addtional.MODID);
 
     public static final DeferredHolder<SoundEvent, SoundEvent> SERVER_NOTICE = register("server_notice");
+    public static final DeferredHolder<SoundEvent, SoundEvent> TRACK_RUNNING = register("track_running");
     public static final DeferredHolder<SoundEvent, SoundEvent> WARLORD_START = warlord("start");
     public static final DeferredHolder<SoundEvent, SoundEvent> WARLORD_RAMPAGE = warlord("rampage");
     public static final DeferredHolder<SoundEvent, SoundEvent> WARLORD_DOUBLE_KILL = warlord("double_kill");

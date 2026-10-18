@@ -3,10 +3,9 @@ package com.ruskserver.moveearth_addtional.block;
 import com.ruskserver.moveearth_addtional.block.entity.ModBlockEntities;
 import com.ruskserver.moveearth_addtional.block.entity.PlayerDetectorBlockEntity;
 import com.ruskserver.moveearth_addtional.data.DetectorBlockPositionSavedData;
-import com.ruskserver.moveearth_addtional.data.PlayerWhitelistSavedData;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_OpenDetectorScreenPacket;
-import com.ruskserver.moveearth_addtional.network.s2c.other.S2C_SyncDetectorPaymentPacket;
-import com.ruskserver.moveearth_addtional.economy.EconomyLedgerSavedData;
+import com.ruskserver.moveearth_addtional.detector.DetectorOwnership;
+import com.ruskserver.moveearth_addtional.detector.DetectorScreenSync;
+import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
 import com.ruskserver.moveearth_addtional.ui.MoveEarthMessage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -27,7 +26,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -52,6 +50,8 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
             if (blockEntity instanceof PlayerDetectorBlockEntity detectorEntity) {
                 if (placer instanceof Player player) {
                     detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
+                    NationSavedData.get(serverLevel.getServer()).nationIdFor(player.getUUID())
+                            .ifPresent(nation -> detectorEntity.setOwnerNation(nation, true));
                 }
                 detectorEntity.ensurePositionRegistered(serverLevel);
             }
@@ -84,50 +84,33 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
                 player.sendSystemMessage(MoveEarthMessage.error("近くに別の検知ブロックがあるため、このブロックは作動できません。"));
                 return InteractionResult.CONSUME;
             }
-            if (detectorEntity.getOwnerUUID() == null) {
-                // 所有者がいない場合は、最初に右クリックしたプレイヤーを所有者にする
-                detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
-                player.sendSystemMessage(MoveEarthMessage.success("このブロックの所有者として登録されました。もう一度右クリックして設定を開いてください。"));
-                return InteractionResult.SUCCESS;
-            }
-
             if (!(player instanceof ServerPlayer serverPlayer)) {
                 return InteractionResult.CONSUME;
             }
-            ServerLevel serverLevel = (ServerLevel) level;
-            UUID ownerUuid = detectorEntity.getOwnerUUID();
-            PlayerWhitelistSavedData accessData = PlayerWhitelistSavedData.get(serverLevel);
-            boolean ownerAccess = ownerUuid.equals(player.getUUID());
-            if (!ownerAccess && !accessData.isManager(ownerUuid, player.getUUID())) {
-                player.sendSystemMessage(MoveEarthMessage.error("この検知ブロックを管理する権限がありません。"));
+            // 解散した国の検知ブロックはここで所有者なしに戻り、そのまま登録し直せる
+            DetectorOwnership.settle(serverPlayer.server, detectorEntity);
+            if (detectorEntity.getOwnerUUID() == null && detectorEntity.getOwnerNation() == null) {
+                // 所有者がいない場合は、最初に右クリックしたプレイヤー（国民なら国家）を所有者にする
+                if (!DetectorOwnership.mayPlace(serverPlayer)) {
+                    player.sendSystemMessage(MoveEarthMessage.error(
+                            "国家の検知ブロックにするには、拠点操作か国庫管理の権限が必要です。"));
+                    return InteractionResult.CONSUME;
+                }
+                detectorEntity.setOwner(player.getUUID(), player.getScoreboardName());
+                DetectorOwnership.settle(serverPlayer.server, detectorEntity);
+                // Claiming takes the rights mayPlace checked, so the claimer agrees to the treasury paying.
+                if (detectorEntity.getOwnerNation() != null) detectorEntity.approveTreasury();
+                player.sendSystemMessage(MoveEarthMessage.success(detectorEntity.getOwnerNation() != null
+                        ? "このブロックを国家の検知ブロックとして登録しました。もう一度右クリックして設定を開いてください。"
+                        : "このブロックの所有者として登録されました。もう一度右クリックして設定を開いてください。"));
+                return InteractionResult.SUCCESS;
+            }
+
+            if (!DetectorOwnership.mayView(serverPlayer, detectorEntity)) {
+                player.sendSystemMessage(MoveEarthMessage.error("この検知ブロックの設定を見る権限がありません。"));
                 return InteractionResult.CONSUME;
             }
-
-            List<String> onlinePlayers = new ArrayList<>();
-            for (ServerPlayer onlinePlayer : serverLevel.getServer().getPlayerList().getPlayers()) {
-                onlinePlayers.add(onlinePlayer.getScoreboardName());
-            }
-            PacketDistributor.sendToPlayer(serverPlayer, new S2C_OpenDetectorScreenPacket(
-                    pos,
-                    detectorEntity.getDetectorName(),
-                    detectorEntity.getOwnerName(),
-                    ownerAccess,
-                    accessData.getMemberNamesForDisplay(ownerUuid),
-                    ownerAccess ? accessData.getManagerNamesForDisplay(ownerUuid) : List.of(),
-                    onlinePlayers
-            ));
-
-            // 名称・決済・権限委任は所有者専用。管理者にはホワイトリスト画面だけを同期する。
-            if (ownerAccess) {
-                PacketDistributor.sendToPlayer(serverPlayer, new S2C_SyncDetectorPaymentPacket(
-                        pos,
-                        detectorEntity.isActive(),
-                        detectorEntity.getNextPaymentTime(),
-                        detectorEntity.getPlacedTime(),
-                        EconomyLedgerSavedData.get(serverLevel.getServer()).balance(
-                                EconomyLedgerSavedData.Account.player(ownerUuid))
-                ));
-            }
+            DetectorScreenSync.open(serverPlayer, detectorEntity);
             return InteractionResult.SUCCESS;
         }
 
@@ -145,7 +128,10 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
     public void appendHoverText(ItemStack stack, net.minecraft.world.item.Item.TooltipContext context, List<Component> tooltip, net.minecraft.world.item.TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltip, flag);
         tooltip.add(Component.literal("§7周囲100ブロックに侵入したプレイヤーを検知します。"));
-        tooltip.add(Component.literal("§7所有者または拠点管理者が右クリックで設定画面を開けます。"));
+        tooltip.add(Component.literal("§7国民が置くと国家の物になり、維持費（"
+                + PlayerDetectorBlockEntity.UPKEEP_CYCLE_HOURS + "時間ごとに"
+                + PlayerDetectorBlockEntity.UPKEEP_COST + " TC）は国庫から払われます。"));
+        tooltip.add(Component.literal("§7国民全員に侵入警告が届き、同盟国の人は警告しません。"));
         tooltip.add(Component.literal("§c※ 半径3チャンク以内に重複して設置することはできません。"));
     }
 

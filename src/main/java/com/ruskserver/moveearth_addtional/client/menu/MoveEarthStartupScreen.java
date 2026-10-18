@@ -200,11 +200,11 @@ public final class MoveEarthStartupScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         if (phase == Phase.WARNING) {
-            if (StartupFlowPolicy.warningCanContinue(elapsed())) beginPhase(Phase.LOGO);
+            if (StartupFlowPolicy.warningCanContinue(elapsed())) continueFromWarning();
             return true;
         }
         if (phase == Phase.LOGO) {
-            if (StartupFlowPolicy.logoCanSkip(elapsed())) advanceFromLogo();
+            if (StartupFlowPolicy.logoCanSkip(elapsed())) skipLogo();
             return true;
         }
 
@@ -246,11 +246,11 @@ public final class MoveEarthStartupScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (phase == Phase.WARNING) {
-            if (isContinueKey(keyCode) && StartupFlowPolicy.warningCanContinue(elapsed())) beginPhase(Phase.LOGO);
+            if (isContinueKey(keyCode) && StartupFlowPolicy.warningCanContinue(elapsed())) continueFromWarning();
             return true;
         }
         if (phase == Phase.LOGO) {
-            if (isContinueKey(keyCode) && StartupFlowPolicy.logoCanSkip(elapsed())) advanceFromLogo();
+            if (isContinueKey(keyCode) && StartupFlowPolicy.logoCanSkip(elapsed())) skipLogo();
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_UP) {
@@ -334,6 +334,18 @@ public final class MoveEarthStartupScreen extends Screen {
         minecraft.setScreen(parent == null ? new MoveEarthTitleScreen() : parent);
     }
 
+    /** The player dismissed the warning; it clicks like any other button. */
+    private void continueFromWarning() {
+        playClick();
+        beginPhase(Phase.LOGO);
+    }
+
+    /** The player skipped the logo. Letting it run out on its own stays silent. */
+    private void skipLogo() {
+        playClick();
+        advanceFromLogo();
+    }
+
     private void advanceFromLogo() {
         if (StartupClientConfig.setupCompleted()) {
             minecraft.setScreen(new MoveEarthTitleScreen());
@@ -381,7 +393,7 @@ public final class MoveEarthStartupScreen extends Screen {
     }
 
     private void playClick() {
-        minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F));
+        com.ruskserver.moveearth_addtional.client.ui.UiSounds.click();
     }
 
     @Override

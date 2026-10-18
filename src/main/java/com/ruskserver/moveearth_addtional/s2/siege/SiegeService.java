@@ -117,6 +117,16 @@ public final class SiegeService {
                 rollingBefore, offlineDays.allowedOn(core.id(), today) != null)) {
             offlineDays.record(core.id(), today, offlineDefenseAllowed);
         }
+        if (result.status() == SiegeSavedData.AttemptStatus.SETTLEMENT_TRUCE) {
+            // Shells, bombs and charges on truce-held land do nothing, and used to do it without a word.
+            long remaining = Math.max(siegeData.nationSettlementTruceRemaining(core.nationId()),
+                    siegeData.coreSettlementTruceRemaining(core.id()));
+            long minutes = Math.max(1L, (remaining + 1199L) / 1200L);
+            notifyRefusal(level.getServer(), attribution.actorId(), RefusalKind.SETTLEMENT_TRUCE,
+                    Component.translatable("message.moveearth_addtional.siege.settlement_truce_refused",
+                            Component.translatable("screen.moveearth_addtional.open_time.duration",
+                                    minutes / 60L, minutes % 60L)));
+        }
         if (result.siege() != null) {
             RecoveryService.recordBattleWalls(level, result.siege(), core);
             DispatchContractService.bindEligible(level.getServer(), result.siege());
@@ -215,6 +225,24 @@ public final class SiegeService {
     }
 
     /**
+     * Why this player may not break an unreinforced block on another nation's land, or null when nothing
+     * blocks it. The same gates as an attack on reinforcement, war consent included: breaking someone's
+     * buildings is an act of war, so it waits for the attacker to confirm one with a nation they are not
+     * already hostile to.
+     */
+    public static Component breakBlockReason(ServerPlayer breaker, ServerLevel level, BlockPos target) {
+        if (breaker == null || com.ruskserver.moveearth_addtional.s2.combat.RealPlayers.real(breaker) == null) return null;
+        UUID breakerNation = SiegeAttributionService.nationForTarget(breaker, level, target);
+        AttackAttribution attribution = new AttackAttribution(breakerNation, breaker.getUUID(), "player");
+        TerritorySavedData.CoreRecord core = controllingCore(level, target);
+        Component standing = standingBlockReasonOn(attribution, level, target, core);
+        if (standing != null) return standing;
+        UUID consentNation = consentDefenderOn(attribution, level, target, core);
+        return consentNation == null ? null
+                : WarConsentService.refuse(level.getServer(), attribution.actorId(), consentNation);
+    }
+
+    /**
      * The gate every damage path checks first. Besides a peace truce between the attacker's nation
      * and the defender, it blocks a player whose membership cooldown still binds them to a former
      * nation that has peace or an alliance with the defender, and an attacker whose failed Siege
@@ -261,8 +289,9 @@ public final class SiegeService {
     }
 
     /**
-     * Targets whose damage records a Siege: reinforcement, territory cores and vehicle cores. Unreinforced
-     * blocks never open a Siege, so the consent gate leaves them to the ordinary territory rules.
+     * Targets whose damage the consent gate covers here: reinforcement, territory cores and vehicle cores.
+     * Unreinforced blocks open a Siege only when a player breaks them, and that path asks for consent
+     * itself ({@link #breakBlockReason}); artillery and explosions on them still open none.
      */
     private static boolean protectedTarget(ServerLevel level, BlockPos target) {
         var dimension = level.dimension().location();
@@ -314,7 +343,10 @@ public final class SiegeService {
         if (vehicle == null) return null;
         MinecraftServer server = level.getServer();
         UUID defenderNation = vehicle.nationId();
-        UUID attackerNation = resolvedNation(attribution, level, target, null);
+        // A contract is tied to a territory core, which a vehicle has none of; the hiring nation still answers for
+        // a mercenary's shots, so a truce with it protects its partner's vehicles too.
+        UUID attackerNation = attribution.frozen() && attribution.contractId() != null
+                ? attribution.nationId() : resolvedNation(attribution, level, target, null);
         if (defenderNation.equals(attackerNation)) return null;
         SiegeSavedData siegeData = SiegeSavedData.get(server);
         if (attackerNation != null && siegeData.isPeaceTruceActive(attackerNation, defenderNation)) {
@@ -372,7 +404,7 @@ public final class SiegeService {
     private static final long REFUSAL_NOTICE_TICKS = 100L;
     private static final Map<RefusalKey, Long> LAST_REFUSALS = new HashMap<>();
 
-    private enum RefusalKind { FORMER_NATION, FAILED_COOLDOWN }
+    private enum RefusalKind { FORMER_NATION, FAILED_COOLDOWN, SETTLEMENT_TRUCE }
 
     private record RefusalKey(UUID actorId, RefusalKind kind) { }
 
@@ -478,6 +510,11 @@ public final class SiegeService {
             recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.SIEGE_INITIAL, siege.defenderNation(), siege.dimension(), siege.corePos(), 0L,
                     warDetail(siege.attackerNation(), siege.individualAttacker(), null));
             String remaining = formatTicks(S2TerritoryConfig.siegeInitialLockTicks());
+            // Since v3.6 a Siege on broken blocks opens here and may never roll, so Discord hears of it now.
+            java.util.List<String> external = java.util.List.of(
+                    attackerName(server, nations, siege.attackerNation(), siege.individualAttacker()),
+                    nations.nation(siege.defenderNation()).map(NationSavedData.Nation::name).orElse("?"),
+                    remaining);
             // Each side reads the lock from where it stands: the attacker hit enemy land,
             // the defender's own land was hit.
             Component attackerBody = Component.translatable(
@@ -491,13 +528,11 @@ public final class SiegeService {
             } else {
                 NationNotificationService.publish(server, java.util.List.of(siege.attackerNation()),
                         NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED,
-                        siege.dimension(), siege.corePos(), attackerBody,
-                        java.util.List.of(remaining));
+                        siege.dimension(), siege.corePos(), attackerBody, external);
             }
             NationNotificationService.publish(server, java.util.List.of(siege.defenderNation()),
                     NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED,
-                    siege.dimension(), siege.corePos(), defenderBody,
-                    java.util.List.of(remaining));
+                    siege.dimension(), siege.corePos(), defenderBody, external);
         } else if (result.status() == SiegeSavedData.AttemptStatus.ROLLING_STARTED) {
             recordWar(com.ruskserver.moveearth_addtional.analytics.event.GameEventType.SIEGE_ROLLING, siege.defenderNation(), siege.dimension(), siege.corePos(), 0L,
                     warDetail(siege.attackerNation(), siege.individualAttacker(), null));

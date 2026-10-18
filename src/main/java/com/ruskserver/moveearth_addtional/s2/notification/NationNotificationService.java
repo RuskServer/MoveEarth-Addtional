@@ -36,10 +36,7 @@ public final class NationNotificationService {
                     if (player != null) player.sendSystemMessage(MoveEarthMessage.warning(inGameBody));
                 }
             }
-            // The five-minute initial lock is intentionally an in-game warning only.
-            if (type != NationNotificationSavedData.EventType.SIEGE_INITIAL_STARTED) {
-                notifications.enqueue(nationId, type, dimension, pos, externalArguments, now);
-            }
+            notifications.enqueue(nationId, type, dimension, pos, externalArguments, now);
         }
     }
 }

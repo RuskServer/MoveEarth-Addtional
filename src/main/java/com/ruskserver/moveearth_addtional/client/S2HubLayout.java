@@ -12,9 +12,9 @@ final class S2HubLayout {
     static Layout calculate(int screenWidth, int screenHeight, boolean hasSubpages) {
         int panelWidth = Math.min(Math.max(1, screenWidth - 4),
                 Math.min(MAX_WIDTH, Math.max(240, screenWidth - 20)));
-        int panelHeight = Math.min(Math.max(1, screenHeight - 4),
-                Math.min(MAX_HEIGHT, Math.max(160, screenHeight - 20)));
-        Rect panel = new Rect((screenWidth - panelWidth) / 2, (screenHeight - panelHeight) / 2,
+        int room = HubTabLayout.maxPanelHeight(screenHeight);
+        int panelHeight = Math.min(room, Math.min(MAX_HEIGHT, Math.max(160, room)));
+        Rect panel = new Rect((screenWidth - panelWidth) / 2, HubTabLayout.panelTop(screenHeight, panelHeight),
                 panelWidth, panelHeight);
         Rect sections = new Rect(panel.x() + 12, panel.y() + 48, panel.width() - 24, 27);
         Rect subpages = hasSubpages

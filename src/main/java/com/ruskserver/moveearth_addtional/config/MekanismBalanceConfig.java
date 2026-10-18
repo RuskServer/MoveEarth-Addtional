@@ -11,6 +11,8 @@ public final class MekanismBalanceConfig {
     private static final ModConfigSpec.DoubleValue CORE_SOURCE_DECAY_RATE;
     private static final ModConfigSpec.IntValue CORE_RADIUS_BLOCKS;
     private static final ModConfigSpec.DoubleValue CROSS_BORDER_EXPOSURE_MULTIPLIER;
+    private static final ModConfigSpec.DoubleValue CARRIED_URANIUM_DOSE_PER_HOUR;
+    private static final ModConfigSpec.DoubleValue CLEAN_WATER_KEPT_PER_SECOND;
     private static final ModConfigSpec.DoubleValue MEKASUIT_UNSPECIFIED_ABSORPTION;
     private static final ModConfigSpec.DoubleValue MEKASUIT_FALL_ABSORPTION;
     private static final ModConfigSpec.BooleanValue SHIELD_ENABLED;
@@ -54,6 +56,25 @@ public final class MekanismBalanceConfig {
                         "another nation's territory, or wilderness versus territory. 1.0 disables it."
                 )
                 .defineInRange("crossBorderExposureMultiplier", 0.25D, 0.0D, 1.0D);
+
+        CARRIED_URANIUM_DOSE_PER_HOUR = BUILDER
+                .comment(
+                        "Dose rate, in Sv per hour, each uranium ingot in a player's inventory gives them.",
+                        "Blocks count as nine ingots and nuggets as a ninth; ore, raw uranium, dust and",
+                        "yellow cake as one. Hazmat and the MekaSuit block it as they block any radiation.",
+                        "At the default one stack of ingots settles near 71 uSv, just above where Mekanism's",
+                        "sickness starts (about 50 uSv), after about 40 minutes. 0 turns it off."
+                )
+                .defineInRange("carriedUraniumDosePerHour", 2.0E-6D, 0.0D, 1.0D);
+
+        CLEAN_WATER_KEPT_PER_SECOND = BUILDER
+                .comment(
+                        "Share of a player's dose kept each second they stand in clean water: water a",
+                        "bucket placed where there was none. The sea, rivers, lakes and other water that",
+                        "came with the world are contaminated and do nothing. 0.98 halves a dose in about",
+                        "35 seconds; 1.0 turns washing off."
+                )
+                .defineInRange("cleanWaterKeptPerSecond", 0.98D, 0.0D, 1.0D);
 
         BUILDER.pop();
 
@@ -120,6 +141,8 @@ public final class MekanismBalanceConfig {
     public static double coreSourceDecayRate() { return CORE_SOURCE_DECAY_RATE.getAsDouble(); }
     public static int coreRadiusBlocks() { return CORE_RADIUS_BLOCKS.getAsInt(); }
     public static double crossBorderExposureMultiplier() { return CROSS_BORDER_EXPOSURE_MULTIPLIER.getAsDouble(); }
+    public static double carriedUraniumDosePerHour() { return CARRIED_URANIUM_DOSE_PER_HOUR.getAsDouble(); }
+    public static double cleanWaterKeptPerSecond() { return CLEAN_WATER_KEPT_PER_SECOND.getAsDouble(); }
     public static double mekaSuitUnspecifiedAbsorption() { return MEKASUIT_UNSPECIFIED_ABSORPTION.getAsDouble(); }
     public static double mekaSuitFallAbsorption() { return MEKASUIT_FALL_ABSORPTION.getAsDouble(); }
     public static boolean heavyHitShieldEnabled() { return SHIELD_ENABLED.getAsBoolean(); }

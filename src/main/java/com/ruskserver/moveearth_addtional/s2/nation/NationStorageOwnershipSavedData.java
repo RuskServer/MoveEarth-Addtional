@@ -24,6 +24,19 @@ public final class NationStorageOwnershipSavedData extends SavedData {
     public void remove(ResourceLocation dimension, BlockPos pos) {
         if (owners.remove(new Key(dimension, pos.asLong())) != null) setDirty();
     }
+    /** Nations owning storage inside a box of one dimension, with how many pieces each owns there. */
+    public Map<UUID, Integer> ownersInside(ResourceLocation dimension, int minX, int minY, int minZ,
+                                           int maxX, int maxY, int maxZ) {
+        Map<UUID, Integer> result = new LinkedHashMap<>();
+        owners.forEach((key, owner) -> {
+            if (!key.dimension().equals(dimension)) return;
+            BlockPos pos = BlockPos.of(key.pos());
+            if (pos.getX() >= minX && pos.getX() <= maxX && pos.getY() >= minY && pos.getY() <= maxY
+                    && pos.getZ() >= minZ && pos.getZ() <= maxZ) result.merge(owner, 1, Integer::sum);
+        });
+        return result;
+    }
+
     /** Drops every record of a disbanded nation so its former members are not locked out. */
     public void removeNation(UUID nationId) {
         if (nationId != null && owners.values().removeIf(nationId::equals)) setDirty();

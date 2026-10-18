@@ -32,6 +32,11 @@ public final class EventScreen extends Screen implements SuppressesChatOverlay {
         this.snapshot = snapshot;
     }
 
+    @Override
+    protected void init() {
+        HubTabs.fit(this, PANEL_WIDTH, PANEL_HEIGHT);
+    }
+
     public static void receive(S2C_EventScreenPacket packet) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen instanceof EventScreen screen) {
@@ -95,6 +100,7 @@ public final class EventScreen extends Screen implements SuppressesChatOverlay {
         Rect claim = new Rect(right - 136, footerY, 136, 23);
         drawButton(graphics, font, claim, Component.literal("現物をまとめて受取"), GOLD,
                 claim.contains(mouseX, mouseY), !snapshot.claims().isEmpty());
+        HubTabs.render(graphics, font, width, HubTabs.Tab.EVENT, mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
@@ -191,6 +197,7 @@ public final class EventScreen extends Screen implements SuppressesChatOverlay {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (HubTabs.mouseClicked(font, width, HubTabs.Tab.EVENT, mouseX, mouseY, button)) return true;
         if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
         Rect panel = panel();
         int left = panel.x() + 16;
@@ -217,8 +224,8 @@ public final class EventScreen extends Screen implements SuppressesChatOverlay {
 
     private Rect panel() {
         int panelWidth = Math.min(PANEL_WIDTH, width - 20);
-        int panelHeight = Math.min(PANEL_HEIGHT, height - 20);
-        return new Rect((width - panelWidth) / 2, (height - panelHeight) / 2,
+        int panelHeight = Math.min(PANEL_HEIGHT, HubTabs.maxPanelHeight(height));
+        return new Rect((width - panelWidth) / 2, HubTabs.panelTop(height, panelHeight),
                 panelWidth, panelHeight);
     }
 

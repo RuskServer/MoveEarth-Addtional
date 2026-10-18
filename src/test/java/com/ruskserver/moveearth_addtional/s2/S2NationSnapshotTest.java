@@ -77,6 +77,23 @@ class S2NationSnapshotTest {
     }
 
     @Test
+    void protectionViewNormalizesCountTimerAndKind() {
+        var view = new S2NationSnapshot.ProtectionView(null, null, null, null, false, 0, -5L);
+        assertEquals(new java.util.UUID(0L, 0L), view.nationId());
+        assertEquals("", view.nationName());
+        assertEquals(S2NationSnapshot.ProtectionKind.CAPITAL_REBUILDING, view.kind());
+        assertEquals(1, view.count());
+        assertEquals(0L, view.remainingTicks());
+        assertEquals(S2NationSnapshot.ProtectionKind.CAPITAL_REBUILDING, S2NationSnapshot.ProtectionKind.fromNetworkId(99));
+        assertEquals(S2NationSnapshot.ProtectionKind.FAILED_LOCKOUT, S2NationSnapshot.ProtectionKind.fromNetworkId(2));
+    }
+
+    @Test
+    void unaffiliatedSnapshotHasNoProtections() {
+        assertTrue(S2NationSnapshot.unaffiliated("Rusk", false).protections().isEmpty());
+    }
+
+    @Test
     void snapshotCopiesDiplomacyViews() {
         var nationId = java.util.UUID.randomUUID();
         var diplomacy = new java.util.ArrayList<S2NationSnapshot.DiplomacyView>();

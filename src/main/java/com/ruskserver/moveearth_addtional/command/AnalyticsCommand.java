@@ -14,6 +14,7 @@ import com.ruskserver.moveearth_addtional.analytics.profiler.ChunkProfilerServic
 import com.ruskserver.moveearth_addtional.analytics.query.AnalyticsQueryService;
 import com.ruskserver.moveearth_addtional.analytics.query.dto.TimeWindow;
 import com.ruskserver.moveearth_addtional.analytics.query.export.AnalyticsExportService;
+import com.ruskserver.moveearth_addtional.analytics.query.export.ExportTable;
 import com.ruskserver.moveearth_addtional.analytics.query.format.AnalyticsTextFormatter;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
@@ -128,6 +129,34 @@ public final class AnalyticsCommand {
                                         .then(Commands.argument("window", StringArgumentType.word())
                                                 .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"7d", "30d", "all"}, b))
                                                 .executes(ctx -> exportProfiles(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")))))))
+                        // /analytics export table <name> <format> [window]
+                        .then(Commands.literal("table")
+                                .then(Commands.argument("name", StringArgumentType.word())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(ExportTable.ids(), b))
+                                        .then(Commands.argument("format", StringArgumentType.word())
+                                                .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
+                                                .executes(ctx -> exportTable(ctx.getSource(), StringArgumentType.getString(ctx, "name"), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7))
+                                                .then(Commands.argument("window", StringArgumentType.word())
+                                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"1d", "7d", "30d", "all"}, b))
+                                                        .executes(ctx -> exportTable(ctx.getSource(), StringArgumentType.getString(ctx, "name"), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window"))))))))
+                        // /analytics export events <format> [window] [type_prefix]
+                        .then(Commands.literal("events")
+                                .then(Commands.argument("format", StringArgumentType.word())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
+                                        .executes(ctx -> exportEvents(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7, null))
+                                        .then(Commands.argument("window", StringArgumentType.word())
+                                                .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"1d", "7d", "30d", "all"}, b))
+                                                .executes(ctx -> exportEvents(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")), null))
+                                                .then(Commands.argument("type_prefix", StringArgumentType.word())
+                                                        .executes(ctx -> exportEvents(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")), StringArgumentType.getString(ctx, "type_prefix")))))))
+                        // /analytics export all <format> [window]: everything in one ZIP
+                        .then(Commands.literal("all")
+                                .then(Commands.argument("format", StringArgumentType.word())
+                                        .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
+                                        .executes(ctx -> exportAll(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7))
+                                        .then(Commands.argument("window", StringArgumentType.word())
+                                                .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"1d", "7d", "30d", "all"}, b))
+                                                .executes(ctx -> exportAll(ctx.getSource(), StringArgumentType.getString(ctx, "format"), parseWindow(StringArgumentType.getString(ctx, "window")))))))
                         .then(Commands.argument("format", StringArgumentType.word())
                                 .suggests((c, b) -> SharedSuggestionProvider.suggest(new String[]{"csv", "jsonl"}, b))
                                 .executes(ctx -> exportData(ctx.getSource(), StringArgumentType.getString(ctx, "format"), TimeWindow.DAYS_7))
@@ -344,9 +373,72 @@ public final class AnalyticsCommand {
         return 1;
     }
 
+    private static int exportTable(CommandSourceStack source, String name, String formatStr, TimeWindow window) {
+        ExportTable table = ExportTable.byId(name).orElse(null);
+        if (table == null) {
+            source.sendFailure(Component.literal("[MoveEarth] 不明な表です: " + name + "（"
+                    + String.join(", ", ExportTable.ids()) + "）"));
+            return 0;
+        }
+        MinecraftServer server = source.getServer();
+        source.sendSuccess(() -> Component.literal("[MoveEarth] " + table.label() + "をエクスポート中...")
+                .withStyle(ChatFormatting.YELLOW), false);
+        AnalyticsExportService.INSTANCE.exportTableToDirAsync(exportDir(server), parseFormat(formatStr), window, table)
+                .thenAccept(result -> server.execute(() -> source.sendSuccess(
+                        () -> Component.literal("[MoveEarth] エクスポート完了（" + result.rows() + "行"
+                                        + (result.truncated() ? "、上限" + ExportTable.ROW_LIMIT + "行で切り詰め" : "")
+                                        + "）: " + result.path().toAbsolutePath())
+                                .withStyle(result.truncated() ? ChatFormatting.GOLD : ChatFormatting.GREEN), true)))
+                .exceptionally(e -> exportFailed(server, source, e));
+        return 1;
+    }
+
+    private static int exportEvents(CommandSourceStack source, String formatStr, TimeWindow window, String typePrefix) {
+        MinecraftServer server = source.getServer();
+        source.sendSuccess(() -> Component.literal("[MoveEarth] ゲームイベントをエクスポート中...")
+                .withStyle(ChatFormatting.YELLOW), false);
+        AnalyticsExportService.INSTANCE.exportGameEventsToDirAsync(exportDir(server), parseFormat(formatStr), window, typePrefix)
+                .thenAccept(path -> exportDone(server, source, path))
+                .exceptionally(e -> exportFailed(server, source, e));
+        return 1;
+    }
+
+    private static int exportAll(CommandSourceStack source, String formatStr, TimeWindow window) {
+        MinecraftServer server = source.getServer();
+        source.sendSuccess(() -> Component.literal("[MoveEarth] すべての分析データをZIPにまとめています...")
+                .withStyle(ChatFormatting.YELLOW), false);
+        AnalyticsExportService.INSTANCE.exportAllToZipAsync(exportDir(server), parseFormat(formatStr), window)
+                .thenAccept(path -> exportDone(server, source, path))
+                .exceptionally(e -> exportFailed(server, source, e));
+        return 1;
+    }
+
+    private static java.nio.file.Path exportDir(MinecraftServer server) {
+        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("moveearth/analytics/exports");
+    }
+
+    private static AnalyticsExportService.ExportFormat parseFormat(String formatStr) {
+        return "jsonl".equalsIgnoreCase(formatStr)
+                ? AnalyticsExportService.ExportFormat.JSONL : AnalyticsExportService.ExportFormat.CSV;
+    }
+
+    private static void exportDone(MinecraftServer server, CommandSourceStack source, java.nio.file.Path path) {
+        server.execute(() -> source.sendSuccess(
+                () -> Component.literal("[MoveEarth] エクスポート完了: " + path.toAbsolutePath())
+                        .withStyle(ChatFormatting.GREEN), true));
+    }
+
+    private static Void exportFailed(MinecraftServer server, CommandSourceStack source, Throwable e) {
+        server.execute(() -> source.sendFailure(Component.literal(
+                "[MoveEarth] エクスポートに失敗しました: " + e.getMessage())));
+        return null;
+    }
+
     private static TimeWindow parseWindow(String val) {
         if (val == null) return TimeWindow.DAYS_7;
         return switch (val.toLowerCase()) {
+            case "1d", "1day", "24h" -> TimeWindow.DAY_1;
             case "30d", "30days" -> TimeWindow.DAYS_30;
             case "all", "all_time" -> TimeWindow.ALL_TIME;
             default -> TimeWindow.DAYS_7;

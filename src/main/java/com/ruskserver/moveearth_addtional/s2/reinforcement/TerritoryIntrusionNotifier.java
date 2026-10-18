@@ -20,9 +20,10 @@ import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /**
- * Unreinforced blocks stay breakable by design, but until now a nation lost farms and machines
- * without any sign of it: no Siege, no alert, no history. Foreign breaking in controlled land is
- * reported to the owner, once per breaker and nation every few minutes with the count since.
+ * Foreign breaking of unreinforced blocks in controlled land is reported to the owner, once per breaker and
+ * nation every few minutes with the count since. Breaking anything solid there also opens a Siege
+ * ({@link com.ruskserver.moveearth_addtional.s2.siege.TerritoryBreakSiege}); grass, crops and the like only
+ * show up here.
  */
 @EventBusSubscriber(modid = com.ruskserver.moveearth_addtional.Moveearth_addtional.MODID,
         bus = EventBusSubscriber.Bus.GAME)

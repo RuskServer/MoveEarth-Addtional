@@ -2,6 +2,7 @@ package com.ruskserver.moveearth_addtional.client.compat.coldsweat;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.client.compat.coldsweat.TemperatureHudPolicy.ThermalStatus;
+import com.ruskserver.moveearth_addtional.config.ClientDisplayConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -33,7 +34,8 @@ public final class ColdSweatTemperatureHud {
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (apiFailed || !ModList.get().isLoaded("cold_sweat") || minecraft.player == null
+        ClientDisplayConfig.TemperatureHud mode = ClientDisplayConfig.TEMPERATURE_HUD.get();
+        if (mode == ClientDisplayConfig.TemperatureHud.NEVER || apiFailed || !ModList.get().isLoaded("cold_sweat") || minecraft.player == null
                 || minecraft.options.hideGui || minecraft.screen != null
                 || minecraft.player.isCreative() || minecraft.player.isSpectator()
                 || minecraft.getDebugOverlay().showDebugScreen()) return;
@@ -64,6 +66,12 @@ public final class ColdSweatTemperatureHud {
                 cachedSample.freezingPoint(), cachedSample.burningPoint());
         if (measured == ThermalStatus.UNAVAILABLE) return;
         updateDisplayed(measured, now);
+        if (mode == ClientDisplayConfig.TemperatureHud.WHEN_UNCOMFORTABLE
+                && displayed == ThermalStatus.COMFORTABLE) {
+            // Hidden while comfortable; it fades back in from nothing when it next matters.
+            opacity = 0.0F;
+            return;
+        }
         opacity += (displayed.opacity() - opacity) * 0.16F;
         render(event.getGuiGraphics(), minecraft.font, displayed, cachedSample.celsius(), opacity, now);
     }

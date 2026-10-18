@@ -9,7 +9,10 @@ import com.ruskserver.moveearth_addtional.config.LocalChatConfig;
 import net.minecraft.network.chat.ChatType;
 import net.minecraft.network.chat.OutgoingChatMessage;
 import net.minecraft.network.chat.PlayerChatMessage;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundDisguisedChatPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import org.spongepowered.asm.mixin.Final;
@@ -40,6 +43,31 @@ public abstract class PlayerListLocalChatMixin {
         if (!LocalChatRules.canReceive(sender.level().dimension().equals(recipient.level().dimension()),
                 sender.distanceToSqr(recipient), LocalChatConfig.radiusBlocks())) return;
         original.call(recipient, outgoing, filtered, LocalChatPresentation.bound(sender, recipient));
+    }
+
+    /**
+     * Youer sends chat from a player the recipient cannot see, under Bukkit's hide-player rules, as a disguised
+     * packet straight to the connection, past the delivery above. That line used to arrive from any distance
+     * as a plain {@code <name>} line; it gets the same radius and decoration. Absent outside Youer.
+     */
+    @WrapOperation(method = "broadcastChatMessage(Lnet/minecraft/network/chat/PlayerChatMessage;Ljava/util/function/Predicate;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/network/chat/ChatType$Bound;)V",
+            require = 0,
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;send(Lnet/minecraft/network/protocol/Packet;)V"))
+    private void moveearth$deliverHiddenLocalChat(ServerGamePacketListenerImpl connection, Packet<?> packet,
+                                                  Operation<Void> original, PlayerChatMessage message,
+                                                  Predicate<ServerPlayer> filterPredicate, ServerPlayer sender,
+                                                  ChatType.Bound originalBound) {
+        if (sender == null || !(packet instanceof ClientboundDisguisedChatPacket disguised)
+                || !disguised.chatType().chatType().is(ChatType.CHAT)) {
+            original.call(connection, packet);
+            return;
+        }
+        ServerPlayer recipient = connection.player;
+        com.ruskserver.moveearth_addtional.chat.LocalChatRoute.noticed("hidden", sender, recipient);
+        if (!LocalChatRules.canReceive(sender.level().dimension().equals(recipient.level().dimension()),
+                sender.distanceToSqr(recipient), LocalChatConfig.radiusBlocks())) return;
+        original.call(connection, new ClientboundDisguisedChatPacket(disguised.message(),
+                LocalChatPresentation.bound(sender, recipient)));
     }
 
     @Inject(method = "broadcastChatMessage(Lnet/minecraft/network/chat/PlayerChatMessage;Ljava/util/function/Predicate;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/network/chat/ChatType$Bound;)V",

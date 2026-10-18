@@ -72,9 +72,10 @@ class VehicleAssemblyPolicyTest {
     }
 
     @Test
-    void aCoreForeignToTheBodyItIsLiftedFromConflicts() {
+    void aCoreForeignToTheBodyItIsLiftedFromConflictsButThePieceFollowsItsCore() {
         var binding = VehicleAssemblyPolicy.binding(Set.of(coreB), coreA);
-        assertNull(binding.vehicleId());
+        // Refused where the assembler can refuse; a split that cannot binds the piece to the core it carries.
+        assertEquals(coreB, binding.vehicleId());
         assertEquals(Refusal.CORE_CONFLICT, binding.conflict());
     }
 

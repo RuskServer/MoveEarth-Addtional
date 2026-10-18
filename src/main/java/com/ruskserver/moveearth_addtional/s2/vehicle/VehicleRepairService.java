@@ -58,6 +58,13 @@ public final class VehicleRepairService {
             message(player, "denied"); return;
         }
         if (vehicle.health() >= vehicle.maximumHealth()) { message(player, "full"); return; }
+        // Welding a wreck back to life ends the attacker's salvage, so it waits for the salvage window: a quiet
+        // two minutes used to be enough to cancel a thirty-minute right.
+        if (vehicle.health() == 0 && VehicleLootSavedData.get(player.server).live(vehicle.id(),
+                com.ruskserver.moveearth_addtional.s2.time.OpenTimeService.now(player.server))) {
+            player.displayClientMessage(Component.literal("撃破した側の回収期間中は修理できません。期間が終わってから修理してください"), true);
+            return;
+        }
         if (!player.getOffhandItem().is(Items.IRON_INGOT) || player.getOffhandItem().isEmpty()) {
             message(player, "material"); return;
         }
