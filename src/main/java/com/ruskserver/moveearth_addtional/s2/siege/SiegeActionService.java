@@ -159,8 +159,10 @@ public final class SiegeActionService {
                 && active.attackerNation().equals(player.getUUID())) {
             sieges.removeActive(siegeId);
             SiegeLootSavedData.get(player.server).revoke(siegeId);
-            sieges.startRetryCooldown(active.attackerNation(), true, active.defenderNation(),
-                    S2TerritoryConfig.siegeRetryCooldownTicks());
+            if (active.phase() == SiegeTimerPolicy.Phase.INITIAL_LOCK) {
+                sieges.startRetryCooldown(active.attackerNation(), true, active.defenderNation(),
+                        S2TerritoryConfig.siegeRetryCooldownTicks());
+            }
             lockOutOnWithdrawal(sieges, active.attackerNation(), true, active.coreId(),
                     active.phase() == SiegeTimerPolicy.Phase.ROLLING, false);
             broadcastExit(player, active.attackerNation(), active.defenderNation(), true, true);
@@ -173,8 +175,6 @@ public final class SiegeActionService {
                 && fallen.attackerNation().equals(player.getUUID())) {
             java.util.List<SiegeSavedData.SiegeRecord> resumed = sieges.withdrawFallen(fallen.coreId());
             SiegeLootSavedData.get(player.server).revoke(siegeId);
-            sieges.startRetryCooldown(fallen.attackerNation(), true, fallen.defenderNation(),
-                    S2TerritoryConfig.siegeRetryCooldownTicks());
             lockOutOnWithdrawal(sieges, fallen.attackerNation(), true, fallen.coreId(), false, true);
             notifyResumed(player, resumed);
             TerritorySavedData.get(player.server).recoverCore(fallen.coreId(),
@@ -193,8 +193,10 @@ public final class SiegeActionService {
             if (active.attackerNation().equals(nationId)) {
                 sieges.removeActive(siegeId);
                 SiegeLootSavedData.get(player.server).revoke(siegeId);
-                sieges.startRetryCooldown(active.attackerNation(), active.defenderNation(),
-                        S2TerritoryConfig.siegeRetryCooldownTicks());
+                if (active.phase() == SiegeTimerPolicy.Phase.INITIAL_LOCK) {
+                    sieges.startRetryCooldown(active.attackerNation(), active.defenderNation(),
+                            S2TerritoryConfig.siegeRetryCooldownTicks());
+                }
                 lockOutOnWithdrawal(sieges, active.attackerNation(), false, active.coreId(),
                         active.phase() == SiegeTimerPolicy.Phase.ROLLING, false);
                 PeaceSavedData.get(player.server).removeBetween(active.attackerNation(), active.defenderNation());
@@ -227,8 +229,6 @@ public final class SiegeActionService {
         if (fallen.attackerNation().equals(nationId)) {
             java.util.List<SiegeSavedData.SiegeRecord> resumed = sieges.withdrawFallen(fallen.coreId());
             SiegeLootSavedData.get(player.server).revoke(siegeId);
-            sieges.startRetryCooldown(fallen.attackerNation(), fallen.defenderNation(),
-                    S2TerritoryConfig.siegeRetryCooldownTicks());
             lockOutOnWithdrawal(sieges, fallen.attackerNation(), false, fallen.coreId(), false, true);
             notifyResumed(player, resumed);
             TerritorySavedData.get(player.server).recoverCore(fallen.coreId(),
@@ -252,7 +252,7 @@ public final class SiegeActionService {
     private static void lockOutOnWithdrawal(SiegeSavedData sieges, UUID attackerId, boolean individual,
                                             UUID coreId, boolean rolling, boolean fallen) {
         if (!SiegeFallAttributionPolicy.withdrawalLocksCore(rolling, fallen)) return;
-        sieges.startFailedCooldown(attackerId, individual, coreId, S2TerritoryConfig.siegeFailedCooldownTicks());
+        sieges.startFailedCooldown(attackerId, individual, coreId);
     }
 
     private static void notifyResumed(ServerPlayer player, java.util.List<SiegeSavedData.SiegeRecord> resumed) {

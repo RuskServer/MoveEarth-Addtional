@@ -16,6 +16,8 @@ import net.minecraft.resources.ResourceLocation;
  * @param nationOwned  whether a nation owns it, so its upkeep comes from the treasury
  * @param canManage    whether this player may rename it and pay to restart it
  * @param balance      the paying account's balance: the treasury, or the owner's own
+ * @param upkeepCost   what one upkeep cycle costs, as the server is set
+ * @param upkeepCycleHours how long one paid cycle lasts
  */
 public record S2C_DetectorStatePacket(
         BlockPos pos,
@@ -29,7 +31,9 @@ public record S2C_DetectorStatePacket(
         long placedTime,
         long balance,
         boolean success,
-        String message
+        String message,
+        long upkeepCost,
+        int upkeepCycleHours
 ) implements CustomPacketPayload {
     private static final int MAX_OWNER_LENGTH = 64;
     private static final int MAX_MESSAGE_LENGTH = 160;
@@ -51,11 +55,13 @@ public record S2C_DetectorStatePacket(
                 buf.writeLong(packet.balance);
                 buf.writeBoolean(packet.success);
                 buf.writeUtf(packet.message, MAX_MESSAGE_LENGTH);
+                buf.writeVarLong(Math.max(0L, packet.upkeepCost));
+                buf.writeVarInt(Math.max(1, packet.upkeepCycleHours));
             },
             buf -> new S2C_DetectorStatePacket(buf.readBlockPos(), buf.readBoolean(),
                     buf.readUtf(DetectorNamePolicy.MAX_LENGTH), buf.readUtf(MAX_OWNER_LENGTH), buf.readBoolean(),
                     buf.readBoolean(), buf.readBoolean(), buf.readLong(), buf.readLong(), buf.readLong(),
-                    buf.readBoolean(), buf.readUtf(MAX_MESSAGE_LENGTH)));
+                    buf.readBoolean(), buf.readUtf(MAX_MESSAGE_LENGTH), buf.readVarLong(), buf.readVarInt()));
 
     @Override
     public Type<? extends CustomPacketPayload> type() {

@@ -95,6 +95,8 @@ public final class SableAssemblyCoordinator {
      * assembly must not happen, already told to the players around it, or null to go ahead.
      */
     public static Component review(ServerLevel level, BlockPos origin, Iterable<BlockPos> blocks, ServerPlayer actor) {
+        Component densityRefusal = SableBodyDensityLimit.review(level, origin, actor);
+        if (densityRefusal != null) return densityRefusal;
         Inspection inspection = inspect(level, origin, blocks, actor);
         Component reason = switch (inspection.refusal()) {
             case NONE -> null;

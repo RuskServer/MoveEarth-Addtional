@@ -34,6 +34,15 @@ public final class NationPayloads {
     private NationPayloads() {}
 
     public static void register(PayloadRegistrar registrar) {
+        // Missing capital channels must never reject v3.7 clients or extend their existing codecs.
+        var capital = registrar.optional().versioned("3.8-capital-v1");
+        capital.executesOn(HandlerThread.NETWORK).playToServer(
+                com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_CapitalRelocationPacket.TYPE,
+                com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_CapitalRelocationPacket.STREAM_CODEC,
+                C2SPacketGate.heavy(com.ruskserver.moveearth_addtional.network.c2s.nation.C2S_CapitalRelocationPacket::handle));
+        capital.playToClient(com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_CapitalRelocationPacket.TYPE,
+                com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_CapitalRelocationPacket.STREAM_CODEC,
+                com.ruskserver.moveearth_addtional.network.s2c.nation.S2C_CapitalRelocationPacket::handle);
         // C2S handlers run on the network thread only for the rate-limit check; see C2SPacketGate.
         PayloadRegistrar c2s = registrar.executesOn(HandlerThread.NETWORK);
         c2s.playToServer(C2S_RequestS2HubPacket.TYPE, C2S_RequestS2HubPacket.STREAM_CODEC, C2SPacketGate.request(C2S_RequestS2HubPacket::handle));

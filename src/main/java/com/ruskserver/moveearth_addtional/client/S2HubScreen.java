@@ -337,6 +337,17 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
                 ? snapshot.nationName() : "[" + snapshot.nationTag() + "] " + snapshot.nationName();
         graphics.drawString(font, font.plainSubstrByWidth(nationTitle, content.width()),
                 content.x(), content.y(), ACCENT, false);
+        if (isOwner() && content.height() < 150) {
+            if (content.height() >= 74) graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                            "screen.moveearth_addtional.s2.home.identity", snapshot.roleName(), snapshot.ownerName()).getString(),
+                    content.width()), content.x(), content.y() + 14, MUTED, false);
+            if (content.height() >= 88) graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
+                            "screen.moveearth_addtional.s2.home.summary_people", snapshot.onlineMembers(), snapshot.totalMembers(),
+                            snapshot.territoryChunks(), snapshot.activeCores()).getString(), content.width()),
+                    content.x(), content.y() + 32, TEXT, false);
+            if (content.height() >= 32) drawOwnerActions(graphics, content, mouseX, mouseY);
+            return;
+        }
         graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(
                         "screen.moveearth_addtional.s2.home.identity", snapshot.roleName(), snapshot.ownerName())
                         .getString(), content.width()), content.x(), content.y() + 14, MUTED, false);
@@ -356,7 +367,7 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.s2.attention"),
                 content.x(), summary.bottom() + 10, MUTED, false);
         List<HomeItem> items = homeItems();
-        int shown = Math.min(items.size(), homeRowCapacity(content));
+        int shown = Math.min(items.size(), visibleHomeRows(content));
         for (int index = 0; index < shown; index++) {
             HomeItem item = items.get(index);
             Rect row = homeRowBounds(content, index);
@@ -380,7 +391,23 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
             boolean enabled = pendingRequestId < 0;
             drawButton(graphics, font, leave, Component.translatable("screen.moveearth_addtional.nation.leave"),
                     MUTED, enabled && leave.contains(mouseX, mouseY), enabled);
-        }
+        } else drawOwnerActions(graphics, content, mouseX, mouseY);
+    }
+
+    private int visibleHomeRows(Rect content) {
+        if (isOwner() && content.height() < 150) return 0;
+        int capacity = homeRowCapacity(content);
+        if (isOwner() && capacity > 0 && homeRowBounds(content, capacity - 1).bottom() + 19
+                > NationGovernanceLayout.homeActions(content)[0].y()) capacity--;
+        return capacity;
+    }
+
+    private void drawOwnerActions(GuiGraphics graphics, Rect content, int mouseX, int mouseY) {
+        Rect[] actions = NationGovernanceLayout.homeActions(content);
+        drawButton(graphics, font, actions[0], Component.translatable("screen.moveearth_addtional.governance.succession_title"),
+                GOLD, actions[0].contains(mouseX, mouseY), pendingRequestId < 0);
+        drawButton(graphics, font, actions[1], Component.translatable("screen.moveearth_addtional.capital_relocation.title"),
+                ACCENT, actions[1].contains(mouseX, mouseY), pendingRequestId < 0);
     }
 
     /** One row of the home "action required" list; {@code open} is what its button does. */
@@ -1163,12 +1190,17 @@ public final class S2HubScreen extends Screen implements SuppressesChatOverlay {
         }
         if (snapshot.member() && navigation.page() == S2HubNavigation.Page.HOME) {
             List<HomeItem> items = homeItems();
-            int shown = Math.min(items.size(), homeRowCapacity(content));
+            int shown = Math.min(items.size(), visibleHomeRows(content));
             for (int index = 0; index < shown; index++) {
                 if (homeRowBounds(content, index).contains(mouseX, mouseY)) {
                     items.get(index).open().run();
                     return true;
                 }
+            }
+            if (isOwner() && pendingRequestId < 0 && content.height() >= 32) {
+                Rect[] actions = NationGovernanceLayout.homeActions(content);
+                if (actions[0].contains(mouseX, mouseY)) { minecraft.setScreen(new NationSuccessionScreen(snapshot)); return true; }
+                if (actions[1].contains(mouseX, mouseY)) { minecraft.setScreen(new NationCapitalScreen()); return true; }
             }
             if (!isOwner() && pendingRequestId < 0 && homeLeaveBounds(content).contains(mouseX, mouseY)) {
                 leaveConfirmation = true;

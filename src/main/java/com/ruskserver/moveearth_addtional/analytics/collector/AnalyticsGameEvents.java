@@ -88,6 +88,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerTick(ServerTickEvent.Post event) {
+        com.ruskserver.moveearth_addtional.analytics.provenance.MutationRejectionAudit.tick();
         if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         long gameTime = event.getServer().overworld().getGameTime();
         AnalyticsCollectorManager.INSTANCE.onServerTick(event.getServer(), gameTime);
@@ -96,6 +97,7 @@ public class AnalyticsGameEvents {
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onServerStopping(ServerStoppingEvent event) {
+        com.ruskserver.moveearth_addtional.analytics.provenance.MutationRejectionAudit.flush();
         if (!AnalyticsStorageService.INSTANCE.isRunning()) return;
         long now = System.currentTimeMillis();
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {

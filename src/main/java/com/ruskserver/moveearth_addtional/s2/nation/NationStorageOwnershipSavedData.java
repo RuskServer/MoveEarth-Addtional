@@ -37,6 +37,16 @@ public final class NationStorageOwnershipSavedData extends SavedData {
         return result;
     }
 
+    /** Every record, for the abandoned-storage sweep. */
+    public void forEach(TriConsumer consumer) {
+        owners.forEach((key, owner) -> consumer.accept(key.dimension(), BlockPos.of(key.pos()), owner));
+    }
+
+    @FunctionalInterface
+    public interface TriConsumer {
+        void accept(ResourceLocation dimension, BlockPos pos, UUID owner);
+    }
+
     /** Drops every record of a disbanded nation so its former members are not locked out. */
     public void removeNation(UUID nationId) {
         if (nationId != null && owners.values().removeIf(nationId::equals)) setDirty();

@@ -145,6 +145,7 @@ public final class NationAdministrationService {
         com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData
                 .get(actor.server).closeNation(nationId);
         NationUpkeepSavedData.get(actor.server).removeNation(nationId);
+        NationTaxSavedData.get(actor.server).removeNation(nationId);
         com.ruskserver.moveearth_addtional.s2.vehicle.VehicleSavedData.get(actor.server).removeNation(nationId);
         NationUpkeepService.removeNation(nationId);
         PeaceSavedData.get(actor.server).removeNation(nationId);

@@ -43,6 +43,7 @@ public enum GameEventType {
 
     // PvE and vehicles
     WAREHOUSE_BOSS("pve.warehouse_boss", "倉庫の警備隊長討伐"),
+    MUTATION_REJECTED("provenance.rejected", "攻撃元不明の操作を無効化（1分集計）"),
     VEHICLE_REGISTERED("vehicle.registered", "車両コア登録");
 
     private final String id;

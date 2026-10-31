@@ -1,7 +1,6 @@
 package com.ruskserver.moveearth_addtional.s2.siege;
 
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
-import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_WarConsentPromptPacket;
 import com.ruskserver.moveearth_addtional.s2.combat.RealPlayers;
 import com.ruskserver.moveearth_addtional.s2.nation.NationSavedData;
@@ -93,10 +92,23 @@ public final class WarConsentService {
         if (!WarConsentPolicy.promptDue(last == null ? 0L : last, now)) return;
         LAST_PROMPT.put(player.getUUID(), now);
         PROMPTED_AT.put(new Key(player.getUUID(), defenderNation), now);
-        long failedTicks = S2TerritoryConfig.siegeFailedCooldownTicks();
-        PacketDistributor.sendToPlayer(player, new S2C_WarConsentPromptPacket(defenderNation, name,
+        long nowSeconds = now / 1000L;
+        long failedTicks = SiegeReattackPolicy.remainingOpenTicks(SiegeReattackPolicy.nextOpening(nowSeconds), nowSeconds);
+        var prompt = new S2C_WarConsentPromptPacket(defenderNation, name,
                 (int) (WarConsentPolicy.CONSENT_MILLIS / 60_000L),
-                (int) Math.max(0L, (failedTicks + 1_199L) / 1_200L)));
+                (int) Math.max(0L, (failedTicks + 1_199L) / 1_200L));
+        if (net.neoforged.neoforge.network.registration.NetworkRegistry.hasChannel(player.connection,
+                com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_SessionWarConsentPromptPacket.TYPE.id())) {
+            PacketDistributor.sendToPlayer(player,
+                    new com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_SessionWarConsentPromptPacket(prompt));
+        } else {
+            boolean ja = player.clientInformation().language().startsWith("ja");
+            player.sendSystemMessage(MoveEarthMessage.tip(Component.translatableWithFallback(
+                    "message.moveearth_addtional.siege.session_lockout_rule", ja
+                            ? "攻城に失敗したり、戦闘段階で撤退した場合、同じコアへの再攻撃は次回の開放までできません。旧確認画面の分数は受付時点の目安です。"
+                            : "A failed siege or combat withdrawal prevents reattacking that core until the next server opening. The old confirmation screen's minute count is an estimate at prompt time.")));
+            PacketDistributor.sendToPlayer(player, prompt);
+        }
     }
 
     /** Handles the confirm button. Accepted only for a nation this player was prompted about recently. */

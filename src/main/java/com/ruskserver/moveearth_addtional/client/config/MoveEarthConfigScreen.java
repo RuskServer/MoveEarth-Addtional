@@ -81,6 +81,7 @@ final class MoveEarthConfigScreen {
                         .option(percent("effects.shield_flash", ClientDisplayConfig.SHIELD_FLASH_STRENGTH, 1.0D, 0.0D, 1.0D))
                         .option(toggle("effects.calm_death", ClientDisplayConfig.CALM_DEATH_SCREEN, false))
                         .option(toggle("effects.join_cinematic", ClientDisplayConfig.JOIN_CINEMATIC, true))
+                        .option(toggle("effects.early_world_entry", ClientDisplayConfig.EARLY_WORLD_ENTRY, true))
                         .option(Option.<Boolean>createBuilder()
                                 .name(Component.translatable(KEY + "effects.reduced_motion"))
                                 .description(describe("effects.reduced_motion"))

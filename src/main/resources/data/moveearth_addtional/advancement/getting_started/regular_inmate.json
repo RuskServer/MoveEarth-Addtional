@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "regular_inmate"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:iron_bars"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.regular_inmate.title",
+      "fallback": "お勤めご苦労様です"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.regular_inmate.description",
+      "fallback": "1日に2回捕まった。常連さん？"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

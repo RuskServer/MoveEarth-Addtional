@@ -20,6 +20,13 @@ public final class JobProgressBossBar {
 
     public static void show(ServerPlayer player, JobDefinition definition,
                             JobProgressSavedData.ProgressSnapshot progress, double gainedXp, int earnedCurrency) {
+        show(player, definition, progress, gainedXp, earnedCurrency, 0);
+    }
+
+    /** As above; {@code taxedCurrency} went to the player's nation and is shown beside what they kept. */
+    public static void show(ServerPlayer player, JobDefinition definition,
+                            JobProgressSavedData.ProgressSnapshot progress, double gainedXp, int earnedCurrency,
+                            int taxedCurrency) {
         double nextLevelXp = progress.level() >= definition.maxLevel()
                 ? 0.0D : definition.xpNeededForNextLevel(progress.level());
         JobBossBarDisplay.Display display = JobBossBarDisplay.create(
@@ -27,7 +34,8 @@ public final class JobProgressBossBar {
 
         ActiveBar active = ACTIVE.computeIfAbsent(player.getUUID(), ignored -> new ActiveBar());
         active.event.setName(Component.literal(display.title()
-                + (earnedCurrency > 0 ? "  +" + earnedCurrency + " 通貨" : "")));
+                + (earnedCurrency > 0 ? "  +" + earnedCurrency + " 通貨" : "")
+                + (taxedCurrency > 0 ? "（国税 " + taxedCurrency + "）" : "")));
         active.event.setProgress(display.progress());
         active.event.addPlayer(player);
         active.ticksRemaining = DISPLAY_TICKS;

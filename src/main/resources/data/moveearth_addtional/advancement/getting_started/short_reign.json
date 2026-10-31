@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "short_reign"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:golden_helmet"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.short_reign.title",
+      "fallback": "三日天下"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.short_reign.description",
+      "fallback": "国家の寿命、1時間"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

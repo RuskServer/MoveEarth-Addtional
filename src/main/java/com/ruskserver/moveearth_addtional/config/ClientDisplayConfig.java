@@ -44,6 +44,11 @@ public final class ClientDisplayConfig {
                     "Any key or click ends it. Off with reduced motion too.")
             .define("joinCinematic", true);
 
+    public static final ModConfigSpec.BooleanValue EARLY_WORLD_ENTRY = BUILDER
+            .comment("After the server hand-off and receipt of terrain under the player, allow control without waiting for rendering.",
+                    "Surroundings may briefly be unrendered. Disable to use vanilla loading readiness.")
+            .define("earlyWorldEntry", true);
+
     static {
         BUILDER.pop().push("audio");
     }

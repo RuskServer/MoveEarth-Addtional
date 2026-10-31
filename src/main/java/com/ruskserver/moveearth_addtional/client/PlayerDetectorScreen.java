@@ -46,6 +46,9 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
     /** A refresh from the server after renaming or paying, with the outcome to show. */
     public void update(S2C_DetectorStatePacket next) {
         if (!next.pos().equals(this.state.pos())) return;
+        // A refresh after paying rebuilds the widgets; a name still being typed survives it.
+        String typing = this.nameInput != null && !this.nameInput.getValue().equals(this.state.name())
+                && next.name().equals(this.state.name()) ? this.nameInput.getValue() : null;
         this.state = next;
         if (!next.message().isEmpty()) {
             this.status = next.message();
@@ -53,6 +56,7 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
             this.toastTicks = TOAST_DURATION_TICKS;
         }
         rebuildWidgets();
+        if (typing != null && this.nameInput != null) this.nameInput.setValue(typing);
     }
 
     @Override
@@ -120,8 +124,9 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
         // Header: S2 Hub / PvP standard left-aligned title + subtitle + top-right close button.
         String displayName = this.state.name().isBlank() ? "名称未設定" : this.state.name();
         BlockPos pos = this.state.pos();
-        graphics.drawString(this.font, "プレイヤー検知ブロック「" + displayName + "」",
-                panel.x() + 16, panel.y() + 10, TEXT, false);
+        // Up to 32 characters of name: cut short of the close button rather than running under it.
+        graphics.drawString(this.font, this.font.plainSubstrByWidth("プレイヤー検知ブロック「" + displayName + "」",
+                layout.close().x() - panel.x() - 24), panel.x() + 16, panel.y() + 10, TEXT, false);
         String subtitle = String.format("座標 %d, %d, %d  •  検知半径 %.0fm",
                 pos.getX(), pos.getY(), pos.getZ(), PlayerDetectorBlockEntity.DETECTION_RANGE);
         graphics.drawString(this.font, subtitle, panel.x() + 16, panel.y() + 22, MUTED, false);
@@ -163,7 +168,7 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
         );
         graphics.drawString(
                 this.font,
-                PlayerDetectorScreenLayout.upkeepSummaryText(),
+                PlayerDetectorScreenLayout.upkeepSummaryText(this.state.upkeepCost(), this.state.upkeepCycleHours()),
                 upkeepCard.x() + 12,
                 upkeepCard.y() + 21,
                 MUTED,
@@ -183,7 +188,8 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
         Rect bar = layout.progressBar();
         graphics.fill(bar.x(), bar.y(), bar.right(), bar.bottom(), BAR_BACKGROUND);
         float ratio = PlayerDetectorScreenLayout.progressRatio(
-                this.state.active(), this.state.placedTime(), this.state.nextPaymentTime(), now);
+                this.state.active(), this.state.placedTime(), this.state.nextPaymentTime(), now,
+                this.state.upkeepCycleHours() * 3_600_000L);
         int fillWidth = Math.round(bar.width() * ratio);
         if (fillWidth > 0) {
             graphics.fill(bar.x(), bar.y(), bar.x() + fillWidth, bar.bottom(), stateColor);
@@ -205,8 +211,8 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
         boolean payEnabled = canPayToRestart(now);
         String payLabel = PlayerDetectorScreenLayout.stopped(this.state.active(), this.state.nextPaymentTime(), now)
                 ? (this.state.nationOwned()
-                        ? "国庫で再開 (" + PlayerDetectorBlockEntity.UPKEEP_COST + " TC)"
-                        : "支払って再開 (" + PlayerDetectorBlockEntity.UPKEEP_COST + " TC)")
+                        ? "国庫で再開 (" + this.state.upkeepCost() + " TC)"
+                        : "支払って再開 (" + this.state.upkeepCost() + " TC)")
                 : "稼働中";
         drawButton(
                 graphics,
@@ -257,18 +263,6 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
             graphics.drawString(this.font, displayName, nameCard.x() + 12, nameCard.y() + 25, TEXT, false);
         }
 
-        // Footer close button.
-        Rect footerClose = layout.footerClose();
-        drawButton(
-                graphics,
-                this.font,
-                footerClose,
-                Component.literal("閉じる"),
-                MUTED,
-                footerClose.contains(mouseX, mouseY),
-                true
-        );
-
         super.render(graphics, mouseX, mouseY, partialTick);
 
         if (this.toastTicks > 0 && !this.status.isEmpty()) {
@@ -280,7 +274,7 @@ public class PlayerDetectorScreen extends Screen implements SuppressesChatOverla
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
             PlayerDetectorScreenLayout.Layout layout = PlayerDetectorScreenLayout.calculate(this.width, this.height);
-            if (layout.close().contains(mouseX, mouseY) || layout.footerClose().contains(mouseX, mouseY)) {
+            if (layout.close().contains(mouseX, mouseY)) {
                 onClose();
                 return true;
             }

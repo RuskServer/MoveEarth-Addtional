@@ -47,8 +47,11 @@ public final class TerritoryCoreEvents {
         }
         if (core.coreType() == TerritorySavedData.CoreType.CAPITAL) {
             event.setCanceled(true);
-            player.sendSystemMessage(MoveEarthMessage.error(Component.translatable(
-                    "message.moveearth_addtional.territory_core.capital_locked")));
+            player.sendSystemMessage(MoveEarthMessage.error(Component.translatableWithFallback(
+                    "message.moveearth_addtional.territory_core.capital_move_hint",
+                    player.clientInformation().language().startsWith("ja_")
+                            ? "首都コアは直接撤去できません。国王がv3.8の国家画面から「首都移転」を行ってください。"
+                            : "Capital cores cannot be removed directly. The owner can move the capital from the v3.8 nation screen.")));
             return;
         }
         boolean allowed = playerNation != null && playerNation.equals(core.nationId())

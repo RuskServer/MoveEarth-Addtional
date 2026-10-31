@@ -15,7 +15,7 @@ import java.util.function.Supplier;
  *   <li>no player, but the nation controlling the territory where the mount stands.</li>
  * </ol>
  * A shot none of these covers is unattributed and may not wear down reinforcement, territory cores or
- * vehicle cores and armour; it still hits ordinary blocks and entities.
+ * vehicle cores, armour or ordinary terrain. Combat damage to living entities is a separate policy.
  */
 public final class CbcShotAttributionPolicy {
     private CbcShotAttributionPolicy() { }

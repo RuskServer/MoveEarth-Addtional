@@ -375,9 +375,19 @@ public final class NationNotificationSavedData extends SavedData {
     }
 
     public int pruneExpired(long nowMillis, long retentionMillis, long deduplicationWindowMillis) {
+        return pruneExpired(nowMillis, retentionMillis, deduplicationWindowMillis, ignored -> { });
+    }
+
+    public int pruneExpired(long nowMillis, long retentionMillis, long deduplicationWindowMillis,
+                            java.util.function.Consumer<Delivery> onExpired) {
         int before = outbox.size();
-        outbox.values().removeIf(delivery -> NotificationDeliveryPolicy.expired(
-                delivery.createdAtMillis, nowMillis, retentionMillis));
+        outbox.values().removeIf(delivery -> {
+            if (!NotificationDeliveryPolicy.expired(delivery.createdAtMillis, nowMillis, retentionMillis)) {
+                return false;
+            }
+            onExpired.accept(delivery);
+            return true;
+        });
         int removed = before - outbox.size();
         expiredCount += removed;
         boolean recentRemoved = recentDeliveries.entrySet().removeIf(entry -> !NotificationDeliveryPolicy.duplicate(

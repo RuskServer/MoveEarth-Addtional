@@ -34,6 +34,12 @@ public final class RaidShipSweeper {
 
     private RaidShipSweeper() { }
 
+    /** Includes split fragments and legacy names, just like raid cleanup itself. */
+    public static boolean isActiveBody(ServerSubLevelContainer container, ServerSubLevel body) {
+        OptionalInt id = raidId(container, body);
+        return id.isPresent() && AirshipRaidManager.isActiveRaid(id.getAsInt());
+    }
+
     /** Marks a new raid airship with its raid number. */
     public static void tag(ServerSubLevel ship, int raidId) {
         CompoundTag current = ship.getUserDataTag();

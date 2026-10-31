@@ -85,6 +85,9 @@ public final class TerritoryBreakSiege {
             return;
         }
         SiegeSavedData.AttemptResult result = SiegeService.recordAttack(player, level, pos, false);
+        if (result.status() == SiegeSavedData.AttemptStatus.START_WINDOW_CLOSED) {
+            event.setCanceled(true);
+        }
         if (result.status() == SiegeSavedData.AttemptStatus.RECOVERY_PROTECTED) {
             event.setCanceled(true);
             player.displayClientMessage(Component.translatable("message.moveearth_addtional.siege.break_recovery_protected"), true);

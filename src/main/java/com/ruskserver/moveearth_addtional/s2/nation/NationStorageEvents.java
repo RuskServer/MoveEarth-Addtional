@@ -46,11 +46,16 @@ public final class NationStorageEvents {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (!event.getLevel().getBlockState(event.getPos()).is(STORAGE_BLOCKS)
                 && !event.getItemStack().is(STORAGE_ITEMS)) return;
-        if (canUse(player, event.getPos())) {
+        if (canUseOwned(player, event.getPos())) {
             // Sessions opened under loot, vehicle or ally rights are re-checked while open, so a
             // revoked ally grant or an ended alliance closes the menu.
             if (!canPlaceOwn(player, event.getPos())) OPEN_ENEMY_STORAGE.put(player.getUUID(), event.getPos().immutable());
             else OPEN_ENEMY_STORAGE.remove(player.getUUID());
+            return;
+        }
+        if (AbandonedStorageService.lootable(player, event.getPos())) {
+            OPEN_ENEMY_STORAGE.put(player.getUUID(), event.getPos().immutable());
+            AbandonedStorageService.opened(player, event.getPos());
             return;
         }
         event.setCanceled(true);
@@ -120,7 +125,8 @@ public final class NationStorageEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onBreak(BlockEvent.BreakEvent event) {
         if (!(event.getPlayer() instanceof ServerPlayer player) || !event.getState().is(STORAGE_BLOCKS)) return;
-        if (!canUse(player, event.getPos())) {
+        // Taking from an abandoned chest is not owning it: it cannot be broken for its contents.
+        if (!canUseOwned(player, event.getPos())) {
             event.setCanceled(true);
             notify(player);
             return;
@@ -168,7 +174,13 @@ public final class NationStorageEvents {
         }
     }
 
+    /** Whether {@code player} may use the storage at {@code pos}, abandoned chests included. */
     public static boolean canUse(ServerPlayer player, BlockPos pos) {
+        return canUseOwned(player, pos) || AbandonedStorageService.lootable(player, pos);
+    }
+
+    /** As {@link #canUse}, without abandoned chests: what breaking needs. */
+    private static boolean canUseOwned(ServerPlayer player, BlockPos pos) {
         if (player.hasPermissions(2)) return true;
         UUID nationId = NationSavedData.get(player.server).nationIdFor(player.getUUID()).orElse(null);
         UUID explicitOwner = NationStorageOwnershipSavedData.get(player.server)

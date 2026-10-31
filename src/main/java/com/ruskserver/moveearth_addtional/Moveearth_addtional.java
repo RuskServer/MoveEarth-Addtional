@@ -132,6 +132,13 @@ public class Moveearth_addtional {
                 ConfigFileLayout.WORLD + "mekanism.toml"
         );
 
+        if (net.neoforged.fml.ModList.get().isLoaded("yigd")) {
+            if (net.neoforged.fml.ModList.get().isLoaded("corpse")) {
+                throw new IllegalStateException("MoveEarth: do not load Corpse and YIGD together. "
+                        + "Recover existing Corpse inventories before switching. See deploy/yigd/README.md.");
+            }
+            com.ruskserver.moveearth_addtional.compat.yigd.YigdTerritoryCompat.register();
+        }
         CbcReinforcementCompat.registerIfPresent();
         WarnauticsReinforcementCompat.registerIfPresent();
         com.ruskserver.moveearth_addtional.advancement.PlayerReviveAdvancementCompat.registerIfPresent();

@@ -12,11 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlayerDetectorScreenLayoutTest {
 
     @Test
-    void upkeepBalanceMatchesS2TwentyFourHourCycle() {
-        assertEquals(2L, PlayerDetectorBlockEntity.UPKEEP_COST);
-        assertEquals(24, PlayerDetectorBlockEntity.UPKEEP_CYCLE_HOURS);
-        assertEquals(24L * 60L * 60L * 1000L, PlayerDetectorBlockEntity.UPKEEP_INTERVAL_MS);
-        assertEquals("維持費: 24時間ごとに 2 TC（半径100m検知）", PlayerDetectorScreenLayout.upkeepSummaryText());
+    void upkeepSummaryShowsTheServersSettings() {
+        assertEquals("維持費: 24時間ごとに 2 TC（半径100m検知）", PlayerDetectorScreenLayout.upkeepSummaryText(2L, 24));
+        assertEquals("維持費: 12時間ごとに 5 TC（半径100m検知）", PlayerDetectorScreenLayout.upkeepSummaryText(5L, 12));
     }
 
     @Test
@@ -37,8 +35,7 @@ class PlayerDetectorScreenLayoutTest {
                     layout.nameCard(),
                     layout.nameInput(),
                     layout.saveButton(),
-                    layout.resetButton(),
-                    layout.footerClose()
+                    layout.resetButton()
             }) {
                 assertTrue(inside(child, panel), "child inside panel at " + size[0] + "x" + size[1]);
             }
@@ -51,7 +48,6 @@ class PlayerDetectorScreenLayoutTest {
 
             assertFalse(overlaps(layout.ownerCard(), layout.upkeepCard()));
             assertFalse(overlaps(layout.upkeepCard(), layout.nameCard()));
-            assertFalse(overlaps(layout.nameCard(), layout.footerClose()));
             assertFalse(overlaps(layout.progressBar(), layout.payButton()));
             assertFalse(overlaps(layout.nameInput(), layout.saveButton()));
             assertFalse(overlaps(layout.saveButton(), layout.resetButton()));
@@ -61,13 +57,14 @@ class PlayerDetectorScreenLayoutTest {
     @Test
     void stateFormattingAndProgressReflectStoppedWarmupAndActiveStates() {
         long placed = 1_000_000L;
-        long nextPayment = placed + PlayerDetectorBlockEntity.UPKEEP_INTERVAL_MS;
+        long cycle = 24L * 60L * 60L * 1000L;
+        long nextPayment = placed + cycle;
 
         // Unpaid / inactive
         assertTrue(PlayerDetectorScreenLayout.stopped(false, 0L, placed));
         assertEquals(MoveEarthUi.DANGER, PlayerDetectorScreenLayout.stateColor(false, placed, 0L, placed));
         assertEquals("停止中（維持費未払い）", PlayerDetectorScreenLayout.stateText(false, placed, 0L, placed));
-        assertEquals(0.0F, PlayerDetectorScreenLayout.progressRatio(false, placed, 0L, placed));
+        assertEquals(0.0F, PlayerDetectorScreenLayout.progressRatio(false, placed, 0L, placed, cycle));
 
         // Expired
         assertTrue(PlayerDetectorScreenLayout.stopped(true, nextPayment, nextPayment));
@@ -80,14 +77,14 @@ class PlayerDetectorScreenLayoutTest {
         assertTrue(PlayerDetectorScreenLayout.warmingUp(true, placed, nextPayment, warmupHalf));
         assertEquals(MoveEarthUi.GOLD, PlayerDetectorScreenLayout.stateColor(true, placed, nextPayment, warmupHalf));
         assertEquals("起動準備中（作動まで 0:10:00）", PlayerDetectorScreenLayout.stateText(true, placed, nextPayment, warmupHalf));
-        assertEquals(0.5F, PlayerDetectorScreenLayout.progressRatio(true, placed, nextPayment, warmupHalf), 0.001F);
+        assertEquals(0.5F, PlayerDetectorScreenLayout.progressRatio(true, placed, nextPayment, warmupHalf, cycle), 0.001F);
 
         // Operational with 12 hours remaining
-        long halfCycle = nextPayment - PlayerDetectorBlockEntity.UPKEEP_INTERVAL_MS / 2;
+        long halfCycle = nextPayment - cycle / 2;
         assertFalse(PlayerDetectorScreenLayout.warmingUp(true, placed, nextPayment, halfCycle));
         assertEquals(MoveEarthUi.SUCCESS, PlayerDetectorScreenLayout.stateColor(true, placed, nextPayment, halfCycle));
         assertEquals("稼働中（次回引き落としまで 12:00:00）", PlayerDetectorScreenLayout.stateText(true, placed, nextPayment, halfCycle));
-        assertEquals(0.5F, PlayerDetectorScreenLayout.progressRatio(true, placed, nextPayment, halfCycle), 0.001F);
+        assertEquals(0.5F, PlayerDetectorScreenLayout.progressRatio(true, placed, nextPayment, halfCycle, cycle), 0.001F);
     }
 
     private static boolean inside(Rect child, Rect parent) {

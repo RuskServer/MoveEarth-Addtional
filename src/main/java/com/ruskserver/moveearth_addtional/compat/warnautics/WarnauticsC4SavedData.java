@@ -23,6 +23,8 @@ public final class WarnauticsC4SavedData extends SavedData {
         setDirty();
     }
 
+    public Charge peek(BlockPos chargePos) { return charges.get(chargePos.asLong()); }
+
     public Charge consume(BlockPos chargePos) {
         Charge removed = charges.remove(chargePos.asLong());
         if (removed != null) setDirty();

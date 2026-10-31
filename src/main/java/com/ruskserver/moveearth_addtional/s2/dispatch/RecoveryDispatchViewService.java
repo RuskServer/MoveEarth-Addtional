@@ -143,13 +143,33 @@ public final class RecoveryDispatchViewService {
         UUID viewerNation = nations.nationIdFor(viewer.getUUID()).orElse(null);
         return new S2C_RecoveryDispatchSnapshotPacket.ContractView(value.id(), value.revision(), value.state().name(),
                 nationName(nations, value.employerNation()), nationName(nations, value.providerNation()),
-                value.side().name(), coreName(value.targetCoreId()),
+                value.side().name(), target(viewer.server, value, party(viewer, viewerNation, value)),
                 value.participants().stream().map(id -> playerName(nations, id)).toList(), value.consents().size(),
                 value.pricePerOpenMinute(), value.maximumOpenTicks(),
                 value.billedTicks().values().stream().mapToLong(Long::longValue).sum(), value.requestedSubsidy(), value.ownEscrow(),
                 value.subsidyEscrow(), value.employerApproved(), value.providerApproved(), value.subsidyApproved(),
                 value.participants().contains(viewer.getUUID()), value.consents().contains(viewer.getUUID()),
-                value.endReason(), value.employerNation().equals(viewerNation), value.providerNation().equals(viewerNation));
+                value.endReason(), value.employerNation().equals(viewerNation), value.providerNation().equals(viewerNation),
+                value.flatFee());
+    }
+
+    private static boolean party(ServerPlayer viewer, UUID viewerNation, DispatchContractSavedData.Contract value) {
+        return viewer.hasPermissions(2) || value.participants().contains(viewer.getUUID())
+                || value.employerNation().equals(viewerNation) || value.providerNation().equals(viewerNation);
+    }
+
+    /**
+     * The target as players know it: whose capital or outpost, with its coordinates for the contract's own
+     * parties, who need to find the battle. An id alone told the mercenary nothing about where to go.
+     */
+    private static String target(net.minecraft.server.MinecraftServer server, DispatchContractSavedData.Contract value,
+                                 boolean party) {
+        var core = TerritorySavedData.get(server).coreById(value.targetCoreId()).orElse(null);
+        if (core == null) return coreName(value.targetCoreId());
+        String label = nationName(NationSavedData.get(server), core.nationId())
+                + (core.type() == TerritorySavedData.CoreType.CAPITAL ? "の首都" : "の前哨基地");
+        String text = party ? label + " (" + core.pos().getX() + ", " + core.pos().getZ() + ")" : label;
+        return text.length() > 96 ? text.substring(0, 96) : text;
     }
 
     private static String coreName(UUID id) { return id == null ? "" : id.toString().substring(0, 8); }
@@ -181,7 +201,7 @@ public final class RecoveryDispatchViewService {
                         ? DispatchContractSavedData.Side.DEFENSE : DispatchContractSavedData.Side.OFFENSE;
                 var result = DispatchContractService.create(player, packet.secondaryId(), packet.targetId(),
                         packet.tertiaryId(), side, Set.copyOf(packet.participants()), packet.amount(),
-                        Math.max(1L, packet.auxiliaryAmount()) * 1_200L, packet.expectedRevision());
+                        Math.max(1L, packet.auxiliaryAmount()) * 1_200L, packet.expectedRevision(), packet.flatFee());
                 success = result.success(); detail = result.detail();
             }
             case APPROVE, APPROVE_SUBSIDY -> {

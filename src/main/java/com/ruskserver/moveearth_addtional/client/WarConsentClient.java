@@ -28,16 +28,20 @@ public final class WarConsentClient {
     private static final String COMMAND = "moveearthwarconsent";
     private static S2C_WarConsentPromptPacket pending;
     private static long receivedAt;
+    private static boolean pendingSessionLockout;
 
     private WarConsentClient() { }
 
-    public static void prompt(S2C_WarConsentPromptPacket packet) {
+    public static void prompt(S2C_WarConsentPromptPacket packet) { prompt(packet, false); }
+
+    public static void prompt(S2C_WarConsentPromptPacket packet, boolean sessionLockout) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) return;
         pending = packet;
+        pendingSessionLockout = sessionLockout;
         receivedAt = Util.getMillis();
         if (minecraft.screen instanceof WarConsentScreen) {
-            minecraft.setScreen(new WarConsentScreen(packet));
+            minecraft.setScreen(new WarConsentScreen(packet, sessionLockout));
             return;
         }
         Component link = Component.translatable("message.moveearth_addtional.war_consent.open")
@@ -56,17 +60,20 @@ public final class WarConsentClient {
         if (minecraft.player == null) return 0;
         if (packet == null || Util.getMillis() - receivedAt > WarConsentPolicy.PROMPT_VALID_MILLIS) {
             pending = null;
+            pendingSessionLockout = false;
             minecraft.player.displayClientMessage(MoveEarthMessage.warning(Component.translatable(
                     "message.moveearth_addtional.war_consent.expired")), false);
             return 0;
         }
         // After the chat screen that ran this command has finished handling its click or input.
-        minecraft.tell(() -> minecraft.setScreen(new WarConsentScreen(packet)));
+        boolean sessionLockout = pendingSessionLockout;
+        minecraft.tell(() -> minecraft.setScreen(new WarConsentScreen(packet, sessionLockout)));
         return 1;
     }
 
     static void resolved() {
         pending = null;
+        pendingSessionLockout = false;
     }
 
     @SubscribeEvent
@@ -77,5 +84,6 @@ public final class WarConsentClient {
     @SubscribeEvent
     public static void onLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         pending = null;
+        pendingSessionLockout = false;
     }
 }

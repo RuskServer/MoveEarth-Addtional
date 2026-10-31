@@ -1,5 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.reinforcement;
 
+import static com.ruskserver.moveearth_addtional.analytics.provenance.MutationRejectionAudit.rejected;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 
@@ -31,8 +33,11 @@ public final class MachineBreaking {
 
     /** True when nothing protects the block, so a machine may take it. */
     public static boolean mayBreak(ServerLevel level, BlockPos pos) {
-        if (level == null || pos == null) {
-            return true;
+        if (level == null || pos == null) return false;
+        if (!com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.source(
+                com.ruskserver.moveearth_addtional.s2.provenance.ActionContext.current()).allowed()) {
+            rejected("machine.break", level, pos);
+            return false;
         }
         if (isCore(level.getBlockState(pos))) {
             return false;

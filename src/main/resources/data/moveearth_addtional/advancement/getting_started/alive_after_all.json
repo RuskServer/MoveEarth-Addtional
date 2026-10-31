@@ -1,0 +1,10 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": { "returned": { "trigger": "moveearth_addtional:event", "conditions": { "event": "returned_after_break" } } },
+  "display": {
+    "icon": { "id": "minecraft:clock" },
+    "title": { "translate": "advancements.moveearth_addtional.alive_after_all.title", "fallback": "生きてたんか" },
+    "description": { "translate": "advancements.moveearth_addtional.alive_after_all.description", "fallback": "2日以上ぶりに戻ってきた。国民はそろそろ葬式の段取りを始めていた" },
+    "frame": "goal", "show_toast": true, "announce_to_chat": true, "hidden": true
+  }
+}

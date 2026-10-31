@@ -86,7 +86,7 @@ public final class SiegeDamageService {
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
         ReinforcementEntry entry = reinforcements.get(pos).orElse(null);
         if (entry != null && entry.enabled()) {
-            SiegeService.recordAttack(attacker, level, pos, false);
+            if (SiegeService.recordAttack(attacker, level, pos, false).startWindowClosed()) return true;
             UpkeepPenalty penalty = penaltyAt(level, pos);
             if (!penalty.reinforcementProtectionEnabled()) {
                 reinforcements.remove(pos);
@@ -124,7 +124,7 @@ public final class SiegeDamageService {
                 .core(level.dimension().location(), pos).orElse(null);
         if (core != null) {
             if (attacker == null) return true;
-            SiegeService.recordAttack(attacker, level, pos, false);
+            if (SiegeService.recordAttack(attacker, level, pos, false).startWindowClosed()) return true;
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, pos, configuredTerritoryCoreDamage(kind, true));
             if (after != null && after.health() < core.health()) SiegeService.recordAttack(attacker, level, pos, true);
@@ -188,7 +188,7 @@ public final class SiegeDamageService {
             intercepted = true;
             if (!attributed) continue;
             if (friendlyFire != null && friendlyFire.friendly(located.pos())) continue;
-            siege.record(located.pos(), false);
+            if (siege.record(located.pos(), false).startWindowClosed()) continue;
             if (damage > 0) {
                 ReinforcementDamage result = damageReinforcement(
                         level, located.pos(), entry, kind, penalty, false);
@@ -226,7 +226,7 @@ public final class SiegeDamageService {
             intercepted = true;
             if (!attributed || siege.truceBlocks(core.pos())) continue;
             if (blastBarriers.blocked(blastOrigin, core.pos())) continue;
-            siege.record(core.pos(), false);
+            if (siege.record(core.pos(), false).startWindowClosed()) continue;
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(
                     level, core.pos(), configuredTerritoryCoreDamage(kind, core.pos().equals(center)));
             if (after != null && after.health() < core.health()) siege.recordCoreHit(core.pos());

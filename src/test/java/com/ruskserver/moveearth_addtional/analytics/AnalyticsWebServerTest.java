@@ -110,6 +110,28 @@ public class AnalyticsWebServerTest {
     }
 
     @Test
+    void rejectionDashboardUsesWeightedRankingsAndExistingAuthentication() throws Exception {
+        long now = System.currentTimeMillis() / 1000L;
+        engine.writeBatch(List.of(new AnalyticsEventQueue.GameEventLogEvent(
+                new com.ruskserver.moveearth_addtional.analytics.event.GameEventRecord(now - 10,
+                        "provenance.rejected", null, null, "minecraft:overworld", 1, 64, 2, 123, "cbc.explosion"))));
+        var client = HttpClient.newHttpClient();
+        var denied = client.send(HttpRequest.newBuilder().uri(uri("/api/provenance?window=7d"))
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(401, denied.statusCode());
+        var response = client.send(HttpRequest.newBuilder().uri(uri("/api/provenance?window=7d"))
+                .header("Authorization", "Bearer " + AnalyticsConfig.getAuthToken()).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        var json = com.google.gson.JsonParser.parseString(response.body()).getAsJsonObject();
+        assertEquals("Asia/Tokyo", json.get("timezone").getAsString());
+        assertEquals("cbc.explosion", json.getAsJsonArray("routes").get(0).getAsJsonObject().get("key").getAsString());
+        assertEquals(123, json.getAsJsonArray("routes").get(0).getAsJsonObject().get("total").getAsLong());
+        assertEquals(123, json.getAsJsonArray("days").get(0).getAsJsonObject().get("total").getAsLong());
+        assertEquals(1, json.getAsJsonArray("recent").size());
+    }
+
+    @Test
     public void testGetApiUnauthorizedWithoutToken() throws Exception {
         HttpClient client = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()

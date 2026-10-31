@@ -173,7 +173,10 @@ public final class ReinforcementEvents {
                     "message.moveearth_addtional.siege.settlement_truce"), true);
             return;
         }
-        SiegeService.recordAttack(player, level, event.getPos(), false);
+        if (SiegeService.recordAttack(player, level, event.getPos(), false).startWindowClosed()) {
+            event.setCanceled(true);
+            return;
+        }
         if (!SiegeDamageService.penaltyAt(level, event.getPos()).reinforcementProtectionEnabled()) {
             data.remove(event.getPos());
             TerritoryClosureRecheckManager.markPotentialOpening(level, event.getPos());
@@ -225,6 +228,7 @@ public final class ReinforcementEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onExplosion(ExplosionEvent.Detonate event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationEvents.rejectExplosion(event)) return;
         // Warnautics publishes a later mutable blast-list event. Let that dedicated bridge
         // handle the blast once; otherwise generic protection would consume it first.
         if (WarnauticsReinforcementCompat.handles(event.getExplosion())) {
@@ -234,10 +238,10 @@ public final class ReinforcementEvents {
         ReinforcementSavedData data = ReinforcementSavedData.get(level);
         net.minecraft.world.entity.Entity source = event.getExplosion().getDirectSourceEntity();
         // Some CBC blasts (mortar stone) carry no source entity; the round that made them is still nearby.
-        net.minecraft.world.entity.Entity attributionSource = source == null
-                && CbcReinforcementCompat.isCbcExplosion(event.getExplosion())
-                ? CbcReinforcementCompat.impactMunition(level, BlockPos.containing(event.getExplosion().center()))
-                : source;
+        Object exactOrigin = com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard
+                .explosionOrigin(event.getExplosion());
+        net.minecraft.world.entity.Entity attributionSource = exactOrigin instanceof net.minecraft.world.entity.Entity entity
+                ? entity : source;
         ServerPlayer attacker = SiegeService.attributablePlayer(attributionSource);
         SiegeService.AttackAttribution attribution =
                 com.ruskserver.moveearth_addtional.s2.dispatch.AttributionSnapshotService
@@ -293,7 +297,7 @@ public final class ReinforcementEvents {
             TerritorySavedData.CoreRecord core = territories.core(dimension, pos).orElse(null);
             if (core != null) {
                 if (preHandled || unattributedCbc) return true;
-                siege.record(pos, false);
+                if (siege.record(pos, false).startWindowClosed()) return true;
                 if (cbc) {
                     if (blastBarriers.blocked(blastOrigin, pos)) return true;
                     int beforeHealth = core.health();
@@ -310,7 +314,7 @@ public final class ReinforcementEvents {
             if (entry == null) return false;
             if (preHandled) return true;
             if (blastBarriers.blocked(blastOrigin, pos)) return true;
-            siege.record(pos, false);
+            if (siege.record(pos, false).startWindowClosed()) return true;
             if (!entry.enabled()) {
                 data.remove(pos);
                 reinforcementChanges.add(pos.immutable());

@@ -51,7 +51,12 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
     private final EnumMap<Tab, Integer> viewportHeights = new EnumMap<>(Tab.class);
     private final List<Hit> hits = new ArrayList<>();
     private int refreshTicks;
-    private int requestId;
+    /**
+     * Shared by every opening of the screen and seeded at random: the server replays a cached result for a
+     * request id it has seen this login, so restarting at 0 each time the screen opened turned every action of
+     * the second visit into a no-op that still reported success.
+     */
+    private static int requestId = new java.util.Random().nextInt(1 << 24);
     private int pendingRequestId = -1;
     private int pendingTicks;
     private Component toast;
@@ -66,6 +71,9 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
     private long pricePerMinute;
     private long durationMinutes = 30L;
     private long subsidy;
+    private long flatFee;
+    /** Hired players picked in the create dialog; the arrows move through the members, clicking picks one. */
+    private final java.util.LinkedHashSet<UUID> pickedMembers = new java.util.LinkedHashSet<>();
     private long fundAmount = 100L;
 
     public RecoveryDispatchScreen(S2C_RecoveryDispatchSnapshotPacket snapshot) {
@@ -429,9 +437,15 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(DISPATCH + "row.detail", side,
                         contract.target(), participants).getString(), textWidth), row.x() + 12, row.y() + 22, MUTED, false);
         int people = Math.max(1, contract.participants().size());
-        graphics.drawString(font, font.plainSubstrByWidth(Component.translatable(DISPATCH + "row.billing",
-                        NationTreasuryHelper.formatCurrency(contract.pricePerMinute()), duration(contract.billedTicks()),
-                        duration(contract.maximumTicks() * people)).getString(), textWidth),
+        Component billing = Component.translatable(DISPATCH + "row.billing",
+                NationTreasuryHelper.formatCurrency(contract.pricePerMinute()), duration(contract.billedTicks()),
+                duration(contract.maximumTicks() * people));
+        if (contract.flatFee() > 0L) billing = contract.pricePerMinute() > 0L
+                ? Component.translatable(DISPATCH + "row.flat_and_billing",
+                        NationTreasuryHelper.formatCurrency(contract.flatFee()), billing)
+                : Component.translatable(DISPATCH + "row.flat", NationTreasuryHelper.formatCurrency(contract.flatFee()),
+                        duration(contract.maximumTicks()));
+        graphics.drawString(font, font.plainSubstrByWidth(billing.getString(), textWidth),
                 row.x() + 12, row.y() + 36, MUTED, false);
         graphics.drawString(font, font.plainSubstrByWidth(lastContractLine(contract).getString(), textWidth),
                 row.x() + 12, row.y() + 50, DispatchContractActions.terminal(contract.state()) ? MUTED : TEXT, false);
@@ -452,10 +466,16 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
 
     private Component lastContractLine(ContractView contract) {
         if (DispatchContractActions.terminal(contract.state())) {
-            String reason = contract.endReason();
+            // A review keeps the reason it was ending after the failure ("failure|reason"); show the failure.
+            String reason = contract.endReason().contains("|")
+                    ? contract.endReason().substring(0, contract.endReason().indexOf('|')) : contract.endReason();
             String key = DISPATCH + "end." + reason.replace(':', '.');
             return Component.translatable(DISPATCH + "row.ended", reason.isBlank() ? Component.literal("-")
                     : I18n.exists(key) ? Component.translatable(key) : Component.literal(reason));
+        }
+        if ("FUNDED".equals(contract.state()) && (contract.viewerParticipant() || contract.viewerProvider())) {
+            return Component.translatable(DISPATCH + (contract.side().equals("DEFENSE")
+                    ? "row.wait_defense" : "row.wait_offense"));
         }
         Component checks = Component.translatable(DISPATCH + "row.checks", check(contract.employerApproved()),
                 check(contract.providerApproved()), contract.consentCount(), contract.participants().size());
@@ -593,13 +613,15 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
                         providers.size() > 1, delta -> {
                             providerIndex = wrap(providerIndex + delta, providers.size());
                             memberIndex = 0;
+                            pickedMembers.clear();
                         });
-                case PARTICIPANT -> cycler(graphics, control, member == null ? "-" : member.name(), mx, my,
-                        members.size() > 1, delta -> memberIndex = wrap(memberIndex + delta, members.size()));
+                case PARTICIPANT -> participantPicker(graphics, control, members, member, mx, my);
                 case CORE -> cycler(graphics, control, core == null ? "-" : coreLabel(core), mx, my, cores.size() > 1,
                         delta -> coreIndex = wrap(coreIndex + delta, cores.size()));
                 case OPPONENT -> cycler(graphics, control, opponent == null ? "-" : nationLabel(opponent), mx, my,
                         providers.size() > 1, delta -> opponentIndex = wrap(opponentIndex + delta, providers.size()));
+                case FLAT_FEE -> cycler(graphics, control, NationTreasuryHelper.formatCurrency(flatFee), mx, my, true,
+                        delta -> flatFee = clamp(flatFee + delta * step(10L), 0L, 1_000_000L));
                 case PRICE -> cycler(graphics, control, NationTreasuryHelper.formatCurrency(pricePerMinute), mx, my, true,
                         delta -> pricePerMinute = clamp(pricePerMinute + delta * step(10L), 0L, 10_000L));
                 case SUBSIDY -> cycler(graphics, control, NationTreasuryHelper.formatCurrency(subsidy), mx, my, true,
@@ -618,7 +640,8 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         drawButton(graphics, font, cancel, Component.translatable("screen.moveearth_addtional.nation.cancel"), MUTED,
                 cancel.contains(mx, my), true);
         hit(cancel, null, () -> modal = Modal.NONE);
-        boolean valid = provider != null && member != null && core != null && (!defense || opponent != null) && idle();
+        List<UUID> hired = members.stream().map(MemberOption::id).filter(pickedMembers::contains).toList();
+        boolean valid = provider != null && !hired.isEmpty() && core != null && (!defense || opponent != null) && idle();
         drawButton(graphics, font, confirm, Component.translatable(DISPATCH + "create.confirm"), SUCCESS,
                 confirm.contains(mx, my), valid);
         if (valid) hit(confirm, null, () -> {
@@ -627,7 +650,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
             // CREATE carries the subsidy in the revision slot, the price in amount and the minutes in auxiliary.
             send(C2S_RecoveryDispatchActionPacket.Action.CREATE, core.id(), provider.id(), opponentId,
                     money && snapshot.settings().fundEnabled() ? subsidy : 0L, money ? pricePerMinute : 0L,
-                    durationMinutes, defense ? 1 : 0, List.of(member.id()));
+                    durationMinutes, defense ? 1 : 0, hired, money ? flatFee : 0L);
             modal = Modal.NONE;
         });
     }
@@ -636,6 +659,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         List<Field> fields = new ArrayList<>(List.of(Field.SIDE, Field.PROVIDER, Field.PARTICIPANT, Field.CORE));
         if (defense) fields.add(Field.OPPONENT);
         if (snapshot.settings().dispatchMoneyEnabled()) {
+            fields.add(Field.FLAT_FEE);
             fields.add(Field.PRICE);
             if (snapshot.settings().fundEnabled()) fields.add(Field.SUBSIDY);
         }
@@ -659,6 +683,32 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
         hit(previous, null, () -> step.accept(-1));
         hit(next, null, () -> step.accept(1));
         hits.add(new Hit(middle, null, true, button -> step.accept(button == 1 ? -1 : 1)));
+    }
+
+    /** The member under the arrows, ticked when picked; clicking the name picks or drops them. */
+    private void participantPicker(GuiGraphics graphics, Rect control, List<MemberOption> members, MemberOption member,
+                                   int mx, int my) {
+        pickedMembers.retainAll(members.stream().map(MemberOption::id).toList());
+        String value = member == null ? "-" : (pickedMembers.contains(member.id()) ? "✔ " : "□ ") + member.name()
+                + "  (" + pickedMembers.size() + ")";
+        Rect previous = new Rect(control.x(), control.y(), 22, control.height());
+        Rect next = new Rect(control.right() - 22, control.y(), 22, control.height());
+        Rect middle = new Rect(previous.right() + 4, control.y(), Math.max(1, next.x() - previous.right() - 8),
+                control.height());
+        boolean many = members.size() > 1;
+        drawButton(graphics, font, previous, Component.literal("◀"), ACCENT, previous.contains(mx, my), many);
+        drawButton(graphics, font, next, Component.literal("▶"), ACCENT, next.contains(mx, my), many);
+        boolean picked = member != null && pickedMembers.contains(member.id());
+        drawCard(graphics, middle, picked ? SUCCESS : ACCENT, picked, member != null && middle.contains(mx, my));
+        graphics.drawCenteredString(font, font.plainSubstrByWidth(value, middle.width() - 10),
+                middle.x() + middle.width() / 2, middle.y() + (middle.height() - 8) / 2, member == null ? MUTED : TEXT);
+        if (many) {
+            hit(previous, null, () -> memberIndex = wrap(memberIndex - 1, members.size()));
+            hit(next, null, () -> memberIndex = wrap(memberIndex + 1, members.size()));
+        }
+        if (member != null) hit(middle, null, () -> {
+            if (!pickedMembers.remove(member.id())) pickedMembers.add(member.id());
+        });
     }
 
     private void openCreate() {
@@ -725,10 +775,16 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
 
     private void send(C2S_RecoveryDispatchActionPacket.Action action, UUID target, UUID secondary, UUID tertiary,
                       long revision, long amount, long auxiliary, int option, List<UUID> participants) {
-        pendingRequestId = ++requestId;
+        send(action, target, secondary, tertiary, revision, amount, auxiliary, option, participants, 0L);
+    }
+
+    private void send(C2S_RecoveryDispatchActionPacket.Action action, UUID target, UUID secondary, UUID tertiary,
+                      long revision, long amount, long auxiliary, int option, List<UUID> participants, long flatFee) {
+        requestId = (requestId + 1) & 0x7FFFFFFF;
+        pendingRequestId = requestId;
         pendingTicks = 0;
         PacketDistributor.sendToServer(new C2S_RecoveryDispatchActionPacket(pendingRequestId, action, target,
-                secondary, tertiary, revision, amount, auxiliary, option, participants));
+                secondary, tertiary, revision, amount, auxiliary, option, participants, flatFee));
     }
 
     private boolean idle() {
@@ -864,7 +920,7 @@ public final class RecoveryDispatchScreen extends Screen implements SuppressesCh
 
     private enum Modal { NONE, WAIVE, CREATE }
 
-    private enum Field { SIDE, PROVIDER, PARTICIPANT, CORE, OPPONENT, PRICE, SUBSIDY, DURATION }
+    private enum Field { SIDE, PROVIDER, PARTICIPANT, CORE, OPPONENT, FLAT_FEE, PRICE, SUBSIDY, DURATION }
 
     private enum Tab {
         RECOVERY(KEY + "tab.recovery"),

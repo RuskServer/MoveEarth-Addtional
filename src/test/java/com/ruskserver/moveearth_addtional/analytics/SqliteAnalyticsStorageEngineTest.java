@@ -65,6 +65,32 @@ public class SqliteAnalyticsStorageEngineTest {
     }
 
     @Test
+    void rejectionRankingUsesRefusalCountsAndJstCalendarDays() throws Exception {
+        long midnight = java.time.Instant.parse("2026-10-26T15:00:00Z").getEpochSecond();
+        engine.writeBatch(List.of(
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(midnight - 1, "provenance.rejected",
+                        null, null, "minecraft:overworld", 1, 64, 1, 500, "cbc.explosion")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(midnight, "provenance.rejected",
+                        null, null, "minecraft:overworld", 2, 64, 2, 2, "machine.break")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(midnight + 60, "provenance.rejected",
+                        null, null, "minecraft:overworld", 3, 64, 3, 3, "machine.break")),
+                new AnalyticsEventQueue.GameEventLogEvent(new GameEventRecord(midnight, "economy.ledger",
+                        null, null, null, null, null, null, 9999, "unrelated"))));
+        var ranking = engine.aggregateGameEvents("provenance.rejected", null, GameEventGroupBy.DETAIL,
+                midnight - 60, midnight + 120, 10);
+        assertEquals("cbc.explosion", ranking.getFirst().key());
+        assertEquals(500, ranking.getFirst().total());
+        assertEquals(5, ranking.get(1).total());
+        assertEquals(2, ranking.get(1).count());
+        var days = engine.aggregateGameEvents("provenance.rejected", null, GameEventGroupBy.DAY,
+                midnight - 60, midnight + 120, 10);
+        assertEquals(2, days.size());
+        assertEquals(500, days.getFirst().total());
+        assertEquals(5, days.getLast().total());
+        assertEquals(Long.parseLong(days.getFirst().key()) + 1, Long.parseLong(days.getLast().key()));
+    }
+
+    @Test
     public void storesQueriesAggregatesAndPurgesGameEvents() throws Exception {
         long now = System.currentTimeMillis() / 1000L;
         UUID alice = UUID.randomUUID();

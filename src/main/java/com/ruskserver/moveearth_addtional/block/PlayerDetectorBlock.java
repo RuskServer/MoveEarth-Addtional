@@ -128,9 +128,14 @@ public class PlayerDetectorBlock extends Block implements EntityBlock {
     public void appendHoverText(ItemStack stack, net.minecraft.world.item.Item.TooltipContext context, List<Component> tooltip, net.minecraft.world.item.TooltipFlag flag) {
         super.appendHoverText(stack, context, tooltip, flag);
         tooltip.add(Component.literal("§7周囲100ブロックに侵入したプレイヤーを検知します。"));
-        tooltip.add(Component.literal("§7国民が置くと国家の物になり、維持費（"
-                + PlayerDetectorBlockEntity.UPKEEP_CYCLE_HOURS + "時間ごとに"
-                + PlayerDetectorBlockEntity.UPKEEP_COST + " TC）は国庫から払われます。"));
+        // The server's settings reach the client with the world; before joining one, the shipped defaults.
+        String upkeep;
+        try {
+            upkeep = PlayerDetectorBlockEntity.upkeepCycleHours() + "時間ごとに" + PlayerDetectorBlockEntity.upkeepCost() + " TC";
+        } catch (IllegalStateException notLoaded) {
+            upkeep = "24時間ごとに2 TC";
+        }
+        tooltip.add(Component.literal("§7国民が置くと国家の物になり、維持費（" + upkeep + "）は国庫から払われます。"));
         tooltip.add(Component.literal("§7国民全員に侵入警告が届き、同盟国の人は警告しません。"));
         tooltip.add(Component.literal("§c※ 半径3チャンク以内に重複して設置することはできません。"));
     }

@@ -118,7 +118,7 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
                                long requestedSubsidy, long ownEscrow, long subsidyEscrow, boolean employerApproved,
                                boolean providerApproved, boolean subsidyApproved, boolean viewerParticipant,
                                boolean viewerConsented, String endReason, boolean viewerEmployer,
-                               boolean viewerProvider) {
+                               boolean viewerProvider, long flatFee) {
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeVarLong(revision); b.writeUtf(state, 32);
             b.writeUtf(employer, 64); b.writeUtf(provider, 64); b.writeUtf(side, 16); b.writeUtf(target, 96);
             writeList(b, participants, (buf, text) -> buf.writeUtf(text, 64)); b.writeVarInt(consentCount);
@@ -126,12 +126,13 @@ public record S2C_RecoveryDispatchSnapshotPacket(boolean openScreen, long openTi
             b.writeVarLong(requestedSubsidy); b.writeVarLong(ownEscrow); b.writeVarLong(subsidyEscrow); b.writeBoolean(employerApproved);
             b.writeBoolean(providerApproved); b.writeBoolean(subsidyApproved); b.writeBoolean(viewerParticipant);
             b.writeBoolean(viewerConsented); b.writeUtf(endReason == null ? "" : endReason, 64);
-            b.writeBoolean(viewerEmployer); b.writeBoolean(viewerProvider); }
+            b.writeBoolean(viewerEmployer); b.writeBoolean(viewerProvider); b.writeVarLong(Math.max(0L, flatFee)); }
         static ContractView read(FriendlyByteBuf b) { return new ContractView(b.readUUID(), b.readVarLong(),
                 b.readUtf(32), b.readUtf(64), b.readUtf(64), b.readUtf(16), b.readUtf(96),
                 readList(b, value -> value.readUtf(64)), b.readVarInt(), b.readVarLong(), b.readVarLong(),
                 b.readVarLong(), b.readVarLong(), b.readVarLong(), b.readVarLong(), b.readBoolean(), b.readBoolean(),
-                b.readBoolean(), b.readBoolean(), b.readBoolean(), b.readUtf(64), b.readBoolean(), b.readBoolean()); }
+                b.readBoolean(), b.readBoolean(), b.readBoolean(), b.readUtf(64), b.readBoolean(), b.readBoolean(),
+                b.readVarLong()); }
     }
     public record NationOption(UUID id, String name, String tag, List<MemberOption> members) {
         void write(FriendlyByteBuf b) { b.writeUUID(id); b.writeUtf(name, 64); b.writeUtf(tag, 16);

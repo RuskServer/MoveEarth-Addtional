@@ -33,12 +33,18 @@ public final class JobService {
 
         com.ruskserver.moveearth_addtional.analytics.collector.AnalyticsCollectorManager.INSTANCE.recordJobsXp(player, result.awardedXp());
 
+        // The nation's tax comes out of the award itself; see NationTaxPolicy.
+        java.util.UUID nationId = com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(player.getServer())
+                .nationIdFor(player.getUUID()).orElse(null);
+        int taxPercent = com.ruskserver.moveearth_addtional.s2.nation.NationTaxSavedData.get(player.getServer())
+                .percent(nationId);
         EconomyLedgerSavedData.JobIncomeSnapshot income = EconomyLedgerSavedData.get(player.getServer())
-                .awardJobIncome(player.getUUID(), result.awardedXp(), System.currentTimeMillis());
+                .awardJobIncome(player.getUUID(), result.awardedXp(), System.currentTimeMillis(), nationId, taxPercent);
 
         JobProgressSavedData.ProgressSnapshot progress = data.snapshot(player.getUUID())
                 .progress(definition.id());
-        JobProgressBossBar.show(player, definition, progress, result.awardedXp(), income.justEarned());
+        JobProgressBossBar.show(player, definition, progress, result.awardedXp(), income.justEarned(),
+                income.justTaxed());
 
         if (result.leveledUp()) {
             player.sendSystemMessage(MoveEarthMessage.success("JOBS  •  " + definition.displayName()

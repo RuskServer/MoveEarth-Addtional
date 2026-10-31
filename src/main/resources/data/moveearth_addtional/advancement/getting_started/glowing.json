@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "glowing"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:glow_berries"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.glowing.title",
+      "fallback": "光ってない？"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.glowing.description",
+      "fallback": "被曝しすぎた。夜でも明るそう"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

@@ -35,6 +35,8 @@ public final class EconomyLedgerSavedData extends SavedData {
     /** Newest transactions per player and nation account; the only source of account history. */
     private final RecentIndex<Account, Transaction> recentByAccount = new RecentIndex<>(RECENT_INDEX_LIMIT);
     private final Map<UUID, JobIncomeState> jobIncome = new LinkedHashMap<>();
+    /** Jobs tax owed to each nation, paid into its treasury in batches ({@link #flushJobTax}). */
+    private final Map<UUID, Long> pendingJobTax = new LinkedHashMap<>();
     private final Map<UUID, EventIncome> eventIncome = new LinkedHashMap<>();
     private UUID harvestId;
     private long harvestEndTick;
@@ -449,23 +451,66 @@ public final class EconomyLedgerSavedData extends SavedData {
 
     /** Income counters and minted balance live in the same SavedData for crash-safe persistence. */
     public JobIncomeSnapshot awardJobIncome(UUID playerId, double xp, long nowMillis) {
+        return awardJobIncome(playerId, xp, nowMillis, null, 0);
+    }
+
+    /**
+     * As {@link #awardJobIncome(UUID, double, long)}, with {@code taxPercent} of the award paid into the
+     * player's nation instead of to them ({@code NationTaxPolicy}). The hourly and daily limits count the whole
+     * award, so a tax neither lowers nor raises how much work pays in total.
+     */
+    public JobIncomeSnapshot awardJobIncome(UUID playerId, double xp, long nowMillis, UUID nationId, int taxPercent) {
         if (playerId == null || !Double.isFinite(xp) || xp <= 0.0D) return jobIncome(playerId, nowMillis);
         JobIncomeState state = jobIncome.computeIfAbsent(playerId, ignored -> new JobIncomeState());
         advanceIncomeWindow(state, nowMillis);
         JobIncomePolicy.Award award = JobIncomePolicy.award(xp, state.carriedXp,
                 state.paidThisHour, state.paidToday);
+        int net = award.currency();
+        int tax = 0;
         if (award.currency() > 0) {
-            Result result = transfer(UUID.randomUUID(), null, Account.player(playerId),
-                    award.currency(), "jobs_action");
-            if (result != Result.APPLIED) return new JobIncomeSnapshot(0, state.paidThisHour,
-                    state.paidToday, state.carriedXp);
+            var split = com.ruskserver.moveearth_addtional.s2.nation.NationTaxPolicy.split(award.currency(),
+                    nationId == null ? 0 : taxPercent, state.taxCarry);
+            if (split.net() > 0) {
+                Result result = transfer(UUID.randomUUID(), null, Account.player(playerId), split.net(), "jobs_action");
+                if (result != Result.APPLIED) return new JobIncomeSnapshot(0, state.paidThisHour,
+                        state.paidToday, state.carriedXp);
+            }
+            net = split.net();
+            tax = split.tax();
+            state.taxCarry = split.carry();
+            // Paid in batches (flushJobTax), so the treasury history is not one line per mined block.
+            if (tax > 0) pendingJobTax.merge(nationId, (long) tax, Long::sum);
             state.paidThisHour += award.currency();
             state.paidToday += award.currency();
         }
         state.carriedXp = award.carriedXp();
         setDirty();
-        return new JobIncomeSnapshot(award.currency(), state.paidThisHour,
-                state.paidToday, state.carriedXp);
+        return new JobIncomeSnapshot(net, state.paidThisHour, state.paidToday, state.carriedXp, tax);
+    }
+
+    /**
+     * Pays every nation the Jobs tax collected since the last flush, as one transaction each. The players' share
+     * was paid when earned; the treasury's is created here, so the total is the same as an untaxed award.
+     * A nation that has gone in between gets nothing.
+     *
+     * @return the currency paid out
+     */
+    public long flushJobTax(java.util.function.Predicate<UUID> nationExists) {
+        if (pendingJobTax.isEmpty()) return 0L;
+        long paid = 0L;
+        for (Map.Entry<UUID, Long> entry : List.copyOf(pendingJobTax.entrySet())) {
+            pendingJobTax.remove(entry.getKey());
+            if (entry.getValue() <= 0L || !nationExists.test(entry.getKey())) continue;
+            if (transfer(UUID.randomUUID(), null, Account.nation(entry.getKey()), entry.getValue(), "jobs_tax")
+                    == Result.APPLIED) paid += entry.getValue();
+        }
+        setDirty();
+        return paid;
+    }
+
+    /** Jobs tax collected for a nation and not yet paid into its treasury. */
+    public long pendingJobTax(UUID nationId) {
+        return nationId == null ? 0L : pendingJobTax.getOrDefault(nationId, 0L);
     }
 
     public JobIncomeSnapshot jobIncome(UUID playerId, long nowMillis) {
@@ -540,9 +585,18 @@ public final class EconomyLedgerSavedData extends SavedData {
             entry.putInt("PaidHour", state.paidThisHour);
             entry.putInt("PaidDay", state.paidToday);
             entry.putDouble("CarriedXp", state.carriedXp);
+            if (state.taxCarry > 0) entry.putInt("TaxCarry", state.taxCarry);
             jobIncomeList.add(entry);
         });
         tag.put("JobIncome", jobIncomeList);
+        ListTag pendingTaxList = new ListTag();
+        pendingJobTax.forEach((nation, amount) -> {
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("Nation", nation);
+            entry.putLong("Amount", amount);
+            pendingTaxList.add(entry);
+        });
+        tag.put("PendingJobTax", pendingTaxList);
         ListTag eventIncomeList = new ListTag();
         eventIncome.forEach((playerId, income) -> {
             CompoundTag entry = new CompoundTag();
@@ -635,7 +689,14 @@ public final class EconomyLedgerSavedData extends SavedData {
             double carriedXp = entry.getDouble("CarriedXp");
             state.carriedXp = Double.isFinite(carriedXp) && carriedXp >= 0.0D
                     && carriedXp < JobIncomePolicy.XP_PER_CURRENCY ? carriedXp : 0.0D;
+            state.taxCarry = Math.max(0, Math.min(99, entry.getInt("TaxCarry")));
             data.jobIncome.put(entry.getUUID("Player"), state);
+        }
+        ListTag pendingTaxList = tag.getList("PendingJobTax", Tag.TAG_COMPOUND);
+        for (int i = 0; i < pendingTaxList.size(); i++) {
+            CompoundTag entry = pendingTaxList.getCompound(i);
+            long amount = entry.getLong("Amount");
+            if (entry.hasUUID("Nation") && amount > 0L) data.pendingJobTax.put(entry.getUUID("Nation"), amount);
         }
         if (tag.hasUUID("HarvestId")) {
             data.harvestId = tag.getUUID("HarvestId");
@@ -744,13 +805,20 @@ public final class EconomyLedgerSavedData extends SavedData {
         }
     }
     public record MarketWreckage(UUID nationId, List<MarketClaim> claims) { }
-    public record JobIncomeSnapshot(int justEarned, int paidThisHour, int paidToday, double carriedXp) { }
+    /** {@code justEarned} is what reached the player; {@code justTaxed} what went to their nation. */
+    public record JobIncomeSnapshot(int justEarned, int paidThisHour, int paidToday, double carriedXp, int justTaxed) {
+        public JobIncomeSnapshot(int justEarned, int paidThisHour, int paidToday, double carriedXp) {
+            this(justEarned, paidThisHour, paidToday, carriedXp, 0);
+        }
+    }
     private static final class JobIncomeState {
         private long hour = -1L;
         private long day = -1L;
         private int paidThisHour;
         private int paidToday;
         private double carriedXp;
+        /** Hundredths of a currency of tax owed, carried until it makes a whole one. */
+        private int taxCarry;
     }
     public record Transaction(UUID id, Account from, Account to, long amount, String reason,
                               UUID relatedId, long occurredAt) {

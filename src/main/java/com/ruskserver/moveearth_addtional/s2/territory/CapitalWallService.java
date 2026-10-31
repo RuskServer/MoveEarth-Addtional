@@ -38,6 +38,11 @@ public final class CapitalWallService {
 
     private CapitalWallService() { }
 
+    static void capitalRoleChanged(MinecraftServer server, UUID coreId) {
+        PENDING.remove(coreId);
+        CapitalWallSavedData.get(server).remove(coreId);
+    }
+
     private record Pending(ResourceLocation dimension, BlockPos pos, TerritoryWallLayerSearch.Session session) { }
 
     /** Called with each finished closure check. */

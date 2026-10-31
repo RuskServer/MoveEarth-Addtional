@@ -16,8 +16,8 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 public class ModMessages {
     @SubscribeEvent
     public static void register(final RegisterPayloadHandlersEvent event) {
-        // One protocol per release: clients from another MoveEarth version are refused at login.
-        final PayloadRegistrar registrar = event.registrar("3.6");
+        // Preserve v3.7 payload compatibility; new capital-management channels are optional and separately versioned.
+        final PayloadRegistrar registrar = event.registrar("3.7");
         NationPayloads.register(registrar);
         SiegePayloads.register(registrar);
         MarketPayloads.register(registrar);

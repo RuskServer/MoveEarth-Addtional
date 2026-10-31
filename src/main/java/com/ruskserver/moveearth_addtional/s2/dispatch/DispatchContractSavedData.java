@@ -19,14 +19,15 @@ import java.util.UUID;
 public final class DispatchContractSavedData extends SavedData {
     private final Map<UUID, Contract> contracts = new LinkedHashMap<>();
 
+    /** The creating side has already agreed to its own offer, so it starts approved by the employer. */
     public Contract create(UUID employer, UUID provider, UUID targetCore, UUID opponent, Side side,
                            Set<UUID> participants, long pricePerOpenMinute, long maximumOpenTicks,
-                           long requestedSubsidy, long createdAt) {
+                           long requestedSubsidy, long createdAt, long flatFee) {
         Contract value = new Contract(UUID.randomUUID(), 1L, employer, provider, targetCore, opponent, side,
-                Set.copyOf(participants), Set.of(), false, false, false,
+                Set.copyOf(participants), Set.of(), true, false, false,
                 Math.max(0L, pricePerOpenMinute), Math.max(1L, maximumOpenTicks),
                 Math.max(0L, requestedSubsidy), 0L, 0L, null, null, null,
-                State.APPROVAL_PENDING, Math.max(0L, createdAt), 0L, 0L, Map.of(), "");
+                State.APPROVAL_PENDING, Math.max(0L, createdAt), 0L, 0L, Map.of(), "", Math.max(0L, flatFee));
         contracts.put(value.id(), value);
         setDirty();
         return value;
@@ -142,6 +143,24 @@ public final class DispatchContractSavedData extends SavedData {
         return after;
     }
 
+    /** Staff retrying the settlement of a contract that stopped in review; settling is idempotent. */
+    public Contract retrySettling(UUID id) {
+        Contract before = contracts.get(id);
+        if (before == null || before.state() != State.REVIEW_REQUIRED) return null;
+        Contract after = before.withState(State.SETTLING, before.endReason());
+        replace(after);
+        return after;
+    }
+
+    /** Staff closing a contract without moving any money, for what they settle by hand. */
+    public Contract forceClose(UUID id, String reason) {
+        Contract before = contracts.get(id);
+        if (before == null || before.state() == State.COMPLETED || before.state() == State.CANCELLED) return null;
+        Contract after = before.withState(State.CANCELLED, reason);
+        replace(after);
+        return after;
+    }
+
     public Contract review(UUID id, String reason) {
         Contract before = contracts.get(id);
         if (before == null) return null;
@@ -200,6 +219,7 @@ public final class DispatchContractSavedData extends SavedData {
         }
         tag.put("Billed", billed);
         tag.putString("EndReason", value.endReason());
+        if (value.flatFee() > 0L) tag.putLong("FlatFee", value.flatFee());
         return tag;
     }
 
@@ -244,7 +264,8 @@ public final class DispatchContractSavedData extends SavedData {
                     value.hasUUID("FundTransaction") ? value.getUUID("FundTransaction") : null,
                     value.hasUUID("Siege") ? value.getUUID("Siege") : null, state,
                     Math.max(0L, value.getLong("CreatedAt")), Math.max(0L, value.getLong("ActivatedAt")),
-                    Math.max(0L, value.getLong("LastAccountedAt")), Map.copyOf(billed), value.getString("EndReason"));
+                    Math.max(0L, value.getLong("LastAccountedAt")), Map.copyOf(billed), value.getString("EndReason"),
+                    Math.max(0L, value.getLong("FlatFee")));
             data.contracts.put(contract.id(), contract);
         }
         return data;
@@ -265,7 +286,7 @@ public final class DispatchContractSavedData extends SavedData {
                            long requestedSubsidy, long ownEscrow, long subsidyEscrow,
                            UUID employerTransactionId, UUID fundTransactionId, UUID siegeId,
                            State state, long createdAt, long activatedAt, long lastAccountedAt,
-                           Map<UUID, Long> billedTicks, String endReason) {
+                           Map<UUID, Long> billedTicks, String endReason, long flatFee) {
         Contract withApprovals(boolean employer, boolean provider, boolean subsidy, State next) {
             return copy(revision + 1L, consents, employer, provider, subsidy, ownEscrow, subsidyEscrow,
                     employerTransactionId, fundTransactionId, siegeId, next, activatedAt, lastAccountedAt,
@@ -303,7 +324,7 @@ public final class DispatchContractSavedData extends SavedData {
             return new Contract(id, nextRevision, employerNation, providerNation, targetCoreId, opponentNation,
                     side, participants, nextConsents, employer, provider, subsidyApproved,
                     pricePerOpenMinute, maximumOpenTicks, requestedSubsidy, own, subsidy,
-                    employerTx, fundTx, siege, nextState, createdAt, activated, accounted, billed, reason);
+                    employerTx, fundTx, siege, nextState, createdAt, activated, accounted, billed, reason, flatFee);
         }
     }
 }

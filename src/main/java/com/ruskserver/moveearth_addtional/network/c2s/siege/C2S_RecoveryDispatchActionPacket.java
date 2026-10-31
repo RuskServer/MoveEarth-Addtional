@@ -14,7 +14,7 @@ import java.util.UUID;
 
 public record C2S_RecoveryDispatchActionPacket(int requestId, Action action, UUID targetId,
         UUID secondaryId, UUID tertiaryId, long expectedRevision, long amount,
-        long auxiliaryAmount, int option, List<UUID> participants) implements CustomPacketPayload {
+        long auxiliaryAmount, int option, List<UUID> participants, long flatFee) implements CustomPacketPayload {
     private static final UUID NONE = new UUID(0L, 0L);
     public static final Type<C2S_RecoveryDispatchActionPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "recovery_dispatch_action"));
@@ -34,6 +34,7 @@ public record C2S_RecoveryDispatchActionPacket(int requestId, Action action, UUI
         b.writeVarLong(Math.max(0L, value.expectedRevision)); b.writeVarLong(Math.max(0L, value.amount));
         b.writeVarLong(Math.max(0L, value.auxiliaryAmount)); b.writeVarInt(Math.max(0, value.option));
         b.writeVarInt(value.participants.size()); for (UUID id : value.participants) b.writeUUID(id);
+        b.writeVarLong(Math.max(0L, value.flatFee));
     }
     private static C2S_RecoveryDispatchActionPacket read(FriendlyByteBuf b) {
         int request = b.readVarInt(); int ordinal = b.readUnsignedByte(); UUID target = optional(b.readUUID());
@@ -42,8 +43,9 @@ public record C2S_RecoveryDispatchActionPacket(int requestId, Action action, UUI
         int option = b.readVarInt(); int count = b.readVarInt();
         if (count < 0 || count > 64) throw new IllegalArgumentException("Too many dispatch participants");
         List<UUID> participants = new ArrayList<>(count); for (int i = 0; i < count; i++) participants.add(b.readUUID());
+        long flatFee = b.readVarLong();
         return new C2S_RecoveryDispatchActionPacket(request, Action.fromId(ordinal), target, secondary,
-                tertiary, revision, amount, auxiliary, option, participants);
+                tertiary, revision, amount, auxiliary, option, participants, flatFee);
     }
     private static UUID optional(UUID id) { return NONE.equals(id) ? null : id; }
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }

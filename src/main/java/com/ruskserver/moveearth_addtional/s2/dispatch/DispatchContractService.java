@@ -46,7 +46,7 @@ public final class DispatchContractService {
     public static ActionResult create(ServerPlayer actor, UUID providerNation, UUID targetCoreId,
                                       UUID requestedOpponent,
                                       DispatchContractSavedData.Side side, Set<UUID> participants,
-                                      long pricePerMinute, long maxOpenTicks, long requestedSubsidy) {
+                                      long pricePerMinute, long maxOpenTicks, long requestedSubsidy, long flatFee) {
         if (!RecoveryDispatchConfig.dispatchEnabled()) return ActionResult.fail("dispatch_disabled");
         NationSavedData nations = NationSavedData.get(actor.server);
         UUID employer = nations.nationIdFor(actor.getUUID()).orElse(null);
@@ -81,19 +81,21 @@ public final class DispatchContractService {
         if (participants.stream().anyMatch(id -> DispatchContractSavedData.get(actor.server)
                 .reservedForPlayer(id).isPresent())) return ActionResult.fail("participant_busy");
         long boundedTicks = Math.min(RecoveryDispatchConfig.dispatchMaxOpenTicks(), Math.max(1L, maxOpenTicks));
-        long maximumCost = DispatchContractPolicy.maximumCost(pricePerMinute, boundedTicks, participants.size());
+        long maximumCost = DispatchContractPolicy.escrow(flatFee, pricePerMinute, boundedTicks, participants.size());
         if (maximumCost > 0L && !RecoveryDispatchConfig.dispatchMoneyEnabled()) {
             return ActionResult.fail("dispatch_money_disabled");
         }
         DispatchContractSavedData.Contract created = DispatchContractSavedData.get(actor.server).create(
                 employer, providerNation, targetCoreId, opponent, side, participants, pricePerMinute,
-                boundedTicks, Math.min(maximumCost, Math.max(0L, requestedSubsidy)), OpenTimeService.now(actor.server));
+                boundedTicks, Math.min(maximumCost, Math.max(0L, requestedSubsidy)), OpenTimeService.now(actor.server),
+                flatFee);
         WarHistorySavedData.get(actor.server).append(OpenTimeService.now(actor.server),
                 WarHistorySavedData.Type.DISPATCH_CREATED, WarHistorySavedData.Visibility.NATION,
                 employer, providerNation, created.id(), List.of(side.name()));
         NationNotificationService.publish(actor.server, List.of(employer, providerNation),
                 NationNotificationSavedData.EventType.DISPATCH_CREATED, null, null, null,
                 List.of(created.id().toString(), side.name()));
+        DispatchNudges.created(actor.server, created);
         return ActionResult.ok(created);
     }
 
@@ -119,12 +121,15 @@ public final class DispatchContractService {
         if (!employer && !provider && !adminSubsidy) return ActionResult.fail("no_permission");
         DispatchContractSavedData.Contract updated = data.approve(contractId, employer, provider,
                 adminSubsidy, revision);
+        if (updated != null) DispatchNudges.progressed(actor.server, contract, updated);
         return updated == null ? ActionResult.fail("stale") : ActionResult.ok(updated);
     }
 
     public static ActionResult consent(ServerPlayer actor, UUID contractId, long revision, boolean accepted) {
-        DispatchContractSavedData.Contract updated = DispatchContractSavedData.get(actor.server)
-                .consent(contractId, actor.getUUID(), accepted, revision);
+        DispatchContractSavedData data = DispatchContractSavedData.get(actor.server);
+        DispatchContractSavedData.Contract before = data.byId(contractId).orElse(null);
+        DispatchContractSavedData.Contract updated = data.consent(contractId, actor.getUUID(), accepted, revision);
+        if (updated != null && before != null) DispatchNudges.progressed(actor.server, before, updated);
         return updated == null ? ActionResult.fail("stale_or_not_participant") : ActionResult.ok(updated);
     }
 
@@ -139,8 +144,8 @@ public final class DispatchContractService {
                 && !original.subsidyApproved()) return ActionResult.fail("subsidy_pending");
         DispatchContractSavedData.Contract funding = data.beginFunding(contractId, revision);
         if (funding == null) return ActionResult.fail("not_ready");
-        long maximum = DispatchContractPolicy.maximumCost(funding.pricePerOpenMinute(), funding.maximumOpenTicks(),
-                funding.participants().size());
+        long maximum = DispatchContractPolicy.escrow(funding.flatFee(), funding.pricePerOpenMinute(),
+                funding.maximumOpenTicks(), funding.participants().size());
         long subsidy = 0L;
         UUID fundTransaction = null;
         NationRecoverySavedData.Episode episode = NationRecoverySavedData.get(actor.server)
@@ -188,6 +193,7 @@ public final class DispatchContractService {
         DispatchContractSavedData.Contract funded = data.funded(funding.id(), own, subsidy,
                 employerTransaction, fundTransaction);
         fundedByCore = null;
+        if (funded != null) DispatchNudges.funded(actor.server, funded);
         return funded == null ? ActionResult.fail("funding_failed") : ActionResult.ok(funded);
     }
 
@@ -217,6 +223,11 @@ public final class DispatchContractService {
                         && contract.targetCoreId().equals(siege.coreId()))
                 .filter(contract -> nations.nation(contract.providerNation()).map(provider ->
                         contract.participants().stream().allMatch(provider.members()::containsKey)).orElse(false))
+                // An alliance or truce made after funding no longer lets the contract go to war.
+                .filter(contract -> !nations.isAllied(contract.employerNation(), contract.opponentNation())
+                        && !nations.isAllied(contract.providerNation(), contract.opponentNation())
+                        && !SiegeSavedData.get(server).isPeaceTruceActive(contract.employerNation(), contract.opponentNation())
+                        && !SiegeSavedData.get(server).isPeaceTruceActive(contract.providerNation(), contract.opponentNation()))
                 .filter(contract -> contract.side() == DispatchContractSavedData.Side.OFFENSE
                     ? contract.employerNation().equals(siege.attackerNation())
                     && contract.opponentNation().equals(siege.defenderNation())
@@ -237,6 +248,7 @@ public final class DispatchContractService {
             NationNotificationService.publish(server, List.of(active.employerNation(), active.providerNation()),
                     NationNotificationSavedData.EventType.DISPATCH_ACTIVATED, null, null, null,
                     List.of(active.id().toString()));
+            DispatchNudges.activated(server, active, siege);
         }
     }
 
@@ -259,27 +271,33 @@ public final class DispatchContractService {
         long now = OpenTimeService.now(server);
         NationSavedData nations = NationSavedData.get(server);
         for (DispatchContractSavedData.Contract contract : data.all()) {
+            // The time to get ready is its own window: tying it to the contract's length gave a 30-minute
+            // contract 30 minutes from creation to battle, so one agreed the day before was always gone.
             if (contract.state() != DispatchContractSavedData.State.ACTIVE
+                    && contract.state() != DispatchContractSavedData.State.SETTLING
                     && contract.state() != DispatchContractSavedData.State.COMPLETED
                     && contract.state() != DispatchContractSavedData.State.CANCELLED
                     && contract.state() != DispatchContractSavedData.State.REVIEW_REQUIRED
-                    && now - contract.createdAt() >= contract.maximumOpenTicks()) {
+                    && now - contract.createdAt() >= RecoveryDispatchConfig.dispatchReservationOpenTicks()) {
                 if (contract.state() == DispatchContractSavedData.State.FUNDED
                         || contract.state() == DispatchContractSavedData.State.FUNDING) {
                     settle(server, contract.id(), "reservation_expired");
                 } else {
                     DispatchContractSavedData.Contract finished = data.finish(
-                            contract.id(), true, "reservation_expired");
-                    publishFinished(server, finished, true, "reservation_expired", 0L);
+                            contract.id(), true, "approval_expired");
+                    publishFinished(server, finished, true, "approval_expired", 0L);
                 }
                 continue;
             }
             if (contract.state() != DispatchContractSavedData.State.ACTIVE) continue;
-            boolean invalidParties = nations.nation(contract.employerNation()).isEmpty()
-                    || nations.nation(contract.providerNation()).isEmpty()
+            if (nations.nation(contract.employerNation()).isEmpty()) {
+                settle(server, contract.id(), "employer_gone");
+                continue;
+            }
+            boolean providerLeft = nations.nation(contract.providerNation()).isEmpty()
                     || contract.participants().stream().anyMatch(player -> !contract.providerNation().equals(
                     nations.nationIdFor(player).orElse(null)));
-            if (invalidParties) { settle(server, contract.id(), "party_changed"); continue; }
+            if (providerLeft) { settle(server, contract.id(), "provider_left"); continue; }
             boolean siegeAlive = SiegeSavedData.get(server).activeById(contract.siegeId()).isPresent()
                     || SiegeSavedData.get(server).fallenBySiegeId(contract.siegeId()).isPresent();
             if (!siegeAlive) { settle(server, contract.id(), "siege_ended"); continue; }
@@ -319,8 +337,39 @@ public final class DispatchContractService {
         if (active == null) return false;
         DispatchContractSavedData.Contract settling = data.settling(contractId, reason);
         if (settling == null) return false;
-        long earned = settling.billedTicks().values().stream()
+        return completeSettlement(server, data, settling, reason);
+    }
+
+    /**
+     * Staff retrying a contract stopped in review. Every payment is booked under the contract's own id, so
+     * what already went through is not paid twice.
+     */
+    public static boolean retrySettlement(MinecraftServer server, UUID contractId) {
+        DispatchContractSavedData data = DispatchContractSavedData.get(server);
+        DispatchContractSavedData.Contract settling = data.retrySettling(contractId);
+        if (settling == null) return false;
+        // A review keeps why the contract was ending after the failure ("failure|reason"): that decides the fee.
+        String reason = settling.endReason();
+        return completeSettlement(server, data, settling, reason.substring(reason.indexOf('|') + 1));
+    }
+
+    /** Staff closing a contract with no money moved; they settle it by hand. */
+    public static boolean forceClose(MinecraftServer server, UUID contractId) {
+        DispatchContractSavedData data = DispatchContractSavedData.get(server);
+        DispatchContractSavedData.Contract closed = data.forceClose(contractId, "closed_by_staff");
+        if (closed == null) return false;
+        SiegeParticipationSavedData.get(server).removeContract(contractId);
+        publishFinished(server, closed, true, "closed_by_staff", 0L);
+        return true;
+    }
+
+    private static boolean completeSettlement(MinecraftServer server, DispatchContractSavedData data,
+                                              DispatchContractSavedData.Contract settling, String reason) {
+        UUID contractId = settling.id();
+        long timed = settling.billedTicks().values().stream()
                 .mapToLong(ticks -> DispatchContractPolicy.earned(settling.pricePerOpenMinute(), ticks)).sum();
+        long flat = DispatchContractPolicy.flatFeeEarned(settling.siegeId() != null, reason) ? settling.flatFee() : 0L;
+        long earned = timed > Long.MAX_VALUE - flat ? Long.MAX_VALUE : timed + flat;
         earned = Math.min(earned, saturatedAdd(settling.ownEscrow(), settling.subsidyEscrow()));
         long subsidyUsed = Math.min(earned, settling.subsidyEscrow());
         long ownUsed = Math.max(0L, earned - subsidyUsed);
@@ -328,7 +377,7 @@ public final class DispatchContractService {
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         if (EconomyGateway.deposit(server, settling.providerNation(), earned,
                 providerPayment, "dispatch_provider_payment") != EconomyGateway.Result.SUCCESS) {
-            data.review(contractId, "provider_deposit_failed");
+            data.review(contractId, "provider_deposit_failed|" + reason);
             return false;
         }
         long ownRefund = Math.max(0L, settling.ownEscrow() - ownUsed);
@@ -336,7 +385,7 @@ public final class DispatchContractService {
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         if (EconomyGateway.deposit(server, settling.employerNation(), ownRefund,
                 employerRefund, "dispatch_employer_refund") != EconomyGateway.Result.SUCCESS) {
-            data.review(contractId, "employer_refund_failed");
+            data.review(contractId, "employer_refund_failed|" + reason);
             return false;
         }
         if (settling.fundTransactionId() != null) {
@@ -345,11 +394,12 @@ public final class DispatchContractService {
                     .filter(value -> value.aidReserved() >= settling.subsidyEscrow()).findFirst().orElse(null);
             if (episode == null || !RecoveryFundService.consumeAid(server, episode.id(),
                     settling.fundTransactionId(), subsidyUsed)) {
-                data.review(contractId, "fund_settlement_failed");
+                data.review(contractId, "fund_settlement_failed|" + reason);
                 return false;
             }
         }
-        SiegeParticipationSavedData.get(server).removeSiege(settling.siegeId());
+        // Only this contract's players: others hired into the same Siege fight on.
+        SiegeParticipationSavedData.get(server).removeContract(contractId);
         boolean cancelled = reason != null && reason.startsWith("cancelled");
         DispatchContractSavedData.Contract finished = data.finish(contractId, cancelled, reason);
         publishFinished(server, finished, cancelled, reason, earned);
@@ -362,10 +412,11 @@ public final class DispatchContractService {
         if (contract == null) return ActionResult.fail("contract_missing");
         NationSavedData nations = NationSavedData.get(actor.server);
         UUID nation = nations.nationIdFor(actor.getUUID()).orElse(null);
-        boolean allowed = actor.hasPermissions(2)
-                || contract.employerNation().equals(nation) && nations.can(actor.getUUID(), S2Permission.MANAGE_SIEGE)
-                || contract.providerNation().equals(nation) && nations.can(actor.getUUID(), S2Permission.MANAGE_DISPATCH);
-        if (!allowed) return ActionResult.fail("no_permission");
+        boolean employer = contract.employerNation().equals(nation) && nations.can(actor.getUUID(), S2Permission.MANAGE_SIEGE);
+        boolean provider = contract.providerNation().equals(nation) && nations.can(actor.getUUID(), S2Permission.MANAGE_DISPATCH);
+        if (!employer && !provider && !actor.hasPermissions(2)) return ActionResult.fail("no_permission");
+        // Who called it off decides the flat fee: the employer still owes it, the provider forfeits it.
+        reason = employer ? "employer" : provider ? "provider" : "admin";
         if (contract.state() == DispatchContractSavedData.State.APPROVAL_PENDING
                 || contract.state() == DispatchContractSavedData.State.CONSENT_PENDING) {
             DispatchContractSavedData.Contract finished = data.finish(contractId, true, "cancelled:" + reason);

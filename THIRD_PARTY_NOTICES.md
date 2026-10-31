@@ -174,10 +174,33 @@ relicense them.
 | TaCZ | GPL-3.0 for code; CC BY-NC-ND 4.0 for assets | https://modrinth.com/mod/timeless-and-classics-zero |
 | PlayerRevive | LGPL-3.0-only (as declared by the supplied NeoForge JAR) | https://modrinth.com/mod/playerrevive |
 | YetAnotherConfigLib (optional, client settings screen) | LGPL-3.0-or-later (as declared by the supplied NeoForge JAR) | https://github.com/isXander/YetAnotherConfigLib |
+| Create: Warnautics | GPL-3.0-or-later | https://modrinth.com/mod/create-warnautics |
+| Create: Diesel Generators | MIT | https://modrinth.com/mod/create-diesel-generators |
+| Absolute Kinematics | MIT | https://github.com/RCXcrafter/Absolute-Kinematics |
+| Create: Sentry Mechanical Arm | MIT | https://github.com/Aupoex/Create-SentryMechanicalArm |
+| Create Aeronautics: Throwable Rope Connector (optional) | MIT | https://modrinth.com/mod/create-aeronautics-throwable-rope-connector |
+| Immersive Paintings (optional) | GPL-3.0-only | https://github.com/Luke100000/ImmersivePaintings |
+| Iris Shaders (optional, client) | LGPL-3.0-only | https://github.com/IrisShaders/Iris |
+| Sodium (optional, client API) | PolyForm Shield License 1.0.0; **not an open-source license** | https://github.com/CaffeineMC/sodium |
+| Jade (optional) | CC BY-NC-SA 4.0 | https://modrinth.com/mod/jade |
+| Just Enough Items (optional) | MIT | https://github.com/mezz/JustEnoughItems |
+| Curios API (optional) | LGPL-3.0-or-later | https://github.com/TheIllusiveC4/Curios |
 
 Sable's PolyForm Shield terms are especially distinct from Sable Companion's
 MIT terms. Integration with Sable is not permission to redistribute Sable or
-to treat its code as MIT-licensed.
+to treat its code as MIT-licensed. The same holds for Sodium, whose client API
+is referenced only to cooperate with its renderer.
+
+The build compiles against Create Aeronautics' classes by extracting its code
+JAR from the bundle the modpack ships (`extractAeronauticsApi` in
+`build.gradle`). That copy exists only in the local build directory; it is
+not packaged into MoveEarth's release JARs.
+
+Classes from Immersive Paintings, Throwable Rope Connector, Warnautics,
+Absolute Kinematics, Create: Sentry Mechanical Arm and Iris are not compiled
+against at all. MoveEarth names them only by string: as `@Pseudo` mixin
+targets, registry ids or reflective lookups, which take effect when the mod is
+present and do nothing when it is absent.
 
 ## Cold Sweat API
 

@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "wrong_turn"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:compass"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.wrong_turn.title",
+      "fallback": "方向音痴"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.wrong_turn.description",
+      "fallback": "他国の領土で5回倒れた。地図、持ってる？"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

@@ -50,6 +50,7 @@ public final class NationUpkeepService {
         long upkeep = TerritoryUpkeepPolicy.calculateConfigured(territories.controlledChunkCount(nationId),
                 territories.activeOutpostCount(nationId), VehicleSavedData.get(player.server).count(nationId));
         EconomyLedgerSavedData ledger = EconomyLedgerSavedData.get(player.server);
+        var tax = com.ruskserver.moveearth_addtional.s2.nation.NationTaxSavedData.get(player.server).rate(nationId);
         java.util.List<String> recent = ledger.recent(Account.nation(nationId), 5).stream()
                 .map(tx -> (Account.nation(nationId).equals(tx.to()) ? "+" : "-")
                         + tx.amount() + "  " + tx.reason())
@@ -58,7 +59,10 @@ public final class NationUpkeepService {
                 S2TerritoryConfig.upkeepCycleHours(),
                 ledger.balance(Account.nation(nationId)), ledger.balance(Account.player(player.getUUID())),
                 state.nextDueAt(), state.failedPayments(), state.overdueSince(),
-                penalty(state, System.currentTimeMillis()), recent));
+                penalty(state, System.currentTimeMillis()), recent, tax.percent(),
+                com.ruskserver.moveearth_addtional.s2.nation.NationTaxPolicy.MAX_PERCENT,
+                com.ruskserver.moveearth_addtional.s2.nation.NationTaxPolicy.raiseWaitMinutes(
+                        tax.lastRaisedAt(), System.currentTimeMillis()), ledger.pendingJobTax(nationId)));
     }
 
     public static boolean moveFunds(ServerPlayer player, long amount, boolean intoNation) {

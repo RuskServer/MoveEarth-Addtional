@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "afk_strayed"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:ender_eye"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.afk_strayed.title",
+      "fallback": "浮気中"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.afk_strayed.description",
+      "fallback": "30分動かなかった。別のゲームでもやってるのかな？"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

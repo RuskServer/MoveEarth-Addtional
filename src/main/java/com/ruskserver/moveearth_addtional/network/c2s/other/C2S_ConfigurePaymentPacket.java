@@ -44,16 +44,16 @@ public record C2S_ConfigurePaymentPacket(BlockPos pos) implements CustomPacketPa
                     + ":" + pos.asLong() + ":" + detector.getPlacedTime() + ":" + detector.getNextPaymentTime())
                     .getBytes(StandardCharsets.UTF_8));
             EconomyLedgerSavedData.Result result = ledger.transfer(chargeId,
-                    DetectorOwnership.account(detector), null, PlayerDetectorBlockEntity.UPKEEP_COST, "detector_activation");
+                    DetectorOwnership.account(detector), null, PlayerDetectorBlockEntity.upkeepCost(), "detector_activation");
             String account = detector.getOwnerNation() != null ? "国庫" : "口座";
             if (result == EconomyLedgerSavedData.Result.APPLIED
                     || result == EconomyLedgerSavedData.Result.ALREADY_APPLIED) {
                 detector.setActive(true);
                 if (detector.getOwnerNation() != null) detector.approveTreasury();
-                detector.setNextPaymentTime(now + PlayerDetectorBlockEntity.UPKEEP_INTERVAL_MS);
+                detector.setNextPaymentTime(now + PlayerDetectorBlockEntity.upkeepIntervalMs());
                 DetectorScreenSync.refresh(player, detector, true,
-                        "検知器を" + PlayerDetectorBlockEntity.UPKEEP_CYCLE_HOURS + "時間有効化しました（"
-                                + account + "から" + PlayerDetectorBlockEntity.UPKEEP_COST + " TC支払済み）。");
+                        "検知器を" + PlayerDetectorBlockEntity.upkeepCycleHours() + "時間有効化しました（"
+                                + account + "から" + PlayerDetectorBlockEntity.upkeepCost() + " TC支払済み）。");
             } else {
                 DetectorScreenSync.refresh(player, detector, false, account + "の残高が足りないため、検知器を有効化できません。");
             }

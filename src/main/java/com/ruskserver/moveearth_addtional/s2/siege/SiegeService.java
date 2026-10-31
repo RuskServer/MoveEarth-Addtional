@@ -86,6 +86,9 @@ public final class SiegeService {
                 || formerNationBinding(level.getServer(), attribution, attackerNation, core.nationId()) != null) {
             return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);
         }
+        if (newSiegeBlockReason(level.getServer(), attribution.actorId(), identity, core, siegeData) != null) {
+            return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.START_WINDOW_CLOSED, null);
+        }
         if (!individualAttacker) {
             var recovery = com.ruskserver.moveearth_addtional.s2.recovery.NationRecoverySavedData
                     .get(level.getServer()).eligibleForNation(attackerNation,
@@ -107,7 +110,11 @@ public final class SiegeService {
         boolean offlineDefenseAllowed = OfflineDefenseService.baseDivisor(level, core) > 1;
         boolean rollingBefore = siegeData.hasRollingSiege(core.id());
         SiegeSavedData.AttemptResult result = siegeData.registerAttempt(
-                attackerId, individualAttacker, core, effectiveDamage, offlineDefenseAllowed);
+                attackerId, individualAttacker, core, effectiveDamage, offlineDefenseAllowed,
+                newSiegesAllowed(level.getServer()));
+        if (result.status() == SiegeSavedData.AttemptStatus.START_WINDOW_CLOSED) {
+            newSiegeBlockReason(level.getServer(), attribution.actorId(), identity, core, siegeData);
+        }
         // Decided when real fighting starts on the core, not by whatever poked it first today.
         OfflineDefenseDaySavedData offlineDays = OfflineDefenseDaySavedData.get(level.getServer());
         long today = OfflineDefenseDaySavedData.today();
@@ -264,7 +271,7 @@ public final class SiegeService {
 
     private static Component attackBlockReasonOn(AttackAttribution attribution, ServerLevel level, BlockPos target,
                                                  TerritorySavedData.CoreRecord core, boolean promptConsent) {
-        Component standing = standingBlockReasonOn(attribution, level, target, core);
+        Component standing = standingBlockReasonOn(attribution, level, target, core, promptConsent);
         if (standing != null) return standing;
         UUID consentNation = consentDefenderOn(attribution, level, target, core);
         if (consentNation == null || !protectedTarget(level, target)) return null;
@@ -305,6 +312,12 @@ public final class SiegeService {
     /** Truce, former-nation and failed-Siege gates; vehicles answer for their owning nation. */
     private static Component standingBlockReasonOn(AttackAttribution attribution, ServerLevel level,
                                                    BlockPos target, TerritorySavedData.CoreRecord core) {
+        return standingBlockReasonOn(attribution, level, target, core, true);
+    }
+
+    private static Component standingBlockReasonOn(AttackAttribution attribution, ServerLevel level,
+                                                   BlockPos target, TerritorySavedData.CoreRecord core,
+                                                   boolean notifyAttacker) {
         if (core == null) return vehicleBlockReason(attribution, level, target,
                 com.ruskserver.moveearth_addtional.s2.vehicle.VehicleProtection.vehicleAt(level, target));
         MinecraftServer server = level.getServer();
@@ -322,15 +335,49 @@ public final class SiegeService {
         SiegeAttackerPolicy.Identity identity = SiegeAttackerPolicy.resolve(attackerNation, attribution.actorId(),
                 siegeData.hasActiveIndividualAttack(attribution.actorId(), core.id()));
         if (identity == null || (!identity.individual() && identity.id().equals(defenderNation))) return null;
-        long locked = siegeData.failedAttackCooldownTicks(identity.id(), identity.individual(), core.id());
+        long locked = siegeData.failedAttackBlockedUntil(identity.id(), identity.individual(), core.id());
         if (locked > 0L) {
-            Component reason = Component.translatable(
-                    "message.moveearth_addtional.siege.failed_cooldown",
-                    com.ruskserver.moveearth_addtional.s2.nation.MembershipCooldownPolicy.remainingMinutes(locked));
-            notifyRefusal(server, attribution.actorId(), RefusalKind.FAILED_COOLDOWN, reason);
+            ServerPlayer actor = attribution.actorId() == null ? null : server.getPlayerList().getPlayer(attribution.actorId());
+            boolean ja = actor == null || actor.clientInformation().language().startsWith("ja");
+            String reopening = java.time.Instant.ofEpochSecond(locked).atZone(ServerSchedule.ZONE)
+                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+            Component reason = Component.translatableWithFallback("message.moveearth_addtional.siege.failed_until_opening",
+                    ja ? "このコアへの攻城失敗・撤退により、次回のサーバー開放（日本時間%s）まで再攻撃できません。"
+                            : "After failing or withdrawing from a siege on this core, you cannot attack it again until the next opening (%s JST).",
+                    reopening);
+            if (notifyAttacker) notifyRefusal(server, attribution.actorId(), RefusalKind.FAILED_COOLDOWN, reason);
             return reason;
         }
-        return null;
+        return newSiegeBlockReason(server, attribution.actorId(), identity, core, siegeData, notifyAttacker);
+    }
+
+    private static boolean newSiegesAllowed(MinecraftServer server) {
+        return !server.isDedicatedServer() || ServerSchedule.canStartSiegeNow();
+    }
+
+    /** Gate before damage/consent and again before registration; never turns off an existing Siege. */
+    private static Component newSiegeBlockReason(MinecraftServer server, UUID actor,
+                                                 SiegeAttackerPolicy.Identity identity,
+                                                 TerritorySavedData.CoreRecord core, SiegeSavedData sieges) {
+        return newSiegeBlockReason(server, actor, identity, core, sieges, true);
+    }
+
+    private static Component newSiegeBlockReason(MinecraftServer server, UUID actor,
+                                                 SiegeAttackerPolicy.Identity identity,
+                                                 TerritorySavedData.CoreRecord core, SiegeSavedData sieges,
+                                                 boolean notifyAttacker) {
+        if (identity == null || core == null || newSiegesAllowed(server) || sieges.isCoreFallen(core.id())
+                || sieges.hasActiveAttack(identity.id(), identity.individual(), core.nationId(), core.id())) return null;
+        if (!identity.individual() && (identity.id().equals(core.nationId())
+                || NationSavedData.get(server).isAllied(identity.id(), core.nationId()))) return null;
+        ServerPlayer player = actor == null ? null : server.getPlayerList().getPlayer(actor);
+        boolean ja = player == null || player.clientInformation().language().startsWith("ja");
+        Component reason = Component.translatableWithFallback("message.moveearth_addtional.siege.start_window_closed",
+                ja ? "新規Siegeの開始受付は日本時間%s:00〜%s:00です。閉鎖1時間前から次の開放までは新規開始できません。すでに始まっているSiegeは継続できます。"
+                        : "New sieges may start from %s:00 to %s:00 JST. No new sieges in the last hour before closing or while closed. Existing sieges may continue.",
+                ServerSchedule.OPEN_HOUR, ServerSchedule.SIEGE_START_CUTOFF_HOUR);
+        if (notifyAttacker) notifyRefusal(server, actor, RefusalKind.START_WINDOW, reason);
+        return reason;
     }
 
     /**
@@ -404,7 +451,7 @@ public final class SiegeService {
     private static final long REFUSAL_NOTICE_TICKS = 100L;
     private static final Map<RefusalKey, Long> LAST_REFUSALS = new HashMap<>();
 
-    private enum RefusalKind { FORMER_NATION, FAILED_COOLDOWN, SETTLEMENT_TRUCE }
+    private enum RefusalKind { FORMER_NATION, FAILED_COOLDOWN, SETTLEMENT_TRUCE, START_WINDOW }
 
     private record RefusalKey(UUID actorId, RefusalKind kind) { }
 
@@ -414,7 +461,9 @@ public final class SiegeService {
             if (attribution.contractId() == null) return attribution.nationId();
             DispatchContractSavedData.Contract contract = DispatchContractSavedData.get(level.getServer())
                     .byId(attribution.contractId()).orElse(null);
+            // A shot still in the air when the contract ended no longer fights for the employer.
             return contract != null && core != null && contract.targetCoreId().equals(core.id())
+                    && contract.state() == DispatchContractSavedData.State.ACTIVE
                     && attribution.siegeId() != null && attribution.siegeId().equals(contract.siegeId())
                     ? attribution.nationId() : null;
         }
@@ -888,9 +937,7 @@ public final class SiegeService {
                 return attempts.replay(level, effectiveDamage);
             }
             SiegeSavedData.AttemptResult result = recordAttackOn(attribution, level, target, effectiveDamage, core);
-            if (effectiveDamage) attempts.effective = true;
-            else attempts.attempted = true;
-            if (result.siege() != null) attempts.siege = result.siege();
+            attempts.remember(result, effectiveDamage);
             return result;
         }
 
@@ -912,8 +959,19 @@ public final class SiegeService {
             private boolean attempted;
             private boolean effective;
             private SiegeSavedData.SiegeRecord siege;
+            private SiegeSavedData.AttemptResult refusal;
+
+            private void remember(SiegeSavedData.AttemptResult result, boolean effectiveDamage) {
+                if (effectiveDamage) effective = true;
+                else attempted = true;
+                if (result.siege() != null) siege = result.siege();
+                else refusal = result;
+            }
 
             private SiegeSavedData.AttemptResult replay(ServerLevel level, boolean effectiveDamage) {
+                // A refusal must remain a refusal for later blocks in the same blast; otherwise
+                // the final start-window check was silently changed to IGNORED after the first block.
+                if (siege == null && refusal != null) return refusal;
                 SiegeSavedData.SiegeRecord live = siege == null ? null
                         : SiegeSavedData.get(level.getServer()).activeById(siege.id()).orElse(null);
                 if (live == null) return new SiegeSavedData.AttemptResult(SiegeSavedData.AttemptStatus.IGNORED, null);

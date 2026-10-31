@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "last_orders"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:clock"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.last_orders.title",
+      "fallback": "閉店間際の客"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.last_orders.description",
+      "fallback": "閉店5分前に来た。何しに来たの？"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

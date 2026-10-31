@@ -1,5 +1,7 @@
 package com.ruskserver.moveearth_addtional.s2.territory;
 
+import static com.ruskserver.moveearth_addtional.analytics.provenance.MutationRejectionAudit.rejected;
+
 import com.ruskserver.moveearth_addtional.compat.vehicle.SableVehicleTopology;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -29,6 +31,14 @@ public final class RemoteBlockPlacement {
         if (shooter != null) {
             if (!BastionService.isRestricted(shooter, level, pos)) return false;
             if (tell) BastionService.deny(shooter, BastionService.Action.BLOCK_PLACE);
+            return true;
+        }
+        var origin = launcher == null
+                ? com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.source(
+                        com.ruskserver.moveearth_addtional.s2.provenance.ActionContext.current())
+                : com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.fromBlock(level, launcher);
+        if (!origin.allowed()) {
+            rejected("remote.place", level, pos);
             return true;
         }
         TerritorySavedData territories = TerritorySavedData.get(level.getServer());

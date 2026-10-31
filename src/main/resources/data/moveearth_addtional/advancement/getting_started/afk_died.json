@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "afk_died"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:skeleton_skull"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.afk_died.title",
+      "fallback": "南無"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.afk_died.description",
+      "fallback": "放置中に倒された。安らかに"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

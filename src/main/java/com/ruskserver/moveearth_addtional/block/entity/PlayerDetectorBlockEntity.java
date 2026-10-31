@@ -38,9 +38,18 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
 
     public static final double DETECTION_RANGE = 100.0D;
     public static final long WARMUP_DURATION_MS = 20 * 60 * 1000L;
-    public static final long UPKEEP_COST = 2L;
-    public static final int UPKEEP_CYCLE_HOURS = 24;
-    public static final long UPKEEP_INTERVAL_MS = UPKEEP_CYCLE_HOURS * 60L * 60L * 1000L;
+    /** Upkeep follows the nation upkeep's cycle and is set beside it in s2-territory.toml. */
+    public static long upkeepCost() {
+        return com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.detectorUpkeepCost();
+    }
+
+    public static int upkeepCycleHours() {
+        return com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.upkeepCycleHours();
+    }
+
+    public static long upkeepIntervalMs() {
+        return com.ruskserver.moveearth_addtional.config.S2TerritoryConfig.upkeepCycleMillis();
+    }
 
     private static final String DUMMY_TAG = "MoveEarthDetectorDummy";
     private static final String DUMMY_BLOCK_POS_TAG = "MoveEarthDetectorBlockPos";
@@ -287,12 +296,12 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
                 UUID chargeId = UUID.nameUUIDFromBytes(("detector:" + serverLevel.dimension().location()
                         + ":" + pos.asLong() + ":" + blockEntity.nextPaymentTime).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 EconomyLedgerSavedData.Result charge = EconomyLedgerSavedData.get(serverLevel.getServer()).transfer(chargeId,
-                        DetectorOwnership.account(blockEntity), null, UPKEEP_COST,
+                        DetectorOwnership.account(blockEntity), null, upkeepCost(),
                         "detector_upkeep");
                 boolean paySuccess = charge == EconomyLedgerSavedData.Result.APPLIED
                         || charge == EconomyLedgerSavedData.Result.ALREADY_APPLIED;
                 if (paySuccess) {
-                    blockEntity.nextPaymentTime = currentTime + UPKEEP_INTERVAL_MS;
+                    blockEntity.nextPaymentTime = currentTime + upkeepIntervalMs();
                     blockEntity.setChanged();
                 }
 
@@ -697,7 +706,7 @@ public class PlayerDetectorBlockEntity extends BlockEntity {
         for (ServerPlayer player : DetectorOwnership.watchers(level.getServer(), blockEntity)) {
             if (!DetectorOwnership.mayManage(player, blockEntity)) continue;
             player.sendSystemMessage(MoveEarthMessage.error("【" + blockEntity.getDetectorDisplayName()
-                    + "】" + account + "から維持費（" + UPKEEP_COST + " TC）を引き落とせなかったため、検知機能が停止しました。"
+                    + "】" + account + "から維持費（" + upkeepCost() + " TC）を引き落とせなかったため、検知機能が停止しました。"
                     + account + "に入金してから、検知器の画面で再開してください。"));
         }
     }

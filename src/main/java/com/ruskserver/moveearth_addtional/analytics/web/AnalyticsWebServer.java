@@ -100,6 +100,7 @@ public class AnalyticsWebServer {
             server.createContext("/api/economy", new JsonApiHandler(AnalyticsWebServer::economy));
             server.createContext("/api/onboarding", new JsonApiHandler(AnalyticsWebServer::onboarding));
             server.createContext("/api/wars", new JsonApiHandler(AnalyticsWebServer::wars));
+            server.createContext("/api/provenance", new JsonApiHandler(AnalyticsWebServer::provenance));
 
             executor = Executors.newFixedThreadPool(4, r -> {
                 Thread t = new Thread(r, "MoveEarth-Analytics-Web-Worker");
@@ -589,6 +590,24 @@ public class AnalyticsWebServer {
         response.put("combat", combat.get());
         response.put("fallsByDefender", byNation.get());
         return response;
+    }
+
+    private static Object provenance(Map<String, String> params) throws Exception {
+        TimeWindow window = parseWindow(params.get("window"));
+        var queries = AnalyticsQueryService.INSTANCE;
+        String type = GameEventType.MUTATION_REJECTED.id();
+        var routes = queries.aggregateGameEventsAsync(type, null, GameEventGroupBy.DETAIL, window, 1000);
+        var days = queries.aggregateGameEventsAsync(type, null, GameEventGroupBy.DAY, window, 1000);
+        var recent = queries.getGameEventsAsync(type, null, null, window, 200);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("routes", routes.get());
+        result.put("days", days.get());
+        result.put("recent", recent.get());
+        result.put("timezone", "Asia/Tokyo");
+        result.put("unit", "guard_refusals");
+        result.put("analyticsRunning", com.ruskserver.moveearth_addtional.analytics.storage.AnalyticsStorageService.INSTANCE.isRunning());
+        result.put("droppedEvents", com.ruskserver.moveearth_addtional.analytics.queue.AnalyticsEventQueue.INSTANCE.getDroppedEventsCount());
+        return result;
     }
 
     private static UUID parseUuid(String value) {

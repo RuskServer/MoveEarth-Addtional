@@ -20,6 +20,11 @@ public final class SiegePayloads {
     private SiegePayloads() {}
 
     public static void register(PayloadRegistrar registrar) {
+        var sessionConsent = registrar.optional().versioned("3.8-session-siege-v1");
+        sessionConsent.playToClient(
+                com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_SessionWarConsentPromptPacket.TYPE,
+                com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_SessionWarConsentPromptPacket.STREAM_CODEC,
+                com.ruskserver.moveearth_addtional.network.s2c.siege.S2C_SessionWarConsentPromptPacket::handle);
         // C2S handlers run on the network thread only for the rate-limit check; see C2SPacketGate.
         PayloadRegistrar c2s = registrar.executesOn(HandlerThread.NETWORK);
         c2s.playToServer(C2S_SiegeActionPacket.TYPE, C2S_SiegeActionPacket.STREAM_CODEC, C2SPacketGate.action(C2S_SiegeActionPacket::handle));

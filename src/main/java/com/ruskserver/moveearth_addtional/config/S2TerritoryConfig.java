@@ -18,10 +18,15 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue CHUNKS_PER_COIN;
     private static final ModConfigSpec.LongValue OUTPOST_BASE_COST;
     private static final ModConfigSpec.LongValue VEHICLE_CORE_COST;
+    private static final ModConfigSpec.LongValue DETECTOR_UPKEEP_COST;
     private static final ModConfigSpec.IntValue VEHICLE_CORE_HEALTH;
     private static final ModConfigSpec.BooleanValue SABLE_VOID_FAILSAFE_ENABLED;
     private static final ModConfigSpec.IntValue SABLE_VOID_TRIGGER_DEPTH;
     private static final ModConfigSpec.IntValue SABLE_RESCUE_CLEARANCE;
+    private static final ModConfigSpec.IntValue SABLE_RESCUE_COOLDOWN;
+    private static final ModConfigSpec.IntValue SABLE_RESCUE_ATTEMPTS;
+    private static final ModConfigSpec.IntValue SABLE_RESCUE_REARM;
+    private static final ModConfigSpec.IntValue CAPITAL_RELOCATION_COOLDOWN;
     private static final ModConfigSpec.IntValue UPKEEP_CYCLE_HOURS;
     private static final ModConfigSpec.IntValue UPKEEP_RETRY_MINUTES;
     private static final ModConfigSpec.IntValue UPKEEP_WEAKEN_AFTER_HOURS;
@@ -91,6 +96,7 @@ public final class S2TerritoryConfig {
     private static final ModConfigSpec.IntValue BED_HEAL_INTERVAL_SECONDS;
     private static final ModConfigSpec.IntValue CAMPFIRE_HEAL_INTERVAL_SECONDS;
     private static final ModConfigSpec.IntValue CAMPFIRE_RADIUS;
+    private static final ModConfigSpec.IntValue PAINTING_DAILY_UPLOADS;
 
     public static final ModConfigSpec SPEC;
 
@@ -101,6 +107,8 @@ public final class S2TerritoryConfig {
         OUTPOST_BASE_COST = BUILDER.defineInRange("outpostBaseGoldCost", 8L, 0L, 1_000_000L);
         VEHICLE_CORE_COST = BUILDER.comment("Gold coins charged per registered vehicle core each upkeep cycle.")
                 .defineInRange("vehicleCoreGoldCost", 6L, 0L, 1_000_000L);
+        DETECTOR_UPKEEP_COST = BUILDER.comment("Gold coins a player detector costs each upkeep cycle (cycleHours).")
+                .defineInRange("detectorGoldCost", 2L, 0L, 1_000_000L);
         UPKEEP_CYCLE_HOURS = BUILDER.defineInRange("cycleHours", 24, 1, 720);
         UPKEEP_RETRY_MINUTES = BUILDER.defineInRange("retryMinutes", 60, 1, 1440);
         UPKEEP_WEAKEN_AFTER_HOURS = BUILDER
@@ -125,6 +133,8 @@ public final class S2TerritoryConfig {
         VEHICLE_REPAIR_EMERGENCY_INTERVAL = BUILDER.defineInRange("vehicleEmergencyRepairIntervalSeconds", 5, 1, 3600);
         VEHICLE_REPAIR_NORMAL_INTERVAL = BUILDER.defineInRange("vehicleNormalRepairIntervalSeconds", 2, 1, 3600);
         CAPITAL_CORE_HEALTH = BUILDER.defineInRange("capitalMaxHealth", 2000, 1, 10_000_000);
+        CAPITAL_RELOCATION_COOLDOWN = BUILDER.comment("Open-time minutes between owner-confirmed swaps of a capital and an existing outpost.")
+                .defineInRange("capitalRelocationCooldownOpenMinutes", 1440, 0, 525600);
         OUTPOST_CORE_HEALTH = BUILDER.defineInRange("outpostMaxHealth", 1000, 1, 10_000_000);
         VEHICLE_CORE_HEALTH = BUILDER.defineInRange("vehicleMaxHealth", 600, 1, 10_000_000);
         CORE_REGEN_DELAY_SECONDS = BUILDER.defineInRange("regenDelaySeconds", 300, 0, 86400);
@@ -143,7 +153,8 @@ public final class S2TerritoryConfig {
 
         BUILDER.push("sableSafety");
         SABLE_VOID_FAILSAFE_ENABLED = BUILDER.comment(
-                "Rescue Sable bodies that tunnel below the dimension build floor due to failed collision handling.")
+                "Rescue Sable bodies that tunnel below the dimension build floor due to failed collision handling.",
+                "Only chains with a physical vehicle core, active raid or nearby/onboard player are rescued; detached debris is not bounced back up.")
                 .define("voidFailsafeEnabled", true);
         SABLE_VOID_TRIGGER_DEPTH = BUILDER.comment(
                 "Rescue begins after any connected body's physical bounds pass this many blocks below the build floor.")
@@ -151,6 +162,12 @@ public final class S2TerritoryConfig {
         SABLE_RESCUE_CLEARANCE = BUILDER.comment(
                 "Empty vertical clearance added above the highest loaded terrain below the rescued craft.")
                 .defineInRange("voidRescueClearanceBlocks", 3, 1, 32);
+        SABLE_RESCUE_COOLDOWN = BUILDER.comment("Minimum seconds between attempts on the same connected craft, including failed attempts.")
+                .defineInRange("voidRescueCooldownSeconds", 60, 5, 3600);
+        SABLE_RESCUE_ATTEMPTS = BUILDER.comment("Suspend automatic rescue after this many attempts until the craft stays above the floor long enough to rearm.")
+                .defineInRange("voidRescueMaxAttempts", 3, 1, 10);
+        SABLE_RESCUE_REARM = BUILDER.comment("Continuous seconds safely above the build floor required to clear the rescue attempt budget.")
+                .defineInRange("voidRescueRearmSeconds", 30, 10, 3600);
         BUILDER.pop();
 
         BUILDER.push("cbcDamage");
@@ -247,8 +264,8 @@ public final class S2TerritoryConfig {
                 .defineInRange("contestActivitySeconds", 120, 0, 3600);
         SIEGE_RETRY_COOLDOWN_SECONDS = BUILDER.defineInRange("retryCooldownSeconds", 3600, 0, 604800);
         SIEGE_FAILED_COOLDOWN_SECONDS = BUILDER.comment(
-                "Open-time seconds an attacker may not attack the same core again after their siege",
-                "ran out without it falling. A failed siege otherwise cost only ammunition.")
+                "Legacy setting retained for config compatibility; ignored by the session-based lockout.",
+                "Failed rolling sieges and combat withdrawals now prevent reattack until the next server opening.")
                 .defineInRange("failedSiegeCooldownSeconds", 3600, 0, 604800);
         SIEGE_DUPLICATE_LOG_SECONDS = BUILDER.defineInRange("duplicateLogCooldownSeconds", 60, 0, 3600);
         SIEGE_POST_FALL_SECONDS = BUILDER.defineInRange("postFallSeconds", 1800, 60, 604800);
@@ -318,6 +335,13 @@ public final class S2TerritoryConfig {
         CAMPFIRE_RADIUS = BUILDER.comment("Lit normal-campfire detection radius. Soul campfires are excluded.")
                 .defineInRange("campfireRadiusBlocks", 4, 1, 16);
         BUILDER.pop();
+
+        BUILDER.push("paintings");
+        PAINTING_DAILY_UPLOADS = BUILDER.comment(
+                "Immersive Paintings images a nation's citizen may upload each open day (reset at the JST open hour). "
+                        + "Players without a nation cannot upload; operators are not counted.")
+                .defineInRange("dailyUploads", 3, 0, 100);
+        BUILDER.pop();
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
@@ -329,6 +353,7 @@ public final class S2TerritoryConfig {
     public static long vehicleCoreCost() { return VEHICLE_CORE_COST.getAsLong(); }
     public static long upkeepCycleMillis() { return UPKEEP_CYCLE_HOURS.getAsInt() * 3_600_000L; }
     public static int upkeepCycleHours() { return UPKEEP_CYCLE_HOURS.getAsInt(); }
+    public static long detectorUpkeepCost() { return DETECTOR_UPKEEP_COST.getAsLong(); }
     public static long upkeepRetryMillis() { return UPKEEP_RETRY_MINUTES.getAsInt() * 60_000L; }
     public static long upkeepWeakenMillis() { return UPKEEP_WEAKEN_AFTER_HOURS.getAsInt() * 3_600_000L; }
     public static long upkeepDisableMillis() { return UPKEEP_DISABLE_AFTER_HOURS.getAsInt() * 3_600_000L; }
@@ -345,6 +370,10 @@ public final class S2TerritoryConfig {
     public static long vehicleNormalRepairTicks() { return VEHICLE_REPAIR_NORMAL_INTERVAL.getAsInt() * 20L; }
     public static boolean sableVoidFailsafeEnabled() { return SABLE_VOID_FAILSAFE_ENABLED.getAsBoolean(); }
     public static int sableVoidTriggerDepth() { return SABLE_VOID_TRIGGER_DEPTH.getAsInt(); }
+    public static long sableRescueCooldownTicks() { return SABLE_RESCUE_COOLDOWN.getAsInt() * 20L; }
+    public static int sableRescueMaxAttempts() { return SABLE_RESCUE_ATTEMPTS.getAsInt(); }
+    public static long sableRescueRearmTicks() { return SABLE_RESCUE_REARM.getAsInt() * 20L; }
+    public static long capitalRelocationCooldownTicks() { return CAPITAL_RELOCATION_COOLDOWN.getAsInt() * 1200L; }
     public static int sableRescueClearance() { return SABLE_RESCUE_CLEARANCE.getAsInt(); }
     public static long coreRegenDelayTicks() { return CORE_REGEN_DELAY_SECONDS.getAsInt() * 20L; }
     public static long coreRegenIntervalTicks() { return CORE_REGEN_INTERVAL_SECONDS.getAsInt() * 20L; }
@@ -384,6 +413,7 @@ public final class S2TerritoryConfig {
     }
 
     public static long siegeRetryCooldownTicks() { return SIEGE_RETRY_COOLDOWN_SECONDS.getAsInt() * 20L; }
+    @Deprecated
     public static long siegeFailedCooldownTicks() { return SIEGE_FAILED_COOLDOWN_SECONDS.getAsInt() * 20L; }
     public static long siegeDuplicateLogTicks() { return SIEGE_DUPLICATE_LOG_SECONDS.getAsInt() * 20L; }
     public static long siegePostFallTicks() { return SIEGE_POST_FALL_SECONDS.getAsInt() * 20L; }
@@ -415,6 +445,7 @@ public final class S2TerritoryConfig {
     public static int bedRestStartTicks() { return BED_REST_START_SECONDS.getAsInt() * 20; }
     public static int bedHealIntervalTicks() { return BED_HEAL_INTERVAL_SECONDS.getAsInt() * 20; }
     public static int campfireHealIntervalTicks() { return CAMPFIRE_HEAL_INTERVAL_SECONDS.getAsInt() * 20; }
+    public static int paintingDailyUploads() { return PAINTING_DAILY_UPLOADS.getAsInt(); }
     public static int campfireRadius() { return CAMPFIRE_RADIUS.getAsInt(); }
 
     private static long daysToMillis(int days) { return days * 86_400_000L; }

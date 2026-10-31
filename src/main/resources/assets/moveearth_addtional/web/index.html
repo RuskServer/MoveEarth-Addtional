@@ -357,6 +357,43 @@
             box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3);
         }
 
+        .export-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .export-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+            border-radius: var(--radius-md);
+        }
+
+        .export-row-title {
+            font-weight: 600;
+        }
+
+        .export-row-sub {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-top: 0.15rem;
+        }
+
+        .export-row-actions {
+            display: flex;
+            gap: 0.4rem;
+            flex-shrink: 0;
+        }
+
+        .export-btn-small {
+            padding: 0.35rem 0.75rem;
+            font-size: 0.8rem;
+        }
+
         .export-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
@@ -676,6 +713,7 @@
         <button class="tab-btn" onclick="switchTab('wars')">⚔️ 戦争</button>
         <button class="tab-btn" onclick="switchTab('economy')">💰 経済</button>
         <button class="tab-btn" onclick="switchTab('onboarding')">🚪 新規導線</button>
+        <button class="tab-btn" onclick="switchTab('provenance')">🛡️ 攻撃元不明の操作</button>
         <button class="tab-btn" onclick="switchTab('events')">📜 イベントログ</button>
         <button class="tab-btn" onclick="switchTab('players')">👤 プレイヤー</button>
         <button class="tab-btn" onclick="switchTab('bases')">🛡️ 検知器</button>
@@ -920,6 +958,25 @@
                         <tbody id="onboarding-skips-body"><tr><td colspan="2" style="text-align:center;">データを読み込み中...</td></tr></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+
+        <!-- Source-rejection diagnostics -->
+        <div id="tab-provenance" class="tab-pane">
+            <div class="section-card">
+                <div class="section-title"><span>🛡️ 攻撃元不明で無効化した操作</span></div>
+                <p class="funnel-note">不具合の多い処理を探すための運営用集計です。件数はガードで拒否した操作数で、攻撃数・プレイヤー数・被害ブロック数ではありません。
+                繰り返し動作は繰り返し計上します。同一爆発への複数リスナーの検査は1回です。</p>
+                <p class="funnel-note">経路・ディメンションごとに1分単位で保存し、地点は各集計の最初の代表地点です。最大約1分＋保存・キャッシュ更新の遅延があります。
+                自然変化、CBCの地形置換禁止、平時の射撃保護は含みません。日付は日本時間です。</p>
+                <p id="provenance-status" class="funnel-note"></p>
+                <button class="export-btn" onclick="exportData('csv', 'events', 'provenance.rejected')">📄 拒否ログ CSV</button>
+                <h3>日次サマリ</h3>
+                <div class="table-responsive"><table><thead><tr><th>日付（日本時間）</th><th>拒否件数</th></tr></thead><tbody id="provenance-days"></tbody></table></div>
+                <h3>経路ランキング</h3>
+                <div class="table-responsive"><table><thead><tr><th>経路</th><th>拒否件数</th></tr></thead><tbody id="provenance-routes"></tbody></table></div>
+                <h3>直近の拒否ログ（1分集計・最大200件）</h3>
+                <div class="table-responsive"><table><thead><tr><th>最初の発生時刻</th><th>経路</th><th>件数</th><th>ディメンション</th><th>代表地点</th></tr></thead><tbody id="provenance-recent"></tbody></table></div>
             </div>
         </div>
 
@@ -1214,11 +1271,35 @@
                     <span>📥 データエクスポート</span>
                 </div>
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
-                    選択中の窓期間（<span id="export-window-label" style="color: var(--accent-blue); font-weight: bold;">過去7日間</span>）の全プレイヤー活動集計データをダウンロードします。
+                    選択中の窓期間（<span id="export-window-label" style="color: var(--accent-blue); font-weight: bold;">過去7日間</span>）のデータをダウンロードします。TPS・負荷チャンク・実測CPUは「TPS・負荷」タブから、種類を絞ったイベントは「イベントログ」タブから書き出せます。
                 </p>
-                <div class="export-btn-group">
-                    <button class="export-btn" onclick="exportData('csv')">📄 CSV形式でダウンロード</button>
-                    <button class="export-btn" onclick="exportData('jsonl')">📦 JSONL形式でダウンロード</button>
+                <div class="export-btn-group" style="margin-bottom: 1.5rem; flex-wrap: wrap;">
+                    <button class="export-btn" onclick="exportData('csv', 'all')">🗂 すべてZIPでダウンロード（CSV）</button>
+                    <button class="export-btn" onclick="exportData('jsonl', 'all')">🗂 すべてZIPでダウンロード（JSONL）</button>
+                </div>
+                <div class="export-grid">
+                    <div class="export-row"><div><div class="export-row-title">プレイヤー集計</div><div class="export-row-sub">期間内のプレイヤーごとの合計</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'players')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'players')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">プレイヤー一覧</div><div class="export-row-sub">名前・初回/最終ログイン</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'player_list')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'player_list')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">ログインセッション</div><div class="export-row-sub">入退室時刻・オンライン/稼働/AFK秒</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'sessions')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'sessions')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">プレイヤー日別活動</div><div class="export-row-sub">日×プレイヤー×ディメンション</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'player_daily')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'player_daily')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">プレイヤー5分別活動</div><div class="export-row-sub">5分ごと。行数が多い</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'player_5m')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'player_5m')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">場所別活動</div><div class="export-row-sub">ヒートマップの元データ</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'spatial_5m')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'spatial_5m')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">検知器別の滞在・侵入</div><div class="export-row-sub">メンバー/訪問者の滞在分・侵入</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'detectors_5m')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'detectors_5m')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">国家の推移</div><div class="export-row-sub">人数・国庫・チャンク・コア・車両</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'nations')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'nations')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">経済の推移</div><div class="export-row-sub">所持金・国庫・エスクロー・注文</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'economy')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'economy')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">ゲームイベント</div><div class="export-row-sub">攻城・取引などの個別イベント</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'events')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'events')">JSONL</button></div></div>
+                    <div class="export-row"><div><div class="export-row-title">分析システムの稼働状況</div><div class="export-row-sub">キュー・取りこぼし・DB容量</div></div>
+                        <div class="export-row-actions"><button class="export-btn export-btn-small" onclick="exportData('csv', 'collector_health')">CSV</button><button class="export-btn export-btn-small" onclick="exportData('jsonl', 'collector_health')">JSONL</button></div></div>
                 </div>
             </div>
         </div>
@@ -1340,6 +1421,8 @@
                 fetchEconomy();
             } else if (currentTab === 'onboarding') {
                 fetchOnboarding();
+            } else if (currentTab === 'provenance') {
+                fetchProvenance(windowVal);
             } else if (currentTab === 'events') {
                 fetchEvents();
             } else if (currentTab === 'players') {
@@ -2269,7 +2352,7 @@
             const typeSelect = document.getElementById('eventTypeFilter');
             if (typeSelect && typeSelect.options.length <= 1) {
                 const prefixes = { 'onboarding.': '新規導線', 'nation.': '国家', 'tutorial.': 'チュートリアル',
-                    'siege.': '戦争', 'combat.': '戦闘', 'economy.': '経済', 'pve.': 'PvE', 'vehicle.': '車両' };
+                    'siege.': '戦争', 'combat.': '戦闘', 'economy.': '経済', 'pve.': 'PvE', 'vehicle.': '車両', 'provenance.': '攻撃元不明の操作' };
                 Object.entries(prefixes).forEach(([value, label]) =>
                     typeSelect.add(new Option(`[${label}] すべて`, value)));
                 Object.entries(s2State.eventTypes || {}).forEach(([value, label]) =>
@@ -2473,6 +2556,26 @@
                     <tr><td>${escapeHtml(s.label)}</td><td>${formatNumber(s.players)} 人</td></tr>`).join('')
                     : emptyRow(2, '期間内のスキップはありません');
             } catch (e) { console.error(e); }
+        }
+
+        async function fetchProvenance(windowVal) {
+            const status = document.getElementById('provenance-status');
+            try {
+                const response = await apiFetch(`/api/provenance?window=${encodeURIComponent(windowVal)}`);
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                status.innerText = `${data.analyticsRunning ? '分析収集中' : '分析収集停止中：停止中はサーバーログのみ'} | `
+                    + `分析キュー全体の累計欠落イベント: ${formatNumber(data.droppedEvents)}（拒否操作数ではありません。欠落がある期間は集計が不完全な可能性があります）`;
+                document.getElementById('provenance-days').innerHTML = data.days.length ? data.days.map(r =>
+                    `<tr><td>${new Date(Number(r.key) * 86400000).toISOString().slice(0, 10)}</td><td>${formatNumber(r.total)}</td></tr>`
+                ).join('') : emptyRow(2, '該当する記録はありません');
+                document.getElementById('provenance-routes').innerHTML = data.routes.length ? data.routes.map(r =>
+                    `<tr><td>${escapeHtml(r.key)}</td><td>${formatNumber(r.total)}</td></tr>`
+                ).join('') : emptyRow(2, '該当する記録はありません');
+                document.getElementById('provenance-recent').innerHTML = data.recent.length ? data.recent.map(e =>
+                    `<tr><td>${formatTime(e.occurredAt)}</td><td>${escapeHtml(e.detail)}</td><td>${formatNumber(e.value)}</td><td>${escapeHtml(e.dimension)}</td><td>${e.detail === 'overflow' ? '-' : formatCoords(e.x, e.y, e.z)}</td></tr>`
+                ).join('') : emptyRow(5, '該当する記録はありません');
+            } catch (error) { status.innerText = '拒否ログの取得に失敗しました。再読み込みしてください。'; console.error(error); }
         }
 
         async function fetchEvents() {

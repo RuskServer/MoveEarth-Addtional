@@ -37,12 +37,18 @@ public record C2S_NationTreasuryPacket(Action action, long amount) implements Cu
                     NationUpkeepService.payNow(player);
                     NationUpkeepService.sendScreen(player);
                 }
+                case SET_TAX -> {
+                    com.ruskserver.moveearth_addtional.s2.nation.NationTaxService.setRate(player,
+                            (int) Math.max(-1L, Math.min(100L, amount)));
+                    NationUpkeepService.sendScreen(player);
+                }
             }
         });
     }
 
     public enum Action {
-        OPEN, DEPOSIT, WITHDRAW, PAY_NOW;
+        // Appended only: the network id is the ordinal.
+        OPEN, DEPOSIT, WITHDRAW, PAY_NOW, SET_TAX;
         private static Action fromNetworkId(int id) {
             return id >= 0 && id < values().length ? values()[id] : OPEN;
         }

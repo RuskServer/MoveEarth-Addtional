@@ -1725,7 +1725,8 @@ public class SqliteAnalyticsStorageEngine implements AnalyticsStorageEngine {
         appendEventFilters(sql, parameters, "", typePrefix, nationUuid, null);
         sql.append(" GROUP BY k ORDER BY ");
         sql.append(groupBy == com.ruskserver.moveearth_addtional.analytics.query.dto.GameEventGroupBy.DAY
-                ? "k ASC" : "COUNT(*) DESC");
+                ? "k ASC" : "provenance.rejected".equals(typePrefix)
+                ? "COALESCE(SUM(value), 0) DESC, k ASC" : "COUNT(*) DESC");
         sql.append(" LIMIT ?");
         parameters.add(Math.max(1, limit));
         try (PreparedStatement ps = connection.prepareStatement(sql.toString())) {

@@ -42,6 +42,8 @@ public final class DiscordBotService implements DiscordLinkAccess {
     private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
     private volatile MinecraftServer server;
     private volatile JDA jda;
+    private final com.ruskserver.moveearth_addtional.s2.notification.DiscordFailureNoticePolicy
+            failureNotices = new com.ruskserver.moveearth_addtional.s2.notification.DiscordFailureNoticePolicy();
     private int deliveryTicks;
     private volatile BotState lifecycleState = BotState.DISABLED;
 
@@ -58,13 +60,14 @@ public final class DiscordBotService implements DiscordLinkAccess {
             Moveearth_addtional.LOGGER.info("[MoveEarth] Embedded Discord bot is disabled");
             return;
         }
+        // Keep the outbox maintenance/notice path active even if authentication cannot start.
+        server = minecraftServer;
         String token = DiscordBotConfig.botToken().trim();
         if (token.isEmpty()) {
             lifecycleState = BotState.AUTHENTICATION_FAILED;
             Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord bot is enabled but botToken is empty");
             return;
         }
-        server = minecraftServer;
         lifecycleState = BotState.STARTING;
         try {
             jda = JDABuilder.createLight(token, Collections.<GatewayIntent>emptyList())
@@ -74,7 +77,6 @@ public final class DiscordBotService implements DiscordLinkAccess {
                     .build();
             Moveearth_addtional.LOGGER.info("[MoveEarth] Embedded Discord bot startup requested");
         } catch (RuntimeException exception) {
-            server = null;
             jda = null;
             lifecycleState = BotState.AUTHENTICATION_FAILED;
             Moveearth_addtional.LOGGER.error("[MoveEarth] Discord bot startup failed ({})",
@@ -90,6 +92,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
         linkCodes.clear();
         accountLinkCodes.clear();
         inFlight.clear();
+        failureNotices.clear();
         if (active != null) {
             active.shutdownNow();
             Moveearth_addtional.LOGGER.info("[MoveEarth] Embedded Discord bot stopped");
@@ -100,11 +103,19 @@ public final class DiscordBotService implements DiscordLinkAccess {
     }
 
     public void tick(MinecraftServer minecraftServer) {
-        if (minecraftServer != server || !isReady()) return;
+        if (minecraftServer != server) return;
         if (++deliveryTicks < DiscordBotConfig.deliveryIntervalTicks()) return;
         deliveryTicks = 0;
         try {
-            dispatchReady(minecraftServer);
+            // Retention applies while disconnected too; otherwise expired alerts pile up until reconnect.
+            pruneOutbox(minecraftServer);
+            if (isReady()) dispatchReady(minecraftServer);
+            else {
+                NationNotificationSavedData data = NationNotificationSavedData.get(minecraftServer);
+                for (var delivery : data.ready(System.currentTimeMillis(), 256)) {
+                    warnFailure(minecraftServer, delivery.nationId(), "unavailable", false);
+                }
+            }
         } catch (RuntimeException exception) {
             Moveearth_addtional.LOGGER.error("[MoveEarth] Discord delivery tick failed ({})",
                     exception.getClass().getSimpleName());
@@ -495,12 +506,19 @@ public final class DiscordBotService implements DiscordLinkAccess {
         Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord slash command registration failed");
     }
 
+    private void pruneOutbox(MinecraftServer activeServer) {
+        NationNotificationSavedData.get(activeServer).pruneExpired(System.currentTimeMillis(),
+                DiscordBotConfig.outboxRetentionHours() * 3_600_000L,
+                DiscordBotConfig.deduplicationWindowSeconds() * 1_000L, delivery -> {
+                    inFlight.remove(delivery.id());
+                    warnFailure(activeServer, delivery.nationId(), "expired", true);
+                });
+    }
+
     private void dispatchReady(MinecraftServer activeServer) {
         NationNotificationSavedData data = NationNotificationSavedData.get(activeServer);
         NationSavedData nations = NationSavedData.get(activeServer);
         long now = System.currentTimeMillis();
-        data.pruneExpired(now, DiscordBotConfig.outboxRetentionHours() * 3_600_000L,
-                DiscordBotConfig.deduplicationWindowSeconds() * 1_000L);
         for (NationNotificationSavedData.Delivery delivery
                 : data.ready(now, DiscordBotConfig.deliveryBatchSize())) {
             if (!inFlight.add(delivery.id())) continue;
@@ -508,7 +526,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
                 dispatchOne(activeServer, data, nations, delivery);
             } catch (RuntimeException exception) {
                 inFlight.remove(delivery.id());
-                data.fail(delivery.id(), now);
+                failDelivery(activeServer, data, delivery, "send_failed");
                 Moveearth_addtional.LOGGER.warn("[MoveEarth] Discord delivery {} rejected ({})",
                         delivery.id(), exception.getClass().getSimpleName());
             }
@@ -521,8 +539,7 @@ public final class DiscordBotService implements DiscordLinkAccess {
         GuildMessageChannel channel = channel(link);
         if (channel == null) {
             inFlight.remove(delivery.id());
-            data.recordDeliveryFailure(delivery.nationId(), "channel_unavailable", System.currentTimeMillis());
-            data.fail(delivery.id(), System.currentTimeMillis());
+            failDelivery(activeServer, data, delivery, "channel_unavailable");
             return;
         }
         String nationName = nations.nation(delivery.nationId())
@@ -543,8 +560,8 @@ public final class DiscordBotService implements DiscordLinkAccess {
                 action.setAllowedMentions(EnumSet.of(Message.MentionType.ROLE)).mention(role);
             }
         }
-        action.queue(ignored -> finish(activeServer, delivery.id(), true),
-                failure -> finish(activeServer, delivery.id(), false));
+        action.queue(ignored -> finish(activeServer, delivery, true),
+                failure -> finish(activeServer, delivery, false));
     }
 
     private GuildMessageChannel channel(NationNotificationSavedData.Link link) {
@@ -561,17 +578,57 @@ public final class DiscordBotService implements DiscordLinkAccess {
                 && guild.getSelfMember().hasPermission(channel, Permission.MESSAGE_EMBED_LINKS);
     }
 
-    private void finish(MinecraftServer expectedServer, UUID deliveryId, boolean success) {
-        inFlight.remove(deliveryId);
-        if (expectedServer != server) return;
-        expectedServer.execute(() -> {
-            if (expectedServer != server) return;
-            NationNotificationSavedData data = NationNotificationSavedData.get(expectedServer);
-            if (success) data.acknowledge(deliveryId);
-            else {
-                data.fail(deliveryId, System.currentTimeMillis());
-            }
-        });
+    private void finish(MinecraftServer expectedServer, NationNotificationSavedData.Delivery delivery, boolean success) {
+        com.ruskserver.moveearth_addtional.s2.notification.DiscordDeliveryCompletion.schedule(
+                () -> expectedServer == server, expectedServer::execute, () -> inFlight.remove(delivery.id()), () -> {
+                    NationNotificationSavedData data = NationNotificationSavedData.get(expectedServer);
+                    if (success) data.acknowledge(delivery.id());
+                    else failDelivery(expectedServer, data, delivery, "send_failed");
+                });
+    }
+
+    private void failDelivery(MinecraftServer activeServer, NationNotificationSavedData data,
+                              NationNotificationSavedData.Delivery delivery, String reason) {
+        long now = System.currentTimeMillis();
+        if (!data.fail(delivery.id(), now)) return;
+        boolean lost = com.ruskserver.moveearth_addtional.s2.notification.NotificationDeliveryPolicy
+                .shouldDrop(delivery.attempts() + 1);
+        data.recordDeliveryFailure(delivery.nationId(), lost ? "retry_limit" : reason, now);
+        warnFailure(activeServer, delivery.nationId(), reason, lost);
+    }
+
+    private void warnFailure(MinecraftServer activeServer, UUID nationId, String reason, boolean lost) {
+        NationSavedData nations = NationSavedData.get(activeServer);
+        var nation = nations.nation(nationId).orElse(null);
+        if (nation == null) return;
+        long now = System.currentTimeMillis();
+        for (UUID member : nation.members().keySet()) {
+            var player = activeServer.getPlayerList().getPlayer(member);
+            if (player == null || !nations.can(member, S2Permission.MANAGE_NOTIFICATIONS)
+                    || !failureNotices.allow(nationId, member, lost, now)) continue;
+            boolean japanese = player.clientInformation().language().startsWith("ja");
+            String kind = lost && !"expired".equals(reason) ? "lost" : reason;
+            String fallback = switch (kind) {
+                case "expired" -> japanese
+                        ? "保留中のDiscord通知が保存期限を過ぎたため、配信を打ち切りました。国家のDiscord通知設定とBotの接続・権限を確認してください。"
+                        : "A pending Discord notification expired and was dropped. Check your nation's Discord settings and the bot connection and permissions.";
+                case "lost" -> japanese
+                        ? "Discord通知を送信できず、再試行の上限に達したため配信を打ち切りました。国家のDiscord通知設定とBotの権限を確認してください。"
+                        : "A Discord notification could not be delivered and was dropped after repeated retries. Check your nation's Discord settings and bot permissions.";
+                case "channel_unavailable" -> japanese
+                        ? "Discord通知先に送信できません。国家の通知先チャンネルとBotの送信・埋め込み権限を確認してください。自動で再試行します。"
+                        : "Discord notifications cannot reach the target channel. Check the nation's channel and bot send/embed permissions. Delivery will retry automatically.";
+                case "unavailable" -> japanese
+                        ? "BotがDiscordに接続していないため、Discord通知が保留されています。接続復旧後に再試行します。"
+                        : "Discord notifications are pending because the bot is disconnected. Delivery will retry after reconnection.";
+                default -> japanese
+                        ? "Discord通知の送信に失敗しました。自動で再試行します。問題が続く場合は国家のDiscord通知設定を確認し、運営に連絡してください。"
+                        : "A Discord notification failed to send and will retry automatically. If this continues, check the nation's Discord settings and contact an administrator.";
+            };
+            player.sendSystemMessage(com.ruskserver.moveearth_addtional.ui.MoveEarthMessage.warning(
+                    net.minecraft.network.chat.Component.translatableWithFallback(
+                            "message.moveearth_addtional.discord.delivery_" + kind, fallback)));
+        }
     }
 
     @FunctionalInterface

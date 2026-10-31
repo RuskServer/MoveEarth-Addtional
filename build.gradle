@@ -167,6 +167,8 @@ configurations {
     discordBotLibraries
     // The discord-rpc jar whose classes copyDiscordRpcClasses merges into the mod output.
     discordRpcBundle { transitive = false }
+    // Create Aeronautics ships its code as a jar inside its jar; balloon mixins compile against the inner one.
+    aeronauticsBundle { transitive = false }
 }
 
 // Ship the primary GPLv3 license and all bundled third-party notices inside every release JAR.
@@ -199,9 +201,14 @@ dependencies {
     implementation 'maven.modrinth:create:6.0.10+mc1.21.1'
     implementation 'maven.modrinth:tacz-1.21.1:1.1.8-hotfix-r6'
     implementation 'maven.modrinth:playerrevive:2.1.2'
+    // Optional event bridge; YIGD is installed separately by the modpack, never bundled.
+    compileOnly 'maven.modrinth:yigd:Axk4bfXT' // 2.0.13 NeoForge; version name also matches Fabric
     // Not referenced by code; only present so dev runs load the pack's recipes and vehicles.
     runtimeOnly 'maven.modrinth:farmers-delight:1.21.1-1.3.3'
     runtimeOnly 'maven.modrinth:create-aeronautics:1.3.2+mc1.21.1'
+    aeronauticsBundle 'maven.modrinth:create-aeronautics:1.3.2+mc1.21.1'
+    // Compile-only: the pack supplies Aeronautics at run time, and nothing of it is shipped.
+    compileOnly files(layout.buildDirectory.file('aeronautics-api/aeronautics.jar')).builtBy('extractAeronauticsApi')
     implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
 
     implementation('net.dv8tion:JDA:6.6.0') {
@@ -423,6 +430,16 @@ idea {
 }
 
 // discord-rpc のクラスファイルをModの出力ディレクトリにマージして1つのモジュール化するタスク
+// The Aeronautics code jar out of the bundle on aeronauticsBundle, for compileOnly above.
+tasks.register("extractAeronauticsApi", Copy) {
+    from({ zipTree(configurations.aeronauticsBundle.singleFile) }) {
+        include 'META-INF/jarjar/dev.eriksonn.aeronautics.aeronautics-neoforge-*.jar'
+        eachFile { it.path = 'aeronautics.jar' }
+        includeEmptyDirs = false
+    }
+    into layout.buildDirectory.dir('aeronautics-api')
+}
+
 var copyDiscordRpcClasses = tasks.register("copyDiscordRpcClasses", Copy) {
     from({ zipTree(configurations.discordRpcBundle.singleFile) }) {
         exclude 'META-INF/MANIFEST.MF'

@@ -31,4 +31,29 @@ class ServerScheduleTest {
         assertFalse(ServerSchedule.isOpenNow(Clock.fixed(
                 Instant.parse("2026-09-14T14:00:00Z"), ZoneOffset.UTC)));
     }
+    @Test
+    void newSiegesStopOneHourBeforeClosing() {
+        for (int hour = 0; hour < 24; hour++) {
+            org.junit.jupiter.api.Assertions.assertEquals(hour >= 19 && hour < 22,
+                    ServerSchedule.isSiegeStartHour(hour), "hour=" + hour);
+        }
+        org.junit.jupiter.api.Assertions.assertEquals(ServerSchedule.CLOSE_HOUR - 1,
+                ServerSchedule.SIEGE_START_CUTOFF_HOUR);
+    }
+
+    @Test
+    void siegeWindowUsesJstAndExactCutoffAcrossDays() {
+        assertFalse(ServerSchedule.canStartSiegeNow(Clock.fixed(
+                Instant.parse("2026-10-27T09:59:59Z"), ZoneOffset.UTC)));
+        assertTrue(ServerSchedule.canStartSiegeNow(Clock.fixed(
+                Instant.parse("2026-10-27T10:00:00Z"), ZoneOffset.UTC)));
+        assertTrue(ServerSchedule.canStartSiegeNow(Clock.fixed(
+                Instant.parse("2026-10-27T12:59:59.999Z"), ZoneOffset.UTC)));
+        assertFalse(ServerSchedule.canStartSiegeNow(Clock.fixed(
+                Instant.parse("2026-10-27T13:00:00Z"), ZoneOffset.UTC)));
+        assertFalse(ServerSchedule.canStartSiegeNow(Clock.fixed(
+                Instant.parse("2026-10-27T15:00:00Z"), ZoneOffset.UTC)));
+        assertTrue(ServerSchedule.canStartSiegeNow(Clock.fixed(
+                Instant.parse("2026-10-28T10:00:00Z"), ZoneOffset.UTC)));
+    }
 }

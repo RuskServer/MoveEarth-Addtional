@@ -28,4 +28,25 @@ class DispatchContractPolicyTest {
         assertEquals(Long.MAX_VALUE,
                 DispatchContractPolicy.maximumCost(Long.MAX_VALUE, Long.MAX_VALUE, Integer.MAX_VALUE));
     }
+
+    @Test
+    void escrowHoldsTheFlatFeeOnTopOfTheTimedMaximum() {
+        assertEquals(500L, DispatchContractPolicy.escrow(500L, 0L, 72_000L, 3));
+        assertEquals(500L + DispatchContractPolicy.maximumCost(10L, 72_000L, 3),
+                DispatchContractPolicy.escrow(500L, 10L, 72_000L, 3));
+        assertEquals(Long.MAX_VALUE, DispatchContractPolicy.escrow(Long.MAX_VALUE, 10L, 72_000L, 3));
+    }
+
+    @Test
+    void theFlatFeeIsEarnedOnlyByABattleTheProviderSawThrough() {
+        assertTrue(DispatchContractPolicy.flatFeeEarned(true, "siege_ended"));
+        assertTrue(DispatchContractPolicy.flatFeeEarned(true, "time_limit"));
+        assertTrue(DispatchContractPolicy.flatFeeEarned(true, "cancelled:employer"));
+        assertTrue(DispatchContractPolicy.flatFeeEarned(true, "employer_gone"));
+        assertFalse(DispatchContractPolicy.flatFeeEarned(true, "cancelled:provider"));
+        assertFalse(DispatchContractPolicy.flatFeeEarned(true, "provider_left"));
+        assertFalse(DispatchContractPolicy.flatFeeEarned(true, "cancelled:admin"));
+        assertFalse(DispatchContractPolicy.flatFeeEarned(false, "siege_ended"));
+        assertFalse(DispatchContractPolicy.flatFeeEarned(false, "reservation_expired"));
+    }
 }

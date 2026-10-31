@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "wiki_regular"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:book"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.wiki_regular.title",
+      "fallback": "まだ迷ってる？"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.wiki_regular.description",
+      "fallback": "Wikiを50回開いた。そろそろ覚えた？"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

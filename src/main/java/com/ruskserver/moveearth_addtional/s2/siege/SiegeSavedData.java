@@ -23,9 +23,17 @@ import java.util.function.Function;
 
 /** Persistent attacker/defender/core scoped Siege timers. */
 public final class SiegeSavedData extends SavedData {
+    private final java.util.function.LongSupplier epochSeconds;
+
+    public SiegeSavedData() { this(() -> System.currentTimeMillis() / 1000L); }
+
+    SiegeSavedData(java.util.function.LongSupplier epochSeconds) {
+        this.epochSeconds = java.util.Objects.requireNonNull(epochSeconds);
+    }
+
     private final Map<SiegeKey, SiegeRecord> active = new LinkedHashMap<>();
     private final Map<AttackerPair, Long> retryCooldowns = new LinkedHashMap<>();
-    /** Per attacker and core, after a siege ran out without the core falling. Blocks damage too. */
+    /** Per attacker/core deadline in Unix seconds: next opening after failure or rolling withdrawal. */
     private final Map<CoreAttacker, Long> failedCooldowns = new LinkedHashMap<>();
     private final Map<UUID, FallenRecord> fallen = new LinkedHashMap<>();
     /**
@@ -47,6 +55,14 @@ public final class SiegeSavedData extends SavedData {
     public AttemptResult registerAttempt(UUID attackerId, boolean individualAttacker,
                                          TerritorySavedData.CoreRecord core,
                                          boolean effectiveDamage, boolean offlineDefenseAllowed) {
+        return registerAttempt(attackerId, individualAttacker, core, effectiveDamage, offlineDefenseAllowed, true);
+    }
+
+    /** The caller snapshots the real-world start window; existing attacker/core records may continue. */
+    public AttemptResult registerAttempt(UUID attackerId, boolean individualAttacker,
+                                         TerritorySavedData.CoreRecord core,
+                                         boolean effectiveDamage, boolean offlineDefenseAllowed,
+                                         boolean newSiegesAllowed) {
         if (attackerId == null || core == null
                 || (!individualAttacker && attackerId.equals(core.nationId()))) {
             return new AttemptResult(AttemptStatus.IGNORED, null);
@@ -70,7 +86,9 @@ public final class SiegeSavedData extends SavedData {
                     ? AttemptStatus.ROLLING_STARTED : AttemptStatus.ROLLING_EXTENDED, updated);
         }
 
-        if (failedCooldowns.getOrDefault(new CoreAttacker(attackerId, individualAttacker, core.id()), 0L) > 0L) {
+        if (!newSiegesAllowed) return new AttemptResult(AttemptStatus.START_WINDOW_CLOSED, null);
+
+        if (failedAttackBlockedUntil(attackerId, individualAttacker, core.id()) > 0L) {
             return new AttemptResult(AttemptStatus.FAILED_COOLDOWN, null);
         }
         AttackerPair pair = new AttackerPair(attackerId, individualAttacker, core.nationId());
@@ -105,9 +123,10 @@ public final class SiegeSavedData extends SavedData {
         var failedIterator = failedCooldowns.entrySet().iterator();
         while (failedIterator.hasNext()) {
             var entry = failedIterator.next();
-            long remaining = Math.max(0L, entry.getValue() - elapsedTicks);
-            if (remaining == 0L) failedIterator.remove(); else entry.setValue(remaining);
-            changed = true;
+            if (!SiegeReattackPolicy.blocked(entry.getValue(), epochSeconds.getAsLong())) {
+                failedIterator.remove();
+                changed = true;
+            }
         }
         changed |= advanceCountdowns(nationTruces, elapsedTicks);
         changed |= advanceCountdowns(coreTruces, elapsedTicks);
@@ -135,9 +154,7 @@ public final class SiegeSavedData extends SavedData {
                             S2TerritoryConfig.siegeRetryCooldownTicks());
                 } else {
                     rollingExpired.add(current);
-                    long failedTicks = S2TerritoryConfig.siegeFailedCooldownTicks();
-                    if (failedTicks > 0L) failedCooldowns.merge(new CoreAttacker(current.attackerNation(),
-                            current.individualAttacker(), current.coreId()), failedTicks, Math::max);
+                    startFailedCooldown(current.attackerNation(), current.individualAttacker(), current.coreId());
                 }
             } else {
                 entry.setValue(current.withTimer(advanced.phase(), advanced.remainingTicks()));
@@ -245,6 +262,11 @@ public final class SiegeSavedData extends SavedData {
                 .sorted(Comparator.comparing(SiegeRecord::remainingTicks)).toList();
     }
 
+    public boolean hasActiveAttack(UUID attackerId, boolean individual, UUID defenderId, UUID coreId) {
+        return attackerId != null && defenderId != null && coreId != null
+                && active.containsKey(new SiegeKey(attackerId, individual, defenderId, coreId));
+    }
+
     public boolean hasActiveIndividualAttack(UUID playerId, UUID coreId) {
         return playerId != null && coreId != null && active.values().stream()
                 .anyMatch(record -> record.individualAttacker()
@@ -264,6 +286,25 @@ public final class SiegeSavedData extends SavedData {
     }
 
     public boolean isCoreFallen(UUID coreId) { return fallen.containsKey(coreId); }
+
+    /** Any siege footprint covering this defender's position, including initial lock and live occupation. */
+    public boolean combatAt(UUID defender, ResourceLocation dimension, BlockPos pos,
+                            java.util.function.ToIntFunction<UUID> coreRadius) {
+        int x = pos.getX() >> 4, z = pos.getZ() >> 4;
+        for (SiegeRecord siege : active.values()) {
+            if (!siege.defenderNation().equals(defender) || !siege.dimension().equals(dimension)) continue;
+            if (com.ruskserver.moveearth_addtional.s2.combat.PeaceTerritoryShieldPolicy.insideChunks(
+                    x, z, siege.corePos().getX() >> 4, siege.corePos().getZ() >> 4,
+                    coreRadius.applyAsInt(siege.coreId()))) return true;
+        }
+        for (FallenRecord siege : fallen.values()) {
+            if (siege.finalized() || !siege.defenderNation().equals(defender) || !siege.dimension().equals(dimension)) continue;
+            if (com.ruskserver.moveearth_addtional.s2.combat.PeaceTerritoryShieldPolicy.insideChunks(
+                    x, z, siege.corePos().getX() >> 4, siege.corePos().getZ() >> 4, siege.radius())) return true;
+        }
+        return false;
+    }
+
 
     /** Whether a siege that has already dealt real damage is running on the core. */
     public boolean hasRollingSiege(UUID coreId) {
@@ -368,10 +409,17 @@ public final class SiegeSavedData extends SavedData {
         setDirty();
     }
 
-    /** Open-time ticks before this attacker may attack this core again; 0 when free to attack. */
-    public long failedAttackCooldownTicks(UUID attackerId, boolean individualAttacker, UUID coreId) {
+    /** Authoritative Unix-second deadline; zero once the next opening has arrived, even before pruning. */
+    public long failedAttackBlockedUntil(UUID attackerId, boolean individualAttacker, UUID coreId) {
         if (attackerId == null || coreId == null) return 0L;
-        return failedCooldowns.getOrDefault(new CoreAttacker(attackerId, individualAttacker, coreId), 0L);
+        long until = failedCooldowns.getOrDefault(new CoreAttacker(attackerId, individualAttacker, coreId), 0L);
+        return SiegeReattackPolicy.blocked(until, epochSeconds.getAsLong()) ? until : 0L;
+    }
+
+    /** Presentation for the unchanged v3.7 protection-view packet; not the authority for attack eligibility. */
+    public long failedAttackCooldownTicks(UUID attackerId, boolean individualAttacker, UUID coreId) {
+        return SiegeReattackPolicy.remainingOpenTicks(failedAttackBlockedUntil(attackerId, individualAttacker, coreId),
+                epochSeconds.getAsLong());
     }
 
     public void removeNationState(UUID nationId) {
@@ -431,9 +479,10 @@ public final class SiegeSavedData extends SavedData {
     }
 
     /** Locks an attacker out of a core as if its siege had run out without the core falling. */
-    public void startFailedCooldown(UUID attackerId, boolean individualAttacker, UUID coreId, long ticks) {
-        if (attackerId == null || coreId == null || ticks <= 0L) return;
-        failedCooldowns.merge(new CoreAttacker(attackerId, individualAttacker, coreId), ticks, Math::max);
+    public void startFailedCooldown(UUID attackerId, boolean individualAttacker, UUID coreId) {
+        if (attackerId == null || coreId == null) return;
+        failedCooldowns.merge(new CoreAttacker(attackerId, individualAttacker, coreId),
+                SiegeReattackPolicy.nextOpening(epochSeconds.getAsLong()), Math::max);
         setDirty();
     }
 
@@ -582,7 +631,7 @@ public final class SiegeSavedData extends SavedData {
             value.putUUID("Attacker", entry.getKey().attacker());
             value.putBoolean("IndividualAttacker", entry.getKey().individual());
             value.putUUID("Core", entry.getKey().core());
-            value.putLong("Remaining", entry.getValue());
+            value.putLong("UntilOpening", entry.getValue());
             failedTag.add(value);
         }
         tag.put("FailedCooldowns", failedTag);
@@ -635,7 +684,12 @@ public final class SiegeSavedData extends SavedData {
     }
 
     public static SiegeSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
-        SiegeSavedData data = new SiegeSavedData();
+        return load(tag, registries, () -> System.currentTimeMillis() / 1000L);
+    }
+
+    static SiegeSavedData load(CompoundTag tag, HolderLookup.Provider registries,
+                               java.util.function.LongSupplier epochSeconds) {
+        SiegeSavedData data = new SiegeSavedData(epochSeconds);
         ListTag activeTag = tag.getList("Active", Tag.TAG_COMPOUND);
         for (int index = 0; index < activeTag.size(); index++) {
             CompoundTag value = activeTag.getCompound(index);
@@ -672,16 +726,29 @@ public final class SiegeSavedData extends SavedData {
             }
         }
         ListTag failedTag = tag.getList("FailedCooldowns", Tag.TAG_COMPOUND);
+        int legacyCleared = 0;
         for (int index = 0; index < failedTag.size(); index++) {
             CompoundTag value = failedTag.getCompound(index);
-            long remaining = value.getLong("Remaining");
-            if (!value.hasUUID("Attacker") || !value.hasUUID("Core") || remaining <= 0L) {
+            // Legacy open-time counters have no failure date; do not invent a fresh session-long penalty.
+            if (!value.contains("UntilOpening", Tag.TAG_LONG)) {
+                if (value.getLong("Remaining") > 0L) {
+                    legacyCleared++;
+                }
+                data.setDirty();
+                continue;
+            }
+            long untilOpening = value.getLong("UntilOpening");
+            if (!value.hasUUID("Attacker") || !value.hasUUID("Core")) {
                 warnSkippedRecord("FailedCooldowns", index, "missing or invalid UUID");
                 continue;
             }
-            data.failedCooldowns.put(new CoreAttacker(value.getUUID("Attacker"),
-                    value.getBoolean("IndividualAttacker"), value.getUUID("Core")), remaining);
+            if (SiegeReattackPolicy.blocked(untilOpening, epochSeconds.getAsLong())) {
+                data.failedCooldowns.merge(new CoreAttacker(value.getUUID("Attacker"),
+                        value.getBoolean("IndividualAttacker"), value.getUUID("Core")), untilOpening, Math::max);
+            }
         }
+        if (legacyCleared > 0) Moveearth_addtional.LOGGER.info(
+                "Cleared {} legacy failed-Siege countdown(s) during session-lockout migration", legacyCleared);
         ListTag fallenTag = tag.getList("Fallen", Tag.TAG_COMPOUND);
         for (int index = 0; index < fallenTag.size(); index++) {
             CompoundTag value = fallenTag.getCompound(index);
@@ -779,10 +846,13 @@ public final class SiegeSavedData extends SavedData {
 
     public enum AttemptStatus {
         INITIAL_STARTED, ROLLING_STARTED, ROLLING_EXTENDED, ACTIVE_UNCHANGED, RETRY_COOLDOWN, FAILED_COOLDOWN,
-        SETTLEMENT_TRUCE, PEACE_TRUCE, RECOVERY_PROTECTED, IGNORED
+        SETTLEMENT_TRUCE, PEACE_TRUCE, RECOVERY_PROTECTED, START_WINDOW_CLOSED, IGNORED
     }
 
-    public record AttemptResult(AttemptStatus status, SiegeRecord siege) { }
+    public record AttemptResult(AttemptStatus status, SiegeRecord siege) {
+        /** A final time-window refusal must stop the caller before damage or block removal. */
+        public boolean startWindowClosed() { return status == AttemptStatus.START_WINDOW_CLOSED; }
+    }
     public record TickResult(List<SiegeRecord> initialExpired, List<SiegeRecord> rollingExpired) { }
     public record FallenResult(boolean created, FallenRecord fallen) { }
     public record FallenTickResult(List<FallenRecord> stageChanged, List<FallenRecord> recovered,

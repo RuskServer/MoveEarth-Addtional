@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:getting_started/afk_strayed",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "afk_statue"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:mossy_cobblestone"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.afk_statue.title",
+      "fallback": "地蔵"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.afk_statue.description",
+      "fallback": "2時間微動だにしなかった。誰かがお供え物を置いていった"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

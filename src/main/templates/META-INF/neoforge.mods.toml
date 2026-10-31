@@ -273,3 +273,11 @@ side = "BOTH"
 # stop your mod loading on the server for example.
 #[features."${mod_id}"]
 #openGLVersion="[3.2,)"
+
+# Grave storage integration is optional so legacy installations can still start during migration.
+[[dependencies."${mod_id}"]]
+modId = "yigd"
+type = "optional"
+versionRange = "[2.0.13,2.1)"
+ordering = "AFTER"
+side = "BOTH"

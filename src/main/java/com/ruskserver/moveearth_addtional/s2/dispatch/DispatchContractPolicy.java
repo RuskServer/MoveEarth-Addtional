@@ -10,6 +10,27 @@ public final class DispatchContractPolicy {
         return saturatedMultiply(saturatedMultiply(pricePerOpenMinute, minutes), participants);
     }
 
+    /** What the employer puts in escrow: the flat fee plus the most the per-minute rate can come to. */
+    public static long escrow(long flatFee, long pricePerOpenMinute, long maximumOpenTicks, int participants) {
+        long flat = Math.max(0L, flatFee);
+        long timed = maximumCost(pricePerOpenMinute, maximumOpenTicks, participants);
+        return flat > Long.MAX_VALUE - timed ? Long.MAX_VALUE : flat + timed;
+    }
+
+    /**
+     * Whether a contract that ended for {@code reason} earns its flat fee. Only one that went into battle, and
+     * ended without the provider's side walking out: the battle ending, its time running out, the employer
+     * calling it off or ceasing to exist. A provider cancelling, a hired player leaving, or staff ending it
+     * hands the fee back.
+     */
+    public static boolean flatFeeEarned(boolean activated, String reason) {
+        if (!activated || reason == null) return false;
+        return switch (reason) {
+            case "siege_ended", "time_limit", "cancelled:employer", "employer_gone" -> true;
+            default -> false;
+        };
+    }
+
     public static long earned(long pricePerOpenMinute, long billedTicks) {
         if (pricePerOpenMinute <= 0L || billedTicks <= 0L) return 0L;
         return saturatedMultiply(pricePerOpenMinute, billedTicks) / 1_200L;

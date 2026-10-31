@@ -51,6 +51,14 @@ public final class SiegeParticipationSavedData extends SavedData {
         return participants.values().stream().filter(value -> value.siegeId().equals(siegeId)).toList();
     }
 
+    /** Ends one contract's participation; other contracts bound to the same Siege keep theirs. */
+    public void removeContract(UUID contractId) {
+        if (contractId != null && participants.values().removeIf(value -> contractId.equals(value.contractId()))) {
+            revision++;
+            setDirty();
+        }
+    }
+
     public void removeSiege(UUID siegeId) {
         if (siegeId != null && participants.values().removeIf(value -> value.siegeId().equals(siegeId))) {
             revision++;

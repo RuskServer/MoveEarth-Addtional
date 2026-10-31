@@ -19,6 +19,7 @@ public final class RecoveryDispatchConfig {
     private static final ModConfigSpec.IntValue DISPATCH_MAX_OPEN_MINUTES;
     private static final ModConfigSpec.IntValue DISPATCH_BATTLEFIELD_RADIUS;
     private static final ModConfigSpec.BooleanValue DISPATCH_SUBSIDY_APPROVAL;
+    private static final ModConfigSpec.IntValue DISPATCH_RESERVATION_OPEN_MINUTES;
     private static final ModConfigSpec.BooleanValue RIVAL_ENABLED;
     private static final ModConfigSpec.IntValue HISTORY_RETENTION;
 
@@ -50,11 +51,15 @@ public final class RecoveryDispatchConfig {
         BUILDER.pop();
 
         BUILDER.push("dispatch");
-        DISPATCH_ENABLED = BUILDER.define("enabled", false);
-        DISPATCH_MONEY_ENABLED = BUILDER.define("moneyEnabled", false);
-        DISPATCH_MAX_OPEN_MINUTES = BUILDER.defineInRange("maxOpenMinutes", 60, 1, 1440);
+        DISPATCH_ENABLED = BUILDER.define("enabled", true);
+        DISPATCH_MONEY_ENABLED = BUILDER.define("moneyEnabled", true);
+        DISPATCH_MAX_OPEN_MINUTES = BUILDER.defineInRange("maxOpenMinutes", 240, 1, 1440);
         DISPATCH_BATTLEFIELD_RADIUS = BUILDER.defineInRange("battlefieldRadius", 192, 16, 2048);
         DISPATCH_SUBSIDY_APPROVAL = BUILDER.define("requireSubsidyAdminApproval", true);
+        DISPATCH_RESERVATION_OPEN_MINUTES = BUILDER
+                .comment("Open-time minutes a contract may take from creation to battle: approvals, consent,",
+                        "funding and the Siege starting. Separate from maxOpenMinutes, which is how long it may run.")
+                .defineInRange("reservationOpenMinutes", 480, 15, 10_080);
         BUILDER.pop();
 
         RIVAL_ENABLED = BUILDER.define("rival.enabled", true);
@@ -78,6 +83,7 @@ public final class RecoveryDispatchConfig {
     public static long dispatchMaxOpenTicks() { return DISPATCH_MAX_OPEN_MINUTES.getAsInt() * 1_200L; }
     public static int dispatchBattlefieldRadius() { return DISPATCH_BATTLEFIELD_RADIUS.getAsInt(); }
     public static boolean dispatchSubsidyApprovalRequired() { return DISPATCH_SUBSIDY_APPROVAL.getAsBoolean(); }
+    public static long dispatchReservationOpenTicks() { return DISPATCH_RESERVATION_OPEN_MINUTES.getAsInt() * 1_200L; }
     public static boolean rivalEnabled() { return RIVAL_ENABLED.getAsBoolean(); }
     public static int historyRetention() { return HISTORY_RETENTION.getAsInt(); }
 }

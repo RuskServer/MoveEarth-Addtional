@@ -13,7 +13,9 @@ import java.util.ArrayList;
 public record S2C_NationTreasuryPacket(boolean canManage, long upkeep, int upkeepCycleHours,
                                        long nationBalance, long playerBalance,
                                        long nextDueAt, int failedPayments, long overdueSince,
-                                       UpkeepPenalty penalty, List<String> recentTransactions)
+                                       UpkeepPenalty penalty, List<String> recentTransactions,
+                                       int taxPercent, int taxMaxPercent, long taxRaiseWaitMinutes,
+                                       long taxPending)
         implements CustomPacketPayload {
     public static final Type<S2C_NationTreasuryPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(Moveearth_addtional.MODID, "nation_treasury"));
@@ -30,6 +32,10 @@ public record S2C_NationTreasuryPacket(boolean canManage, long upkeep, int upkee
                 buffer.writeEnum(packet.penalty);
                 buffer.writeVarInt(packet.recentTransactions.size());
                 packet.recentTransactions.forEach(value -> buffer.writeUtf(value, 120));
+                buffer.writeVarInt(packet.taxPercent);
+                buffer.writeVarInt(packet.taxMaxPercent);
+                buffer.writeVarLong(packet.taxRaiseWaitMinutes);
+                buffer.writeVarLong(packet.taxPending);
             },
             buffer -> {
                 boolean canManage = buffer.readBoolean();
@@ -45,8 +51,13 @@ public record S2C_NationTreasuryPacket(boolean canManage, long upkeep, int upkee
                 if (count < 0 || count > 8) throw new IllegalArgumentException("Invalid treasury history length");
                 List<String> history = new ArrayList<>();
                 for (int i = 0; i < count; i++) history.add(buffer.readUtf(120));
+                int taxPercent = buffer.readVarInt();
+                int taxMaxPercent = buffer.readVarInt();
+                long taxRaiseWaitMinutes = buffer.readVarLong();
+                long taxPending = buffer.readVarLong();
                 return new S2C_NationTreasuryPacket(canManage, upkeep, upkeepCycleHours, nationBalance, playerBalance,
-                        nextDueAt, failedPayments, overdueSince, penalty, history);
+                        nextDueAt, failedPayments, overdueSince, penalty, history, taxPercent, taxMaxPercent,
+                        taxRaiseWaitMinutes, taxPending);
             });
 
     public S2C_NationTreasuryPacket {
@@ -55,6 +66,10 @@ public record S2C_NationTreasuryPacket(boolean canManage, long upkeep, int upkee
         if (penalty == null) penalty = UpkeepPenalty.CURRENT;
         overdueSince = Math.max(0L, overdueSince);
         recentTransactions = List.copyOf(recentTransactions);
+        taxMaxPercent = Math.max(0, Math.min(100, taxMaxPercent));
+        taxPercent = Math.max(0, Math.min(taxMaxPercent, taxPercent));
+        taxRaiseWaitMinutes = Math.max(0L, taxRaiseWaitMinutes);
+        taxPending = Math.max(0L, taxPending);
     }
 
     @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }

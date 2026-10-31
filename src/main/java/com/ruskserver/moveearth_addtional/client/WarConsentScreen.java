@@ -21,11 +21,15 @@ public final class WarConsentScreen extends Screen implements SuppressesChatOver
     private static final int ARM_TICKS = 30;
     private static final int PADDING = 18;
     private final S2C_WarConsentPromptPacket prompt;
+    private final boolean sessionLockout;
     private int ticksOpen;
 
-    public WarConsentScreen(S2C_WarConsentPromptPacket prompt) {
+    public WarConsentScreen(S2C_WarConsentPromptPacket prompt) { this(prompt, false); }
+
+    public WarConsentScreen(S2C_WarConsentPromptPacket prompt, boolean sessionLockout) {
         super(Component.translatable("screen.moveearth_addtional.war_consent.title"));
         this.prompt = prompt;
+        this.sessionLockout = sessionLockout;
     }
 
     private List<Line> lines() {
@@ -33,8 +37,9 @@ public final class WarConsentScreen extends Screen implements SuppressesChatOver
                 new Line(Component.translatable("screen.moveearth_addtional.war_consent.target",
                         prompt.targetNationName()), TEXT),
                 new Line(Component.translatable("screen.moveearth_addtional.war_consent.prisoners"), DANGER),
-                new Line(Component.translatable("screen.moveearth_addtional.war_consent.lockout",
-                        prompt.failedLockoutMinutes()), GOLD),
+                new Line(sessionLockout
+                        ? Component.translatable("screen.moveearth_addtional.war_consent.session_lockout")
+                        : Component.translatable("screen.moveearth_addtional.war_consent.lockout", prompt.failedLockoutMinutes()), GOLD),
                 new Line(Component.translatable("screen.moveearth_addtional.war_consent.hostility_hint"), ACCENT),
                 new Line(Component.translatable("screen.moveearth_addtional.war_consent.validity",
                         prompt.consentMinutes()), MUTED));

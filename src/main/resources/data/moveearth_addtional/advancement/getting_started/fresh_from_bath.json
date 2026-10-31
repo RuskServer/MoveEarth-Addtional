@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "fresh_from_bath"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:water_bucket"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.fresh_from_bath.title",
+      "fallback": "風呂上がり"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.fresh_from_bath.description",
+      "fallback": "きれいな水で被曝をすべて洗い流した。さっぱり"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

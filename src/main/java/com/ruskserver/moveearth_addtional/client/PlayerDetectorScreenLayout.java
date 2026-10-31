@@ -12,7 +12,7 @@ import java.util.Locale;
  */
 public final class PlayerDetectorScreenLayout {
     public static final int FIT_WIDTH = 420;
-    public static final int FIT_HEIGHT = 264;
+    public static final int FIT_HEIGHT = 228;
 
     private static final int PAD = 14;
     private static final int HEADER_HEIGHT = 36;
@@ -20,8 +20,6 @@ public final class PlayerDetectorScreenLayout {
     private static final int UPKEEP_CARD_HEIGHT = 68;
     private static final int NAME_CARD_HEIGHT = 48;
     private static final int CARD_GAP = 5;
-    private static final int FOOTER_BUTTON_WIDTH = 96;
-    private static final int FOOTER_BUTTON_HEIGHT = 18;
 
     private PlayerDetectorScreenLayout() {
     }
@@ -36,14 +34,13 @@ public final class PlayerDetectorScreenLayout {
             Rect nameCard,
             Rect nameInput,
             Rect saveButton,
-            Rect resetButton,
-            Rect footerClose
+            Rect resetButton
     ) {
     }
 
     public static Layout calculate(int screenWidth, int screenHeight) {
         int panelWidth = Math.min(screenWidth, Math.min(FIT_WIDTH, Math.max(304, screenWidth - 16)));
-        int panelHeight = Math.min(screenHeight, Math.min(FIT_HEIGHT, Math.max(240, screenHeight - 12)));
+        int panelHeight = Math.min(screenHeight, Math.min(FIT_HEIGHT, Math.max(216, screenHeight - 12)));
         int left = Math.max(0, (screenWidth - panelWidth) / 2);
         int top = Math.max(0, (screenHeight - panelHeight) / 2);
 
@@ -71,13 +68,6 @@ public final class PlayerDetectorScreenLayout {
         int inputWidth = Math.max(72, saveButton.x() - (nameCard.x() + 12) - buttonGap);
         Rect nameInput = new Rect(nameCard.x() + 12, inputY, inputWidth, 20);
 
-        Rect footerClose = new Rect(
-                panel.x() + (panel.width() - FOOTER_BUTTON_WIDTH) / 2,
-                panel.bottom() - FOOTER_BUTTON_HEIGHT - 6,
-                FOOTER_BUTTON_WIDTH,
-                FOOTER_BUTTON_HEIGHT
-        );
-
         return new Layout(
                 panel,
                 close,
@@ -88,8 +78,7 @@ public final class PlayerDetectorScreenLayout {
                 nameCard,
                 nameInput,
                 saveButton,
-                resetButton,
-                footerClose
+                resetButton
         );
     }
 
@@ -120,7 +109,9 @@ public final class PlayerDetectorScreenLayout {
         return String.format(Locale.ROOT, "稼働中（次回引き落としまで %s）", clock(nextPaymentTime - now));
     }
 
-    public static float progressRatio(boolean active, long placedTime, long nextPaymentTime, long now) {
+    /** @param cycleMillis one paid cycle, to show how much of it is left */
+    public static float progressRatio(boolean active, long placedTime, long nextPaymentTime, long now,
+                                      long cycleMillis) {
         if (stopped(active, nextPaymentTime, now)) {
             return 0.0F;
         }
@@ -130,15 +121,16 @@ public final class PlayerDetectorScreenLayout {
             return clamp01((float) elapsed / (float) PlayerDetectorBlockEntity.WARMUP_DURATION_MS);
         }
         long remaining = Math.max(0L, nextPaymentTime - now);
-        return clamp01((float) remaining / (float) PlayerDetectorBlockEntity.UPKEEP_INTERVAL_MS);
+        return clamp01((float) remaining / (float) Math.max(1L, cycleMillis));
     }
 
-    public static String upkeepSummaryText() {
+    /** The server's upkeep, as the state packet carries it: the client keeps no copy of its settings. */
+    public static String upkeepSummaryText(long cost, int cycleHours) {
         return String.format(
                 Locale.ROOT,
                 "維持費: %d時間ごとに %d TC（半径%.0fm検知）",
-                PlayerDetectorBlockEntity.UPKEEP_CYCLE_HOURS,
-                PlayerDetectorBlockEntity.UPKEEP_COST,
+                cycleHours,
+                cost,
                 PlayerDetectorBlockEntity.DETECTION_RANGE
         );
     }

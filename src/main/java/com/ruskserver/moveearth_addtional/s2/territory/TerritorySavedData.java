@@ -28,6 +28,7 @@ public final class TerritorySavedData extends SavedData {
     private final Map<CoreKey, CoreRecord> cores = new LinkedHashMap<>();
     private final Map<UUID, VaultChunk> vaults = new LinkedHashMap<>();
     private final Map<UUID, Long> vaultChangeCooldowns = new LinkedHashMap<>();
+    private final Map<UUID, Long> capitalRelocationUntil = new LinkedHashMap<>();
     private final Map<ResourceLocation, Map<Long, List<CoreKey>>> reservedChunkIndex = new HashMap<>();
     private final Map<ResourceLocation, Map<Long, List<CoreKey>>> controlledChunkIndex = new HashMap<>();
     private final Map<ResourceLocation, Map<Long, List<CoreKey>>> corePositionIndex = new HashMap<>();
@@ -96,6 +97,49 @@ public final class TerritorySavedData extends SavedData {
 
     public Optional<CoreRecord> core(ResourceLocation dimension, BlockPos pos) {
         return Optional.ofNullable(cores.get(new CoreKey(dimension, pos)));
+    }
+
+    public long capitalRelocationRemaining(UUID nationId, long openNow) {
+        return CapitalRelocationPolicy.remaining(openNow, capitalRelocationUntil.getOrDefault(nationId, 0L));
+    }
+
+    public CapitalRelocationPolicy.Result capitalSwapCandidate(UUID nationId, UUID capitalId, UUID targetId) {
+        CoreRecord capital = coreById(capitalId).orElse(null);
+        CoreRecord target = coreById(targetId).orElse(null);
+        boolean pair = capital != null && target != null && !capital.id.equals(target.id)
+                && capital.nationId.equals(nationId) && target.nationId.equals(nationId)
+                && capital.type == CoreType.CAPITAL && target.type == CoreType.OUTPOST
+                && cores.values().stream().filter(c -> c.nationId.equals(nationId) && c.type == CoreType.CAPITAL).count() == 1;
+        if (!pair) return CapitalRelocationPolicy.Result.INVALID_TARGET;
+        VaultChunk vault = vaults.get(nationId);
+        boolean vaultConflict = vault != null && vault.dimension.equals(target.dimension)
+                && vault.chunkX == (target.pos.getX() >> 4) && vault.chunkZ == (target.pos.getZ() >> 4);
+        return CapitalRelocationPolicy.candidate(true,
+                capital.state == CoreState.ACTIVE && target.state == CoreState.ACTIVE,
+                capital.health == capital.maximumHealth && target.health == target.maximumHealth
+                        && capital.regenDelayTicks == 0 && target.regenDelayTicks == 0,
+                vaultConflict, true);
+    }
+
+    /** Both records, the cooldown and indexes change together; positions, radii and stable core IDs stay intact. */
+    public CapitalRelocationPolicy.Result swapCapital(UUID nationId, UUID capitalId, UUID targetId, long openNow) {
+        if (capitalRelocationRemaining(nationId, openNow) > 0) return CapitalRelocationPolicy.Result.COOLDOWN;
+        var validation = capitalSwapCandidate(nationId, capitalId, targetId);
+        if (validation != CapitalRelocationPolicy.Result.READY) return validation;
+        CoreRecord capital = coreById(capitalId).orElseThrow();
+        CoreRecord target = coreById(targetId).orElseThrow();
+        cores.put(new CoreKey(capital.dimension, capital.pos), withType(capital, CoreType.OUTPOST));
+        cores.put(new CoreKey(target.dimension, target.pos), withType(target, CoreType.CAPITAL));
+        capitalRelocationUntil.put(nationId, openNow + S2TerritoryConfig.capitalRelocationCooldownTicks());
+        rebuildIndexes();
+        setDirty();
+        return CapitalRelocationPolicy.Result.SUCCESS;
+    }
+
+    private static CoreRecord withType(CoreRecord core, CoreType type) {
+        int maximum = maximumHealth(type);
+        return new CoreRecord(core.id, core.nationId, core.placedBy, core.dimension, core.pos,
+                type, core.radius, core.state, maximum, maximum, 0L, 0L);
     }
 
     public Optional<CoreRecord> coreById(UUID coreId) {
@@ -584,6 +628,7 @@ public final class TerritorySavedData extends SavedData {
         List<CoreRecord> removed = cores.values().stream()
                 .filter(core -> core.nationId.equals(nationId)).toList();
         boolean changed = cores.values().removeIf(core -> core.nationId.equals(nationId));
+        changed |= capitalRelocationUntil.remove(nationId) != null;
         changed |= vaults.remove(nationId) != null;
         changed |= vaultChangeCooldowns.remove(nationId) != null;
         if (changed) {
@@ -719,6 +764,14 @@ public final class TerritorySavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider registries) {
+        ListTag capitalMoves = new ListTag();
+        for (var entry : capitalRelocationUntil.entrySet()) {
+            CompoundTag value = new CompoundTag();
+            value.putUUID("Nation", entry.getKey());
+            value.putLong("UntilOpenTick", entry.getValue());
+            capitalMoves.add(value);
+        }
+        tag.put("CapitalRelocationCooldowns", capitalMoves);
         ListTag list = new ListTag();
         for (CoreRecord core : cores.values()) {
             CompoundTag value = new CompoundTag();
@@ -753,6 +806,12 @@ public final class TerritorySavedData extends SavedData {
 
     public static TerritorySavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         TerritorySavedData data = new TerritorySavedData();
+        ListTag capitalMoves = tag.getList("CapitalRelocationCooldowns", Tag.TAG_COMPOUND);
+        for (int i = 0; i < capitalMoves.size(); i++) {
+            CompoundTag value = capitalMoves.getCompound(i);
+            if (value.hasUUID("Nation")) data.capitalRelocationUntil.put(value.getUUID("Nation"),
+                    Math.max(0L, value.getLong("UntilOpenTick")));
+        }
         ListTag list = tag.getList("Cores", Tag.TAG_COMPOUND);
         for (int index = 0; index < list.size(); index++) {
             CompoundTag value = list.getCompound(index);

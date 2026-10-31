@@ -13,6 +13,14 @@ public final class AeronauticsSwivelConfig {
     private static final ModConfigSpec.DoubleValue PORTABLE_ENGINE_MAX_CAPACITY;
     private static final ModConfigSpec.BooleanValue JOINT_WINDUP_LIMIT_ENABLED;
     private static final ModConfigSpec.DoubleValue JOINT_MAX_LEAD_DEGREES;
+    private static final ModConfigSpec.BooleanValue BALLOON_HOLES_ENABLED;
+    private static final ModConfigSpec.DoubleValue BALLOON_LEAK_SECONDS;
+    private static final ModConfigSpec.BooleanValue BODY_DENSITY_ENABLED;
+    private static final ModConfigSpec.IntValue BODY_DENSITY_RADIUS;
+    private static final ModConfigSpec.IntValue BODY_DENSITY_MAX;
+    private static final ModConfigSpec.BooleanValue DEBRIS_CLEANUP_ENABLED;
+    private static final ModConfigSpec.IntValue DEBRIS_CLEANUP_GRACE;
+    private static final ModConfigSpec.IntValue DEBRIS_CLEANUP_BATCH;
 
     public static final ModConfigSpec SPEC;
 
@@ -79,6 +87,45 @@ public final class AeronauticsSwivelConfig {
                 .defineInRange("maxLeadDegrees", 10.0D, 1.0D, 180.0D);
 
         BUILDER.pop();
+
+        BUILDER.push("balloonHoles");
+
+        BALLOON_HOLES_ENABLED = BUILDER
+                .comment(
+                        "Let a holed Create Aeronautics balloon keep the hot air above the hole, and lose what it can no",
+                        "longer hold slowly. Without this one broken envelope block empties the whole balloon within seconds."
+                )
+                .define("enabled", true);
+
+        BALLOON_LEAK_SECONDS = BUILDER
+                .comment(
+                        "How slowly a holed balloon loses lift: the time, in seconds, for the excess hot air to fall to about",
+                        "a third. It is mostly gone after three times this. Aeronautics itself takes 9 seconds; turning a",
+                        "burner down still takes those 9 seconds."
+                )
+                .defineInRange("leakSeconds", 30.0D, 9.0D, 600.0D);
+
+        BUILDER.pop();
+        BUILDER.push("bodyDensityLimit");
+        BODY_DENSITY_ENABLED = BUILDER.comment(
+                "Limit new physics bodies from Simulated assemblers, Sable assembly commands and automatic splitting.",
+                "Existing bodies are never deleted; blocked automatic splits retry once per second.",
+                "This does not prevent existing bodies moving into the same area or limit other mods' direct API calls.")
+                .define("enabled", true);
+        BODY_DENSITY_RADIUS = BUILDER.comment(
+                "Horizontal radius in world blocks; height is ignored. Each body's world anchor counts once.")
+                .defineInRange("radius", 128, 16, 2048);
+        BODY_DENSITY_MAX = BUILDER.comment("Maximum bodies around proposed and affected existing world anchors, including new bodies.")
+                .defineInRange("maxBodies", 64, 1, 4096);
+        DEBRIS_CLEANUP_ENABLED = BUILDER.comment(
+                "Remove excess loaded bodies after a warning and grace period, only while still over the density limit.",
+                "A physical vehicle core anywhere in the connected chain, an active raid, or a nearby/onboard player protects the chain.")
+                .define("debrisCleanupEnabled", true);
+        DEBRIS_CLEANUP_GRACE = BUILDER.comment("Continuous seconds eligible before removal; resets when no longer over budget or protected.")
+                .defineInRange("debrisCleanupGraceSeconds", 60, 10, 3600);
+        DEBRIS_CLEANUP_BATCH = BUILDER.comment("Maximum excess bodies removed per five-second sweep.")
+                .defineInRange("debrisCleanupMaxPerSweep", 8, 1, 64);
+        BUILDER.pop();
         SPEC = BUILDER.build();
     }
 
@@ -109,7 +156,22 @@ public final class AeronauticsSwivelConfig {
         return JOINT_MAX_LEAD_DEGREES.getAsDouble();
     }
 
+    public static boolean balloonHolesEnabled() {
+        return BALLOON_HOLES_ENABLED.getAsBoolean();
+    }
+
+    public static double balloonLeakSeconds() {
+        return BALLOON_LEAK_SECONDS.getAsDouble();
+    }
+
     public static double portableEngineMaxCapacity() {
         return PORTABLE_ENGINE_MAX_CAPACITY.getAsDouble();
     }
+
+    public static boolean bodyDensityEnabled() { return BODY_DENSITY_ENABLED.getAsBoolean(); }
+    public static int bodyDensityRadius() { return BODY_DENSITY_RADIUS.getAsInt(); }
+    public static int bodyDensityMax() { return BODY_DENSITY_MAX.getAsInt(); }
+    public static boolean debrisCleanupEnabled() { return DEBRIS_CLEANUP_ENABLED.getAsBoolean(); }
+    public static int debrisCleanupGraceSeconds() { return DEBRIS_CLEANUP_GRACE.getAsInt(); }
+    public static int debrisCleanupMaxPerSweep() { return DEBRIS_CLEANUP_BATCH.getAsInt(); }
 }

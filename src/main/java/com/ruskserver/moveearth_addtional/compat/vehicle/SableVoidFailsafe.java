@@ -10,7 +10,6 @@ import dev.ryanhcode.sable.companion.math.BoundingBox3dc;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -23,6 +22,9 @@ import org.joml.Vector3d;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,6 +37,9 @@ public final class SableVoidFailsafe {
     private static final int CHECK_INTERVAL_TICKS = 5;
     /** Bodies whose rescue already failed once, so a broken body is reported once, not every check. */
     private static final Set<UUID> FAILED = new HashSet<>();
+    private static final Map<ServerLevel, Map<UUID, SableVoidRescuePolicy.State>> RECOVERY = new WeakHashMap<>();
+    private static final Map<ServerLevel, Map<UUID, Long>> ORPHAN_RECHECK = new WeakHashMap<>();
+    private static final Map<ServerLevel, Long> LEVEL_RETRY_AFTER_FAILURE = new WeakHashMap<>();
 
     private SableVoidFailsafe() { }
 
@@ -42,29 +47,80 @@ public final class SableVoidFailsafe {
     public static void onServerTick(ServerTickEvent.Post event) {
         if (!S2TerritoryConfig.sableVoidFailsafeEnabled()
                 || event.getServer().getTickCount() % CHECK_INTERVAL_TICKS != 0) return;
-        for (ServerLevel level : event.getServer().getAllLevels()) rescueInvalidBodies(level);
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            if (level.getGameTime() < LEVEL_RETRY_AFTER_FAILURE.getOrDefault(level, Long.MIN_VALUE)) continue;
+            try {
+                rescueInvalidBodies(level);
+                LEVEL_RETRY_AFTER_FAILURE.remove(level);
+            } catch (RuntimeException | LinkageError failure) {
+                LEVEL_RETRY_AFTER_FAILURE.put(level, level.getGameTime() + 1200);
+                Moveearth_addtional.LOGGER.error("Sable void recovery paused after a failed scan in {}",
+                        level.dimension().location(), failure);
+            }
+        }
     }
 
     @SubscribeEvent
     public static void onServerStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
         FAILED.clear();
+        RECOVERY.clear();
+        ORPHAN_RECHECK.clear();
+        LEVEL_RETRY_AFTER_FAILURE.clear();
     }
 
     private static void rescueInvalidBodies(ServerLevel level) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) return;
+        var states = RECOVERY.computeIfAbsent(level, ignored -> new HashMap<>());
+        var orphanRecheck = ORPHAN_RECHECK.computeIfAbsent(level, ignored -> new HashMap<>());
+        Set<UUID> loaded = new HashSet<>();
+        long now = level.getGameTime();
+        for (ServerSubLevel body : container.getAllSubLevels()) {
+            if (body.isRemoved()) continue;
+            UUID id = body.getUniqueId();
+            loaded.add(id);
+            var previous = states.get(id);
+            if (previous == null) previous = SableVoidRecoveryData.read(body.getUserDataTag());
+            if (previous.attempts() == 0) continue;
+            var observed = SableVoidRescuePolicy.observe(previous, now,
+                    body.boundingBox().minY() >= level.getMinBuildHeight() + S2TerritoryConfig.sableRescueClearance(),
+                    S2TerritoryConfig.sableRescueRearmTicks());
+            if (observed.attempts() == 0) {
+                states.remove(id);
+                FAILED.remove(id);
+                body.setUserDataTag(SableVoidRecoveryData.write(body.getUserDataTag(), observed));
+            }
+            else states.put(id, observed);
+        }
+        for (UUID id : List.copyOf(states.keySet())) {
+            if (!loaded.contains(id)) { states.remove(id); FAILED.remove(id); }
+        }
+        orphanRecheck.keySet().retainAll(loaded);
         Set<UUID> handled = new HashSet<>();
         for (ServerSubLevel body : List.copyOf(container.getAllSubLevels())) {
             if (body.isRemoved() || handled.contains(body.getUniqueId())) continue;
             BoundingBox3dc bounds = body.boundingBox();
             if (!SableVoidFailsafePolicy.shouldRescue(bounds.minY(), level.getMinBuildHeight(),
                     S2TerritoryConfig.sableVoidTriggerDepth())) continue;
+            if (now < orphanRecheck.getOrDefault(body.getUniqueId(), Long.MIN_VALUE)) continue;
+            var recovery = states.get(body.getUniqueId());
+            if (recovery != null && (recovery.suspensionReported()
+                    && recovery.attempts() >= S2TerritoryConfig.sableRescueMaxAttempts()
+                    || recovery.attempts() < S2TerritoryConfig.sableRescueMaxAttempts()
+                    && !SableVoidRescuePolicy.mayAttempt(recovery, now, S2TerritoryConfig.sableRescueMaxAttempts(),
+                    S2TerritoryConfig.sableRescueCooldownTicks()))) continue;
             // This runs exactly when Sable is in a bad state; a failure here must cost
             // this one rescue, not the server tick (the event bus rethrows).
             try {
                 rescueConnectedChain(level, container, body, handled);
             } catch (RuntimeException | LinkageError exception) {
                 handled.add(body.getUniqueId());
+                var state = states.getOrDefault(body.getUniqueId(), SableVoidRescuePolicy.State.EMPTY);
+                if (state.lastAttempt() != now) {
+                    var attempted = SableVoidRescuePolicy.attempted(state, now);
+                    states.put(body.getUniqueId(), attempted);
+                    body.setUserDataTag(SableVoidRecoveryData.write(body.getUserDataTag(), attempted));
+                }
                 if (FAILED.add(body.getUniqueId())) {
                     Moveearth_addtional.LOGGER.error("Could not rescue Sable body {} from below the world in {}",
                             body.getUniqueId(), level.dimension().location(), exception);
@@ -94,6 +150,38 @@ public final class SableVoidFailsafe {
         }
         if (bodies.isEmpty() || !Double.isFinite(minimumY)) return;
 
+        // Orphan fragments were falling, getting lifted, then falling again every few seconds.
+        // Old vehicle/nation tags do not justify rescuing a fragment with no physical core connection.
+        if (!SableBodyProtection.inspect(level, trigger).protectedBody()) {
+            var recheck = ORPHAN_RECHECK.computeIfAbsent(level, ignored -> new HashMap<>());
+            // Thousands of orphan fragments must not each scan their topology and containers at 4 Hz.
+            for (var body : bodies) recheck.put(body.getUniqueId(), level.getGameTime() + 100);
+            return;
+        }
+        var states = RECOVERY.computeIfAbsent(level, ignored -> new HashMap<>());
+        long now = level.getGameTime();
+        boolean canAttempt = true;
+        boolean reportSuspension = false;
+        for (ServerSubLevel body : bodies) {
+            var state = states.getOrDefault(body.getUniqueId(), SableVoidRescuePolicy.State.EMPTY);
+            canAttempt &= SableVoidRescuePolicy.mayAttempt(state, now,
+                    S2TerritoryConfig.sableRescueMaxAttempts(), S2TerritoryConfig.sableRescueCooldownTicks());
+            if (state.attempts() >= S2TerritoryConfig.sableRescueMaxAttempts() && !state.suspensionReported()) {
+                reportSuspension = true;
+                var reported = SableVoidRescuePolicy.reported(state);
+                states.put(body.getUniqueId(), reported);
+                body.setUserDataTag(SableVoidRecoveryData.write(body.getUserDataTag(), reported));
+            }
+        }
+        if (!canAttempt) {
+            if (reportSuspension) {
+                Moveearth_addtional.LOGGER.warn("Suspended repeated void recovery for Sable chain {} in {}; inspect collision/terrain loading before moving it above the floor",
+                        bodies.stream().map(ServerSubLevel::getUniqueId).toList(), level.dimension().location());
+                notifyWatchers(level, bodies, SableSafetyMessageCatalog.Message.VOID_SUSPENDED);
+            }
+            return;
+        }
+
         Vector3d triggerPosition = new Vector3d(trigger.logicalPose().position());
         if (!validHorizontalBounds(minimumX, minimumZ, maximumX, maximumZ)) {
             minimumX = maximumX = triggerPosition.x;
@@ -104,22 +192,33 @@ public final class SableVoidFailsafe {
                 minimumY, terrainTop, S2TerritoryConfig.sableRescueClearance());
         if (!(lift > 0.0D) || !Double.isFinite(lift)) return;
 
-        Set<UUID> watchers = new HashSet<>();
+        // Record before touching physics so a failing teleport/reset cannot retry four times a second.
+        for (ServerSubLevel body : bodies) {
+            var state = states.getOrDefault(body.getUniqueId(), SableVoidRescuePolicy.State.EMPTY);
+            var attempted = SableVoidRescuePolicy.attempted(state, now);
+            states.put(body.getUniqueId(), attempted);
+            body.setUserDataTag(SableVoidRecoveryData.write(body.getUserDataTag(), attempted));
+        }
         for (ServerSubLevel body : bodies) {
             Vector3d destination = new Vector3d(body.logicalPose().position()).add(0.0D, lift, 0.0D);
             Quaterniond orientation = new Quaterniond(body.logicalPose().orientation());
             container.physicsSystem().getPipeline().teleport(body, destination, orientation);
             container.physicsSystem().getPipeline().resetVelocity(body);
-            watchers.addAll(body.getTrackingPlayers());
         }
+        notifyWatchers(level, bodies, SableSafetyMessageCatalog.Message.VOID_RESCUED);
+        Moveearth_addtional.LOGGER.warn(
+                "Recovered {} connected Sable body/bodies {} from below {} in {} by lifting {} blocks",
+                bodies.size(), bodies.stream().map(ServerSubLevel::getUniqueId).toList(),
+                level.getMinBuildHeight(), level.dimension().location(), Math.ceil(lift));
+    }
+
+    private static void notifyWatchers(ServerLevel level, List<ServerSubLevel> bodies, SableSafetyMessageCatalog.Message message) {
+        Set<UUID> watchers = new HashSet<>();
+        for (var body : bodies) watchers.addAll(body.getTrackingPlayers());
         for (UUID playerId : watchers) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
-            if (player != null) player.sendSystemMessage(MoveEarthMessage.warning(Component.translatable(
-                    "message.moveearth_addtional.sable_void_rescued")));
+            if (player != null) player.sendSystemMessage(MoveEarthMessage.warning(SableSafetyMessages.component(message, player)));
         }
-        Moveearth_addtional.LOGGER.warn(
-                "Recovered {} connected Sable body/bodies from below {} in {} by lifting {} blocks",
-                bodies.size(), level.getMinBuildHeight(), level.dimension().location(), Math.ceil(lift));
     }
 
     private static boolean validHorizontalBounds(double minX, double minZ, double maxX, double maxZ) {

@@ -35,7 +35,9 @@ public final class DetectorScreenSync {
                 detector.getPlacedTime(),
                 balance,
                 success,
-                clip(message, 160)));
+                clip(message, 160),
+                PlayerDetectorBlockEntity.upkeepCost(),
+                PlayerDetectorBlockEntity.upkeepCycleHours()));
     }
 
     private static String clip(String text, int max) {

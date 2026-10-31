@@ -1,0 +1,28 @@
+{
+  "parent": "moveearth_addtional:root",
+  "criteria": {
+    "done": {
+      "trigger": "moveearth_addtional:event",
+      "conditions": {
+        "event": "opening_rush"
+      }
+    }
+  },
+  "display": {
+    "icon": {
+      "id": "minecraft:sugar"
+    },
+    "title": {
+      "translate": "advancements.moveearth_addtional.opening_rush.title",
+      "fallback": "開店ダッシュ"
+    },
+    "description": {
+      "translate": "advancements.moveearth_addtional.opening_rush.description",
+      "fallback": "開店と同時に滑り込んだ。並んでたの？"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": true
+  }
+}

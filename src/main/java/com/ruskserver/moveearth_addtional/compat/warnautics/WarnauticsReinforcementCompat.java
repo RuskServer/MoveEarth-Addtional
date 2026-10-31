@@ -1,5 +1,7 @@
 package com.ruskserver.moveearth_addtional.compat.warnautics;
 
+import static com.ruskserver.moveearth_addtional.analytics.provenance.MutationRejectionAudit.rejected;
+
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.ReinforcementEntry;
@@ -113,9 +115,12 @@ public final class WarnauticsReinforcementCompat {
             processDetonation(level, center, rawToBlow, kind, attribution,
                     charge == null ? null : charge.support());
         } catch (ReflectiveOperationException | RuntimeException exception) {
+            try { ((List<?>) detonateToBlow.invoke(event)).clear(); }
+            catch (ReflectiveOperationException | RuntimeException failure) {
+                throw new IllegalStateException("Cannot block unverified Warnautics blast", failure);
+            }
             Moveearth_addtional.LOGGER.error(
-                    "Failed to apply Create Warnautics reinforcement protection; retaining the original blast list",
-                    exception);
+                    "Failed to verify Create Warnautics blast; blocked terrain damage", exception);
         }
     }
 
@@ -123,6 +128,11 @@ public final class WarnauticsReinforcementCompat {
                                           WarnauticsWeaponDamage.Kind kind,
                                           SiegeService.AttackAttribution attribution,
                                           BlockPos c4Primary) {
+        if (!com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.fromAttack(attribution).allowed()) {
+            rejected("warnautics.blast", level, BlockPos.containing(center));
+            rawToBlow.clear();
+            return;
+        }
         ReinforcementSavedData reinforcements = ReinforcementSavedData.get(level);
         WarehouseSites warehouses = WarehouseSites.get(level.getServer());
         Set<BlockPos> changed = new LinkedHashSet<>();
@@ -201,7 +211,11 @@ public final class WarnauticsReinforcementCompat {
                 protectedStates.put(pos.immutable(), level.getBlockState(pos));
                 continue;
             }
-            siege.record(pos, false);
+            if (siege.record(pos, false).startWindowClosed()) {
+                iterator.remove();
+                protectedStates.put(pos.immutable(), level.getBlockState(pos));
+                continue;
+            }
             if (!entry.enabled()) {
                 reinforcements.remove(pos);
                 changed.add(pos.immutable());
@@ -273,7 +287,7 @@ public final class WarnauticsReinforcementCompat {
                     : WarnauticsWeaponDamage.distanceScaledDamage(
                     maximum, core.pos().getCenter().distanceTo(center), radius);
             if (damage <= 0) continue;
-            siege.record(core.pos(), false);
+            if (siege.record(core.pos(), false).startWindowClosed()) continue;
             TerritorySavedData.CoreRecord after = TerritoryCoreHealthService.damage(level, core.pos(), damage);
             if (after != null && after.health() < core.health()) siege.recordCoreHit(core.pos());
         }
@@ -288,6 +302,12 @@ public final class WarnauticsReinforcementCompat {
                 cancellable.setCanceled(true);
                 return;
             }
+            if (!com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.source(
+                    com.ruskserver.moveearth_addtional.s2.provenance.ActionContext.current()).allowed()) {
+                rejected("warnautics.chip", level, pos);
+                cancellable.setCanceled(true);
+                return;
+            }
             // Chip events fire per fragment; the checks below are all hash lookups.
             boolean protectedBlock = ReinforcementSavedData.get(level).get(pos)
                     .filter(ReinforcementEntry::enabled).isPresent()
@@ -297,7 +317,8 @@ public final class WarnauticsReinforcementCompat {
                     .core(level.dimension().location(), pos).isPresent();
             if (protectedBlock) cancellable.setCanceled(true);
         } catch (ReflectiveOperationException | RuntimeException exception) {
-            Moveearth_addtional.LOGGER.debug("Failed to read Create Warnautics block-chip event", exception);
+            if (event instanceof ICancellableEvent cancellable) cancellable.setCanceled(true);
+            Moveearth_addtional.LOGGER.debug("Failed to verify Create Warnautics block-chip event; blocked it", exception);
         }
     }
 

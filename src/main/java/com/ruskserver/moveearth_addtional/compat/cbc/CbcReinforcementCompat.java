@@ -1,5 +1,7 @@
 package com.ruskserver.moveearth_addtional.compat.cbc;
 
+import static com.ruskserver.moveearth_addtional.analytics.provenance.MutationRejectionAudit.rejected;
+
 import com.ruskserver.moveearth_addtional.Moveearth_addtional;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.CbcMunitionDamage;
 import com.ruskserver.moveearth_addtional.s2.reinforcement.SiegeDamageService;
@@ -15,7 +17,6 @@ import net.minecraft.server.level.ServerPlayer;
 import com.ruskserver.moveearth_addtional.s2.siege.SiegeService;
 import com.ruskserver.moveearth_addtional.config.S2TerritoryConfig;
 import com.ruskserver.moveearth_addtional.warehouse.WarehouseSites;
-import net.minecraft.world.phys.AABB;
 import net.neoforged.bus.api.Event;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.ICancellableEvent;
@@ -23,7 +24,6 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 
 import java.lang.reflect.Method;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -78,16 +78,19 @@ public final class CbcReinforcementCompat {
                 if (event instanceof ICancellableEvent cancellable) cancellable.setCanceled(true);
                 return;
             }
-            // Most impacts land nowhere near a reinforcement, vehicle core or exposed core and follow no
-            // recently intercepted munition. Those would be neither intercepted nor recorded below, so the
-            // entity search, attribution and area pass are skipped.
-            purgeOldImpacts(level.getGameTime());
-            if (INTERCEPTED_MUNITIONS.isEmpty()
-                    && !recentImpactNear(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius(), level.getGameTime())
-                    && !SiegeDamageService.cbcAreaMayBeProtected(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius())) {
+            // Attribution is required even for ordinary ground. Never borrow a nearby shell's identity.
+            Entity munition = com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.currentEntity();
+            if (!com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.fromEntity(munition).allowed()) {
+                rejected("cbc.projectile_event", level, pos);
+                if (event instanceof ICancellableEvent cancellable) cancellable.setCanceled(true);
                 return;
             }
-            Entity munition = nearbyMunition(level, pos);
+            // Only after the mandatory source check may an ordinary unprotected impact take the fast path.
+            long gameTime = level.getGameTime();
+            purgeOldImpacts(gameTime);
+            if (INTERCEPTED_MUNITIONS.isEmpty()
+                    && !recentImpactNear(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius(), gameTime)
+                    && !SiegeDamageService.cbcAreaMayBeProtected(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius())) return;
             String entityPath = entityPath(munition);
             CbcMunitionDamage.Kind kind = CbcMunitionDamage.classify(entityPath);
             ServerPlayer attacker = SiegeService.attributablePlayer(munition);
@@ -99,13 +102,8 @@ public final class CbcReinforcementCompat {
                         com.ruskserver.moveearth_addtional.s2.nation.NationSavedData.get(level.getServer())
                                 .nationIdFor(attacker.getUUID()).orElse(null), attacker.getUUID(), "cbc_projectile");
             }
-            long gameTime = level.getGameTime();
-            purgeOldImpacts(gameTime);
             boolean duplicate = munition != null && INTERCEPTED_MUNITIONS.getOrDefault(
                     munition.getUUID(), Long.MIN_VALUE) >= gameTime;
-            if (!duplicate && munition == null) {
-                duplicate = recentImpactNear(level, pos, S2TerritoryConfig.cbcProtectedBlastRadius(), gameTime);
-            }
             int radius = CbcMunitionDamage.usesBlastArea(entityPath)
                     ? S2TerritoryConfig.cbcProtectedBlastRadius() : 0;
             boolean intercepted = duplicate || SiegeDamageService.interceptCbcProtectedArea(
@@ -119,14 +117,20 @@ public final class CbcReinforcementCompat {
             if (intercepted && event instanceof ICancellableEvent cancellable) {
                 cancellable.setCanceled(true);
             }
-        } catch (ReflectiveOperationException exception) {
-            Moveearth_addtional.LOGGER.debug("Failed to read CBC projectile damage event", exception);
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            if (event instanceof ICancellableEvent cancellable) cancellable.setCanceled(true);
+            Moveearth_addtional.LOGGER.warn("Failed to verify CBC projectile damage event; blocked terrain damage", exception);
         }
     }
 
     /** CBC calls this before replacing a directly penetrated block with air. Its event has no projectile field. */
     public static boolean canDamageTerrain(Entity projectile, Level level, BlockPos pos) {
         if (level instanceof ServerLevel serverLevel) {
+            if (!com.ruskserver.moveearth_addtional.s2.provenance.WorldMutationGuard.fromEntity(projectile).allowed()) {
+                rejected(projectile != null && projectile.getClass().getName().contains("Autocannon")
+                        ? "cbc.autocannon_hit" : "cbc.direct_hit", level, pos);
+                return false;
+            }
             ReinforcementSavedData data = ReinforcementSavedData.get(serverLevel);
             var entry = data.get(pos).orElse(null);
             if (entry != null && entry.enabled() && !serverLevel.getBlockState(pos).isAir()) {
@@ -155,7 +159,9 @@ public final class CbcReinforcementCompat {
                         .getMethod("canDamageTerrain", Level.class, BlockPos.class);
                 terrainDamageHook = hook;
             }
-            return (Boolean) hook.invoke(null, level, pos);
+            try (var scope = com.ruskserver.moveearth_addtional.s2.provenance.ActionContext.push(projectile)) {
+                return (Boolean) hook.invoke(null, level, pos);
+            }
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Cannot invoke CBC terrain damage hook", exception);
         }
@@ -188,25 +194,6 @@ public final class CbcReinforcementCompat {
                 : CbcMunitionDamage.classifyExplosionClass(explosion.getClass().getSimpleName());
     }
 
-    /**
-     * The closest CBC munition (cannon projectile or fragment burst) around the impact. Cannon mounts,
-     * carriages and other CBC contraption entities are never the munition, even when nearer.
-     */
-    private static Entity nearbyMunition(ServerLevel level, BlockPos pos) {
-        return level.getEntities((Entity) null, new AABB(pos).inflate(6.0D), CbcReinforcementCompat::isCbcMunition)
-                .stream().min(Comparator.comparingDouble(entity -> entity.distanceToSqr(pos.getCenter())))
-                .orElse(null);
-    }
-
-    /**
-     * The munition behind a CBC blast built without a source entity (mortar stone explosions): CBC
-     * explodes it from {@code onImpact}, while the round is still in the world, so the nearest munition is
-     * the one whose attribution snapshot applies.
-     */
-    public static Entity impactMunition(ServerLevel level, BlockPos pos) {
-        return nearbyMunition(level, pos);
-    }
-
     public static boolean isCbcMunition(Entity entity) {
         if (entity == null) return false;
         return MUNITION_TYPES.computeIfAbsent(entity.getType(), ignored -> {
@@ -235,10 +222,7 @@ public final class CbcReinforcementCompat {
     public static boolean wasRecentlyPreHandled(Entity source, ServerLevel level, BlockPos center) {
         long gameTime = level.getGameTime();
         purgeOldImpacts(gameTime);
-        if (source != null && INTERCEPTED_MUNITIONS.getOrDefault(source.getUUID(), Long.MIN_VALUE) >= gameTime) {
-            return true;
-        }
-        return recentImpactNear(level, center, S2TerritoryConfig.cbcProtectedBlastRadius(), gameTime);
+        return source != null && INTERCEPTED_MUNITIONS.getOrDefault(source.getUUID(), Long.MIN_VALUE) >= gameTime;
     }
 
     private static boolean recentImpactNear(ServerLevel level, BlockPos pos, int radius, long gameTime) {

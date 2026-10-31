@@ -30,6 +30,8 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
     private Component toast;
     private int toastTicks;
     private int toastColor = SUCCESS;
+    /** The rate picked on the tax card, sent with "set"; reset to the nation's rate on every refresh. */
+    private int pendingTax;
 
     public NationTreasuryScreen(S2C_NationTreasuryPacket data) {
         super(Component.translatable("screen.moveearth_addtional.treasury.title"));
@@ -38,6 +40,7 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
 
     public void update(S2C_NationTreasuryPacket packet) {
         this.data = packet;
+        this.pendingTax = packet.taxPercent();
     }
 
     @Override
@@ -96,13 +99,19 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
     }
 
     private void renderLeftColumn(GuiGraphics graphics, Rect col, int mouseX, int mouseY) {
-        // 1. Nation Treasury Card
-        Rect treasuryCard = new Rect(col.x(), col.y(), col.width(), 68);
+        // 1. Nation Treasury Card, with the player's own balance on the right
+        Rect treasuryCard = treasuryCard(col);
         drawCard(graphics, treasuryCard, GOLD, false, false);
         graphics.drawString(font, Component.translatable("screen.moveearth_addtional.treasury.nation_balance"),
-                treasuryCard.x() + 12, treasuryCard.y() + 10, MUTED, false);
+                treasuryCard.x() + 12, treasuryCard.y() + 8, MUTED, false);
         String natBalStr = NationTreasuryHelper.formatCurrency(data.nationBalance());
-        graphics.drawString(font, natBalStr, treasuryCard.x() + 12, treasuryCard.y() + 24, GOLD, false);
+        graphics.drawString(font, natBalStr, treasuryCard.x() + 12, treasuryCard.y() + 21, GOLD, false);
+        Component personalLabel = Component.translatable("screen.moveearth_addtional.treasury.player_balance");
+        String playerBalStr = NationTreasuryHelper.formatCurrency(data.playerBalance());
+        graphics.drawString(font, personalLabel, treasuryCard.right() - 12 - font.width(personalLabel),
+                treasuryCard.y() + 8, MUTED, false);
+        graphics.drawString(font, playerBalStr, treasuryCard.right() - 12 - font.width(playerBalStr),
+                treasuryCard.y() + 21, TEXT, false);
 
         long coverageHours = NationTreasuryHelper.calculateCoverageHours(
                 data.nationBalance(), data.upkeep(), data.upkeepCycleHours());
@@ -117,11 +126,11 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
                 : coverageHours > 0L
                 ? Component.translatable("screen.moveearth_addtional.treasury.upkeep_coverage_hours", coverageHours)
                 : Component.translatable("screen.moveearth_addtional.treasury.upkeep_coverage_zero");
-        graphics.drawString(font, coverageComp, treasuryCard.x() + 12, treasuryCard.y() + 48,
+        graphics.drawString(font, coverageComp, treasuryCard.x() + 12, treasuryCard.y() + 42,
                 coverageHours >= 72L ? SUCCESS : coverageHours > 0 ? GOLD : DANGER, false);
 
         // 2. Upkeep Status Card
-        Rect upkeepCard = new Rect(col.x(), col.y() + 74, col.width(), 138);
+        Rect upkeepCard = upkeepCard(col);
         int upkeepAccent = data.penalty() == UpkeepPenalty.DISABLED ? DANGER
                 : data.failedPayments() > 0 ? GOLD : SUCCESS;
         drawCard(graphics, upkeepCard, upkeepAccent, false, false);
@@ -138,7 +147,7 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
                 : data.failedPayments() > 0
                 ? Component.translatable("screen.moveearth_addtional.treasury.overdue", data.failedPayments())
                 : Component.translatable("screen.moveearth_addtional.treasury.enabled", remaining(data.nextDueAt()));
-        graphics.drawWordWrap(font, status, upkeepCard.x() + 12, upkeepCard.y() + 46, upkeepCard.width() - 24,
+        graphics.drawWordWrap(font, status, upkeepCard.x() + 12, upkeepCard.y() + 40, upkeepCard.width() - 24,
                 upkeepAccent);
 
         // "Pay Now" button inside Upkeep Card
@@ -147,13 +156,52 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
         drawButton(graphics, font, payBtn, Component.translatable("screen.moveearth_addtional.treasury.pay_now"),
                 GOLD, payBtn.contains(mouseX, mouseY), data.canManage() && due);
 
-        // 3. Personal Balance Card
-        Rect personalCard = new Rect(col.x(), col.y() + 218, col.width(), 58);
-        drawCard(graphics, personalCard, ACCENT, false, false);
-        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.treasury.player_balance"),
-                personalCard.x() + 12, personalCard.y() + 12, MUTED, false);
-        String playerBalStr = NationTreasuryHelper.formatCurrency(data.playerBalance());
-        graphics.drawString(font, playerBalStr, personalCard.x() + 12, personalCard.y() + 30, TEXT, false);
+        // 3. Nation Tax Card
+        renderTaxCard(graphics, taxCard(col), mouseX, mouseY);
+    }
+
+    private void renderTaxCard(GuiGraphics graphics, Rect card, int mouseX, int mouseY) {
+        drawCard(graphics, card, ACCENT, false, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.treasury.tax_title"),
+                card.x() + 12, card.y() + 8, MUTED, false);
+        graphics.drawString(font, Component.translatable("screen.moveearth_addtional.treasury.tax_current",
+                data.taxPercent()), card.x() + 12, card.y() + 21, TEXT, false);
+        if (data.taxPending() > 0L) {
+            Component pending = Component.translatable("screen.moveearth_addtional.treasury.tax_pending",
+                    NationTreasuryHelper.formatNumber(data.taxPending()));
+            graphics.drawString(font, pending, card.right() - 12 - font.width(pending), card.y() + 21, GOLD, false);
+        }
+        if (!data.canManage()) {
+            graphics.drawWordWrap(font, Component.translatable("screen.moveearth_addtional.treasury.tax_member_note"),
+                    card.x() + 12, card.y() + 38, card.width() - 24, MUTED);
+            return;
+        }
+        Rect[] steps = taxSteps(card);
+        String[] labels = {"-5", "-1", "+1", "+5"};
+        int[] deltas = {-5, -1, 1, 5};
+        for (int i = 0; i < steps.length; i++) {
+            int next = Math.max(0, Math.min(data.taxMaxPercent(), pendingTax + deltas[i]));
+            drawButton(graphics, font, steps[i], Component.literal(labels[i]), ACCENT,
+                    steps[i].contains(mouseX, mouseY), next != pendingTax);
+        }
+        Rect value = taxValue(card);
+        drawCenteredScaledString(graphics, pendingTax + "%", value, pendingTax != data.taxPercent() ? GOLD : TEXT);
+        Rect apply = taxApply(card);
+        boolean raise = pendingTax > data.taxPercent();
+        boolean waiting = raise && data.taxRaiseWaitMinutes() > 0L;
+        Component label = pendingTax == data.taxPercent()
+                ? Component.translatable("screen.moveearth_addtional.treasury.tax_pick")
+                : waiting
+                ? Component.translatable("screen.moveearth_addtional.treasury.tax_raise_wait",
+                        data.taxRaiseWaitMinutes() / 60L, data.taxRaiseWaitMinutes() % 60L)
+                : Component.translatable("screen.moveearth_addtional.treasury.tax_apply", pendingTax);
+        drawButton(graphics, font, apply, label, GOLD, apply.contains(mouseX, mouseY),
+                pendingTax != data.taxPercent() && !waiting);
+    }
+
+    private void drawCenteredScaledString(GuiGraphics graphics, String text, Rect area, int color) {
+        graphics.drawString(font, text, area.x() + (area.width() - font.width(text)) / 2,
+                area.y() + (area.height() - 8) / 2, color, false);
     }
 
     private void renderRightColumn(GuiGraphics graphics, Rect col, Rect panel, int mouseX, int mouseY) {
@@ -255,7 +303,8 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
 
         Rect lc = leftCol(p);
         Rect rc = rightCol(p);
-        Rect upkeepCard = new Rect(lc.x(), lc.y() + 74, lc.width(), 138);
+        if (data.canManage() && clickTaxCard(taxCard(lc), mouseX, mouseY)) return true;
+        Rect upkeepCard = upkeepCard(lc);
         Rect payBtn = payButton(upkeepCard);
         if (payBtn.contains(mouseX, mouseY)) {
             if (data.canManage() && !TerritoryUpkeepPolicy.canPayNow(System.currentTimeMillis(), data.nextDueAt())) {
@@ -353,6 +402,27 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
         }
     }
 
+    private boolean clickTaxCard(Rect card, double mouseX, double mouseY) {
+        Rect[] steps = taxSteps(card);
+        int[] deltas = {-5, -1, 1, 5};
+        for (int i = 0; i < steps.length; i++) {
+            if (steps[i].contains(mouseX, mouseY)) {
+                pendingTax = Math.max(0, Math.min(data.taxMaxPercent(), pendingTax + deltas[i]));
+                return true;
+            }
+        }
+        if (!taxApply(card).contains(mouseX, mouseY)) return false;
+        if (pendingTax == data.taxPercent()) return true;
+        if (pendingTax > data.taxPercent() && data.taxRaiseWaitMinutes() > 0L) {
+            showToast(Component.translatable("screen.moveearth_addtional.treasury.tax_raise_wait",
+                    data.taxRaiseWaitMinutes() / 60L, data.taxRaiseWaitMinutes() % 60L), MUTED);
+            return true;
+        }
+        send(C2S_NationTreasuryPacket.Action.SET_TAX, pendingTax);
+        showToast(Component.translatable("screen.moveearth_addtional.treasury.tax_sent", pendingTax), SUCCESS);
+        return true;
+    }
+
     private void setAmount(long value) {
         if (amountField != null) {
             amountField.setValue(String.valueOf(value));
@@ -415,6 +485,42 @@ public final class NationTreasuryScreen extends Screen implements SuppressesChat
         int leftW = (availW - 12) * 44 / 100;
         int rightW = availW - 12 - leftW;
         return new Rect(p.x() + 14 + leftW + 12, p.y() + 48, rightW, 276);
+    }
+
+    private static Rect treasuryCard(Rect leftCol) {
+        return new Rect(leftCol.x(), leftCol.y(), leftCol.width(), 58);
+    }
+
+    private static Rect upkeepCard(Rect leftCol) {
+        return new Rect(leftCol.x(), leftCol.y() + 64, leftCol.width(), 112);
+    }
+
+    private static Rect taxCard(Rect leftCol) {
+        return new Rect(leftCol.x(), leftCol.y() + 182, leftCol.width(), leftCol.height() - 182);
+    }
+
+    /** -5, -1, +1, +5 around the picked rate. */
+    private static Rect[] taxSteps(Rect taxCard) {
+        int y = taxCard.y() + 36;
+        int w = 26;
+        int gap = 4;
+        int valueW = taxCard.width() - 20 - 4 * w - 4 * gap;
+        int x = taxCard.x() + 10;
+        return new Rect[]{
+                new Rect(x, y, w, 18),
+                new Rect(x + w + gap, y, w, 18),
+                new Rect(x + 2 * (w + gap) + valueW + gap, y, w, 18),
+                new Rect(x + 3 * (w + gap) + valueW + gap, y, w, 18),
+        };
+    }
+
+    private static Rect taxValue(Rect taxCard) {
+        Rect[] steps = taxSteps(taxCard);
+        return new Rect(steps[1].right() + 4, steps[1].y(), steps[2].x() - 4 - steps[1].right() - 4, 18);
+    }
+
+    private static Rect taxApply(Rect taxCard) {
+        return new Rect(taxCard.x() + 10, taxCard.bottom() - 26, taxCard.width() - 20, 20);
     }
 
     private static Rect payButton(Rect upkeepCard) {
